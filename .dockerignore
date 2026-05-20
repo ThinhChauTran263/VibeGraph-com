@@ -1,0 +1,13 @@
+.git
+.idea
+.vscode
+target
+build
+node_modules
+*.log
+*.iml
+.gitignore
+.dockerignore
+README.md
+HELP.md
+VibeGraph-specs

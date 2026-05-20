@@ -1,0 +1,11 @@
+spring:
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: vibegraph
+
+logging:
+  level:
+    com.vibegraph: TRACE
+    org.springframework.web: DEBUG

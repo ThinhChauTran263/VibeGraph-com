@@ -1,0 +1,12 @@
+spring:
+  neo4j:
+    uri: bolt://neo4j:7687
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:vibegraph}
+
+vibegraph:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - ${FRONTEND_URL:http://localhost:3000}
