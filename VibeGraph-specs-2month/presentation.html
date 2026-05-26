@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeGraph — Bản đồ sống của mã nguồn</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0e1a;
+    --bg-card: #131826;
+    --bg-elevated: #1a2030;
+    --text: #e8ecf4;
+    --text-dim: #a0a8b8;
+    --accent: #4ade80;
+    --accent-2: #60a5fa;
+    --accent-3: #fbbf24;
+    --accent-4: #f87171;
+    --border: #1f2937;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Inter", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* HERO */
+  .hero {
+    min-height: 92vh;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    text-align: center;
+    position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at top, #1a2540 0%, var(--bg) 60%);
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(74,222,128,0.08) 0%, transparent 40%),
+      radial-gradient(circle at 80% 60%, rgba(96,165,250,0.08) 0%, transparent 40%);
+    pointer-events: none;
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 850px; padding: 0 24px; }
+  .badge {
+    display: inline-block;
+    padding: 6px 14px;
+    background: rgba(74,222,128,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(74,222,128,0.3);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+  }
+  h1 {
+    font-size: clamp(2.2rem, 6vw, 4.2rem);
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--text) 0%, var(--accent-2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 20px;
+    line-height: 1.1;
+  }
+  .tagline { font-size: clamp(1rem, 2vw, 1.3rem); color: var(--text-dim); margin-bottom: 36px; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block;
+    padding: 14px 28px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 15px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-primary { background: var(--accent); color: #0a0e1a; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(74,222,128,0.3); }
+  .btn-secondary { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* SECTIONS */
+  section { padding: 90px 0; }
+  section.alt { background: var(--bg-card); }
+  h2 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    margin-bottom: 16px;
+    text-align: center;
+    font-weight: 700;
+  }
+  .section-subtitle {
+    text-align: center;
+    color: var(--text-dim);
+    max-width: 720px;
+    margin: 0 auto 60px;
+    font-size: 1.1rem;
+  }
+
+  /* PROBLEM */
+  .problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 20px; }
+  .problem-card {
+    background: var(--bg-elevated);
+    padding: 28px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-4);
+  }
+  .problem-card h3 { color: var(--accent-4); font-size: 1.1rem; margin-bottom: 10px; }
+  .problem-card p { color: var(--text-dim); font-size: 0.95rem; }
+
+  /* HOW IT WORKS */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 24px; counter-reset: step; }
+  .step {
+    background: var(--bg-elevated);
+    padding: 32px 24px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    position: relative;
+    counter-increment: step;
+  }
+  .step::before {
+    content: counter(step);
+    position: absolute;
+    top: -18px; left: 24px;
+    width: 36px; height: 36px;
+    background: var(--accent);
+    color: #0a0e1a;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800;
+    font-size: 1.05rem;
+  }
+  .step h3 { font-size: 1.1rem; margin: 8px 0 8px; }
+  .step p { color: var(--text-dim); font-size: 0.92rem; }
+
+  /* FEATURES */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 22px; }
+  .feature {
+    background: var(--bg-elevated);
+    padding: 28px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    transition: transform .2s, border-color .2s;
+  }
+  .feature:hover { transform: translateY(-4px); border-color: var(--accent-2); }
+  .feature-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; font-size: 22px; }
+  .icon-1 { background: rgba(96,165,250,0.15); }
+  .icon-2 { background: rgba(74,222,128,0.15); }
+  .icon-3 { background: rgba(251,191,36,0.15); }
+  .icon-4 { background: rgba(248,113,113,0.15); }
+  .icon-5 { background: rgba(192,132,252,0.15); }
+  .icon-6 { background: rgba(45,212,191,0.15); }
+  .feature h3 { font-size: 1.15rem; margin-bottom: 10px; }
+  .feature p { color: var(--text-dim); font-size: 0.95rem; }
+
+  /* WHO */
+  .users { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 20px; }
+  .user-card { background: var(--bg-elevated); padding: 26px; border-radius: 14px; border: 1px solid var(--border); }
+  .user-card h3 { color: var(--accent-2); font-size: 1.05rem; margin-bottom: 8px; }
+  .user-card p { color: var(--text-dim); font-size: 0.92rem; }
+
+  /* DIFF TABLE */
+  .compare-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--bg-elevated); border-radius: 14px; overflow: hidden; }
+  th,td { padding: 16px 18px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
+  th { background: rgba(74,222,128,0.08); color: var(--accent); font-weight: 700; }
+  td.check { color: var(--accent); font-weight: 600; }
+  td.cross { color: var(--accent-4); }
+  td.partial { color: var(--accent-3); }
+  tr:last-child td { border-bottom: none; }
+
+  /* TIMELINE */
+  .timeline { display: flex; flex-direction: column; gap: 16px; max-width: 700px; margin: 0 auto; }
+  .timeline-item {
+    background: var(--bg-elevated);
+    padding: 22px 26px;
+    border-radius: 12px;
+    border-left: 4px solid var(--accent);
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 20px;
+    align-items: center;
+  }
+  .timeline-week { color: var(--accent); font-weight: 700; font-size: 0.95rem; }
+  .timeline-text strong { display: block; margin-bottom: 4px; }
+  .timeline-text span { color: var(--text-dim); font-size: 0.9rem; }
+
+  /* RESULTS */
+  .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 22px; }
+  .result {
+    background: linear-gradient(135deg, var(--bg-elevated) 0%, rgba(74,222,128,0.05) 100%);
+    border: 1px solid var(--border);
+    padding: 28px; border-radius: 14px; text-align: center;
+  }
+  .result-number { font-size: 2.4rem; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
+  .result-label { color: var(--text-dim); font-size: 0.95rem; }
+
+  /* FOOTER */
+  footer { padding: 50px 0 30px; text-align: center; color: var(--text-dim); font-size: 0.9rem; border-top: 1px solid var(--border); }
+  footer strong { color: var(--text); }
+
+  /* GRAPH DEMO */
+  .demo-graph {
+    background: var(--bg-elevated);
+    border-radius: 16px;
+    padding: 30px;
+    border: 1px solid var(--border);
+    max-width: 700px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+  }
+  .demo-graph svg { width: 100%; height: auto; display: block; }
+  .demo-label { text-align: center; color: var(--text-dim); margin-top: 14px; font-size: 0.9rem; font-style: italic; }
+
+  @media (max-width: 640px) {
+    section { padding: 60px 0; }
+    .timeline-item { grid-template-columns: 1fr; gap: 8px; }
+    .hero { min-height: 80vh; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <span class="badge">Phát triển 8 tuần · Java + AI · Mã nguồn mở</span>
+    <h1>Biến mã nguồn thành bản đồ sống</h1>
+    <p class="tagline">VibeGraph giúp lập trình viên và trí tuệ nhân tạo cùng nhìn thấy cấu trúc dự án — không ai bị lạc, không ai code sai.</p>
+    <div class="cta-row">
+      <a href="#problem" class="btn btn-primary">Tìm hiểu vấn đề</a>
+      <a href="#how" class="btn btn-secondary">Xem cách hoạt động</a>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section id="problem" class="alt">
+  <div class="container">
+    <h2>Vấn đề chúng tôi giải quyết</h2>
+    <p class="section-subtitle">Năm 2026, hơn 40% mã nguồn được tạo bởi AI. Nhưng AI không hiểu kiến trúc dự án — nó như một thợ xây không có bản vẽ.</p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <h3>AI viết sai cấu trúc</h3>
+        <p>AI thường tạo code không khớp với pattern của dự án. Code sai → phải sửa lại → mất thời gian.</p>
+      </div>
+      <div class="problem-card">
+        <h3>Người mới mất nhiều ngày</h3>
+        <p>Lập trình viên mới mất 5-10 ngày chỉ để hiểu dự án. Càng dự án lớn, càng khó.</p>
+      </div>
+      <div class="problem-card">
+        <h3>Tài liệu luôn lỗi thời</h3>
+        <p>Sơ đồ kiến trúc được vẽ một lần rồi không ai cập nhật. Code đổi nhưng tài liệu thì không.</p>
+      </div>
+      <div class="problem-card">
+        <h3>Đổi code, sợ vỡ chỗ khác</h3>
+        <p>Sửa một hàm có thể làm hỏng 10 chỗ khác mà không ai biết. Bug lan truyền, khó truy vết.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT IS IT -->
+<section>
+  <div class="container">
+    <h2>VibeGraph là gì?</h2>
+    <p class="section-subtitle">Hãy tưởng tượng Google Maps — nhưng cho mã nguồn. Bạn nhìn thấy từng "con đường" giữa các phần của dự án, biết cái nào nối với cái nào, và mọi thay đổi đều được cập nhật tức thì.</p>
+
+    <div class="demo-graph">
+      <svg viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow"><feGaussianBlur stdDeviation="2"/></filter>
+        </defs>
+        <!-- Edges -->
+        <line x1="120" y1="80"  x2="300" y2="150" stroke="#4ade80" stroke-width="2"/>
+        <line x1="120" y1="80"  x2="300" y2="80"  stroke="#60a5fa" stroke-width="2"/>
+        <line x1="300" y1="80"  x2="480" y2="80"  stroke="#f87171" stroke-width="2"/>
+        <line x1="300" y1="150" x2="480" y2="150" stroke="#4ade80" stroke-width="2"/>
+        <line x1="300" y1="150" x2="300" y2="240" stroke="#fbbf24" stroke-width="2"/>
+        <line x1="300" y1="240" x2="480" y2="240" stroke="#4ade80" stroke-width="2"/>
+        <line x1="120" y1="200" x2="300" y2="240" stroke="#60a5fa" stroke-width="2"/>
+        <!-- Nodes -->
+        <circle cx="120" cy="80"  r="18" fill="#f87171"/><text x="120" y="115" fill="#a0a8b8" text-anchor="middle" font-size="11">File</text>
+        <circle cx="120" cy="200" r="14" fill="#60a5fa"/><text x="120" y="230" fill="#a0a8b8" text-anchor="middle" font-size="11">Method</text>
+        <circle cx="300" cy="80"  r="22" fill="#fbbf24"/><text x="300" y="125" fill="#a0a8b8" text-anchor="middle" font-size="11">Class</text>
+        <circle cx="300" cy="150" r="14" fill="#60a5fa"/><text x="300" y="180" fill="#a0a8b8" text-anchor="middle" font-size="11">Method</text>
+        <circle cx="300" cy="240" r="16" fill="#4ade80"/><text x="300" y="275" fill="#a0a8b8" text-anchor="middle" font-size="11">Endpoint</text>
+        <circle cx="480" cy="80"  r="18" fill="#34d399"/><text x="480" y="115" fill="#a0a8b8" text-anchor="middle" font-size="11">Interface</text>
+        <circle cx="480" cy="150" r="14" fill="#60a5fa"/><text x="480" y="180" fill="#a0a8b8" text-anchor="middle" font-size="11">Method</text>
+        <circle cx="480" cy="240" r="16" fill="#a78bfa"/><text x="480" y="275" fill="#a0a8b8" text-anchor="middle" font-size="11">Enum</text>
+      </svg>
+      <p class="demo-label">Mỗi chấm tròn là một thành phần · Mỗi đường nối là một mối quan hệ</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how" class="alt">
+  <div class="container">
+    <h2>Cách hoạt động</h2>
+    <p class="section-subtitle">Bốn bước, không phức tạp.</p>
+    <div class="steps">
+      <div class="step">
+        <h3>Đưa mã nguồn vào</h3>
+        <p>Dán đường link GitHub hoặc chỉ vào thư mục trong máy. Không cần cài đặt phức tạp.</p>
+      </div>
+      <div class="step">
+        <h3>VibeGraph đọc</h3>
+        <p>Hệ thống tự động phân tích từng file, hiểu class nào dùng class nào, hàm nào gọi hàm nào.</p>
+      </div>
+      <div class="step">
+        <h3>Vẽ bản đồ</h3>
+        <p>Toàn bộ dự án hiện ra dưới dạng đồ thị màu sắc, có thể phóng to, lọc, tìm kiếm.</p>
+      </div>
+      <div class="step">
+        <h3>Cập nhật tức thì</h3>
+        <p>Khi bạn lưu file, bản đồ tự cập nhật trong 3 giây. AI cũng tự nhận context mới.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section>
+  <div class="container">
+    <h2>Tính năng chính</h2>
+    <p class="section-subtitle">Sáu khả năng làm nên sự khác biệt.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon icon-1">🗺️</div>
+        <h3>Bản đồ tương tác</h3>
+        <p>Phóng to, kéo thả, click vào bất kỳ thành phần nào để xem chi tiết và các kết nối.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon icon-2">🔍</div>
+        <h3>Tìm kiếm và lọc</h3>
+        <p>Tìm class, method theo tên. Lọc theo loại, theo tầng kiến trúc, theo gói.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon icon-3">📊</div>
+        <h3>Sơ đồ UML tự động</h3>
+        <p>Sơ đồ Use Case, Class Diagram được tạo tự động — không phải vẽ tay.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon icon-4">⚡</div>
+        <h3>Cập nhật thời gian thực</h3>
+        <p>Lưu file là bản đồ đổi. Thêm file mới, xóa file cũ — tự động, không cần thao tác.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon icon-5">🤖</div>
+        <h3>AI hiểu dự án</h3>
+        <p>Kết nối với Cursor, Claude Code, Kiro. AI đọc bản đồ trước khi viết code mới.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon icon-6">🎯</div>
+        <h3>Phân tích ảnh hưởng</h3>
+        <p>Click vào một hàm — VibeGraph cho biết sửa nó sẽ ảnh hưởng những đâu.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHO -->
+<section class="alt">
+  <div class="container">
+    <h2>Dành cho ai?</h2>
+    <p class="section-subtitle">Người, máy, hay cả hai — VibeGraph đều phục vụ.</p>
+    <div class="users">
+      <div class="user-card">
+        <h3>Lập trình viên Java</h3>
+        <p>Hiểu dự án nhanh, không bị lạc giữa hàng nghìn file.</p>
+      </div>
+      <div class="user-card">
+        <h3>Tech Lead</h3>
+        <p>Kiểm soát kiến trúc, phát hiện vi phạm ngay khi xảy ra.</p>
+      </div>
+      <div class="user-card">
+        <h3>Người mới</h3>
+        <p>Onboarding 1 ngày thay vì 1 tuần. Xem bản đồ là hiểu.</p>
+      </div>
+      <div class="user-card">
+        <h3>Trợ lý AI</h3>
+        <p>Cursor, Claude Code — đọc context để viết code đúng pattern.</p>
+      </div>
+      <div class="user-card">
+        <h3>Quản lý dự án</h3>
+        <p>Nhìn tổng quan dự án, hiểu scope mà không cần đọc code.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARE -->
+<section>
+  <div class="container">
+    <h2>So với các công cụ khác</h2>
+    <p class="section-subtitle">Vì sao VibeGraph khác biệt.</p>
+    <div class="compare-wrap">
+      <table>
+        <tr>
+          <th>Tiêu chí</th>
+          <th>VibeGraph</th>
+          <th>SonarQube</th>
+          <th>IntelliJ Diagrams</th>
+        </tr>
+        <tr><td>Cập nhật tức thì khi code đổi</td><td class="check">✓ Dưới 3 giây</td><td class="cross">✗ Phải quét lại</td><td class="cross">✗ Tạo thủ công</td></tr>
+        <tr><td>Bản đồ tương tác</td><td class="check">✓ Có</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Tự sinh sơ đồ UML</td><td class="check">✓ Use Case + Class</td><td class="cross">✗</td><td class="partial">~ Chỉ Class</td></tr>
+        <tr><td>Cung cấp context cho AI</td><td class="check">✓ Qua MCP</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Tự nhận file mới/xóa</td><td class="check">✓ Tự động</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Hoạt động với mọi IDE</td><td class="check">✓ Không cần plugin</td><td class="check">✓</td><td class="cross">✗ Chỉ IntelliJ</td></tr>
+        <tr><td>Giá</td><td class="check">Miễn phí / Tự host</td><td class="cross">$$$$ Enterprise</td><td class="partial">Đi kèm IDE</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<section class="alt">
+  <div class="container">
+    <h2>Kế hoạch 8 tuần</h2>
+    <p class="section-subtitle">Đội 5 lập trình viên, deadline rõ ràng.</p>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-week">Tuần 1-2</div>
+        <div class="timeline-text"><strong>Nền tảng</strong><span>Đọc mã nguồn Java + hiển thị bản đồ đầu tiên trên trình duyệt.</span></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Tuần 3-4</div>
+        <div class="timeline-text"><strong>Tính năng chính</strong><span>Cập nhật thời gian thực + sơ đồ UML + nhập dự án từ link GitHub.</span></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Tuần 5-6</div>
+        <div class="timeline-text"><strong>Tích hợp AI</strong><span>Kết nối với Cursor, Claude Code qua giao thức MCP.</span></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Tuần 7-8</div>
+        <div class="timeline-text"><strong>Triển khai và ra mắt</strong><span>Deploy lên vibegraph.com, mời người dùng đầu tiên dùng thử.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section>
+  <div class="container">
+    <h2>Kỳ vọng kết quả</h2>
+    <p class="section-subtitle">Những con số chúng tôi hướng tới sau khi ra mắt.</p>
+    <div class="results">
+      <div class="result"><div class="result-number">70%</div><div class="result-label">Giảm thời gian onboarding dev mới</div></div>
+      <div class="result"><div class="result-number">80%</div><div class="result-label">Giảm lỗi kiến trúc khi AI viết code</div></div>
+      <div class="result"><div class="result-number">3 giây</div><div class="result-label">Cập nhật bản đồ sau khi lưu file</div></div>
+      <div class="result"><div class="result-number">100%</div><div class="result-label">Tài liệu kiến trúc luôn chính xác</div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p><strong>VibeGraph</strong> — Bản đồ sống của mã nguồn Java</p>
+    <p style="margin-top: 8px;">Spring Boot · Neo4j · Vue 3 · Sigma.js · MCP Protocol</p>
+    <p style="margin-top: 14px;">© 2026 · Phát triển trong 8 tuần · 5 lập trình viên</p>
+  </div>
+</footer>
+
+</body>
+</html>

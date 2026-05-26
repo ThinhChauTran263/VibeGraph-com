@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls D:/Users/User/IdeaProjects/VibeGraph/.claude/worktrees/hungry-liskov-cd3488/VibeGraph-specs/)"
+    ]
+  }
+}
