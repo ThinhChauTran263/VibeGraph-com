@@ -21,8 +21,6 @@ diagram/
 │       └── MermaidGeneratorServiceImpl.java
 ├── repository/
 │   └── DiagramQueryRepository.java — Custom Cypher queries for diagram data
-├── node/
-│   └── DiagramData.java            — Internal model for diagram elements
 └── dto/
     └── response/
         ├── DiagramResponse.java    — {mermaidSyntax, type, generatedAt}

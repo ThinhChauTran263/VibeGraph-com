@@ -15,5 +15,8 @@ public class EnumNode extends BaseNode {
     private String fullName;
     private String filePath;
     private int lineNumber;
+    private int endLine;
+    private String visibility;
     private List<String> values;
+    private String signatureSnippet;
 }

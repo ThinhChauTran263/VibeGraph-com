@@ -13,7 +13,7 @@ import java.time.Instant;
 public class FileNode extends BaseNode {
     private String name;
     private String filePath;
-    private Instant lastModified;
+    private int lineCount;
     private String checksum;
-    private long sizeBytes;
+    private Instant lastModified;
 }
