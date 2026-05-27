@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls D:/Users/User/IdeaProjects/VibeGraph/.claude/worktrees/hungry-liskov-cd3488/VibeGraph-specs/)"
+      "Bash(ls D:/Users/User/IdeaProjects/VibeGraph/.claude/worktrees/hungry-liskov-cd3488/VibeGraph-specs/)",
+      "Bash(where gh *)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" --version)",
+      "Bash(dir \"C:\\\\Program Files\\\\GitHub CLI\\\\\" 2>nul || echo \"not in default location\")",
+      "Bash(cmd /c \"where gh\")",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
