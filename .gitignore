@@ -45,3 +45,14 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Agent worktrees ###
+.claude/worktrees/
+.claude/skills/
+
+.codegraph/
+.gitnexus/
+.understand-anything/
+.vite/
+AGENTS.md
+CLAUDE.md
