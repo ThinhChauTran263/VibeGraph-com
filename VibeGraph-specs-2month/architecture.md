@@ -76,7 +76,29 @@ vibegraph/
 │       ├── diagram/                 # Use Case + Class generators
 │       ├── mcp/                     # 4 MCP tools
 │       ├── watcher/                 # File watcher service
-│       └── import/                  # GitHub clone service (mới)
+│       └── import/                  # GitHub tarball stream service (mới)
+│
+├── vibegraph-cli/                   # CLI for real-time local watch (MỚI)
+│   ├── pom.xml                      # Java module, reuse vibegraph-core
+│   └── src/main/java/com/vibegraph/cli/
+│       ├── VibeGraphCli.java        # Main entry point
+│       ├── watcher/
+│       │   └── LocalWatcher.java    # directory-watcher, detect changes
+│       ├── parser/
+│       │   └── DiffExtractor.java   # JavaParser → extract metadata diff
+│       ├── client/
+│       │   ├── WsClient.java        # WebSocket client to server
+│       │   └── ApiKeyAuth.java      # API key authentication
+│       └── command/
+│           ├── LoginCommand.java    # vibegraph login --api-key=xxx
+│           ├── WatchCommand.java    # vibegraph watch
+│           └── SyncCommand.java     # vibegraph sync (full re-sync)
+│
+├── vibegraph-cli-npm/               # npm wrapper (MỚI)
+│   ├── package.json                 # npm package: vibegraph
+│   ├── bin/vibegraph.js            # Entry point, gọi java -jar
+│   ├── postinstall.js              # Check Java 21 version
+│   └── README.md
 │
 └── vibegraph-web/                   # Vue 3 frontend
     └── src/
@@ -127,27 +149,67 @@ ArchUnit test ép buộc:
 
 ## Data Flow — 3 Use Cases
 
-### 1. User paste GitHub URL
+### 1. User paste GitHub URL (Tarball stream — không clone, không lưu disk)
 ```
 Browser → POST /api/projects/import-github {url}
   ↓
-GithubImportService.clone()
-  → JGit shallow clone vào /tmp/vibegraph/{projectId}
-  → projectService.register(path)
-  → analyzeService.fullAnalyze(projectId)  [async, virtual thread]
+TarballImportService.import()
+  Step 1: Pre-flight check
+    → GET https://api.github.com/repos/{owner}/{repo}
+    → Validate: public, size < 100MB, default_branch
+    → Reject nếu private hoặc quá lớn
+  Step 2: Stream tarball
+    → GET https://api.github.com/repos/{owner}/{repo}/tarball
+    → Auth: Bearer ${GITHUB_TOKEN}
+    → Stream qua GzipCompressorInputStream + TarArchiveInputStream
+  Step 3: Parse in-memory (KHÔNG ghi disk)
+    → Iterate tar entries, lọc *.java
+    → ParserService.parseString(content, relPath) cho mỗi file
+    → GraphRepository.upsertNodes/Edges (batch)
+  Step 4: WebSocket push progress
+    → SimpMessagingTemplate.convertAndSend("/topic/projects/{id}/status", {progress})
   ↓
-Return {projectId, status: "ANALYZING"}
-
-Background:
-  AnalyzeService scan .java files
-  → ParserService parse mỗi file
-  → GraphRepository.upsertNodes/Edges (batch)
-  → SimpMessagingTemplate.convertAndSend("/topic/projects/{id}/status", {progress})
+Return {projectId, status: "ANALYZING"} ngay sau pre-flight (async parse)
   ↓
-Frontend nhận status update qua WebSocket
+Frontend nhận status update qua WebSocket, hiển thị progress bar
 ```
 
-### 2. User chạy local, save file
+**Ưu điểm so với JGit clone:**
+- 1 request HTTP duy nhất cho cả repo (thay vì git protocol nhiều round-trip)
+- Không lưu file xuống disk → không cần cleanup job, không tốn space VPS
+- Nhanh hơn 3x với repo nhỏ-vừa (~80 file)
+- Không cần dependency JGit (~10MB), thay bằng commons-compress (~700KB)
+
+### 2. User chạy local với CLI (real-time, privacy mức 1)
+```
+User chạy: vibegraph watch (trong project folder)
+  ↓
+CLI (vibegraph-cli.jar):
+  Step 1: Initial scan
+    → directory-watcher scan tất cả .java files
+    → JavaParser parse mỗi file → extract metadata (nodes + edges)
+    → Gửi full graph metadata lên server qua WebSocket
+    → Server upsert vào Neo4j, trả về projectId
+  Step 2: Auto-open browser (mặc định, --no-open để tắt)
+    → java.awt.Desktop.browse("https://vibegraph.com/project/{projectId}")
+    → Fallback: Runtime.exec với xdg-open (Linux), open (macOS), start (Windows)
+    → Nếu không mở được: in URL ra console
+  Step 3: Watch loop (chạy mãi)
+    → directory-watcher detect CREATE/MODIFY/DELETE
+    → Debounce 500ms
+    → JavaParser parse file thay đổi → extract diff
+    → Gửi diff metadata lên server qua WebSocket:
+      {type: "INCREMENTAL", added: [...], removed: [...], modified: [...]}
+    → Server update Neo4j
+    → Server push graph diff về browser
+  ↓
+Browser Sigma.js patch graph (không full reload)
+
+**Privacy:** CLI chỉ gửi metadata (class name, method signature, edges).
+Source code KHÔNG bao giờ rời máy user.
+```
+
+### 3. User chạy local, server-side watcher (legacy/self-host mode)
 ```
 Java WatchService phát hiện UserService.java MODIFY
   ↓
@@ -162,7 +224,7 @@ FileWatcherServiceImpl.onChange(filePath)
 Frontend Sigma.js patch graph (không full reload)
 ```
 
-### 3. AI tool gọi MCP
+### 4. AI tool gọi MCP
 ```
 Cursor/Claude Code → http://localhost:8080/mcp
   ↓
@@ -196,6 +258,7 @@ services:
       SPRING_NEO4J_URI: bolt://neo4j:7687
       SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
       SPRING_NEO4J_AUTHENTICATION_PASSWORD: vibegraph
+      VIBEGRAPH_GITHUB_TOKEN: ${GITHUB_TOKEN}
 
   frontend:
     build: ./vibegraph-web
