@@ -47,14 +47,12 @@
 
 ### `cli/client/`
 - [ ] `WsClient.java` (WebSocket client, auto-reconnect, queue offline)
-- [ ] `ApiKeyAuth.java` (đọc/lưu API key từ `~/.vibegraph/config.json`)
+- [ ] `SessionIdGenerator.java` (hash folder path + timestamp → sessionId, dùng làm projectId demo mode)
 - [ ] `DiffPayload.java` (DTO: type=INCREMENTAL, added/removed/modified nodes+edges)
 
 ### `cli/command/`
-- [ ] `LoginCommand.java` (`vibegraph login --api-key=xxx --server=https://vibegraph.com`)
-- [ ] `WatchCommand.java` (`vibegraph watch [path]` — initial scan + watch loop)
+- [ ] `WatchCommand.java` (`vibegraph watch [path]` — initial scan + watch loop, không cần login)
 - [ ] `SyncCommand.java` (`vibegraph sync` — full re-scan, useful sau khi disconnect lâu)
-- [ ] `LogoutCommand.java` (xóa API key local)
 
 ### Test
 - [ ] `LocalWatcherTest.java` (E2E: tạo/xóa file → verify diff payload)

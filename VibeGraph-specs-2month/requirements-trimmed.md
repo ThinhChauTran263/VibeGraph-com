@@ -103,16 +103,20 @@ User cài CLI để watch local folder real-time, graph tự cập nhật khi t�
 
 **Acceptance:**
 - CLI là npm package + Java JAR (yêu cầu Java 21 trên máy user)
-- `vibegraph login --api-key=xxx` — lưu API key local
-- `vibegraph watch` — watch folder hiện tại, push diff lên server
+- **Demo mode (2 tháng đầu):** Không cần login. CLI tự generate `sessionId` (hash từ folder path + timestamp), dùng làm projectId
+- `vibegraph watch` — watch folder hiện tại, push diff lên server (không cần auth)
 - **Auto-open browser** sau initial scan xong (mặc định), `--no-open` để tắt
 - Tạo file .java mới → graph thêm node trong < 1s
 - Xóa file .java → graph xóa node trong < 1s
 - Sửa file .java → graph update trong < 3s
 - **Privacy mức 1:** Chỉ gửi metadata (class/method/field/edges), KHÔNG gửi source code
 - CLI parse local bằng JavaParser (reuse vibegraph-core)
-- Giao tiếp server qua WebSocket + API key auth
-- Post-2-month: nâng cấp lên GraalVM native-image (không cần Java)
+- Giao tiếp server qua WebSocket
+- **Header `X-API-Key`** vẫn gửi từ đầu (giá trị demo cố định) để dễ upgrade full auth sau này
+- Post-2-month:
+  - Thêm `vibegraph login --api-key=xxx`
+  - Server validate API key trong filter (chỉ sửa 1 file)
+  - Nâng cấp lên GraalVM native-image
 
 ---
 
