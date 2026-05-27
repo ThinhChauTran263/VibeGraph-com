@@ -21,7 +21,7 @@ spring:
       server:
         name: VibeGraph
         version: 1.0.0
-        type: streamable
+        protocol: streamable
 
 server:
   port: 8080
