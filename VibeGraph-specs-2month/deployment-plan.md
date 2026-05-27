@@ -59,10 +59,8 @@ services:
       SPRING_NEO4J_URI: bolt://neo4j:7687
       SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
       SPRING_NEO4J_AUTHENTICATION_PASSWORD: ${NEO4J_PASSWORD}
-      VIBEGRAPH_GITHUB_TEMP_DIR: /tmp/vibegraph
+      VIBEGRAPH_GITHUB_TOKEN: ${GITHUB_TOKEN}
       JAVA_TOOL_OPTIONS: "-Xmx1g -XX:+UseZGC"
-    volumes:
-      - github-temp:/tmp/vibegraph
     networks: [internal]
 
   frontend:
@@ -91,7 +89,6 @@ services:
 volumes:
   neo4j-data:
   neo4j-logs:
-  github-temp:
 
 networks:
   internal:
@@ -153,7 +150,7 @@ ssh root@vibegraph.com
 apt update && apt install -y docker.io docker-compose-plugin git
 git clone https://github.com/yourorg/vibegraph.git /opt/vibegraph
 cd /opt/vibegraph
-cp .env.example .env && vi .env    # set NEO4J_PASSWORD
+cp .env.example .env && vi .env    # set NEO4J_PASSWORD, GITHUB_TOKEN
 
 # Lần đầu lấy SSL cert
 docker compose up -d nginx

@@ -66,7 +66,7 @@ Endpoints theo spec gốc + thêm 1 endpoint mới:
 | Method | Path | Description |
 |---|---|---|
 | POST | /api/projects | Register project (local path) |
-| **POST** | **/api/projects/import-github** | **(MỚI) Clone GitHub URL → temp dir → analyze** |
+| **POST** | **/api/projects/import-github** | **(MỚI) Tarball stream từ GitHub API → parse in-memory** |
 | POST | /api/projects/{id}/analyze | Trigger full re-analyze |
 | GET | /api/projects/{id}/graph | Full graph |
 | GET | /api/projects/{id}/graph/neighbors/{nodeId}?hops=N | N-hop neighborhood |
@@ -86,14 +86,33 @@ Spring AI MCP Boot Starter, Streamable HTTP transport, 4 tools (cắt từ 6):
 **Defer:** `get_usecase_context`, `get_coding_rules`
 
 ### FR-NEW: GitHub Import — High
-User paste GitHub URL public → backend clone vào temp dir → parse → trả về projectId.
+User paste GitHub URL public → backend download tarball → parse in-memory → trả về projectId.
 
 **Acceptance:**
 - Hỗ trợ public repo (Phase 1, OAuth private repo defer)
-- Clone shallow `--depth 1` (tiết kiệm bandwidth)
+- Download tarball từ GitHub API (1 request duy nhất, không clone)
+- Parse `.java` files trực tiếp từ tar stream, KHÔNG ghi xuống disk
+- Pre-flight check: HEAD request kiểm tra repo size, private flag, default branch
 - Timeout 60s, repo > 100MB reject
-- Cleanup temp folder sau 24h (scheduled job)
+- Yêu cầu `GITHUB_TOKEN` env var (rate limit 5000 req/giờ)
 - Endpoint: `POST /api/projects/import-github` body `{"url": "https://github.com/abhigyanpatwari/GitNexus"}`
+- Không cần scheduled cleanup job (không lưu file temp)
+
+### FR-NEW-2: Local Watch CLI — High (Real-time Mode)
+User cài CLI để watch local folder real-time, graph tự cập nhật khi tạo/sửa/xóa file.
+
+**Acceptance:**
+- CLI là npm package + Java JAR (yêu cầu Java 21 trên máy user)
+- `vibegraph login --api-key=xxx` — lưu API key local
+- `vibegraph watch` — watch folder hiện tại, push diff lên server
+- **Auto-open browser** sau initial scan xong (mặc định), `--no-open` để tắt
+- Tạo file .java mới → graph thêm node trong < 1s
+- Xóa file .java → graph xóa node trong < 1s
+- Sửa file .java → graph update trong < 3s
+- **Privacy mức 1:** Chỉ gửi metadata (class/method/field/edges), KHÔNG gửi source code
+- CLI parse local bằng JavaParser (reuse vibegraph-core)
+- Giao tiếp server qua WebSocket + API key auth
+- Post-2-month: nâng cấp lên GraalVM native-image (không cần Java)
 
 ---
 
@@ -115,7 +134,7 @@ User paste GitHub URL public → backend clone vào temp dir → parse → trả
 - Auth + Stripe + Free/Pro/Ultra plans
 - GitHub OAuth + private repo
 - IntelliJ Plugin
-- npm wrapper + native-image
+- CLI native-image (GraalVM) — 2 tháng đầu dùng JAR + Java 21
 - Kuzu embedded
 - Postgres+AGE SaaS
 - Sequence diagram

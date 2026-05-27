@@ -94,17 +94,18 @@
 | 1.12 | @Autowired/constructor injection → INJECTS edges | 1 |
 | 1.13 | Lambda + method references handling (no crash) | 1 |
 
-### Dev 2 — GitHub Import + Diagrams API + WebSocket
+### Dev 2 — GitHub Import (Tarball) + Diagrams API + WebSocket + CLI Server
 | # | Task | Days |
 |---|---|---|
 | 2.9 | WebSocket STOMP config + `/ws/graph-updates` endpoint | 1 |
-| 2.10 | **GithubImportService: JGit shallow clone vào temp dir** | 2 |
-| 2.11 | **POST /api/projects/import-github endpoint + timeout + size guard** | 1 |
-| 2.12 | **Scheduled cleanup job: xóa temp folder sau 24h** | 0.5 |
+| 2.10 | **TarballImportService: pre-flight check (HEAD repo API) + reject private/oversize** | 1 |
+| 2.11 | **Stream tarball qua commons-compress (Gzip + Tar), parse in-memory không ghi disk** | 1.5 |
+| 2.12 | **POST /api/projects/import-github endpoint + GITHUB_TOKEN config + rate limit guard** | 1 |
 | 2.13 | Incremental analysis: re-parse 1 file, update Neo4j | 2 |
 | 2.14 | WS push on graph change (added/changed/removed) | 1.5 |
-| 2.15 | Use Case diagram API → Mermaid syntax | 2 |
-| 2.16 | Class diagram API (filter by package) → Mermaid | 2 |
+| 2.15 | **WebSocket endpoint nhận CLI diff + API key auth validation** | 1 |
+| 2.16 | Use Case diagram API → Mermaid syntax | 2 |
+| 2.17 | Class diagram API (filter by package) → Mermaid | 2 |
 
 ### Dev 3 — Focus Mode + Performance
 | # | Task | Days |
@@ -127,17 +128,20 @@
 | 4.12 | Diagram auto-refresh on WS update | 1 |
 | 4.13 | Dark theme polish (giống GitNexus screenshot) | 1.5 |
 
-### Dev 5 — Realtime pipeline + Testing
+### Dev 5 — Realtime pipeline + CLI Foundation + Testing
 | # | Task | Days |
 |---|---|---|
-| 5.8 | Watcher → WebSocket integration test E2E | 2 |
-| 5.9 | Content-hash check (SHA-256, skip unchanged file) | 1.5 |
-| 5.10 | Load test: 500 files, rapid saves (no memory leak, < 3s update) | 1.5 |
-| 5.11 | Structured logging + /actuator/health endpoint | 1 |
-| 5.12 | **GitHub Import từ end-to-end test** | 1 |
-| 5.13 | Auto-deploy pipeline polish | 1 |
+| 5.8 | Watcher → WebSocket integration test E2E | 1.5 |
+| 5.9 | Content-hash check (SHA-256, skip unchanged file) | 1 |
+| 5.10 | Load test: 500 files, rapid saves (no memory leak, < 3s update) | 1 |
+| 5.11 | Structured logging + /actuator/health endpoint | 0.5 |
+| 5.12 | **GitHub Import end-to-end test** | 1 |
+| 5.13 | **`vibegraph-cli` Maven module setup (reuse vibegraph-core)** | 0.5 |
+| 5.14 | **DirectoryWatcher (io.methvin) + DiffExtractor (JavaParser metadata diff)** | 1.5 |
+| 5.15 | **WebSocket client + API key auth (CLI → Server)** | 1 |
+| 5.16 | Auto-deploy pipeline polish | 0.5 |
 
-**Milestone tuần 4:** User paste GitHub URL → backend clone → graph hiện. Save file local → graph cập nhật < 3s. Use Case + Class diagrams hiển thị.
+**Milestone tuần 4:** User paste GitHub URL → backend stream tarball, parse in-memory → graph hiện. Save file local → graph cập nhật < 3s. Use Case + Class diagrams hiển thị.
 
 ---
 
@@ -155,13 +159,13 @@
 ### Dev 2 — Context + Impact + MCP API
 | # | Task | Days |
 |---|---|---|
-| 2.17 | **Spring AI MCP Boot Starter setup** | 1 |
-| 2.18 | **Tool: `get_project_architecture`** | 1.5 |
-| 2.19 | **Tool: `get_class_context`** | 1.5 |
-| 2.20 | **Tool: `get_layer_pattern`** | 1.5 |
-| 2.21 | **Tool: `get_impact_analysis`** | 1.5 |
-| 2.22 | Impact analysis Cypher query (5 hops) | 1 |
-| 2.23 | Swagger/OpenAPI docs | 0.5 |
+| 2.18 | **Spring AI MCP Boot Starter setup** | 1 |
+| 2.19 | **Tool: `get_project_architecture`** | 1.5 |
+| 2.20 | **Tool: `get_class_context`** | 1.5 |
+| 2.21 | **Tool: `get_layer_pattern`** | 1.5 |
+| 2.22 | **Tool: `get_impact_analysis`** | 1.5 |
+| 2.23 | Impact analysis Cypher query (5 hops) | 1 |
+| 2.24 | Swagger/OpenAPI docs | 0.5 |
 
 ### Dev 3 — UI Polish
 | # | Task | Days |
@@ -182,16 +186,19 @@
 | 4.17 | Frontend unit tests key composables | 1.5 |
 | 4.18 | Empty states + error UI | 1 |
 
-### Dev 5 — Demo + MCP config
+### Dev 5 — Demo + MCP config + CLI Commands
 | # | Task | Days |
 |---|---|---|
-| 5.14 | Demo Spring Boot sample project (Pet Clinic hoặc tự build) | 1.5 |
-| 5.15 | **MCP config templates: mcp.json cho Cursor, Kiro, Claude Code** | 1 |
-| 5.16 | E2E test full flow (GitHub import → graph → MCP query) | 2 |
-| 5.17 | Production docker-compose (nginx + Let's Encrypt) | 2 |
-| 5.18 | Setup guide + MCP integration guide docs | 2 |
+| 5.17 | **CLI commands: LoginCommand, WatchCommand, SyncCommand (picocli)** | 1 |
+| 5.18 | **npm wrapper package (vibegraph-cli-npm): bin/vibegraph.js + postinstall Java check** | 0.5 |
+| 5.19 | **CLI E2E test: watch folder → create/delete .java → verify graph update < 1s** | 1 |
+| 5.20 | Demo Spring Boot sample project (Pet Clinic hoặc tự build) | 1.5 |
+| 5.21 | **MCP config templates: mcp.json cho Cursor, Kiro, Claude Code** | 1 |
+| 5.22 | E2E test full flow (GitHub import → graph → MCP query) | 2 |
+| 5.23 | Production docker-compose (nginx + Let's Encrypt) | 2 |
+| 5.24 | Setup guide + MCP integration guide + CLI usage docs | 2 |
 
-**Milestone tuần 6:** Toàn bộ MVP done. MCP test thành công với Cursor/Claude Code.
+**Milestone tuần 6:** Toàn bộ MVP done. MCP test thành công với Cursor/Claude Code. CLI `vibegraph watch` hoạt động real-time.
 
 ---
 
@@ -225,4 +232,9 @@
 | Watcher miss event trên Windows | M | Polling fallback every 5s |
 | MCP Spring AI API breaking change | L | Pin version 1.0.x |
 | Hetzner VPS không đủ RAM | L | Upgrade lên CX32 (8GB) — chỉ +$3/tháng |
-| GitHub clone repo lớn | M | Reject > 100MB, shallow `--depth 1` |
+| GitHub tarball repo lớn | M | Pre-flight check size via HEAD API, reject > 100MB |
+| GitHub API rate limit | M | Bắt buộc GITHUB_TOKEN (5000 req/giờ), log warning khi gần limit |
+| Tarball chứa symlink/special files | L | Skip entry không phải regular file trong tar stream |
+| CLI yêu cầu Java 21 trên máy user | M | npm postinstall check version, hướng dẫn cài. Post-2-month: GraalVM native-image |
+| CLI WebSocket disconnect giữa chừng | M | Auto-reconnect với exponential backoff, queue diff offline |
+| CLI parse chậm project lớn (initial scan) | L | Parallel parse virtual threads, progress bar CLI |

@@ -32,7 +32,45 @@
 
 ---
 
-## BACKEND — `vibegraph-server/`
+## CLI — `vibegraph-cli/` **(MỚI — Real-time Local Watch)**
+
+### Module setup
+- [ ] `pom.xml` (Java module, depends on `vibegraph-core`, picocli, java-websocket, directory-watcher)
+- [ ] `VibeGraphCli.java` (main entry, picocli @Command)
+
+### `cli/watcher/`
+- [ ] `LocalWatcher.java` (io.methvin DirectoryWatcher, debounce 500ms, ignore build/target/.git/node_modules)
+
+### `cli/parser/`
+- [ ] `DiffExtractor.java` (parse changed file → extract NodeData/EdgeData diff, reuse vibegraph-core)
+- [ ] `InitialScanner.java` (full scan project → push toàn bộ metadata lần đầu)
+
+### `cli/client/`
+- [ ] `WsClient.java` (WebSocket client, auto-reconnect, queue offline)
+- [ ] `ApiKeyAuth.java` (đọc/lưu API key từ `~/.vibegraph/config.json`)
+- [ ] `DiffPayload.java` (DTO: type=INCREMENTAL, added/removed/modified nodes+edges)
+
+### `cli/command/`
+- [ ] `LoginCommand.java` (`vibegraph login --api-key=xxx --server=https://vibegraph.com`)
+- [ ] `WatchCommand.java` (`vibegraph watch [path]` — initial scan + watch loop)
+- [ ] `SyncCommand.java` (`vibegraph sync` — full re-scan, useful sau khi disconnect lâu)
+- [ ] `LogoutCommand.java` (xóa API key local)
+
+### Test
+- [ ] `LocalWatcherTest.java` (E2E: tạo/xóa file → verify diff payload)
+- [ ] `DiffExtractorTest.java`
+
+---
+
+## CLI npm wrapper — `vibegraph-cli-npm/` **(MỚI)**
+
+- [ ] `package.json` (npm package: `vibegraph`, version 0.1.0)
+- [ ] `bin/vibegraph.js` (Node.js entry, spawn `java -jar vibegraph-cli.jar`)
+- [ ] `postinstall.js` (check Java 21+, fail nicely với hướng dẫn cài)
+- [ ] `README.md` (npm install -g vibegraph, quickstart)
+- [ ] `.npmignore`
+
+---
 
 ### `common/config/`
 - [ ] `Neo4jConfig.java`
@@ -91,7 +129,7 @@
 - [ ] `AnalyzeService.java` + `impl/AnalyzeServiceImpl.java`
 - [ ] `GraphService.java` + `impl/GraphServiceImpl.java`
 - [ ] `ImpactService.java` + `impl/ImpactServiceImpl.java`
-- [ ] `GithubImportService.java` **(MỚI)** + `impl/GithubImportServiceImpl.java`
+- [ ] `TarballImportService.java` **(MỚI — thay JGit)** + `impl/TarballImportServiceImpl.java`
 
 ### `graph/websocket/`
 - [ ] `GraphUpdateController.java`
@@ -242,17 +280,21 @@
 | Phần | Tổng | So với spec gốc |
 |---|---|---|
 | Backend Java classes | ~65 files | -10 (bỏ steering, 2 MCP tools, sequence) |
+| **CLI Java classes** | **~15 files** | **(MỚI — real-time local watch)** |
+| **CLI npm wrapper** | **~5 files** | **(MỚI)** |
 | Frontend Vue | ~25 components | +1 (GithubImportForm) |
 | DevOps | ~12 files | +5 (CI/CD, prod config) |
-| **Tổng** | **~110 items** | Giảm ~14% so với 128 |
+| **Tổng** | **~130 items** | +2 so với spec gốc (thêm CLI module) |
 
 ## Có cần đổi cấu trúc folder không?
 
 **Cần thêm:**
 1. `vibegraph-server/src/main/java/com/vibegraph/server/graph/repository/impl/neo4j/` — subpackage mới cho Neo4j-specific code
-2. `vibegraph-server/.../graph/service/GithubImportService.java` + impl
+2. `vibegraph-server/.../graph/service/TarballImportService.java` + impl
 3. `vibegraph-server/.../graph/controller/ImportController.java`
 4. `vibegraph-web/src/components/import/` — folder mới
+5. `vibegraph-cli/` — **Maven module mới cho CLI (MỚI)**
+6. `vibegraph-cli-npm/` — **npm wrapper package (MỚI)**
 
 **Cần bỏ:**
 1. `vibegraph-server/.../steering/` — bỏ toàn bộ folder
@@ -261,14 +303,38 @@
 **Cần thêm dependency `vibegraph-server/pom.xml`:**
 ```xml
 <dependency>
-  <groupId>org.eclipse.jgit</groupId>
-  <artifactId>org.eclipse.jgit</artifactId>
-  <version>6.10.0.202406032230-r</version>
+  <groupId>org.apache.commons</groupId>
+  <artifactId>commons-compress</artifactId>
+  <version>1.26.0</version>
 </dependency>
 <dependency>
   <groupId>com.tngtech.archunit</groupId>
   <artifactId>archunit-junit5</artifactId>
   <version>1.3.0</version>
   <scope>test</scope>
+</dependency>
+```
+
+**Cần thêm dependency `vibegraph-cli/pom.xml`:**
+```xml
+<dependency>
+  <groupId>com.vibegraph</groupId>
+  <artifactId>vibegraph-core</artifactId>
+  <version>${project.version}</version>
+</dependency>
+<dependency>
+  <groupId>info.picocli</groupId>
+  <artifactId>picocli</artifactId>
+  <version>4.7.6</version>
+</dependency>
+<dependency>
+  <groupId>io.methvin</groupId>
+  <artifactId>directory-watcher</artifactId>
+  <version>0.18.0</version>
+</dependency>
+<dependency>
+  <groupId>org.java-websocket</groupId>
+  <artifactId>Java-WebSocket</artifactId>
+  <version>1.5.6</version>
 </dependency>
 ```
