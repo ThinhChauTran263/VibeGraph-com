@@ -51,13 +51,6 @@ vibegraph:
     use-cache: true
     cache-dir: .vibegraph/parse-cache
 
-  steering:
-    auto-generate: true
-    enabled-tools:
-      - kiro
-      - cursor
-      - claude
-
 logging:
   level:
     root: INFO

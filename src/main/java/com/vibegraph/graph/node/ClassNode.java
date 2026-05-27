@@ -18,10 +18,13 @@ public class ClassNode extends BaseNode {
     private String fullName;
     private String filePath;
     private int lineNumber;
+    private int endLine;
     private String visibility;
     private boolean isAbstract;
     private boolean isFinal;
     private boolean isStatic;
+    private boolean isInner;
     private String springLayer;
     private List<String> springAnnotations;
+    private String signatureSnippet;
 }
