@@ -21,7 +21,7 @@ spring:
       server:
         name: VibeGraph
         version: 1.0.0
-        type: streamable
+        protocol: streamable
 
 server:
   port: 8080
@@ -50,13 +50,6 @@ vibegraph:
   parser:
     use-cache: true
     cache-dir: .vibegraph/parse-cache
-
-  steering:
-    auto-generate: true
-    enabled-tools:
-      - kiro
-      - cursor
-      - claude
 
 logging:
   level:

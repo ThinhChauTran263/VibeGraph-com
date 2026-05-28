@@ -13,5 +13,8 @@ public class InterfaceNode extends BaseNode {
     private String fullName;
     private String filePath;
     private int lineNumber;
+    private int endLine;
     private String visibility;
+    private boolean isInner;
+    private String signatureSnippet;
 }
