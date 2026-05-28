@@ -11,10 +11,15 @@ import java.util.List;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class RouteNode extends BaseNode {
+    private String fullName;
+    private List<String> paramTypes;
     private String httpMethod;
     private String routePath;
-    private String handlerMethod;
+    private String handlerFullName;
     private String filePath;
     private int lineNumber;
+    private String consumesType;
+    private String producesType;
+    private List<String> pathVariables;
     private List<String> middleware;
 }

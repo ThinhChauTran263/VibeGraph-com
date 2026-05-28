@@ -12,5 +12,21 @@ public final class JsonUtils {
 
     private JsonUtils() {}
 
-    // TODO: Implement JSON helpers (use Jackson ObjectMapper)
+    /**
+     * Serialize object to JSON string.
+     *
+     * TODO: Implement using Jackson ObjectMapper.
+     */
+    public static String toJson(Object value) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    /**
+     * Deserialize JSON string into target type.
+     *
+     * TODO: Implement using Jackson ObjectMapper.
+     */
+    public static <T> T fromJson(String json, Class<T> type) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
 }
