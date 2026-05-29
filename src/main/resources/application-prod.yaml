@@ -6,7 +6,7 @@ spring:
   neo4j:
     uri: ${NEO4J_URI:bolt://neo4j:7687}
     authentication:
-      username: ${NEO4J_USERNAME:neo4j}
+      username: ${NEO4J_USERNAME}
       password: ${NEO4J_PASSWORD}
     pool:
       max-connection-pool-size: 100

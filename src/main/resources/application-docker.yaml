@@ -2,8 +2,8 @@ spring:
   neo4j:
     uri: bolt://neo4j:7687
     authentication:
-      username: ${NEO4J_USERNAME:neo4j}
-      password: ${NEO4J_PASSWORD:vibegraph}
+      username: ${NEO4J_USERNAME}
+      password: ${NEO4J_PASSWORD}
 
 vibegraph:
   cors:
