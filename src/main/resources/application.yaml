@@ -4,10 +4,10 @@ spring:
 
   # Neo4j connection
   neo4j:
-    uri: bolt://localhost:7687
+    uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-      username: neo4j
-      password: vibegraph
+      username: ${NEO4J_USERNAME}
+      password: ${NEO4J_PASSWORD}
     pool:
       max-connection-pool-size: 50
 

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeGraph — Project Structure</title>
+<style>
+  :root {
+    --bg-primary: #0a0e1a;
+    --bg-secondary: #121829;
+    --bg-card: rgba(22, 30, 48, 0.7);
+    --bg-hover: rgba(99, 102, 241, 0.1);
+    --border: rgba(99, 102, 241, 0.2);
+    --border-hover: rgba(99, 102, 241, 0.5);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-purple: #8b5cf6;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
+    --accent-pink: #ec4899;
+    --shadow-glow: 0 0 60px rgba(139, 92, 246, 0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg-primary);
+    background-image:
+      radial-gradient(at 20% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+      radial-gradient(at 80% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(6, 182, 212, 0.05) 0px, transparent 50%);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+    padding: 48px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .logo-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.4));
+  }
+
+  .logo-fallback {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 800;
+    color: white;
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+  }
+
+  .header h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    background: linear-gradient(135deg, #f1f5f9 0%, #8b5cf6 50%, #3b82f6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .header p {
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+
+  .stack-badges {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .badge {
+    padding: 6px 14px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .badge.backend { border-color: rgba(245, 158, 11, 0.3); color: var(--accent-orange); }
+  .badge.frontend { border-color: rgba(16, 185, 129, 0.3); color: var(--accent-green); }
+  .badge.db { border-color: rgba(236, 72, 153, 0.3); color: var(--accent-pink); }
+
+  /* Grid Layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    backdrop-filter: blur(20px);
+    transition: border-color 200ms;
+    overflow: hidden;
+  }
+
+  .card:hover {
+    border-color: var(--border-hover);
+  }
+
+  /* Terminal-like tree container */
+  .tree-container {
+    background: rgba(10, 14, 26, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .tree-container::-webkit-scrollbar { height: 8px; width: 8px; }
+  .tree-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+  .tree-container::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+  .tree-container::-webkit-scrollbar-thumb:hover { background: var(--accent-purple); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .card-icon.backend { background: linear-gradient(135deg, var(--accent-orange), #ef4444); }
+  .card-icon.frontend { background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan)); }
+
+  .card-title {
+    flex: 1;
+  }
+
+  .card-title h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .card-title p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  /* Tree - ASCII Style */
+  .tree {
+    list-style: none;
+    padding-left: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.8;
+  }
+
+  .tree ul {
+    list-style: none;
+    padding-left: 0;
+    margin-left: 0;
+    overflow: hidden;
+  }
+
+  .tree li {
+    position: relative;
+  }
+
+  .tree-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 150ms;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .tree-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .tree-item .prefix {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .tree-item .name {
+    color: var(--accent-cyan);
+    font-weight: 500;
+  }
+
+  .tree-item .name.folder {
+    color: var(--accent-orange);
+  }
+
+  .tree-item .comment {
+    color: var(--text-muted);
+    margin-left: 12px;
+    font-style: italic;
+  }
+
+  .tree-item.file .name {
+    color: var(--text-primary);
+    font-weight: 400;
+  }
+
+  .tree-item.file { cursor: default; }
+  .tree-item.file:hover { background: rgba(99, 102, 241, 0.05); }
+
+  /* Tooltip */
+  .tooltip {
+    position: fixed;
+    background: #1e293b;
+    border: 1px solid var(--border-hover);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    max-width: 320px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms;
+    z-index: 1000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .tooltip.visible { opacity: 1; }
+
+  .tooltip .tt-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--accent-purple);
+  }
+
+  .tooltip .tt-desc {
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 20px 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(20px);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+
+  .legend-icon { font-size: 16px; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 40px;
+    padding: 20px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <header class="header">
+    <div class="logo-wrapper">
+      <div class="logo-fallback">V</div>
+    </div>
+    <h1>VibeGraph Project Structure</h1>
+    <p>Interactive visualization of the codebase architecture. Click folders to expand/collapse. Hover for descriptions.</p>
+    <div class="stack-badges">
+      <span class="badge backend">Spring Boot 4.0.6</span>
+      <span class="badge backend">Java 21</span>
+      <span class="badge db">Neo4j 5.x</span>
+      <span class="badge backend">MapStruct 1.6</span>
+      <span class="badge frontend">Vue 3.5</span>
+      <span class="badge frontend">TypeScript 6</span>
+      <span class="badge frontend">Pinia</span>
+      <span class="badge frontend">Sigma.js</span>
+    </div>
+  </header>
+
+  <!-- Grid -->
+  <div class="grid">
+    <!-- Backend Card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon backend">☕</div>
+        <div class="card-title">
+          <h2>Backend</h2>
+          <p>src/main/java/com/vibegraph/</p>
+        </div>
+      </div>
+      <div class="tree-container">
+        <ul class="tree" id="backend-tree"></ul>
+      </div>
+    </div>
+
+    <!-- Frontend Card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon frontend">⚡</div>
+        <div class="card-title">
+          <h2>Frontend</h2>
+          <p>vibegraph-web/src/</p>
+        </div>
+      </div>
+      <div class="tree-container">
+        <ul class="tree" id="frontend-tree"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-icon">📁</span> Package / Folder</div>
+    <div class="legend-item"><span class="legend-icon">📄</span> Java File</div>
+    <div class="legend-item"><span class="legend-icon">💚</span> Vue Component</div>
+    <div class="legend-item"><span class="legend-icon">📘</span> TypeScript</div>
+    <div class="legend-item"><span class="legend-icon">🎯</span> Controller</div>
+    <div class="legend-item"><span class="legend-icon">⚙️</span> Service</div>
+    <div class="legend-item"><span class="legend-icon">🗃️</span> Repository</div>
+  </div>
+
+  <footer class="footer">
+    VibeGraph — Realtime Java Code Analyzer with Knowledge Graph + AI Integration<br>
+    Last updated: May 2026
+  </footer>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+  <div class="tt-title"></div>
+  <div class="tt-desc"></div>
+</div>
+
+<script>
+const backendTree = {
+  name: 'vibegraph', icon: '📦', desc: 'Package gốc - Spring Boot application',
+  children: [
+    { name: 'VibeGraphApplication.java', icon: '🚀', type: 'file', desc: 'Điểm khởi chạy ứng dụng @SpringBootApplication' },
+    { name: 'common', icon: '📁', desc: 'Module dùng chung: config, DTO, exception, utilities', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package common - mô tả chung module' },
+      { name: 'config', icon: '⚙️', desc: 'Cấu hình Spring Boot', children: [
+        { name: 'AsyncConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình xử lý bất đồng bộ (thread pool cho async tasks)' },
+        { name: 'CorsConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình CORS cho phép frontend gọi API' },
+        { name: 'McpServerConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình MCP Server (Spring AI)' },
+        { name: 'Neo4jConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình kết nối Neo4j (driver, pool)' },
+        { name: 'WebSocketConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình STOMP WebSocket tại /ws/graph' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package config' }
+      ]},
+      { name: 'dto', icon: '📁', desc: 'Data Transfer Objects dùng chung', children: [
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package dto' },
+        { name: 'request', icon: '📁', desc: 'DTO cho request', children: [
+          { name: 'PaginationRequest.java', icon: '📄', type: 'file', desc: 'DTO phân trang: page, size, sortBy' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package request DTO' }
+        ]},
+        { name: 'response', icon: '📁', desc: 'DTO cho response', children: [
+          { name: 'ApiResponse.java', icon: '📄', type: 'file', desc: 'Wrapper chuẩn {code, message, data} cho mọi API response' },
+          { name: 'ErrorResponse.java', icon: '📄', type: 'file', desc: 'Response lỗi chi tiết: timestamp, path, errors[]' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response DTO' }
+        ]}
+      ]},
+      { name: 'exception', icon: '⚠️', desc: 'Custom exceptions + xử lý lỗi toàn cục', children: [
+        { name: 'GithubImportException.java', icon: '📄', type: 'file', desc: 'Ném khi import repo từ GitHub thất bại' },
+        { name: 'GlobalExceptionHandler.java', icon: '📄', type: 'file', desc: '@RestControllerAdvice bắt mọi exception trả về ApiResponse' },
+        { name: 'NodeNotFoundException.java', icon: '📄', type: 'file', desc: 'Ném khi không tìm thấy node trong Neo4j' },
+        { name: 'ParseException.java', icon: '📄', type: 'file', desc: 'Ném khi JavaParser gặp lỗi cú pháp' },
+        { name: 'ProjectNotFoundException.java', icon: '📄', type: 'file', desc: 'Ném khi project ID không tồn tại' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package exception' }
+      ]},
+      { name: 'node', icon: '🔵', desc: 'Base entity cho Neo4j', children: [
+        { name: 'BaseNode.java', icon: '📄', type: 'file', desc: 'Abstract class với createdAt, updatedAt, deleted, deletedAt' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
+      ]},
+      { name: 'util', icon: '🔧', desc: 'Tiện ích dùng chung', children: [
+        { name: 'FileUtils.java', icon: '📄', type: 'file', desc: 'Đọc/ghi file, validate path, chống path traversal' },
+        { name: 'HashUtils.java', icon: '📄', type: 'file', desc: 'Tạo hash MD5/SHA cho cache invalidation' },
+        { name: 'JsonUtils.java', icon: '📄', type: 'file', desc: 'Serialize/deserialize JSON với Jackson' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package util' }
+      ]}
+    ]},
+    { name: 'diagram', icon: '📁', desc: 'Module tạo sơ đồ UML từ graph data', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package diagram' },
+      { name: 'controller', icon: '🎯', desc: 'REST API cho diagram', children: [
+        { name: 'DiagramController.java', icon: '📄', type: 'file', desc: 'Endpoint /api/diagrams - tạo class/sequence/usecase diagram' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package controller' }
+      ]},
+      { name: 'dto', icon: '📁', desc: 'DTO cho diagram request/response', children: [
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package dto' },
+        { name: 'request', icon: '📁', desc: 'DTO cho diagram request', children: [
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package request' }
+        ]},
+        { name: 'response', icon: '📁', desc: 'DTO cho diagram response', children: [
+          { name: 'DiagramResponse.java', icon: '📄', type: 'file', desc: 'Response chứa diagram syntax string + format (mermaid/plantuml)' },
+          { name: 'UseCaseResponse.java', icon: '📄', type: 'file', desc: 'Response chứa use case diagram data' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response' }
+        ]}
+      ]},
+      { name: 'repository', icon: '🗃️', desc: 'Truy vấn Neo4j cho diagram', children: [
+        { name: 'DiagramQueryRepository.java', icon: '📄', type: 'file', desc: 'Cypher queries lấy class hierarchy, call chains' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package repository' }
+      ]},
+      { name: 'service', icon: '⚙️', desc: 'Interface logic tạo sơ đồ', children: [
+        { name: 'ClassDiagramService.java', icon: '📄', type: 'file', desc: 'Interface tạo class diagram từ ClassNode + relationships' },
+        { name: 'MermaidGeneratorService.java', icon: '📄', type: 'file', desc: 'Interface tạo Mermaid syntax cho frontend render' },
+        { name: 'UseCaseDiagramService.java', icon: '📄', type: 'file', desc: 'Interface tạo use case diagram từ Route + Controller' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của service interfaces', children: [
+          { name: 'ClassDiagramServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: build PlantUML class diagram từ Neo4j data' },
+          { name: 'MermaidGeneratorServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: generate Mermaid syntax (flowchart, classDiagram)' },
+          { name: 'UseCaseDiagramServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: build use case diagram từ RouteNode + Controller' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
+        ]}
+      ]}
+    ]},
+    { name: 'graph', icon: '📁', desc: 'Module chính - quản lý knowledge graph', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package graph' },
+      { name: 'controller', icon: '🎯', desc: 'REST API cho graph operations', children: [
+        { name: 'GraphController.java', icon: '📄', type: 'file', desc: 'API /api/graph - query nodes, search, filter' },
+        { name: 'ImpactController.java', icon: '📄', type: 'file', desc: 'API /api/impact - phân tích ảnh hưởng khi sửa code' },
+        { name: 'ImportController.java', icon: '📄', type: 'file', desc: 'API /api/import - import từ GitHub URL' },
+        { name: 'ProjectController.java', icon: '📄', type: 'file', desc: 'API /api/projects - CRUD project, trigger analyze' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package controller' }
+      ]},
+      { name: 'dto', icon: '📁', desc: 'DTO cho graph API', children: [
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package dto' },
+        { name: 'request', icon: '📁', desc: 'DTO cho graph requests', children: [
+          { name: 'AnalyzeRequest.java', icon: '📄', type: 'file', desc: 'Request analyze project: projectId, options' },
+          { name: 'CreateProjectRequest.java', icon: '📄', type: 'file', desc: 'Request tạo project: name, path, description' },
+          { name: 'GithubImportRequest.java', icon: '📄', type: 'file', desc: 'Request import GitHub: repoUrl, branch, token' },
+          { name: 'GraphFilterRequest.java', icon: '📄', type: 'file', desc: 'Request filter graph: nodeTypes[], packages[], search' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package request' }
+        ]},
+        { name: 'response', icon: '📁', desc: 'DTO cho graph responses', children: [
+          { name: 'EdgeDto.java', icon: '📄', type: 'file', desc: 'DTO edge: source, target, type, properties' },
+          { name: 'GraphDataResponse.java', icon: '📄', type: 'file', desc: 'Response graph data: nodes[], edges[], metadata' },
+          { name: 'ImpactAnalysisResponse.java', icon: '📄', type: 'file', desc: 'Response impact: affectedNodes[], callChain[], riskLevel' },
+          { name: 'NodeDetailResponse.java', icon: '📄', type: 'file', desc: 'Response chi tiết node: properties, sourceCode, callers' },
+          { name: 'NodeDto.java', icon: '📄', type: 'file', desc: 'DTO node: id, type, name, properties, position' },
+          { name: 'ProjectResponse.java', icon: '📄', type: 'file', desc: 'Response project: id, name, status, stats' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response' }
+        ]}
+      ]},
+      { name: 'node', icon: '🔵', desc: '@Node entities - ánh xạ Neo4j labels', children: [
+        { name: 'AnnotationNode.java', icon: '📄', type: 'file', desc: ':Annotation - @interface definitions' },
+        { name: 'ClassNode.java', icon: '📄', type: 'file', desc: ':Class - class/abstract class với annotations' },
+        { name: 'EnumNode.java', icon: '📄', type: 'file', desc: ':Enum - enum với constants' },
+        { name: 'FieldNode.java', icon: '📄', type: 'file', desc: ':Field - field với type, visibility' },
+        { name: 'FileNode.java', icon: '📄', type: 'file', desc: ':File - file .java với filePath relative' },
+        { name: 'InterfaceNode.java', icon: '📄', type: 'file', desc: ':Interface - Java interface' },
+        { name: 'MethodNode.java', icon: '📄', type: 'file', desc: ':Method - method với params, return type, modifiers' },
+        { name: 'PackageNode.java', icon: '📄', type: 'file', desc: ':Package - Java package (com.example.service)' },
+        { name: 'ProjectNode.java', icon: '📄', type: 'file', desc: ':Project - root node, chứa metadata dự án' },
+        { name: 'RouteNode.java', icon: '📄', type: 'file', desc: ':Route - REST endpoint (GET /api/users)' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
+      ]},
+      { name: 'repository', icon: '🗃️', desc: 'Neo4j repositories', children: [
+        { name: 'ClassNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD + search cho :Class nodes' },
+        { name: 'FileNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD cho :File nodes (theo filePath)' },
+        { name: 'GraphRepository.java', icon: '📄', type: 'file', desc: 'Interface custom Cypher queries phức tạp' },
+        { name: 'MethodNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD + find callers/callees cho :Method' },
+        { name: 'NodeRepository.java', icon: '📄', type: 'file', desc: 'Generic repository cho mọi node types' },
+        { name: 'ProjectNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD cho :Project nodes' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package repository' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của repository interfaces', children: [
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' },
+          { name: 'neo4j', icon: '📁', desc: 'Neo4j-specific implementations', children: [
+            { name: 'Neo4jGraphRepository.java', icon: '📄', type: 'file', desc: 'Impl GraphRepository với Neo4j Driver + Cypher' },
+            { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package neo4j' }
+          ]}
+        ]}
+      ]},
+      { name: 'service', icon: '⚙️', desc: 'Business logic interfaces cho graph', children: [
+        { name: 'AnalyzeService.java', icon: '📄', type: 'file', desc: 'Interface điều phối parse toàn bộ project' },
+        { name: 'GraphService.java', icon: '📄', type: 'file', desc: 'Interface query nodes, traverse relationships' },
+        { name: 'ImpactService.java', icon: '📄', type: 'file', desc: 'Interface tính blast radius khi sửa code' },
+        { name: 'ProjectService.java', icon: '📄', type: 'file', desc: 'Interface quản lý project CRUD' },
+        { name: 'TarballImportService.java', icon: '📄', type: 'file', desc: 'Interface stream GitHub tarball, parse không ghi disk' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của service interfaces', children: [
+          { name: 'AnalyzeServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: orchestrate parser, save nodes/edges to Neo4j' },
+          { name: 'GraphServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: query, filter, search fulltext với Neo4j' },
+          { name: 'ImpactServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: traverse call graph, calculate affected nodes' },
+          { name: 'ProjectServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: CRUD project, manage analyze status' },
+          { name: 'TarballImportServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: download tarball, extract, parse in-memory' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
+        ]}
+      ]},
+      { name: 'websocket', icon: '🔌', desc: 'Realtime updates qua STOMP', children: [
+        { name: 'GraphUpdateController.java', icon: '📄', type: 'file', desc: 'STOMP handler gửi node changes tới subscribers' },
+        { name: 'WebSocketEventListener.java', icon: '📄', type: 'file', desc: 'Lắng nghe connect/disconnect, quản lý sessions' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package websocket' }
+      ]}
+    ]},
+    { name: 'mcp', icon: '📁', desc: 'MCP Server - expose graph cho AI tools (Claude, Cursor)', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package mcp' },
+      { name: 'controller', icon: '🎯', desc: 'MCP endpoint cho AI clients', children: [
+        { name: 'McpEndpointController.java', icon: '📄', type: 'file', desc: 'Endpoint /mcp dùng streamable-http transport, nhận tool calls từ AI' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package controller' }
+      ]},
+      { name: 'dto', icon: '📁', desc: 'DTO cho MCP protocol', children: [
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package dto' },
+        { name: 'request', icon: '📁', desc: 'DTO cho MCP tool requests', children: [
+          { name: 'ClassContextRequest.java', icon: '📄', type: 'file', desc: 'Request lấy context của class: className, includeMethods, includeFields' },
+          { name: 'LayerPatternRequest.java', icon: '📄', type: 'file', desc: 'Request detect layer patterns: projectId, layerRules' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package request' }
+        ]},
+        { name: 'response', icon: '📁', desc: 'DTO cho MCP tool responses', children: [
+          { name: 'ArchitectureContextResponse.java', icon: '📄', type: 'file', desc: 'Response architecture: layers[], dependencies, violations' },
+          { name: 'ClassContextResponse.java', icon: '📄', type: 'file', desc: 'Response class context: methods, fields, callers, source' },
+          { name: 'LayerPatternResponse.java', icon: '📄', type: 'file', desc: 'Response layer patterns: violations[], suggestions' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response' }
+        ]}
+      ]},
+      { name: 'service', icon: '⚙️', desc: 'Logic phân tích kiến trúc cho MCP tools', children: [
+        { name: 'ArchitectureAnalyzer.java', icon: '📄', type: 'file', desc: 'Interface phân tích layered architecture' },
+        { name: 'McpToolService.java', icon: '📄', type: 'file', desc: 'Interface dispatch tool calls tới handler' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của MCP services', children: [
+          { name: 'ArchitectureAnalyzerImpl.java', icon: '📄', type: 'file', desc: 'Impl: detect layers controller→service→repo, find violations' },
+          { name: 'McpToolServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: route tool calls, validate args, return MCP response' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
+        ]}
+      ]},
+      { name: 'tool', icon: '🛠️', desc: 'Các MCP tools AI có thể gọi', children: [
+        { name: 'ArchitectureTool.java', icon: '📄', type: 'file', desc: 'Tool phân tích cấu trúc layer của project' },
+        { name: 'ClassContextTool.java', icon: '📄', type: 'file', desc: 'Tool lấy context của class: methods, fields, callers' },
+        { name: 'ImpactAnalysisTool.java', icon: '📄', type: 'file', desc: 'Tool tính blast radius khi sửa method/class' },
+        { name: 'LayerPatternTool.java', icon: '📄', type: 'file', desc: 'Tool detect patterns vi phạm layered architecture' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package tool' }
+      ]}
+    ]},
+    { name: 'parser', icon: '📁', desc: 'JavaParser pipeline - phân tích AST từ file .java', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package parser' },
+      { name: 'dto', icon: '📁', desc: 'DTO cho parser API', children: [
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package dto' },
+        { name: 'request', icon: '📁', desc: 'DTO cho parse requests', children: [
+          { name: 'ParseFileRequest.java', icon: '📄', type: 'file', desc: 'Request parse file: projectId, filePath, options' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package request' }
+        ]},
+        { name: 'response', icon: '📁', desc: 'DTO cho parse responses', children: [
+          { name: 'ParseResultResponse.java', icon: '📄', type: 'file', desc: 'Response parse: nodesCreated, edgesCreated, duration, errors' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response' }
+        ]}
+      ]},
+      { name: 'node', icon: '🔵', desc: 'Intermediate data từ parser (chưa lưu Neo4j)', children: [
+        { name: 'EdgeData.java', icon: '📄', type: 'file', desc: 'Record chứa source→target + relationship type (CALLS, IMPORTS...)' },
+        { name: 'NodeData.java', icon: '📄', type: 'file', desc: 'Record chứa thông tin node trước khi map sang Neo4j entity' },
+        { name: 'ParseResult.java', icon: '📄', type: 'file', desc: 'Kết quả parse 1 file: List<NodeData> + List<EdgeData>' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
+      ]},
+      { name: 'service', icon: '⚙️', desc: 'Dịch vụ parse và xây dựng call graph', children: [
+        { name: 'CallGraphBuilderService.java', icon: '📄', type: 'file', desc: 'Interface xây dựng call graph: method A gọi method B' },
+        { name: 'ParserService.java', icon: '📄', type: 'file', desc: 'Interface điều phối parse: đọc file → chạy visitors → trả ParseResult' },
+        { name: 'SymbolResolverService.java', icon: '📄', type: 'file', desc: 'Interface resolve tên class/method thành fully-qualified name' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của parser services', children: [
+          { name: 'CallGraphBuilderServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: analyze method bodies, create CALLS edges' },
+          { name: 'ParserServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: JavaParser CompilationUnit → run visitors → collect results' },
+          { name: 'SymbolResolverServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: resolve imports, type inference, FQN lookup' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
+        ]}
+      ]},
+      { name: 'visitor', icon: '👁️', desc: 'JavaParser Visitors - duyệt AST trích xuất thông tin', children: [
+        { name: 'ClassVisitor.java', icon: '📄', type: 'file', desc: 'Visitor trích class name, modifiers, extends, implements' },
+        { name: 'FieldVisitor.java', icon: '📄', type: 'file', desc: 'Visitor trích fields: type, name, annotations, visibility' },
+        { name: 'ImportVisitor.java', icon: '📄', type: 'file', desc: 'Visitor trích import statements → tạo edge IMPORTS' },
+        { name: 'MethodVisitor.java', icon: '📄', type: 'file', desc: 'Visitor trích methods: params, return type, body calls' },
+        { name: 'SpringAnnotationVisitor.java', icon: '📄', type: 'file', desc: 'Visitor detect @RestController, @Service, @GetMapping → tạo RouteNode' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package visitor' }
+      ]}
+    ]},
+    { name: 'watcher', icon: '📁', desc: 'File watcher - tự động re-parse khi file .java thay đổi', children: [
+      { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package watcher' },
+      { name: 'config', icon: '⚙️', desc: 'Cấu hình watcher', children: [
+        { name: 'WatcherProperties.java', icon: '📄', type: 'file', desc: '@ConfigurationProperties: enabled, debounce-ms, ignored-paths, watched-extensions' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package config' }
+      ]},
+      { name: 'service', icon: '⚙️', desc: 'Dịch vụ theo dõi file system', children: [
+        { name: 'DebouncedEventHandler.java', icon: '📄', type: 'file', desc: 'Gom nhiều file changes trong debounce window thành 1 batch' },
+        { name: 'FileWatcherService.java', icon: '📄', type: 'file', desc: 'Interface theo dõi thư mục, trigger ParserService khi có thay đổi' },
+        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
+        { name: 'impl', icon: '📁', desc: 'Implementations của watcher services', children: [
+          { name: 'FileWatcherServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: Java WatchService, recursive dir watch, filter extensions' },
+          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
+        ]}
+      ]}
+    ]}
+  ]
+};
+
+const frontendTree = {
+  name: 'src', icon: '📦', desc: 'Vue 3 application source - frontend chính',
+  children: [
+    { name: 'App.vue', icon: '💚', type: 'file', desc: 'Component gốc của Vue app, chứa <RouterView /> và global layout' },
+    { name: 'main.ts', icon: '📘', type: 'file', desc: 'Entry point: tạo Vue app, mount Pinia + Router + plugins, render vào #app' },
+    { name: '__tests__', icon: '🧪', desc: 'Unit tests cho Vue components', children: [
+      { name: 'App.spec.ts', icon: '📘', type: 'file', desc: 'Test cho App.vue: render đúng, RouterView tồn tại' }
+    ]},
+    { name: 'assets', icon: '📁', desc: 'Tài nguyên tĩnh (ảnh, fonts, CSS)', children: [
+      { name: 'images', icon: '🖼️', desc: 'Logo, icons, illustrations của VibeGraph', children: [
+        { name: 'vibegraph-logo.png', icon: '🖼️', type: 'file', desc: 'Logo chính của VibeGraph dùng trong header và favicon' }
+      ]}
+    ]},
+    { name: 'components', icon: '📁', desc: 'Vue components có thể tái sử dụng', children: [
+      { name: 'diagram', icon: '📁', desc: 'Components render UML diagrams', children: [
+        { name: 'ClassDiagram.vue', icon: '💚', type: 'file', desc: 'Render class diagram (Mermaid classDiagram syntax)' },
+        { name: 'DiagramPanel.vue', icon: '💚', type: 'file', desc: 'Panel chứa toolbar + diagram render area, switch giữa các loại diagram' },
+        { name: 'SequenceDiagram.vue', icon: '💚', type: 'file', desc: 'Render sequence diagram cho method call chains' },
+        { name: 'UseCaseDiagram.vue', icon: '💚', type: 'file', desc: 'Render use case diagram từ Routes + Controllers' }
+      ]},
+      { name: 'graph', icon: '📁', desc: 'Components visualization graph với Sigma.js', children: [
+        { name: 'GraphCanvas.vue', icon: '💚', type: 'file', desc: 'Canvas chính render Sigma graph, xử lý zoom/pan/click' },
+        { name: 'GraphControls.vue', icon: '💚', type: 'file', desc: 'Controls: zoom in/out, fit view, layout algorithms (force/circular)' },
+        { name: 'SearchBar.vue', icon: '💚', type: 'file', desc: 'Thanh search node theo name, package, type với autocomplete' }
+      ]},
+      { name: 'layout', icon: '📁', desc: 'Components layout chính của app', children: [
+        { name: 'HeaderBar.vue', icon: '💚', type: 'file', desc: 'Header trên cùng: logo, project selector, theme toggle, settings' },
+        { name: 'MainLayout.vue', icon: '💚', type: 'file', desc: 'Layout chính: Header + SidePanel + Content + StatusBar (giống IDE)' },
+        { name: 'SidePanel.vue', icon: '💚', type: 'file', desc: 'Panel bên: chứa các tab Explorer, Filter, Flows, Legend' },
+        { name: 'StatusBar.vue', icon: '💚', type: 'file', desc: 'Thanh status dưới cùng: project info, node count, connection status' }
+      ]},
+      { name: 'panels', icon: '📁', desc: 'Side panels hiển thị thông tin chi tiết', children: [
+        { name: 'CodeInspector.vue', icon: '💚', type: 'file', desc: 'Inspector hiện source code của node được chọn (highlight syntax)' },
+        { name: 'ExplorerPanel.vue', icon: '💚', type: 'file', desc: 'Panel explorer: tree view của packages → classes → methods' },
+        { name: 'FilterPanel.vue', icon: '💚', type: 'file', desc: 'Panel filter: theo node type, package, annotation, edge type' },
+        { name: 'FlowsPanel.vue', icon: '💚', type: 'file', desc: 'Panel hiển thị execution flows: REST API → Controller → Service → Repo' },
+        { name: 'FocusDepthControl.vue', icon: '💚', type: 'file', desc: 'Slider điều chỉnh độ sâu focus mode (1-5 hops từ selected node)' },
+        { name: 'LegendPanel.vue', icon: '💚', type: 'file', desc: 'Panel chú thích: màu node theo type, kiểu edge (CALLS, IMPORTS...)' },
+        { name: 'NodeDetailPanel.vue', icon: '💚', type: 'file', desc: 'Panel chi tiết node: properties, source, callers, callees, impact' }
+      ]},
+      { name: 'ui', icon: '📁', desc: 'Base UI components (design system)', children: [
+        { name: 'Button.vue', icon: '💚', type: 'file', desc: 'Base button: variants primary/secondary/ghost, sizes sm/md/lg' },
+        { name: 'Input.vue', icon: '💚', type: 'file', desc: 'Base input: text/number/search với validation, error message' },
+        { name: 'Spinner.vue', icon: '💚', type: 'file', desc: 'Loading spinner cho async operations (3 sizes)' },
+        { name: 'Tabs.vue', icon: '💚', type: 'file', desc: 'Component tabs với keyboard navigation, ARIA support' }
+      ]}
+    ]},
+    { name: 'composables', icon: '📁', desc: 'Vue 3 composables - logic tái sử dụng (tương tự React hooks)', children: [
+      { name: 'useDiagrams.ts', icon: '📘', type: 'file', desc: 'Gọi API tạo diagram, quản lý loading/error state, cache result' },
+      { name: 'useFilters.ts', icon: '📘', type: 'file', desc: 'Quản lý state filter: node types, packages, search query, apply logic' },
+      { name: 'useGraphData.ts', icon: '📘', type: 'file', desc: 'Fetch graph data từ API, cache, transform sang Sigma format' },
+      { name: 'useSigma.ts', icon: '📘', type: 'file', desc: 'Quản lý Sigma.js instance: init, destroy, resize, camera control' },
+      { name: 'useWebSocket.ts', icon: '📘', type: 'file', desc: 'Kết nối STOMP WebSocket, auto-reconnect, subscribe topics' }
+    ]},
+    { name: 'lib', icon: '📁', desc: 'Thư viện tiện ích dùng chung', children: [
+      { name: 'api.ts', icon: '📘', type: 'file', desc: 'Axios instance: baseURL từ env, interceptors, error handling, auth headers' },
+      { name: 'colors.ts', icon: '📘', type: 'file', desc: 'Bảng màu cho từng node type: Class=xanh, Method=tím, Field=cam...' },
+      { name: 'constants.ts', icon: '📘', type: 'file', desc: 'Hằng số: API_URL, WS_URL, DEFAULT_LAYOUT, MAX_NODES, NODE_TYPES' },
+      { name: 'focusMode.ts', icon: '📘', type: 'file', desc: 'Logic focus mode: BFS từ selected node, highlight neighbors, dim phần còn lại' },
+      { name: 'graphAdapter.ts', icon: '📘', type: 'file', desc: 'Transform GraphResponse từ API thành format Sigma.js cần (nodes/edges)' }
+    ]},
+    { name: 'router', icon: '📁', desc: 'Vue Router - điều hướng SPA', children: [
+      { name: 'index.ts', icon: '📘', type: 'file', desc: 'Định nghĩa routes: / → Home, /graph/:id → Graph, /settings → Settings' }
+    ]},
+    { name: 'stores', icon: '📁', desc: 'Pinia stores - state management tập trung', children: [
+      { name: 'counter.ts', icon: '📘', type: 'file', desc: 'Store mẫu từ Vite scaffold (có thể xóa sau khi quen Pinia)' },
+      { name: 'filter.ts', icon: '📘', type: 'file', desc: 'Store filter: activeFilters, filterOptions, applied state, reset action' },
+      { name: 'graph.ts', icon: '📘', type: 'file', desc: 'Store chính: nodes[], edges[], selectedNode, layout state, actions' },
+      { name: 'project.ts', icon: '📘', type: 'file', desc: 'Store project: currentProject, projectList, analyzeStatus, actions CRUD' }
+    ]},
+    { name: 'types', icon: '📁', desc: 'TypeScript type definitions cho toàn app', children: [
+      { name: 'graph.ts', icon: '📘', type: 'file', desc: 'Interfaces: GraphNode, GraphEdge, NodeType enum, EdgeType enum, ProjectInfo' }
+    ]},
+    { name: 'views', icon: '📁', desc: 'Page-level components (mỗi view = 1 route)', children: [
+      { name: 'GraphView.vue', icon: '💚', type: 'file', desc: 'Trang chính: hiển thị graph visualization + panels + controls (IDE-like)' },
+      { name: 'HomeView.vue', icon: '💚', type: 'file', desc: 'Trang chủ: chọn project, import GitHub, xem danh sách projects, recent' },
+      { name: 'SettingsView.vue', icon: '💚', type: 'file', desc: 'Trang cài đặt: theme, API URL, watcher config, MCP server settings' }
+    ]}
+  ]
+};
+
+// ============ RENDER ASCII TREE ============
+function renderTree(node, container, prefix = '', isLast = true, isRoot = true) {
+  const li = document.createElement('li');
+  const item = document.createElement('div');
+  item.className = 'tree-item';
+
+  const hasChildren = node.children && node.children.length > 0;
+  const isFile = node.type === 'file';
+
+  if (isFile) {
+    item.classList.add('file');
+  }
+
+  // ASCII prefix (├── or └──)
+  const prefixSpan = document.createElement('span');
+  prefixSpan.className = 'prefix';
+  if (isRoot) {
+    prefixSpan.textContent = '';
+  } else {
+    prefixSpan.textContent = prefix + (isLast ? '└── ' : '├── ');
+  }
+  item.appendChild(prefixSpan);
+
+  // Name with folder suffix
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'name' + (hasChildren || (!isFile && !hasChildren) ? ' folder' : '');
+  nameSpan.textContent = node.name + (hasChildren ? '/' : '');
+  item.appendChild(nameSpan);
+
+  // Comment (description)
+  if (node.desc) {
+    const comment = document.createElement('span');
+    comment.className = 'comment';
+    const shortDesc = node.desc.length > 50 ? node.desc.slice(0, 47) + '...' : node.desc;
+    comment.textContent = '# ' + shortDesc;
+    item.appendChild(comment);
+  }
+
+  // Tooltip events
+  item.addEventListener('mouseenter', (e) => showTooltip(e, node));
+  item.addEventListener('mousemove', (e) => moveTooltip(e));
+  item.addEventListener('mouseleave', hideTooltip);
+
+  // Click to expand/collapse
+  if (hasChildren) {
+    item.style.cursor = 'pointer';
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const childUl = li.querySelector('ul');
+      if (childUl) {
+        const isCollapsed = childUl.style.display === 'none';
+        childUl.style.display = isCollapsed ? 'block' : 'none';
+        // Update name to show collapsed state
+        nameSpan.textContent = node.name + (isCollapsed ? '/' : '/ [+]');
+      }
+    });
+  }
+
+  li.appendChild(item);
+
+  // Render children with proper prefix
+  if (hasChildren) {
+    const ul = document.createElement('ul');
+    const childPrefix = isRoot ? '' : prefix + (isLast ? '    ' : '│   ');
+    node.children.forEach((child, index) => {
+      const childIsLast = index === node.children.length - 1;
+      renderTree(child, ul, childPrefix, childIsLast, false);
+    });
+    li.appendChild(ul);
+  }
+
+  container.appendChild(li);
+}
+
+// ============ TOOLTIP ============
+const tooltip = document.getElementById('tooltip');
+const ttTitle = tooltip.querySelector('.tt-title');
+const ttDesc = tooltip.querySelector('.tt-desc');
+
+function showTooltip(e, node) {
+  ttTitle.textContent = node.name;
+  ttDesc.textContent = node.desc || 'No description';
+  tooltip.classList.add('visible');
+  moveTooltip(e);
+}
+
+function moveTooltip(e) {
+  const rect = tooltip.getBoundingClientRect();
+  let x = e.clientX + 15;
+  let y = e.clientY + 15;
+  if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 15;
+  if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 15;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+function hideTooltip() {
+  tooltip.classList.remove('visible');
+}
+
+// ============ INIT ============
+const backendContainer = document.getElementById('backend-tree');
+const frontendContainer = document.getElementById('frontend-tree');
+renderTree(backendTree, backendContainer);
+renderTree(frontendTree, frontendContainer);
+
+// Try to load logo, fallback to "V" letter if fails
+const logoWrapper = document.querySelector('.logo-wrapper');
+const fallback = logoWrapper.querySelector('.logo-fallback');
+const img = new Image();
+img.onload = () => {
+  fallback.replaceWith(Object.assign(document.createElement('img'), {
+    src: img.src,
+    alt: 'VibeGraph',
+    className: 'logo'
+  }));
+};
+img.onerror = () => { /* keep fallback */ };
+img.src = '../vibegraph-web/src/assets/images/vibegraph-logo.png';
+</script>
+</body>
+</html>
