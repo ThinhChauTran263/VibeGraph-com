@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<!-- Generated presentation. Implementation source of truth: README.md, requirements-trimmed.md, architecture.md, task-breakdown-8week.md. -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VibeGraph — Kế hoạch 8 tuần · Bản đồ sống của mã nguồn</title>
@@ -1067,7 +1068,7 @@ footer {
             <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Cloning shallow (depth=1)...</span></span>
             <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Parsing 312 .java files...</span></span>
             <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Resolving symbols + call graph...</span></span>
-            <span class="terminal-line"><span class="terminal-ok">✓</span> <span class="terminal-out">Detected: Spring Boot 3.x · Layered architecture</span></span>
+            <span class="terminal-line"><span class="terminal-ok">✓</span> <span class="terminal-out">Detected: Spring Boot 4.0.6 · Layered architecture</span></span>
             <span class="terminal-line"><span class="terminal-ok">✓</span> <span class="terminal-out">1,847 nodes · 4,219 edges · 12 layers</span></span>
             <span class="terminal-line"><span class="terminal-ok">✓</span> <span class="terminal-out">Done in 23.4s</span></span>
             <span class="terminal-line">&nbsp;</span>
@@ -1237,7 +1238,7 @@ footer {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </div>
         <h3>Java Parsing</h3>
-        <p>JavaParser 3.26 + Symbol Solver. Parse 500 file &lt; 30s. Detect Spring annotations, call graph chính xác &gt; 85%.</p>
+        <p>JavaParser 3.28.0 + Symbol Solver. Parse 500 file &lt; 30s. Detect Spring annotations, call graph chính xác &gt; 85%.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon blue">
@@ -1373,8 +1374,8 @@ footer {
                     </div>
                   </div>
                   <ul class="dev-tasks">
-                    <li>Setup Maven module <span class="mono">vibegraph-core</span></li>
-                    <li>Add JavaParser 3.26 + Symbol Solver dependency</li>
+                    <li>Keep current single-module backend; do not create <span class="mono">vibegraph-core</span> for MVP</li>
+                    <li>Use JavaParser 3.28.0 + Symbol Solver dependency from root pom.xml</li>
                     <li>Viết <span class="mono">ClassVisitor.java</span> — extract Class/Interface/Enum nodes</li>
                     <li>Viết <span class="mono">MethodVisitor.java</span> — extract Method nodes (params, return, throws)</li>
                   </ul>
@@ -1389,8 +1390,8 @@ footer {
                     </div>
                   </div>
                   <ul class="dev-tasks">
-                    <li>Setup <span class="mono">vibegraph-server</span> Spring Boot 3.3 / Java 21</li>
-                    <li>Cấu hình Neo4j Docker + Spring Data Neo4j</li>
+                    <li>Use root Spring Boot 4.0.6 / Java 21 module</li>
+                    <li>Cấu hình Neo4j Docker + Neo4j Java Driver + raw Cypher</li>
                     <li>Apply schema constraints + indexes từ <span class="mono">neo4j-schema.md</span></li>
                     <li>Định nghĩa <span class="mono">GraphRepository</span> interface + DTO (NodeData, EdgeData)</li>
                   </ul>
@@ -2304,7 +2305,7 @@ footer {
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         </div>
         <div>
-          <div class="stack-name">Spring Boot 3.3</div>
+          <div class="stack-name">Spring Boot 4.0.6</div>
           <div class="stack-purpose">REST + WebSocket + MCP</div>
         </div>
       </div>

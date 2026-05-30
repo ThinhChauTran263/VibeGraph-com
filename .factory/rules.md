@@ -32,7 +32,7 @@
 
 ### Workflow
 1. **Understand** → use `understand` skill or `gitnexus_query`
-2. **Plan** → write spec in `VibeGraph-specs/`
+2. **Plan** → write spec in `VibeGraph-specs-2month/`
 3. **Execute** → free-flow within scope
 4. **Commit** → run checklist (RULES.md Section 2 Phase 4)
 
