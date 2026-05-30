@@ -13,6 +13,8 @@ Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, gửi
 
 Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
 
+> **Trạng thái sau audit 2026-05-30:** đoạn trên là mục tiêu cuối MVP 2 tháng. Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
+
 ## Quyết định kiến trúc hiện tại
 
 Với MVP 2 tháng, giữ nguyên **backend single-module** hiện tại:

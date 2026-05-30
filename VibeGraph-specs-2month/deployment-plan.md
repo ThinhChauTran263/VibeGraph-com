@@ -191,8 +191,11 @@ GitHub Actions cần chạy trước khi deploy:
 
 - Backend unit tests: `./mvnw test`
 - Backend full verification/CI, including `*IT` integration tests via Failsafe: `./mvnw verify`
-- Frontend: `cd vibegraph-web && npm ci && npm run lint && npm run type-check && npm run test:unit -- --run`
+- Frontend: `cd vibegraph-web && npm ci && npm run type-check && npm run test:unit -- --run && npm run build`
 - Tùy chọn deploy qua SSH sau khi `main` vượt qua CI.
+
+> Audit 2026-05-30: script `npm run lint` hiện chạy ESLint với `--fix`, tức có thể sửa file trong CI. Chỉ đưa lint vào CI sau khi thêm script không mutate (ví dụ `lint:check`).
+> Cấu hình prod hiện có default `CORS_ALLOWED_ORIGINS=https://vibegraph.io` trong `application-prod.yaml`; trước khi deploy `vibegraph.com` phải set env đúng domain hoặc đổi default để khớp tài liệu này.
 
 ## Giám sát
 

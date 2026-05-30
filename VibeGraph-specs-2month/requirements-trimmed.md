@@ -20,6 +20,8 @@ Tiêu chí chấp nhận:
 - Bỏ qua các file có lỗi cú pháp, ghi lại cảnh báo và tiếp tục phân tích các file khác.
 - Mục tiêu độ chính xác của call graph: hơn 85% trên các dự án Spring Boot phổ biến. Các lời gọi chưa giải quyết được có thể tạo ra các node method stub với độ tin cậy thấp hơn.
 
+> **Trạng thái code sau audit 2026-05-30:** parser hiện đã phát ra `Class`, `Interface`, `Enum`, `Annotation`, `Method`, `Field`, `Route` và các edge chính `HAS_METHOD`, `HAS_FIELD`, `HAS_INNER`, `EXTENDS`, `IMPLEMENTS`, `TYPE_OF`, `RETURNS`, `PARAMETER_TYPE`, `THROWS`, `CALLS`, `INJECTS`, `HANDLES_ROUTE`. `Project` node được tạo ở tầng repository khi đăng ký project, nhưng parser chưa phát ra `Package`/`File` node và chưa phát ra `OWNS`/`CONTAINS`/`DEFINES`/`ANNOTATED_BY`/`OVERRIDES` như data contract mục tiêu. `CALLS` hiện chỉ ghi các lời gọi resolve được trong project; chưa có stub-on-failure và chưa có logging tỷ lệ resolved. Các phần thiếu này là backlog Sprint 2/3, không được tính là đã hoàn tất Sprint 1.
+
 ### FR-02: Lưu trữ Neo4j - Tối quan trọng
 
 Lưu trữ dữ liệu graph trong Neo4j 5.x Community thông qua interface `GraphRepository` bằng cách dùng Neo4j Java Driver thuần (không dùng Spring Data Neo4j OGM hay các entity `@Node`). Các service không được phụ thuộc trực tiếp vào API của Neo4j. Chỉ các class nằm dưới `common/config` (ví dụ schema migration runner) và các class triển khai repository dưới `graph/repository/impl/neo4j` mới được phép import API của Neo4j driver.
@@ -49,6 +51,8 @@ Tiêu chí chấp nhận:
 - Panel chi tiết node hiển thị các kết nối đến và đi.
 - Panel legend và các điều khiển graph hiển thị trong khung nhìn graph.
 - Layout ForceAtlas2 chạy mà không chặn luồng UI chính.
+
+> **Trạng thái code sau audit 2026-05-30:** `GraphView`, `GraphCanvas`, `useSigma`, `useGraphData`, `stores/graph`, adapter và màu/type contract đã có và build/type-check/test unit pass. Nhiều panel UI (`FilterPanel`, `ExplorerPanel`, `NodeDetailPanel`, `LegendPanel`, `GraphControls`, `SearchBar`) vẫn là scaffold/TODO; focus reducers và filter actions chưa hoàn tất. Vì vậy FR-03 mới đạt phần graph render nền tảng, chưa đạt toàn bộ UX acceptance.
 
 ### FR-04: Use Case Diagram - Cao
 
@@ -89,6 +93,8 @@ Tiêu chí chấp nhận:
 - Mục tiêu từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây.
 - Frontend vá (patch) graph mà không cần tải lại toàn bộ trang.
 
+> **Trạng thái code sau audit 2026-05-30:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`, nhưng `GraphUpdateController`, listener và frontend `useWebSocket.ts` vẫn ở mức scaffold/TODO. Chưa có pipeline broadcast graph/status thật.
+
 ### FR-08: File Watcher phía Server - Tối quan trọng
 
 Theo dõi các thư mục dự án local đã cấu hình bằng Java WatchService.
@@ -100,6 +106,8 @@ Tiêu chí chấp nhận:
 - Bỏ qua `target`, `build`, `.git`, `.idea` và `node_modules`.
 - Các sự kiện create, modify và delete kích hoạt phân tích tăng dần.
 - Watcher chỉ theo dõi các thư mục dự án đã cấu hình; các đường dẫn được kiểm tra đối chiếu với root đã đăng ký.
+
+> **Trạng thái code sau audit 2026-05-30:** `WatcherProperties`, `FileWatcherService` và `DebouncedEventHandler` đã có file, nhưng implementation watch/debounce/incremental update còn TODO và test watcher vẫn disabled.
 
 ### FR-09: REST API - Tối quan trọng
 
@@ -121,6 +129,7 @@ Các endpoint MVP (cột *Trạng thái* phản ánh code thực tế, không ch
 | WS | `/ws/graph-updates` | Đẩy graph/status theo thời gian thực | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2) |
 
 > Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án → analyze → full graph) đã chạy thật. Các dòng `🚧 scaffold` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`) và `task-breakdown-8week.md` (Sprint 2/3).
+> `GET /graph/neighbors`, `GET /diagrams/*` và `GET /impact/*` là endpoint mục tiêu của API contract; tại thời điểm audit chưa có route controller hoạt động cho các dòng đó dù frontend client đã có hàm gọi tương ứng.
 
 Tiêu chí chấp nhận:
 
@@ -141,6 +150,8 @@ Tool:
 4. `get_impact_analysis(projectId, target)`
 
 Tool hoãn lại: `get_usecase_context`, `get_coding_rules`.
+
+> **Trạng thái code sau audit 2026-05-30:** các class tool/service/config MCP đã tồn tại nhưng chưa có `@Tool` method thật và các service analyzer còn TODO. Không xem MCP là hoàn tất Sprint 1.
 
 ### FR-NEW: GitHub Import - Cao
 

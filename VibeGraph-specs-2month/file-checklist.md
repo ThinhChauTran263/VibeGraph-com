@@ -23,25 +23,23 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `ClassVisitor.java`
 - [x] `MethodVisitor.java`
 - [x] `FieldVisitor.java`
-- [~] `ImportVisitor.java` (đã có; `ImportVisitorTest` còn `@Disabled`)
+- [x] `ImportVisitor.java` (`ImportVisitorTest` đã bật và pass)
 - [x] `SpringAnnotationVisitor.java`
 
 ### `src/main/java/com/vibegraph/parser/service/`
 
 - [x] `ParserService.java`
 - [x] `impl/ParserServiceImpl.java`
-- [x] `SymbolResolverService.java`
-- [x] `impl/SymbolResolverServiceImpl.java`
-- [x] `CallGraphBuilderService.java`
-- [x] `impl/CallGraphBuilderServiceImpl.java`
+- [s] `SymbolResolverService.java` + [s] `impl/SymbolResolverServiceImpl.java` (interface/impl còn khung TODO; symbol solving thực tế đang nằm trong `ParserServiceImpl` + visitor)
+- [s] `CallGraphBuilderService.java` + [s] `impl/CallGraphBuilderServiceImpl.java` (interface/impl còn khung TODO; CALLS hiện do `MethodVisitor` phát ra cho resolved in-project calls)
 
 ### `src/main/java/com/vibegraph/common/config/`
 
 - [x] `Neo4jMigrationRunner.java` (áp dụng `V1__init_schema.cypher` lúc khởi động; thay thế `Neo4jConfig.java` đã bị xóa)
-- [x] `WebSocketConfig.java` với `/ws/graph-updates`
+- [x] `WebSocketConfig.java` với `/ws/graph-updates` (endpoint/broker đã có; allowed origins/heartbeat còn TODO hardening)
 - [x] `CorsConfig.java`
-- [x] `McpServerConfig.java`
-- [x] `AsyncConfig.java`
+- [s] `McpServerConfig.java` (class config đã có; chưa đăng ký MCP tool/transport custom nào trong file này)
+- [s] `AsyncConfig.java` (`@EnableAsync` đã bật; chưa có executor bean cấu hình thread pool)
 
 ### `src/main/java/com/vibegraph/common/exception/`
 
@@ -93,14 +91,15 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 - [x] `ProjectService.java` + [x] `impl/ProjectServiceImpl.java`
 - [x] `AnalyzeService.java` + [x] `impl/AnalyzeServiceImpl.java`
-- [x] `GraphService.java` + [x] `impl/GraphServiceImpl.java` (`GraphServiceTest` còn `@Disabled`)
-- [x] `ImpactService.java` + [s] `impl/ImpactServiceImpl.java` (`// TODO: Implement`; `ImpactServiceTest` còn `@Disabled`)
-- [x] `TarballImportService.java` + [s] `impl/TarballImportServiceImpl.java` (ném "not implemented yet"; `TarballImportServiceTest` còn `@Disabled`)
+- [x] `GraphService.java` + [x] `impl/GraphServiceImpl.java` (`GraphServiceTest` đã bật và pass cho `getFullGraph`/`searchNodes`)
+- [s] `ImpactService.java` + [s] `impl/ImpactServiceImpl.java` (interface chưa có method; impl `// TODO: Implement`; `ImpactServiceTest` còn `@Disabled`)
+- [x] `TarballImportService.java` (service contract có `importFromGithub`)
+- [s] `impl/TarballImportServiceImpl.java` (ném "not implemented yet"; `TarballImportServiceTest` còn `@Disabled`)
 
 ### `src/main/java/com/vibegraph/graph/websocket/`
 
-- [x] `GraphUpdateController.java`
-- [x] `WebSocketEventListener.java`
+- [s] `GraphUpdateController.java` (bean/controller đã có; broadcast method còn `// TODO`)
+- [s] `WebSocketEventListener.java` (listener đã có; connect/disconnect handler còn `// TODO`)
 
 ### `src/main/java/com/vibegraph/graph/dto/`
 
@@ -120,10 +119,10 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/diagram/`
 
 - [s] `controller/DiagramController.java` (chỉ khung, chưa có endpoint — `// TODO`)
-- [x] `service/UseCaseDiagramService.java` + [s] `impl/UseCaseDiagramServiceImpl.java` (`// TODO: Implement`)
-- [x] `service/ClassDiagramService.java` + [s] `impl/ClassDiagramServiceImpl.java` (`// TODO: Implement`)
-- [x] `service/MermaidGeneratorService.java` + [s] `impl/MermaidGeneratorServiceImpl.java` (`// TODO: Implement`)
-- [x] `repository/DiagramQueryRepository.java`
+- [s] `service/UseCaseDiagramService.java` + [s] `impl/UseCaseDiagramServiceImpl.java` (interface/impl còn khung; `// TODO: Implement`)
+- [s] `service/ClassDiagramService.java` + [s] `impl/ClassDiagramServiceImpl.java` (interface/impl còn khung; `// TODO: Implement`)
+- [s] `service/MermaidGeneratorService.java` + [s] `impl/MermaidGeneratorServiceImpl.java` (interface/impl còn khung; `// TODO: Implement`)
+- [s] `repository/DiagramQueryRepository.java` (class đã có; query methods còn TODO)
 - [x] `dto/response/DiagramResponse.java`
 - [x] `dto/response/UseCaseResponse.java`
 
@@ -135,9 +134,9 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [s] `tool/ClassContextTool.java` (`// TODO: Add @Tool method`)
 - [s] `tool/LayerPatternTool.java` (`// TODO: Add @Tool method`)
 - [s] `tool/ImpactAnalysisTool.java` (`// TODO: Add @Tool method`)
-- [x] `controller/McpEndpointController.java`
-- [x] `service/McpToolService.java` + [s] `impl/McpToolServiceImpl.java` (`// TODO: Implement`)
-- [x] `service/ArchitectureAnalyzer.java` + [s] `impl/ArchitectureAnalyzerImpl.java` (`// TODO: Implement`)
+- [s] `controller/McpEndpointController.java` (class/controller đã có; chưa expose endpoint/tool method riêng trong code này)
+- [s] `service/McpToolService.java` + [s] `impl/McpToolServiceImpl.java` (interface/impl còn khung; `// TODO: Implement`)
+- [s] `service/ArchitectureAnalyzer.java` + [s] `impl/ArchitectureAnalyzerImpl.java` (interface/impl còn khung; `// TODO: Implement`)
 - [x] response DTOs: `ArchitectureContextResponse`, `ClassContextResponse`, `LayerPatternResponse`
 - [x] request DTOs: `ClassContextRequest`, `LayerPatternRequest`
 
@@ -146,8 +145,8 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/watcher/`
 
 - [x] `config/WatcherProperties.java`
-- [x] `service/FileWatcherService.java` + [x] `impl/FileWatcherServiceImpl.java`
-- [x] `service/DebouncedEventHandler.java`
+- [x] `service/FileWatcherService.java` + [s] `impl/FileWatcherServiceImpl.java` (`startWatching`/`stopWatching` còn `// TODO`)
+- [s] `service/DebouncedEventHandler.java` (class đã có; debounce logic còn `// TODO`)
 
 > `FileWatcherServiceTest` đã có nhưng còn `@Disabled`.
 
@@ -167,16 +166,16 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `architecture/StorageAbstractionTest.java`
 - [x] `common/exception/ExceptionsTest.java`
 - [x] `common/util/FileUtilsTest.java`, `HashUtilsTest.java`, `JsonUtilsTest.java`
-- [x] `parser/visitor/ClassVisitorTest.java`, `MethodVisitorTest.java`, `FieldVisitorTest.java`, `SpringAnnotationVisitorTest.java`
+- [x] `parser/visitor/ClassVisitorTest.java`, `MethodVisitorTest.java`, `FieldVisitorTest.java`, `ImportVisitorTest.java`, `SpringAnnotationVisitorTest.java`
 - [x] `parser/service/ParserServiceTest.java`
 - [x] `graph/repository/impl/neo4j/GraphSchemaTest.java`
-- [x] `graph/controller/ProjectControllerTest.java`
+- [~] `graph/repository/impl/neo4j/Neo4jGraphRepositoryIT.java` (enabled, nhưng tự skip nếu không có Neo4j reachable)
+- [x] `graph/controller/ProjectControllerTest.java`, `GraphControllerTest.java`
+- [x] `graph/service/GraphServiceTest.java`
 - [x] `graph/service/impl/ProjectServiceImplTest.java`
 
-Đã có nhưng còn `@Disabled` (đã hiện thực, chờ kiểm chứng):
+Đã có nhưng còn `@Disabled` hoặc chưa kiểm chứng end-to-end:
 
-- [~] `parser/visitor/ImportVisitorTest.java`
-- [~] `graph/service/GraphServiceTest.java`
 - [~] `graph/service/ImpactServiceTest.java`
 - [~] `graph/service/TarballImportServiceTest.java`
 - [~] `graph/controller/ImportControllerTest.java`
@@ -193,52 +192,52 @@ Test fixture:
 
 ### Views
 
-- [x] `HomeView.vue`
+- [s] `HomeView.vue` (khung trang đã có; project list/create còn `// TODO`)
 - [x] `GraphView.vue`
-- [x] `SettingsView.vue`
+- [s] `SettingsView.vue` (khung trang đã có; settings form còn `// TODO`)
 
 ### Components
 
-- [x] `components/layout/HeaderBar.vue`
-- [x] `components/layout/MainLayout.vue`
-- [x] `components/layout/SidePanel.vue`
-- [x] `components/layout/StatusBar.vue`
-- [x] `components/panels/FilterPanel.vue`
-- [x] `components/panels/ExplorerPanel.vue`
-- [x] `components/panels/FlowsPanel.vue`
-- [x] `components/panels/NodeDetailPanel.vue`
-- [x] `components/panels/LegendPanel.vue`
-- [x] `components/panels/FocusDepthControl.vue`
-- [x] `components/panels/CodeInspector.vue`
+- [s] `components/layout/HeaderBar.vue` (khung đã có; project selector/search/settings còn `// TODO`)
+- [s] `components/layout/MainLayout.vue` (khung đã có; chưa render `SidePanel | GraphCanvas | NodeDetailPanel`)
+- [s] `components/layout/SidePanel.vue` (khung đã có; tabs/panel content còn `// TODO`)
+- [s] `components/layout/StatusBar.vue` (khung đã có; connection/stats còn `// TODO`)
+- [s] `components/panels/FilterPanel.vue` (khung đã có; node/edge toggles + focus depth còn `// TODO`)
+- [s] `components/panels/ExplorerPanel.vue` (khung đã có; search/folder tree còn `// TODO`)
+- [s] `components/panels/FlowsPanel.vue` (khung đã có; flow list/highlight còn `// TODO`)
+- [s] `components/panels/NodeDetailPanel.vue` (khung đã có; incoming/outgoing detail còn `// TODO`)
+- [s] `components/panels/LegendPanel.vue` (khung đã có; render legend còn `// TODO`)
+- [s] `components/panels/FocusDepthControl.vue` (khung đã có; radio controls còn `// TODO`)
+- [s] `components/panels/CodeInspector.vue` (khung đã có; code viewer/syntax highlight còn `// TODO`)
 - [x] `components/graph/GraphCanvas.vue`
-- [x] `components/graph/GraphControls.vue`
-- [x] `components/graph/SearchBar.vue`
-- [x] `components/diagram/DiagramPanel.vue`
-- [x] `components/diagram/UseCaseDiagram.vue`
-- [x] `components/diagram/ClassDiagram.vue`
-- [x] `components/diagram/SequenceDiagram.vue` (có sẵn sớm; hỗ trợ sequence diagram bản production vẫn hoãn theo phạm vi)
+- [s] `components/graph/GraphControls.vue` (khung đã có; control buttons còn `// TODO`)
+- [s] `components/graph/SearchBar.vue` (khung đã có; input/dropdown còn `// TODO`)
+- [s] `components/diagram/DiagramPanel.vue` (khung đã có; tabs/render active diagram còn `// TODO`)
+- [s] `components/diagram/UseCaseDiagram.vue` (khung đã có; Mermaid render còn `// TODO`)
+- [s] `components/diagram/ClassDiagram.vue` (khung đã có; Mermaid render + package filter còn `// TODO`)
+- [defer] `components/diagram/SequenceDiagram.vue` (file khung có sẵn, nhưng sequence diagram nằm ngoài MVP 2 tháng)
 - [ ] `components/import/GithubImportForm.vue`
 - [x] `components/ui/Button.vue`
 - [x] `components/ui/Input.vue`
-- [x] `components/ui/Tabs.vue`
+- [s] `components/ui/Tabs.vue` (khung đã có; tab triggers/content slot còn `// TODO`)
 - [x] `components/ui/Spinner.vue`
 
 ### Composables, Stores, Types
 
 - [x] `composables/useSigma.ts`
-- [x] `composables/useWebSocket.ts` dùng `/ws/graph-updates`
+- [s] `composables/useWebSocket.ts` (file đã có; STOMP connection còn `// TODO`)
 - [x] `composables/useGraphData.ts`
-- [x] `composables/useDiagrams.ts`
-- [x] `composables/useFilters.ts`
+- [s] `composables/useDiagrams.ts` (Mermaid rendering còn `// TODO`)
+- [s] `composables/useFilters.ts` (filter state management còn `// TODO`)
 - [ ] `composables/useGithubImport.ts`
 - [x] `lib/constants.ts`
 - [x] `lib/api.ts`
 - [x] `lib/graphAdapter.ts` (được bao phủ bởi `lib/__tests__/graphAdapter.spec.ts`)
-- [x] `lib/focusMode.ts`
+- [s] `lib/focusMode.ts` (N-hop BFS/reducers còn `// TODO`)
 - [x] `lib/colors.ts`
 - [x] `stores/graph.ts`
-- [x] `stores/filter.ts`
-- [x] `stores/project.ts`
+- [s] `stores/filter.ts` (state đã có; toggle actions còn `// TODO`)
+- [s] `stores/project.ts` (state đã có; project management actions còn `// TODO`)
 - [x] `types/graph.ts`
 
 > `stores/counter.ts` là scaffolding Vue còn sót lại và có thể gỡ bỏ.
@@ -268,21 +267,23 @@ Test fixture:
 - [defer] `mcp/tool/UseCaseContextTool.java`
 - [defer] `mcp/tool/CodingRulesTool.java`
 - [defer] service sequence diagram và UI sequence diagram bản production
-- [defer] auth, billing, tài khoản người dùng
+- [defer] billing và tài khoản người dùng đầy đủ (auth/rate-limit tối thiểu cho public demo được theo dõi trong Sprint 2 backlog)
 
 ## Hạng mục công việc tiếp theo
 
-Lát cắt dọc Sprint 1 đã hiện thực và xanh. Bề mặt Sprint 2-3 cho **diagram và MCP
-hiện mới ở mức scaffold/stub** (xem các dòng `[s]` ở trên) — nên phần việc còn lại
-gồm cả hiện thực, không chỉ kiểm chứng:
+Lát cắt dọc Sprint 1 đã hiện thực và xanh. Bề mặt Sprint 2-3 cho **diagram, MCP,
+watcher/realtime và nhiều panel frontend hiện mới ở mức scaffold/stub** (xem các dòng
+`[s]` ở trên) — nên phần việc còn lại gồm cả hiện thực, không chỉ kiểm chứng:
 
 1. Hiện thực các stub `[s]`: endpoint cho `DiagramController`/`ImpactController`, các
    `*DiagramServiceImpl` + `MermaidGeneratorServiceImpl`, 4 MCP `@Tool` +
    `McpToolServiceImpl`/`ArchitectureAnalyzerImpl`, và `getNeighborhood`/`getImpact`
    trong `Neo4jGraphRepository`.
-2. Bật lại các test backend đang `@Disabled` (service, controller, diagram, mcp,
-   watcher, import-visitor, app context) và làm cho chúng xanh — biến `[~]` thành `[x]`.
-3. Dựng UI import GitHub: `composables/useGithubImport.ts` và
+2. Bật lại các test backend đang `@Disabled` (impact, tarball import, import controller,
+   diagram, mcp, watcher, app context) và làm cho chúng xanh — biến `[~]` thành `[x]`.
+3. Dựng các frontend scaffold `[s]`: layout shell, filter/explorer/detail panels,
+   graph controls/search, WebSocket composable, filter/focus logic, và diagram UI.
+4. Dựng UI import GitHub: `composables/useGithubImport.ts` và
    `components/import/GithubImportForm.vue` (đường import phía backend đã có sẵn).
-4. Thêm `.github/workflows/ci.yml` và các trang `docs/` setup + tích hợp MCP.
-5. Gỡ scaffolding còn sót (`stores/counter.ts`).
+5. Thêm `.github/workflows/ci.yml` và các trang `docs/` setup + tích hợp MCP.
+6. Gỡ scaffolding còn sót (`stores/counter.ts`).

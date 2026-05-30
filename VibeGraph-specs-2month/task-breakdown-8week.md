@@ -37,7 +37,7 @@ Cột mốc: người dùng có thể đăng ký một project Java cục bộ, 
 |---|---|---|
 | 1.7 | Hiện thực `FileUtils.scanJavaFiles` và `HashUtils.sha256` | Các test tiện ích được bật và pass |
 | 1.8 | Hiện thực `ParserServiceImpl.parseFile(Path)` | Parse một file Java thành nodes và structural edges |
-| 1.9 | Hiện thực structural edges | Phát ra `CONTAINS`, `DEFINES`, `HAS_METHOD`, `HAS_FIELD`, `EXTENDS`, `IMPLEMENTS` ở những nơi áp dụng được |
+| 1.9 | Hiện thực structural edges | `HAS_METHOD`, `HAS_FIELD`, `HAS_INNER`, `EXTENDS`, `IMPLEMENTS` đã có; `Package`/`File` nodes và `OWNS`/`CONTAINS`/`DEFINES` còn là carry-over Sprint 2/3 |
 | 1.10 | Hiện thực `ParserServiceImpl.parseProject(Path)` | Parse đệ quy các file `.java` và tổng hợp kết quả |
 | 1.11 | Hiện thực xử lý lỗi khi parse | File lỗi tạo ra cảnh báo và không làm hỏng toàn bộ project |
 
@@ -101,7 +101,7 @@ Một số task vốn được lên kế hoạch cho Sprint 2 đã được hoà
 | # | Task | Trạng thái |
 |---|---|---|
 | 2.11 | INJECTS edges (phát hiện injection qua constructor và Lombok) | ✅ ĐÃ XONG sớm trong Sprint 1 — đã xác minh 1→17 INJECTS edges. |
-| 2.13 | CALLS edges đã resolve qua `JavaSymbolSolver` | ✅ ĐÃ XONG sớm trong Sprint 1 — 0→54 CALLS edges qua project-wide type solver. Chưa có stub-on-failure và chưa log tỉ lệ resolved. |
+| 2.13 | CALLS edges đã resolve qua `JavaSymbolSolver` | 🟡 MỘT PHẦN trong Sprint 1 — đã có CALLS cho resolved in-project calls qua project-wide type solver. Chưa có stub-on-failure, chưa log tỉ lệ resolved, và chưa xử lý unresolved/library calls theo confidence thấp. |
 | 2.12 | Gộp Spring layer detection vào `SpringAnnotationVisitor` | 🟡 MỘT PHẦN — đã thêm xử lý `CONFIG`/`ENTITY`/`@ControllerAdvice` nhưng đặt trong `ClassVisitor.springLayer()` thay vì `SpringAnnotationVisitor`; việc gộp CHƯA hoàn tất (xem nợ D1). |
 
 ## Sprint 2 - Tính năng cốt lõi
@@ -122,7 +122,7 @@ Cột mốc: người dùng có thể import một repo GitHub công khai, xem t
 | 2.10 | Hiện thực focus mode và các bộ lọc | Toggle node/edge và focus theo độ sâu hoạt động trong Sigma |
 | 2.11 | Hiện thực phát hiện injection qua constructor và Lombok | Các Spring bean dùng constructor tường minh hoặc `@RequiredArgsConstructor`/`@AllArgsConstructor` trên các field `final` phát ra `INJECTS` edges tới type phụ thuộc; có test bao phủ — ✅ Đã làm sớm ở Sprint 1 (xem mục 'Đã hoàn thành sớm'). |
 | 2.12 | Gộp Spring layer detection vào `SpringAnnotationVisitor` | Một nguồn sự thật duy nhất cho việc phát hiện layer; thêm xử lý `CONFIG`, `ENTITY`, và `@ControllerAdvice`; loại bỏ logic layer trùng lặp khỏi `ClassVisitor`; `SpringAnnotationVisitorTest` được bật và pass — 🟡 Một phần (xem nợ D1). |
-| 2.13 | Nối `JavaSymbolSolver` để có `CALLS` edges đã resolve | Parser cấu hình Symbol Solver; các call đã resolve tạo ra target chuẩn `owner.method(paramTypes)` khớp với các `Method` node thực; stub node chỉ được tạo khi resolve thất bại; tỉ lệ phần trăm resolve được log — ✅ Đã làm sớm ở Sprint 1 (xem mục 'Đã hoàn thành sớm'). |
+| 2.13 | Nối `JavaSymbolSolver` để có `CALLS` edges đã resolve | 🟡 Một phần — parser đã cấu hình Symbol Solver và emit CALLS cho resolved in-project calls. Chưa có stub-on-failure, chưa log tỉ lệ resolved, và chưa xử lý library/unresolved calls theo confidence thấp. |
 
 ### Sprint 1 Carry-over / Nợ kỹ thuật
 
@@ -178,4 +178,12 @@ Cột mốc: demo công khai đã chạy, tài liệu chính xác, và sản ph�
 
 ## Điểm khởi đầu hiện tại
 
-Tính đến trạng thái repo hiện tại, hãy bắt đầu với việc tích hợp parser service sau khi các test visitor đã xanh. Phụ thuộc tiếp theo là `ParserServiceImpl.parseFile()` tạo ra `ParseResult` với `NodeData` và `EdgeData`.
+Tính đến audit repo ngày 2026-05-30, Sprint 1 vertical slice đã chạy: đăng ký project local → analyze bằng `ParserServiceImpl.parseProject` → ghi Neo4j raw Driver → `GET /api/projects/{id}/graph` → render Sigma. Sprint 2 không bắt đầu từ parser service nữa; hãy bắt đầu theo thứ tự rủi ro sau:
+
+1. Chặn rủi ro public demo: auth/rate-limit, SSRF/path validation, actuator exposure, CORS production.
+2. Hoàn tất realtime nền tảng: `AsyncConfig` executor, analyze async, `GraphUpdateController`, `WebSocketEventListener`, frontend `useWebSocket`.
+3. Làm import GitHub end-to-end: pre-flight GitHub API, tarball stream, parse từ stream hoặc bổ sung `ParserService.parseString`, progress WS, UI import.
+4. Hoàn tất watcher/incremental update: Java WatchService, debounce, `deleteFile`/upsert theo file, patch graph frontend.
+5. Hoàn tất graph API mở rộng: neighbors/impact route + repository implementations, pagination/limit cho `getFullGraph`.
+6. Làm diagram Use Case/Class end-to-end và dựng các panel frontend scaffold thành logic thật.
+7. Trả nợ parser/schema: `Package`/`File` nodes, `OWNS`/`CONTAINS`/`DEFINES`, `ANNOTATED_BY`, call unresolved/stub/confidence logging, single source cho type/signature/layer.

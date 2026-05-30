@@ -18,6 +18,8 @@
 | 6 | Rename | Xóa và tạo mới (không theo dõi rename) |
 | 7 | CALLS integrity | `MERGE` theo composite key + stub fallback |
 
+> **Implementation status sau audit 2026-05-30:** tài liệu này là schema/data-contract mục tiêu. Code Sprint 1 dùng raw Neo4j Driver và migration `V1__init_schema.cypher`, nhưng `Neo4jGraphRepository.upsertNodes` hiện MERGE node theo `{projectId, fullName}` rồi set label/properties; `upsertEdges` tạo `External` stub cho endpoint thiếu. Parser hiện chưa emit `Package`/`File` node, chưa emit `OWNS`/`CONTAINS`/`DEFINES`, và chưa tạo Method stub khi CALLS unresolved. Các ví dụ Cypher ở mục 5 vì vậy là target patterns, không phải copy chính xác từ implementation hiện tại.
+
 ---
 
 ## 2. Nhãn node
@@ -29,7 +31,7 @@ Project gốc, là điểm vào cho mọi truy vấn.
 (:Project {
   id: STRING,                  // UUID, khóa chính
   name: STRING,                // tên hiển thị
-  rootPath: STRING,            // đường dẫn tuyệt đối tới thư mục project
+  rootPath: STRING,            // contract mục tiêu; implementation hiện tại ghi property `path`
   createdAt: DATETIME,
   lastAnalyzedAt: DATETIME,
   analysisStatus: STRING       // "PENDING" | "ANALYZING" | "READY" | "ERROR"
@@ -364,6 +366,8 @@ ON EACH [n.name, n.fullName];
 
 ### 5.1 Chèn Class với pattern MERGE
 
+> **Target pattern:** implementation hiện tại chưa tự tạo `Package`/`File` nodes và các edge `OWNS`/`CONTAINS`/`DEFINES` trong parser/repository generic path.
+
 ```cypher
 // Upsert node Class + các edge
 MERGE (proj:Project {id: $projectId})
@@ -392,6 +396,8 @@ RETURN cls
 ```
 
 ### 5.2 Chèn Method (xử lý trường hợp stub)
+
+> **Target pattern:** method fullName hiện đã bao gồm chữ ký tham số trong parser; repository hiện MERGE generic theo `{projectId, fullName}` chứ không dùng đủ `{projectId, fullName, paramTypes}` trong tất cả nhánh upsert.
 
 ```cypher
 // MERGE method, enrich nếu trước đây là stub
@@ -423,6 +429,8 @@ RETURN m
 
 ### 5.3 Chèn edge CALLS (Quyết định #7 — stub fallback)
 
+> **Target pattern:** code hiện tại chỉ emit CALLS cho resolved in-project calls. Khi upsert edge gặp endpoint chưa có node, repository tạo node `External` stub thay vì `Method {isStub:true}`.
+
 ```cypher
 // MERGE callee — tạo stub nếu chưa parse class chứa nó
 MERGE (callee:Method {
@@ -449,6 +457,8 @@ RETURN r
 
 ### 5.4 Xóa file (Quyết định #6 — đổi tên = xóa + tạo mới)
 
+> **Implementation hiện tại:** `Neo4jGraphRepository.deleteFile(projectId, filePath)` xóa mọi node có property `filePath` tương ứng bằng `DETACH DELETE`, không đi theo `File-[:DEFINES]->typeNode` vì `File` node chưa được parser emit.
+
 ```cypher
 // Khi watcher báo file bị xóa hoặc bị đổi tên
 MATCH (f:File {projectId: $projectId, filePath: $filePath})
@@ -468,6 +478,8 @@ DETACH DELETE m
 ```
 
 ### 5.6 Lấy toàn bộ graph (cho frontend)
+
+> **Implementation hiện tại:** `getFullGraph` đang dùng pattern tổng quát `MATCH (n {projectId}) OPTIONAL MATCH (n)-[r]->(m {projectId}) RETURN n,r,m`, chưa có phân trang/limit và chưa duyệt từ `Project-[:OWNS*]` vì structural edges chưa đủ.
 
 ```cypher
 // Trả về tất cả nodes + edges cho 1 project

@@ -178,6 +178,8 @@ Tóm tắt:
 - Composite key cho Method: `(projectId, fullName, paramTypes)` để xử lý overloading
 - Stub method khi CALLS edge gặp method chưa parse, sau đó enrich khi parse class chứa nó
 
+> **Trạng thái implementation sau audit 2026-05-30:** schema file cho phép đầy đủ các label/edge trên, nhưng parser Sprint 1 chưa phát ra `Package`/`File` nodes và chưa phát ra `OWNS`/`CONTAINS`/`DEFINES`/`ANNOTATED_BY`/`OVERRIDES`. `Neo4jGraphRepository.upsertEdges` hiện tạo `External` stub cho endpoint bị thiếu; `MethodVisitor` bỏ qua call unresolved/library thay vì tạo method stub. Vì vậy phần “stub method” là design target, chưa phải behavior hiện tại.
+
 ## Trừu tượng hóa lưu trữ
 
 ```java
@@ -185,7 +187,7 @@ Tóm tắt:
 public interface GraphRepository {
     void upsertProject(String projectId, String name, String path);
     void upsertNodes(String projectId, List<NodeData> nodes);
-    void upsertEdges(String projectId, List<EdgeData> edges);
+    int upsertEdges(String projectId, List<EdgeData> edges);
     void deleteFile(String projectId, String filePath);
     GraphDataResponse getFullGraph(String projectId);
     GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops);
@@ -207,6 +209,9 @@ ArchUnit test ép buộc:
 ## Luồng dữ liệu — các use case
 
 ### 1. Người dùng dán URL GitHub (Tarball stream — không clone, không lưu disk)
+
+> **Luồng mục tiêu Sprint 2.** Code hiện có `ImportController` và route `POST /api/projects/import-github`, nhưng `TarballImportServiceImpl` vẫn ném `FeatureNotImplementedException`. `ParserService.parseString(content, relPath)` trong flow dưới đây là API cần bổ sung hoặc thay bằng cơ chế parse stream tương đương; hiện chỉ có `parseFile`/`parseProject` và `parseFileWithCache` chưa implement.
+
 ```
 Browser → POST /api/projects/import-github {url}
   ↓
@@ -221,7 +226,7 @@ TarballImportService.import()
     → Stream qua GzipCompressorInputStream + TarArchiveInputStream
   Step 3: Parse in-memory (KHÔNG ghi disk)
     → Iterate tar entries, lọc *.java
-    → ParserService.parseString(content, relPath) cho mỗi file
+    → ParserService.parseString(content, relPath) cho mỗi file  # target API, chưa có trong code hiện tại
     → GraphRepository.upsertNodes/Edges (batch)
   Step 4: WebSocket push progress
     → SimpMessagingTemplate.convertAndSend("/topic/projects/{id}/status", {progress})
@@ -267,6 +272,9 @@ Source code KHÔNG bao giờ rời máy user.
 ```
 
 ### 3. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
+
+> **Luồng mục tiêu Sprint 2.** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã có file, nhưng start/stop watch, debounce và incremental reparse/update còn TODO; WebSocket broadcast cũng chưa nối vào pipeline thật.
+
 ```
 Java WatchService phát hiện UserService.java MODIFY
   ↓
@@ -282,6 +290,9 @@ Frontend Sigma.js patch graph (không full reload)
 ```
 
 ### 4. AI tool gọi MCP
+
+> **Luồng mục tiêu Sprint 3.** MCP packages/classes đã có scaffold, nhưng chưa có `@Tool` methods và `ArchitectureAnalyzer`/`McpToolService` còn TODO. Tên method `ArchitectureTool.getProjectArchitecture` dưới đây mô tả contract mong muốn, không phải method đang tồn tại.
+
 ```
 Cursor/Claude Code → http://localhost:8080/mcp
   ↓
