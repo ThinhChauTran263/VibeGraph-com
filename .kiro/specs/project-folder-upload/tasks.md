@@ -1,5 +1,9 @@
 # Implementation Plan: Project Archive Upload
 
+## Overview
+
+This is the implementation plan for the Project Archive Upload bugfix (FR-NEW-2). Archive upload (`.zip`/`.tar`/`.tar.gz` via `POST /api/projects/import-archive`) is the primary Sprint 2 onboarding flow for getting a project into VibeGraph. Server-side local-path registration is retained as a dev/internal fallback and its existing behavior must stay unchanged. The plan is sequenced by the wave dependency graph below.
+
 ## Task Dependency Graph
 
 ```json
@@ -58,9 +62,13 @@
 
 Work top-down. Each task should leave the repo buildable and should avoid changing more than a small focused set of files.
 
+## Tasks
+
+The task list is grouped by implementation area; checkboxes are the source of truth for per-task completion status.
+
 ## Backend Foundation
 
-- [ ] Task 1: Add archive import configuration
+- [x] Task 1: Add archive import configuration
   - Acceptance: `vibegraph.import.archive.max-size`, `workspace-root`, and `ignored-paths` bind from config with safe defaults; Spring multipart `max-file-size` and `max-request-size` are configured to accept the intended 100MB archive limit; Docker Compose backend gets a writable `upload-workspaces:/uploads` volume and `VIBEGRAPH_UPLOAD_WORKSPACE=/uploads` while keeping `./projects:/projects:ro` unchanged.
   - Verify: `./mvnw test -Dtest=ArchiveImportPropertiesTest` or include property binding coverage in service tests.
   - Files: `src/main/java/com/vibegraph/graph/importer/config/ArchiveImportProperties.java`, `src/main/resources/application.yaml`, `src/main/resources/application-docker.yaml`, `docker-compose.yml`.
@@ -172,3 +180,10 @@ Work top-down. Each task should leave the repo buildable and should avoid changi
   - Acceptance: `FR-NEW-2` status changes from target to implemented where appropriate; setup guide no longer says endpoint is missing.
   - Verify: `rg "import-archive.*chưa implement|target Sprint 2" VibeGraph-specs-2month` has no stale statements after code lands.
   - Files: `VibeGraph-specs-2month/*.md`, `team-setup-guide.html`.
+
+## Notes
+
+- Task 1 has been implemented; Tasks 2-19 remain pending unless their checkboxes are updated later.
+- Archive upload is the primary Sprint 2 flow; local-path registration stays as a dev/internal fallback.
+- WebSocket progress (Task 16) is optional and may slip past the first slice without blocking the core upload → analyze → graph flow.
+- The Kiro spec slug is `project-folder-upload`, but the implemented scope is archive upload (`.zip`/`.tar`/`.tar.gz`), not a browser folder picker.

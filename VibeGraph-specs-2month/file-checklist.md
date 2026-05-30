@@ -101,7 +101,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 ### `src/main/java/com/vibegraph/graph/importer/config/`
 
-- [ ] `ArchiveImportProperties.java` (config Sprint 2 cho `vibegraph.import.archive.max-size`, `workspace-root`, `ignored-paths`; chưa tạo)
+- [x] `ArchiveImportProperties.java` (config Sprint 2 cho `vibegraph.import.archive.max-size`, `workspace-root`, `ignored-paths`; đã tạo trong Task 1)
 
 ### `src/main/java/com/vibegraph/graph/importer/`
 
@@ -188,6 +188,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `graph/controller/ProjectControllerTest.java`, `GraphControllerTest.java`
 - [x] `graph/service/GraphServiceTest.java`
 - [x] `graph/service/impl/ProjectServiceImplTest.java`
+- [x] `graph/importer/config/ArchiveImportPropertiesTest.java`
 
 Đã có nhưng còn `@Disabled` hoặc chưa kiểm chứng end-to-end:
 
