@@ -52,6 +52,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(GithubImportException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGithubImport(GithubImportException ex) {
+        // Domain failure of the import (private/oversize/non-existent repo, bad URL,
+        // timeout) — surface the real reason as a 422 instead of a generic 500.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("GITHUB_IMPORT_ERROR")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(FeatureNotImplementedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNotImplemented(FeatureNotImplementedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code("NOT_IMPLEMENTED")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
         log.error("Unhandled exception", ex);

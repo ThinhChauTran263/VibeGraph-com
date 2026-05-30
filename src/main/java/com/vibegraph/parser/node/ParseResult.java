@@ -17,10 +17,10 @@ public class ParseResult {
     private String fileChecksum;
 
     @Builder.Default
-    private List<Object> nodes = new ArrayList<>();
+    private List<NodeData> nodes = new ArrayList<>();
 
     @Builder.Default
-    private List<Object> edges = new ArrayList<>();
+    private List<EdgeData> edges = new ArrayList<>();
 
     @Builder.Default
     private List<String> warnings = new ArrayList<>();

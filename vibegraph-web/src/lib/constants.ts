@@ -2,32 +2,43 @@
  * VibeGraph constants - colors, sizes, and configuration.
  */
 
-// Node colors by type
-export const NODE_COLORS: Record<string, string> = {
-  Method: '#3B82F6',       // blue
+import type { NodeType, EdgeType } from '@/types/graph'
+
+// Node colors by type - matches NodeType from graph.ts
+export const NODE_COLORS: Record<NodeType, string> = {
+  Project: '#6366F1',      // indigo
+  Package: '#8B5CF6',      // purple
   File: '#EF4444',         // red
-  APIEndpoint: '#10B981',  // bright green
-  Class: '#F59E0B',        // yellow/amber
-  DBModel: '#D97706',      // dark yellow
+  Class: '#F59E0B',        // amber
   Interface: '#22C55E',    // green
-  Constructor: '#06B6D4',  // cyan
-  Enum: '#8B5CF6',         // purple
-  Record: '#F97316',       // orange
+  Enum: '#A855F7',         // violet
+  Method: '#3B82F6',       // blue
+  Field: '#06B6D4',        // cyan
+  Annotation: '#F97316',   // orange
+  Route: '#10B981',        // emerald
+  External: '#94A3B8',     // slate-400 — library/JDK or unresolved stub
 }
 
-// Edge colors by relationship type
-export const EDGE_COLORS: Record<string, string> = {
+// Edge colors by relationship type - matches EdgeType from graph.ts
+export const EDGE_COLORS: Record<EdgeType, string> = {
+  OWNS: '#6366F1',         // indigo
+  CONTAINS: '#8B5CF6',     // purple
   DEFINES: '#22C55E',      // green
-  CALLS: '#EF4444',        // red
-  IMPORTS: '#3B82F6',      // blue
+  HAS_METHOD: '#06B6D4',   // cyan
+  HAS_FIELD: '#0EA5E9',    // sky
+  HAS_INNER: '#A855F7',    // violet
   EXTENDS: '#F97316',      // orange
   IMPLEMENTS: '#EC4899',   // pink
-  HAS_METHOD: '#06B6D4',   // cyan
-  HANDLES_ROUTE: '#059669', // dark green
-  HAS_FIELD: '#6366F1',    // indigo
-  DEPENDS_ON: '#8B5CF6',   // purple
+  OVERRIDES: '#F43F5E',    // rose
+  IMPORTS: '#3B82F6',      // blue
+  TYPE_OF: '#14B8A6',      // teal
+  RETURNS: '#10B981',      // emerald
+  PARAMETER_TYPE: '#84CC16', // lime
+  THROWS: '#EF4444',       // red
+  CALLS: '#DC2626',        // red-600
+  INJECTS: '#0D9488',      // teal-600
+  HANDLES_ROUTE: '#059669', // emerald-600
   ANNOTATED_BY: '#F59E0B', // amber
-  INJECTS: '#14B8A6',      // teal
 }
 
 // Default node sizes

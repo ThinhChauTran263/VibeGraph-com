@@ -49,10 +49,13 @@ public class Neo4jGraphRepository implements GraphRepository {
     public void upsertNodes(String projectId, List<NodeData> nodes) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        // Neo4j cannot parameterize labels, so we group by label and run one
-        // UNWIND batch per label instead of one round-trip per node. Dynamic
-        // properties are bulk-applied with `SET n += item.props`, keeping the
-        // per-key schema validation as the safety boundary.
+        // Identity is {projectId, fullName} — label-agnostic — so upserting a node
+        // ENRICHES any pre-existing `External` stub with the same fullName (created
+        // on demand by upsertEdges for unparsed targets) instead of creating a
+        // duplicate: MERGE without a label, then SET the real label and REMOVE
+        // :External. Neo4j cannot parameterize labels, so we group by label and run
+        // one UNWIND batch per label; the validated label is interpolated into SET n:%s.
+        // Dynamic properties are bulk-applied with `SET n += item.props`.
         Map<String, List<Map<String, Object>>> byLabel = new LinkedHashMap<>();
         for (NodeData node : nodes) {
             String label = GraphSchema.nodeLabel(node.type());
@@ -79,7 +82,9 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byLabel.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (n:%s {projectId: $projectId, fullName: item.fullName}) " +
+                        "MERGE (n {projectId: $projectId, fullName: item.fullName}) " +
+                        "SET n:%s " +
+                        "REMOVE n:External " +
                         "SET n.name = item.name, n.filePath = item.filePath, " +
                         "n.lineNumber = item.lineNumber, n.endLine = item.endLine " +
                         "SET n += item.props",

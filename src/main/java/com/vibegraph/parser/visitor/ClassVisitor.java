@@ -1,52 +1,197 @@
 package com.vibegraph.parser.visitor;
 
+import com.github.javaparser.ast.body.AnnotationDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.node.EdgeData;
+import com.vibegraph.parser.node.NodeData;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
- * Extracts Class, Interface, Enum nodes from AST.
- *
- * TODO:
- * - Visit ClassOrInterfaceDeclaration → create ClassNode/InterfaceNode
- * - Extract: name, fullName, modifiers, isAbstract
- * - Detect inheritance (EXTENDS, IMPLEMENTS edges)
- * - Handle inner classes, anonymous classes
+ * Extracts Class, Interface, Enum, Annotation nodes and inheritance edges from AST.
  */
 public class ClassVisitor extends VoidVisitorAdapter<Object> {
 
-    private final List<ExtractedClassNode> extractedNodes = new ArrayList<>();
+    private final List<NodeData> extractedNodes = new ArrayList<>();
+    private final List<EdgeData> extractedEdges = new ArrayList<>();
 
     @Override
     public void visit(ClassOrInterfaceDeclaration n, Object arg) {
-        // TODO: Extract Class/Interface node and add to extractedNodes
+        NodeData node = toNodeData(n);
+        extractedNodes.add(node);
+        extractInheritanceEdges(n, node.fullName());
         super.visit(n, arg);
     }
 
-    public List<ExtractedClassNode> getExtractedNodes() {
+    @Override
+    public void visit(EnumDeclaration n, Object arg) {
+        extractedNodes.add(toNodeData(n));
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(AnnotationDeclaration n, Object arg) {
+        extractedNodes.add(toNodeData(n));
+        super.visit(n, arg);
+    }
+
+    public List<NodeData> getExtractedNodes() {
         return extractedNodes;
     }
 
-    /**
-     * Stub class for extracted class data. Replace with proper node type when implementing.
-     */
-    public static class ExtractedClassNode {
-        private String name;
-        private String fullName;
-        private String visibility;
-        private String type;
-        private String springLayer;
-        private boolean isAbstract;
-        private boolean isFinal;
+    public List<EdgeData> getExtractedEdges() {
+        return extractedEdges;
+    }
 
-        public String getName() { return name; }
-        public String getFullName() { return fullName; }
-        public String getVisibility() { return visibility; }
-        public String getType() { return type; }
-        public String getSpringLayer() { return springLayer; }
-        public boolean isAbstract() { return isAbstract; }
-        public boolean isFinal() { return isFinal; }
+    private void extractInheritanceEdges(ClassOrInterfaceDeclaration declaration, String sourceFullName) {
+        // EXTENDS edges
+        for (ClassOrInterfaceType extendedType : declaration.getExtendedTypes()) {
+            String targetFullName = resolveTypeName(extendedType, declaration);
+            extractedEdges.add(EdgeData.of("EXTENDS", sourceFullName, targetFullName, Map.of(
+                    "lineNumber", extendedType.getBegin().map(p -> p.line).orElse(0)
+            )));
+        }
+
+        // IMPLEMENTS edges (only for classes)
+        if (!declaration.isInterface()) {
+            for (ClassOrInterfaceType implementedType : declaration.getImplementedTypes()) {
+                String targetFullName = resolveTypeName(implementedType, declaration);
+                extractedEdges.add(EdgeData.of("IMPLEMENTS", sourceFullName, targetFullName, Map.of(
+                        "lineNumber", implementedType.getBegin().map(p -> p.line).orElse(0)
+                )));
+            }
+        }
+
+        // HAS_INNER edges for nested types
+        if (declaration.isNestedType()) {
+            Optional<String> parentFullName = declaration.findAncestor(ClassOrInterfaceDeclaration.class)
+                    .flatMap(ClassOrInterfaceDeclaration::getFullyQualifiedName);
+            if (parentFullName.isPresent()) {
+                extractedEdges.add(EdgeData.of("HAS_INNER", parentFullName.get(), sourceFullName));
+            }
+        }
+    }
+
+    private String resolveTypeName(ClassOrInterfaceType type, ClassOrInterfaceDeclaration context) {
+        // Try to resolve fully qualified name from imports or same package
+        String simpleName = type.getNameAsString();
+
+        // Check if it's already qualified
+        if (simpleName.contains(".")) {
+            return simpleName;
+        }
+
+        // Try to find from imports in the compilation unit
+        return context.findCompilationUnit()
+                .flatMap(cu -> cu.getImports().stream()
+                        .filter(imp -> !imp.isAsterisk())
+                        .filter(imp -> imp.getName().getIdentifier().equals(simpleName))
+                        .findFirst()
+                        .map(imp -> imp.getNameAsString()))
+                .orElseGet(() -> {
+                    // Fallback: use package name + simple name if in same package
+                    return context.findCompilationUnit()
+                            .flatMap(cu -> cu.getPackageDeclaration())
+                            .map(pkg -> pkg.getNameAsString() + "." + simpleName)
+                            .orElse(simpleName);
+                });
+    }
+
+    private NodeData toNodeData(ClassOrInterfaceDeclaration declaration) {
+        String type = declaration.isInterface() ? "Interface" : "Class";
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("visibility", declaration.getAccessSpecifier().asString());
+        properties.put("abstract", declaration.isAbstract());
+        properties.put("final", declaration.isFinal());
+        properties.put("static", declaration.isStatic());
+        properties.put("inner", declaration.isNestedType());
+        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .toList()));
+
+        return NodeData.of(
+                type,
+                declaration.getNameAsString(),
+                declaration.getFullyQualifiedName().orElse(declaration.getNameAsString()),
+                filePath(declaration),
+                declaration.getBegin().map(position -> position.line).orElse(0),
+                declaration.getEnd().map(position -> position.line).orElse(0),
+                properties
+        );
+    }
+
+    private NodeData toNodeData(EnumDeclaration declaration) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("visibility", declaration.getAccessSpecifier().asString());
+        properties.put("static", declaration.isStatic());
+        properties.put("inner", declaration.isNestedType());
+        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .toList()));
+        properties.put("values", declaration.getEntries().stream()
+                .map(entry -> entry.getNameAsString())
+                .toList());
+
+        return NodeData.of(
+                "Enum",
+                declaration.getNameAsString(),
+                declaration.getFullyQualifiedName().orElse(declaration.getNameAsString()),
+                filePath(declaration),
+                declaration.getBegin().map(position -> position.line).orElse(0),
+                declaration.getEnd().map(position -> position.line).orElse(0),
+                properties
+        );
+    }
+
+    private NodeData toNodeData(AnnotationDeclaration declaration) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("visibility", declaration.getAccessSpecifier().asString());
+
+        return NodeData.of(
+                "Annotation",
+                declaration.getNameAsString(),
+                declaration.getFullyQualifiedName().orElse(declaration.getNameAsString()),
+                filePath(declaration),
+                declaration.getBegin().map(position -> position.line).orElse(0),
+                declaration.getEnd().map(position -> position.line).orElse(0),
+                properties
+        );
+    }
+
+    private String filePath(com.github.javaparser.ast.Node node) {
+        return node.findCompilationUnit()
+                .flatMap(compilationUnit -> compilationUnit.getStorage().map(storage -> storage.getPath().toString()))
+                .orElse("");
+    }
+
+    private String springLayer(List<String> annotations) {
+        if (annotations.contains("RestController") || annotations.contains("Controller")) {
+            return "CONTROLLER";
+        }
+        if (annotations.contains("Service")) {
+            return "SERVICE";
+        }
+        if (annotations.contains("Repository")) {
+            return "REPOSITORY";
+        }
+        if (annotations.contains("Configuration")) {
+            return "CONFIG";
+        }
+        if (annotations.contains("Entity") || annotations.contains("Node")
+                || annotations.contains("Document") || annotations.contains("Table")) {
+            return "ENTITY";
+        }
+        if (annotations.contains("Component") || annotations.contains("ControllerAdvice")
+                || annotations.contains("RestControllerAdvice")) {
+            return "COMPONENT";
+        }
+        return "NONE";
     }
 }

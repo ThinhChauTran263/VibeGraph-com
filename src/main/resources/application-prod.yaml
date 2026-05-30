@@ -36,6 +36,9 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  projects:
+    allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
   watcher:
     enabled: false
     debounce-ms: 500

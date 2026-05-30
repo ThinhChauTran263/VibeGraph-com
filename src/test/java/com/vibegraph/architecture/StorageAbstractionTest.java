@@ -1,26 +1,26 @@
 package com.vibegraph.architecture;
 
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 
 /**
  * ArchUnit tests for storage abstraction.
  *
- * Disabled until Sprint 2 refactor: @Node entities and Spring Data Neo4j
- * repositories must be moved into graph/repository/impl/neo4j/ before these
- * rules can pass. Currently 17 classes leak Neo4j imports outside that package.
+ * Enforces that only classes under graph/repository/impl/neo4j/ (and
+ * common/config) depend on Neo4j APIs. The active persistence path is
+ * Neo4jGraphRepository (raw Driver + Cypher); the unused Spring Data Neo4j
+ * scaffolding (@Node entities, BaseNode, *NodeRepository) was removed.
  *
  * See VibeGraph-specs-2month/architecture.md (Storage Abstraction).
  */
 @DisplayName("Storage Abstraction (ArchUnit)")
-@Disabled("Chờ Sprint 2 refactor: di chuyển @Node + Spring Data repos vào impl/neo4j/")
 class StorageAbstractionTest {
 
     private static JavaClasses classes;

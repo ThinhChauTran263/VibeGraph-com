@@ -1,15 +1,18 @@
 package com.vibegraph.parser.visitor;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.NodeData;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for FieldVisitor - extracts Field nodes from AST.
@@ -17,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run: mvn test -Dtest=FieldVisitorTest
  */
 @DisplayName("FieldVisitor")
-@Disabled("Chờ FieldVisitor implement getExtractedFields() và field extraction logic")
 class FieldVisitorTest {
 
     private JavaParser parser;
@@ -35,6 +37,10 @@ class FieldVisitorTest {
         return result.getResult().orElseThrow();
     }
 
+    private Object property(NodeData node, String key) {
+        return node.properties().get(key);
+    }
+
     @Test
     @DisplayName("should extract field with type and visibility")
     void shouldExtractFieldWithTypeAndVisibility() {
@@ -49,17 +55,17 @@ class FieldVisitorTest {
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
-        var fields = visitor.getExtractedFields();
+        List<NodeData> fields = visitor.getExtractedFields();
 
         assertEquals(3, fields.size());
 
-        var nameField = fields.stream().filter(f -> f.getName().equals("name")).findFirst().orElseThrow();
-        assertEquals("String", nameField.getDeclaredType());
-        assertEquals("private", nameField.getVisibility());
+        NodeData nameField = fields.stream().filter(field -> field.name().equals("name")).findFirst().orElseThrow();
+        assertEquals("String", property(nameField, "declaredType"));
+        assertEquals("private", property(nameField, "visibility"));
 
-        var ageField = fields.stream().filter(f -> f.getName().equals("age")).findFirst().orElseThrow();
-        assertEquals("int", ageField.getDeclaredType());
-        assertEquals("protected", ageField.getVisibility());
+        NodeData ageField = fields.stream().filter(field -> field.name().equals("age")).findFirst().orElseThrow();
+        assertEquals("int", property(ageField, "declaredType"));
+        assertEquals("protected", property(ageField, "visibility"));
     }
 
     @Test
@@ -76,19 +82,19 @@ class FieldVisitorTest {
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
-        var fields = visitor.getExtractedFields();
+        List<NodeData> fields = visitor.getExtractedFields();
 
-        var appName = fields.stream().filter(f -> f.getName().equals("APP_NAME")).findFirst().orElseThrow();
-        assertTrue(appName.isStatic());
-        assertTrue(appName.isFinal());
+        NodeData appName = fields.stream().filter(field -> field.name().equals("APP_NAME")).findFirst().orElseThrow();
+        assertTrue((boolean) property(appName, "static"));
+        assertTrue((boolean) property(appName, "final"));
 
-        var counter = fields.stream().filter(f -> f.getName().equals("counter")).findFirst().orElseThrow();
-        assertTrue(counter.isStatic());
-        assertFalse(counter.isFinal());
+        NodeData counter = fields.stream().filter(field -> field.name().equals("counter")).findFirst().orElseThrow();
+        assertTrue((boolean) property(counter, "static"));
+        assertFalse((boolean) property(counter, "final"));
 
-        var logger = fields.stream().filter(f -> f.getName().equals("logger")).findFirst().orElseThrow();
-        assertFalse(logger.isStatic());
-        assertTrue(logger.isFinal());
+        NodeData logger = fields.stream().filter(field -> field.name().equals("logger")).findFirst().orElseThrow();
+        assertFalse((boolean) property(logger, "static"));
+        assertTrue((boolean) property(logger, "final"));
     }
 
     @Test
@@ -108,13 +114,13 @@ class FieldVisitorTest {
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
-        var fields = visitor.getExtractedFields();
+        List<NodeData> fields = visitor.getExtractedFields();
 
-        var repo = fields.stream().filter(f -> f.getName().equals("userRepository")).findFirst().orElseThrow();
-        assertTrue(repo.isInjected());
+        NodeData repo = fields.stream().filter(field -> field.name().equals("userRepository")).findFirst().orElseThrow();
+        assertTrue((boolean) property(repo, "injected"));
 
-        var plain = fields.stream().filter(f -> f.getName().equals("plainField")).findFirst().orElseThrow();
-        assertFalse(plain.isInjected());
+        NodeData plain = fields.stream().filter(field -> field.name().equals("plainField")).findFirst().orElseThrow();
+        assertFalse((boolean) property(plain, "injected"));
     }
 
     @Test
@@ -132,9 +138,9 @@ class FieldVisitorTest {
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
-        var fields = visitor.getExtractedFields();
+        List<NodeData> fields = visitor.getExtractedFields();
 
-        assertTrue(fields.get(0).isInjected());
+        assertTrue((boolean) property(fields.get(0), "injected"));
     }
 
     @Test
@@ -153,12 +159,12 @@ class FieldVisitorTest {
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
-        var fields = visitor.getExtractedFields();
+        List<NodeData> fields = visitor.getExtractedFields();
 
-        var items = fields.stream().filter(f -> f.getName().equals("items")).findFirst().orElseThrow();
-        assertTrue(items.getDeclaredType().contains("List"));
+        NodeData items = fields.stream().filter(field -> field.name().equals("items")).findFirst().orElseThrow();
+        assertTrue(((String) property(items, "declaredType")).contains("List"));
 
-        var props = fields.stream().filter(f -> f.getName().equals("properties")).findFirst().orElseThrow();
-        assertTrue(props.getDeclaredType().contains("Map"));
+        NodeData props = fields.stream().filter(field -> field.name().equals("properties")).findFirst().orElseThrow();
+        assertTrue(((String) property(props, "declaredType")).contains("Map"));
     }
 }

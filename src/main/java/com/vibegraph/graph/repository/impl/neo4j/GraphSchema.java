@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
  * Anything outside the schema is rejected loudly instead of silently producing
  * malformed Cypher or an injection vector.
  *
- * Source of truth mirrors VibeGraph-specs/neo4j-schema.md and the FE EdgeType /
+ * Source of truth mirrors VibeGraph-specs-2month/neo4j-schema.md and the FE EdgeType /
  * NodeType unions in vibegraph-web/src/types/graph.ts.
  */
 public final class GraphSchema {
