@@ -29,7 +29,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/parser/service/`
 
 - [x] `ParserService.java`
-- [x] `impl/ParserServiceImpl.java`
+- [x] `impl/ParserServiceImpl.java` (`parseFile`/`parseProject` đã chạy; `parseFileWithCache` còn deferred Sprint 2 và ném `UnsupportedOperationException`)
 - [s] `SymbolResolverService.java` + [s] `impl/SymbolResolverServiceImpl.java` (interface/impl còn khung TODO; symbol solving thực tế đang nằm trong `ParserServiceImpl` + visitor)
 - [s] `CallGraphBuilderService.java` + [s] `impl/CallGraphBuilderServiceImpl.java` (interface/impl còn khung TODO; CALLS hiện do `MethodVisitor` phát ra cho resolved in-project calls)
 
@@ -48,6 +48,8 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `ParseException.java`
 - [x] `NodeNotFoundException.java`
 - [x] `GithubImportException.java`
+- [x] `FeatureNotImplementedException.java` (map 501 cho các feature/stub chưa mở như GitHub import)
+- [ ] `ArchiveImportException.java` (lỗi upload archive: unsupported type, oversize, unsafe entry, no Java files; chưa tạo)
 
 ### `src/main/java/com/vibegraph/common/dto/`
 
@@ -64,7 +66,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/graph/repository/`
 
 - [x] `GraphRepository.java` (interface)
-- [x] `impl/neo4j/Neo4jGraphRepository.java` (raw Driver + Cypher, impl duy nhất)
+- [x] `impl/neo4j/Neo4jGraphRepository.java` (raw Driver + Cypher, impl duy nhất; `upsertProject`/`upsertNodes`/`upsertEdges`/`deleteFile`/`getFullGraph`/`searchNodes` đã có, `getNeighborhood`/`getImpact` còn Sprint 2 và ném `UnsupportedOperationException`)
 - [x] `impl/neo4j/GraphSchema.java` (mapping label/edge-type + validate property)
 
 > **Đã gỡ trong đợt refactor sang raw Driver:** `NodeRepository.java`,
@@ -84,7 +86,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 - [x] `ProjectController.java`
 - [x] `GraphController.java`
-- [x] `ImportController.java`
+- [~] `ImportController.java` (`import-github` route đã có; `POST /api/projects/import-archive` cho flow chính archive upload chưa có)
 - [s] `ImpactController.java` (chỉ khung `@RestController`, chưa có endpoint — `// TODO`)
 
 ### `src/main/java/com/vibegraph/graph/service/`
@@ -92,9 +94,21 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `ProjectService.java` + [x] `impl/ProjectServiceImpl.java`
 - [x] `AnalyzeService.java` + [x] `impl/AnalyzeServiceImpl.java`
 - [x] `GraphService.java` + [x] `impl/GraphServiceImpl.java` (`GraphServiceTest` đã bật và pass cho `getFullGraph`/`searchNodes`)
+- [ ] `ArchiveImportService.java` + [ ] `impl/ArchiveImportServiceImpl.java` (flow chính Sprint 2 — nhận upload ZIP/TAR/TAR.GZ, validate size/path-traversal/symlink, parse `.java` theo relative path; chưa tạo)
 - [s] `ImpactService.java` + [s] `impl/ImpactServiceImpl.java` (interface chưa có method; impl `// TODO: Implement`; `ImpactServiceTest` còn `@Disabled`)
 - [x] `TarballImportService.java` (service contract có `importFromGithub`)
 - [s] `impl/TarballImportServiceImpl.java` (ném "not implemented yet"; `TarballImportServiceTest` còn `@Disabled`)
+
+### `src/main/java/com/vibegraph/graph/importer/config/`
+
+- [ ] `ArchiveImportProperties.java` (config Sprint 2 cho `vibegraph.import.archive.max-size`, `workspace-root`, `ignored-paths`; chưa tạo)
+
+### `src/main/java/com/vibegraph/graph/importer/`
+
+- [ ] `ArchiveType.java` (ZIP/TAR/TAR_GZ enum hoặc value object; chưa tạo)
+- [ ] `ArchiveTypeDetector.java` (detect allow-list `.zip`, `.tar`, `.tar.gz`; chưa tạo)
+- [ ] `ArchiveExtractor.java` (extract safe `.java` entries, chống path traversal/absolute path/symlink/archive bomb; chưa tạo)
+- [ ] `ArchiveExtractionResult.java` (sourceRoot, javaFilesExtracted, bytesWritten, warnings; chưa tạo)
 
 ### `src/main/java/com/vibegraph/graph/websocket/`
 
@@ -107,6 +121,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `request/AnalyzeRequest.java`
 - [x] `request/GithubImportRequest.java`
 - [x] `request/GraphFilterRequest.java`
+- [optional] `request/ArchiveImportRequest.java` (không bắt buộc cho MVP nếu controller nhận multipart trực tiếp bằng `@RequestParam`/`@RequestPart`; chỉ tạo nếu cần gom validation riêng)
 - [x] `response/GraphDataResponse.java`
 - [x] `response/NodeDto.java`
 - [x] `response/EdgeDto.java`
@@ -178,6 +193,9 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 - [~] `graph/service/ImpactServiceTest.java`
 - [~] `graph/service/TarballImportServiceTest.java`
+- [ ] `graph/service/ArchiveImportServiceTest.java` (flow chính — chưa tạo; cần test happy-path + path-traversal/symlink/oversize rejection)
+- [ ] `graph/importer/ArchiveExtractorTest.java` (ZIP/TAR/TAR.GZ safe extraction + unsafe entry rejection; chưa tạo)
+- [ ] `graph/controller/ImportControllerArchiveTest.java` hoặc mở rộng `ImportControllerTest.java` (multipart `import-archive`; chưa tạo)
 - [~] `graph/controller/ImportControllerTest.java`
 - [~] `diagram/service/DiagramServiceTest.java`
 - [~] `mcp/tool/McpToolsTest.java`
@@ -216,11 +234,12 @@ Test fixture:
 - [s] `components/diagram/UseCaseDiagram.vue` (khung đã có; Mermaid render còn `// TODO`)
 - [s] `components/diagram/ClassDiagram.vue` (khung đã có; Mermaid render + package filter còn `// TODO`)
 - [defer] `components/diagram/SequenceDiagram.vue` (file khung có sẵn, nhưng sequence diagram nằm ngoài MVP 2 tháng)
+- [ ] `components/import/ArchiveImportForm.vue` (flow chính — chọn file `.zip`/`.tar`/`.tar.gz`, bấm Add, hiển thị progress)
 - [ ] `components/import/GithubImportForm.vue`
 - [x] `components/ui/Button.vue`
 - [x] `components/ui/Input.vue`
 - [s] `components/ui/Tabs.vue` (khung đã có; tab triggers/content slot còn `// TODO`)
-- [x] `components/ui/Spinner.vue`
+- [x] `components/ui/Spinner.vue` (CSS spinner đã hoạt động; TODO SVG animation không chặn MVP)
 
 ### Composables, Stores, Types
 
@@ -229,6 +248,7 @@ Test fixture:
 - [x] `composables/useGraphData.ts`
 - [s] `composables/useDiagrams.ts` (Mermaid rendering còn `// TODO`)
 - [s] `composables/useFilters.ts` (filter state management còn `// TODO`)
+- [ ] `composables/useArchiveImport.ts` (flow chính — gọi `POST /api/projects/import-archive` multipart, theo dõi progress)
 - [ ] `composables/useGithubImport.ts`
 - [x] `lib/constants.ts`
 - [x] `lib/api.ts`
@@ -244,6 +264,7 @@ Test fixture:
 
 ## DevOps - Gốc repo
 
+- [x] `pom.xml` có dependency `commons-compress` (đã có; dùng cho TAR/TAR.GZ và có thể dùng chung với GitHub tarball import)
 - [x] `docker-compose.yml` cho dev cục bộ
 - [x] `Dockerfile` cho module backend gốc
 - [x] `vibegraph-web/Dockerfile`
@@ -275,15 +296,18 @@ Lát cắt dọc Sprint 1 đã hiện thực và xanh. Bề mặt Sprint 2-3 cho
 watcher/realtime và nhiều panel frontend hiện mới ở mức scaffold/stub** (xem các dòng
 `[s]` ở trên) — nên phần việc còn lại gồm cả hiện thực, không chỉ kiểm chứng:
 
-1. Hiện thực các stub `[s]`: endpoint cho `DiagramController`/`ImpactController`, các
+1. Hiện thực flow chính mới `POST /api/projects/import-archive`: backend nhận ZIP/TAR/TAR.GZ,
+   validate size/path/symlink, parse `.java` theo relative path, lưu Neo4j, và frontend `Add Project`
+   upload archive thay vì bắt user nhập local path.
+2. Hiện thực các stub `[s]`: endpoint cho `DiagramController`/`ImpactController`, các
    `*DiagramServiceImpl` + `MermaidGeneratorServiceImpl`, 4 MCP `@Tool` +
    `McpToolServiceImpl`/`ArchitectureAnalyzerImpl`, và `getNeighborhood`/`getImpact`
    trong `Neo4jGraphRepository`.
-2. Bật lại các test backend đang `@Disabled` (impact, tarball import, import controller,
+3. Bật lại các test backend đang `@Disabled` (impact, tarball/archive import, import controller,
    diagram, mcp, watcher, app context) và làm cho chúng xanh — biến `[~]` thành `[x]`.
-3. Dựng các frontend scaffold `[s]`: layout shell, filter/explorer/detail panels,
+4. Dựng các frontend scaffold `[s]`: layout shell, filter/explorer/detail panels,
    graph controls/search, WebSocket composable, filter/focus logic, và diagram UI.
-4. Dựng UI import GitHub: `composables/useGithubImport.ts` và
+5. Dựng UI import GitHub: `composables/useGithubImport.ts` và
    `components/import/GithubImportForm.vue` (đường import phía backend đã có sẵn).
-5. Thêm `.github/workflows/ci.yml` và các trang `docs/` setup + tích hợp MCP.
-6. Gỡ scaffolding còn sót (`stores/counter.ts`).
+6. Thêm `.github/workflows/ci.yml` và các trang `docs/` setup + tích hợp MCP.
+7. Gỡ scaffolding còn sót (`stores/counter.ts`).

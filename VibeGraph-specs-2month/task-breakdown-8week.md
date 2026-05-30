@@ -7,13 +7,13 @@ Kế hoạch này được sắp xếp theo thứ tự phụ thuộc, không ph�
 | Sprint | Tuần | Mục tiêu |
 |---|---|---|
 | 1 | 1-2 | Lát cắt dọc cục bộ: parse folder -> Neo4j -> REST -> đồ thị Sigma |
-| 2 | 3-4 | Realtime, import GitHub, và diagram |
+| 2 | 3-4 | Realtime, upload ZIP/TAR làm flow chính, import GitHub phụ, và diagram |
 | 3 | 5-6 | MCP, độ bền vững, hiệu năng, hoàn thiện UI |
 | 4 | 7-8 | Triển khai, tài liệu, sửa lỗi, hoàn thiện demo |
 
 ## Sprint 1 - Lát cắt dọc nền tảng
 
-Cột mốc: người dùng có thể đăng ký một project Java cục bộ, phân tích nó, gọi `GET /api/projects/{id}/graph`, và thấy một đồ thị trên trình duyệt.
+Cột mốc lịch sử của Sprint 1: dev có thể đăng ký một project Java cục bộ bằng local path, phân tích nó, gọi `GET /api/projects/{id}/graph`, và thấy một đồ thị trên trình duyệt. Từ quyết định product 2026-05-31, local path không còn là UX chính; Sprint 2 chuyển sang upload ZIP/TAR archive.
 
 ### Phase 1: Hợp đồng parser và các visitor
 
@@ -106,16 +106,17 @@ Một số task vốn được lên kế hoạch cho Sprint 2 đã được hoà
 
 ## Sprint 2 - Tính năng cốt lõi
 
-Cột mốc: người dùng có thể import một repo GitHub công khai, xem tiến độ qua WebSocket, và xem các diagram Use Case/Class.
+Cột mốc: người dùng có thể upload file ZIP/TAR của một project Java, xem tiến độ qua WebSocket, thấy graph sau khi parse xong, sau đó tiếp tục với import GitHub công khai và các diagram Use Case/Class.
 
 | # | Task | Tiêu chí chấp nhận |
 |---|---|---|
 | 2.1 | Cấu hình STOMP endpoint `/ws/graph-updates` | Frontend có thể kết nối và subscribe các topic của project |
 | 2.2 | Hiện thực các method broadcast cập nhật đồ thị | Các topic cập nhật toàn phần và tăng dần publish payload có kiểu |
 | 2.3 | Hiện thực pipeline tăng dần cho file watcher | CREATE/MODIFY/DELETE re-parse một file và cập nhật đồ thị < 3s |
-| 2.4 | Hiện thực pre-flight cho import GitHub | Dùng `GET /repos/{owner}/{repo}`, từ chối repo private/quá lớn |
-| 2.5 | Hiện thực parse stream tarball | Parse các file `.java` từ tar stream mà không ghi mã nguồn xuống đĩa |
-| 2.6 | Hiện thực `POST /api/projects/import-github` end-to-end | Trả về response project được chấp nhận và gửi cập nhật tiến độ |
+| 2.4 | Hiện thực `POST /api/projects/import-archive` | Nhận multipart `name` + `.zip`/`.tar`/`.tar.gz`, giới hạn size, chống path traversal, parse `.java` theo relative path |
+| 2.5 | Hiện thực UI Add Project bằng upload ZIP/TAR | User chọn archive từ file explorer, bấm Add, thấy progress, không phải nhập local path |
+| 2.6 | Hiện thực pre-flight + parse stream cho import GitHub | Dùng `GET /repos/{owner}/{repo}`, từ chối repo private/quá lớn, parse tarball GitHub như cùng pipeline archive |
+| 2.6a | Hiện thực `POST /api/projects/import-github` end-to-end | Trả về response project được chấp nhận và gửi cập nhật tiến độ |
 | 2.7 | Hiện thực endpoint lân cận đồ thị | `GET /graph/neighbors/{nodeId}?hops=N` hoạt động với giới hạn |
 | 2.8 | Hiện thực service/API/frontend cho diagram Use Case | Mermaid hợp lệ render trong UI |
 | 2.9 | Hiện thực service/API/frontend cho diagram Class | Bộ lọc package hoạt động |
@@ -182,8 +183,9 @@ Tính đến audit repo ngày 2026-05-30, Sprint 1 vertical slice đã chạy: �
 
 1. Chặn rủi ro public demo: auth/rate-limit, SSRF/path validation, actuator exposure, CORS production.
 2. Hoàn tất realtime nền tảng: `AsyncConfig` executor, analyze async, `GraphUpdateController`, `WebSocketEventListener`, frontend `useWebSocket`.
-3. Làm import GitHub end-to-end: pre-flight GitHub API, tarball stream, parse từ stream hoặc bổ sung `ParserService.parseString`, progress WS, UI import.
-4. Hoàn tất watcher/incremental update: Java WatchService, debounce, `deleteFile`/upsert theo file, patch graph frontend.
-5. Hoàn tất graph API mở rộng: neighbors/impact route + repository implementations, pagination/limit cho `getFullGraph`.
-6. Làm diagram Use Case/Class end-to-end và dựng các panel frontend scaffold thành logic thật.
-7. Trả nợ parser/schema: `Package`/`File` nodes, `OWNS`/`CONTAINS`/`DEFINES`, `ANNOTATED_BY`, call unresolved/stub/confidence logging, single source cho type/signature/layer.
+3. Làm upload ZIP/TAR project end-to-end: frontend Add Project, backend `import-archive`, archive safety checks, parse từ stream/temp workspace, progress WS, auto-open graph.
+4. Dùng lại pipeline archive cho GitHub import: pre-flight GitHub API, tarball stream, parse từ stream hoặc bổ sung `ParserService.parseString`, progress WS, UI import.
+5. Hoàn tất watcher/incremental update: Java WatchService, debounce, `deleteFile`/upsert theo file, patch graph frontend.
+6. Hoàn tất graph API mở rộng: neighbors/impact route + repository implementations, pagination/limit cho `getFullGraph`.
+7. Làm diagram Use Case/Class end-to-end và dựng các panel frontend scaffold thành logic thật.
+8. Trả nợ parser/schema: `Package`/`File` nodes, `OWNS`/`CONTAINS`/`DEFINES`, `ANNOTATED_BY`, call unresolved/stub/confidence logging, single source cho type/signature/layer.

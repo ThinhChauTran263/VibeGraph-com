@@ -1065,7 +1065,7 @@ footer {
           </div>
           <div class="terminal-body">
             <span class="terminal-line"><span class="terminal-prompt">$</span> <span class="terminal-cmd">vibegraph import https://github.com/spring/petclinic</span></span>
-            <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Cloning shallow (depth=1)...</span></span>
+            <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Streaming tarball (no clone, no disk)...</span></span>
             <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Parsing 312 .java files...</span></span>
             <span class="terminal-line"><span class="terminal-info">→</span> <span class="terminal-out">Resolving symbols + call graph...</span></span>
             <span class="terminal-line"><span class="terminal-ok">✓</span> <span class="terminal-out">Detected: Spring Boot 4.0.6 · Layered architecture</span></span>
@@ -1276,11 +1276,18 @@ footer {
         <p>Spring AI MCP Boot Starter. 4 tools: architecture, class context, layer pattern, impact. Streamable HTTP.</p>
       </div>
       <div class="feature-card fade-in">
+        <div class="feature-icon blue">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <h3>Upload Project</h3>
+        <p>Chọn file <span class="mono">.zip</span>/<span class="mono">.tar</span>/<span class="mono">.tar.gz</span> từ máy &rarr; backend đọc archive &rarr; analyze &rarr; mở graph. Flow chính thay cho nhập local path.</p>
+      </div>
+      <div class="feature-card fade-in">
         <div class="feature-icon green">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
         </div>
         <h3>GitHub Import</h3>
-        <p>Paste URL public repo &rarr; backend clone shallow &rarr; analyze &rarr; trả về projectId. Auto cleanup sau 24h.</p>
+        <p>Paste URL public repo &rarr; backend stream tarball (không clone, không ghi disk) &rarr; parse in-memory &rarr; trả về projectId.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon blue">
@@ -1614,9 +1621,9 @@ footer {
                   </div>
                   <ul class="dev-tasks">
                     <li>WebSocket STOMP config + endpoint <span class="mono">/ws/graph-updates</span></li>
-                    <li><span class="mono">GithubImportService</span>: JGit shallow clone vào temp dir</li>
-                    <li>POST <span class="mono">/api/projects/import-github</span> + timeout 60s + size guard 100MB</li>
-                    <li>Scheduled cleanup job: xóa temp folder sau 24h</li>
+                    <li><span class="mono">ArchiveImportService</span>: nhận ZIP/TAR upload, validate size/path traversal, parse <span class="mono">.java</span></li>
+                    <li>POST <span class="mono">/api/projects/import-archive</span> (flow chính) + POST <span class="mono">/api/projects/import-github</span></li>
+                    <li>GitHub: stream tarball (không clone, không ghi disk), parse in-memory + size guard 100MB</li>
                   </ul>
                 </div>
 
@@ -1666,7 +1673,7 @@ footer {
                 </div>
                 <div>
                   <div class="week-deliverable-label">Deliverable cuối tuần 3</div>
-                  <div class="week-deliverable-text">Spring annotations detect đúng &middot; Click node trên graph &rarr; Focus Mode mượt &middot; GitHub URL clone về local &middot; WebSocket kết nối ổn định.</div>
+                  <div class="week-deliverable-text">Spring annotations detect đúng &middot; Click node trên graph &rarr; Focus Mode mượt &middot; Upload ZIP/TAR &rarr; graph &middot; GitHub URL stream tarball &middot; WebSocket kết nối ổn định.</div>
                 </div>
               </div>
             </div>
@@ -1696,7 +1703,7 @@ footer {
             <div class="week-content">
               <div class="week-goal">
                 <span class="week-goal-label">🎯 Mục tiêu tuần</span>
-                User paste GitHub URL Pet Clinic &rarr; thấy graph + 2 UML diagrams sau 30s. Save bất kỳ file <span class="mono">.java</span> &rarr; graph + diagrams cập nhật &lt; 3s không reload.
+                User upload ZIP/TAR project (hoặc paste GitHub URL Pet Clinic) &rarr; thấy graph + 2 UML diagrams sau 30s. Save bất kỳ file <span class="mono">.java</span> &rarr; graph + diagrams cập nhật &lt; 3s không reload.
               </div>
 
               <div class="dev-grid">
@@ -1772,7 +1779,7 @@ footer {
                 </div>
                 <div>
                   <div class="week-deliverable-label">🚀 Milestone Sprint 2</div>
-                  <div class="week-deliverable-text">Paste GitHub URL Pet Clinic &rarr; sau 30s thấy graph + Use Case + Class Diagram &middot; Save file &rarr; cả 3 cập nhật &lt; 3s &middot; Routes mapping đúng (mỗi @GetMapping = 1 endpoint node) &middot; <span class="mono" style="color:var(--cyan)">staging.vibegraph.com</span> sẵn sàng cho beta.</div>
+                  <div class="week-deliverable-text">Upload ZIP/TAR (hoặc paste GitHub URL Pet Clinic) &rarr; sau 30s thấy graph + Use Case + Class Diagram &middot; Save file &rarr; cả 3 cập nhật &lt; 3s &middot; Routes mapping đúng (mỗi @GetMapping = 1 endpoint node) &middot; <span class="mono" style="color:var(--cyan)">staging.vibegraph.com</span> sẵn sàng cho beta.</div>
                 </div>
               </div>
             </div>

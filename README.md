@@ -11,9 +11,10 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 - Parse Java source code with JavaParser → `NodeData` / `EdgeData`
 - Build knowledge graph in Neo4j via `GraphRepository` (raw Neo4j Java Driver)
 - Force-directed graph visualization (Sigma.js) with filtering + focus mode
-- REST API: register project, run analysis, fetch full graph
+- REST API: register project (local path), run analysis, fetch full graph
 
 **Đang phát triển (Sprint 2–3):**
+- Project archive upload (`.zip`/`.tar`/`.tar.gz`) — flow chính mới thay cho việc nhập local path thủ công (`POST /api/projects/import-archive`)
 - GitHub public-repo import (tarball stream — backend path in place, UI pending)
 - Realtime incremental updates via server-side File Watcher + WebSocket/STOMP
 - UML diagrams: Use Case & Class (Mermaid)
