@@ -1,16 +1,20 @@
 package com.vibegraph.parser.visitor;
 
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.NodeData;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParseResult;
-import com.github.javaparser.ast.CompilationUnit;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for MethodVisitor - extracts Method nodes from AST.
@@ -18,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run: mvn test -Dtest=MethodVisitorTest
  */
 @DisplayName("MethodVisitor")
-@Disabled("Chờ MethodVisitor implement getExtractedMethods() và method extraction logic")
 class MethodVisitorTest {
 
     private JavaParser parser;
@@ -34,6 +37,10 @@ class MethodVisitorTest {
         ParseResult<CompilationUnit> result = parser.parse(code);
         assertTrue(result.isSuccessful());
         return result.getResult().orElseThrow();
+    }
+
+    private Object property(NodeData node, String key) {
+        return node.properties().get(key);
     }
 
     @Nested
@@ -54,14 +61,15 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
             assertFalse(methods.isEmpty());
-            var method = methods.get(0);
-            assertEquals("findByName", method.getName());
-            assertEquals("String", method.getReturnType());
-            assertEquals(2, method.getParameters().size());
-            assertEquals("public", method.getVisibility());
+            NodeData method = methods.get(0);
+            assertEquals("Method", method.type());
+            assertEquals("findByName", method.name());
+            assertEquals("String", property(method, "returnType"));
+            assertEquals(2, ((List<?>) property(method, "paramTypes")).size());
+            assertEquals("public", property(method, "visibility"));
         }
 
         @Test
@@ -76,9 +84,9 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertEquals("void", methods.get(0).getReturnType());
+            assertEquals("void", property(methods.get(0), "returnType"));
         }
 
         @Test
@@ -93,9 +101,9 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertTrue(methods.get(0).isStatic());
+            assertTrue((boolean) property(methods.get(0), "static"));
         }
 
         @Test
@@ -110,9 +118,9 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertTrue(methods.get(0).isAbstract());
+            assertTrue((boolean) property(methods.get(0), "abstract"));
         }
 
         @Test
@@ -127,9 +135,9 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            var throwsTypes = methods.get(0).getThrowsTypes();
+            List<?> throwsTypes = (List<?>) property(methods.get(0), "throwsTypes");
             assertEquals(2, throwsTypes.size());
             assertTrue(throwsTypes.contains("IOException"));
             assertTrue(throwsTypes.contains("ParseException"));
@@ -156,11 +164,11 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            var method = methods.get(0);
-            assertEquals("GET", method.getHttpMethod());
-            assertEquals("/users/{id}", method.getRoutePath());
+            NodeData method = methods.get(0);
+            assertEquals("GET", property(method, "httpMethod"));
+            assertEquals("/users/{id}", property(method, "routePath"));
         }
 
         @Test
@@ -179,10 +187,10 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertEquals("POST", methods.get(0).getHttpMethod());
-            assertEquals("/users", methods.get(0).getRoutePath());
+            assertEquals("POST", property(methods.get(0), "httpMethod"));
+            assertEquals("/users", property(methods.get(0), "routePath"));
         }
 
         @Test
@@ -202,10 +210,11 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
             assertFalse(methods.isEmpty());
-            assertNotNull(methods.get(0).getRoutePath());
+            assertEquals("GET", property(methods.get(0), "httpMethod"));
+            assertEquals("/api/health", property(methods.get(0), "routePath"));
         }
 
         @Test
@@ -220,10 +229,10 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertNull(methods.get(0).getHttpMethod());
-            assertNull(methods.get(0).getRoutePath());
+            assertNull(property(methods.get(0), "httpMethod"));
+            assertNull(property(methods.get(0), "routePath"));
         }
     }
 
@@ -247,9 +256,9 @@ class MethodVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var methods = visitor.getExtractedMethods();
+            List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertTrue(methods.stream().anyMatch(m -> m.getName().equals("<init>") || m.getName().equals("Service")));
+            assertTrue(methods.stream().anyMatch(method -> method.name().equals("<init>")));
         }
     }
 }

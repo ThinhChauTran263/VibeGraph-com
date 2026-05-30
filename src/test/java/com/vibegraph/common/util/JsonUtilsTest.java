@@ -1,6 +1,5 @@
 package com.vibegraph.common.util;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run: mvn test -Dtest=JsonUtilsTest
  */
 @DisplayName("JsonUtils")
-@Disabled("Chờ JsonUtils implement toJson()/fromJson() (Jackson ObjectMapper)")
 class JsonUtilsTest {
 
     record SampleDto(String name, int age, List<String> tags) {}

@@ -469,7 +469,7 @@ sudo systemctl start vibegraph
 ### Backend connection refused tới Neo4j
 **Triệu chứng:** Spring Boot log `Connection refused: bolt://neo4j:7687`.
 **Nguyên nhân:** Neo4j chưa healthy nhưng backend start lên.
-**Giải quyết:** đảm bảo `depends_on: neo4j: condition: service_healthy` (đã có); add Spring retry với exponential backoff (`common/Neo4jConfig`).
+**Giải quyết:** đảm bảo `depends_on: neo4j: condition: service_healthy` (đã có); add Spring retry với exponential backoff (`common/config/Neo4jMigrationRunner`).
 
 ### Frontend không gọi được API
 **Triệu chứng:** browser DevTools báo CORS hoặc 404.

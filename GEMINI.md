@@ -18,14 +18,14 @@
 ### Context Loading
 When Gemini CLI starts, prioritize loading:
 1. `RULES.md` — Full project rules (single source of truth)
-2. `VibeGraph-specs/` — Architecture & feature specs
+2. `VibeGraph-specs-2month/` — Architecture & feature specs
 3. `pom.xml` + `vibegraph-web/package.json` — Tech stack
 
 ### MCP Tools Available
 - **GitNexus MCP** at `http://localhost:8080/mcp` — code intelligence (impact, query, context, rename, detect_changes)
 
 ### Workflow
-1. **Understand** → `gitnexus_query` or read `VibeGraph-specs/`
+1. **Understand** → `gitnexus_query` or read `VibeGraph-specs-2month/`
 2. **Plan** → write 1-page spec for non-trivial features
 3. **Execute** → free-flow within planned scope
 4. **Commit** → run mandatory checklist (RULES.md Section 2 Phase 4)

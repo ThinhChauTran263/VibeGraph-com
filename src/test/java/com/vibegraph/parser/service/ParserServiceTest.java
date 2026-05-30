@@ -1,20 +1,22 @@
 package com.vibegraph.parser.service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
-import static org.assertj.core.api.Assertions.*;
+import com.vibegraph.parser.node.ParseResult;
+import com.vibegraph.parser.service.impl.ParserServiceImpl;
 
 /**
- * Tests for ParserService - main parsing orchestrator.
+ * Tests for ParserService — main parsing orchestrator.
  *
  * Run: mvn test -Dtest=ParserServiceTest
  */
@@ -28,8 +30,7 @@ class ParserServiceTest {
 
     @BeforeEach
     void setUp() {
-        // TODO: Initialize with real implementation or mock
-        // parserService = new ParserServiceImpl(...);
+        parserService = new ParserServiceImpl();
     }
 
     @Nested
@@ -37,10 +38,8 @@ class ParserServiceTest {
     class ParseFile {
 
         @Test
-        @Disabled("Chờ ParserServiceImpl implement")
-        @DisplayName("should parse single Java file and extract nodes")
+        @DisplayName("should parse single Java file and extract class + method nodes")
         void shouldParseSingleFile() throws IOException {
-            // Arrange
             Path javaFile = tempDir.resolve("UserService.java");
             Files.writeString(javaFile, """
                 package com.example;
@@ -61,22 +60,50 @@ class ParserServiceTest {
                 }
                 """);
 
-            // Act
-            // var result = parserService.parseFile(javaFile);
+            ParseResult result = parserService.parseFile(javaFile);
 
-            // Assert
-            // assertNotNull(result);
-            // assertTrue(result.getNodes().size() > 0);
-            // assertTrue(result.getNodes().stream().anyMatch(n -> n.getName().equals("UserService")));
-            // assertTrue(result.getNodes().stream().anyMatch(n -> n.getName().equals("findById")));
-
+            assertThat(result).isNotNull();
+            assertThat(result.getNodes()).isNotEmpty();
+            assertThat(result.getNodes()).anyMatch(n -> n.name().equals("UserService"));
+            assertThat(result.getNodes()).anyMatch(n -> n.name().equals("findById"));
         }
 
         @Test
-        @Disabled("Chờ ParserServiceImpl implement")
+        @DisplayName("controller file should yield a Route node inside the ParseResult")
+        void shouldAggregateRouteNode() throws IOException {
+            Path javaFile = tempDir.resolve("UserController.java");
+            Files.writeString(javaFile, """
+                package com.example;
+
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                @RequestMapping("/api/users")
+                public class UserController {
+                    @GetMapping("/{id}")
+                    public String findById(Long id) { return null; }
+                }
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            // Regression guard for the dropped-route bug: the Route node must be
+            // present in the aggregated nodes, not only referenced by an edge.
+            assertThat(result.getNodes())
+                    .as("Route node must be aggregated into ParseResult")
+                    .anyMatch(n -> n.type().equals("Route") && n.fullName().equals("GET /api/users/{id}"));
+
+            assertThat(result.getEdges())
+                    .as("HANDLES_ROUTE edge must target the aggregated Route node")
+                    .anyMatch(e -> e.type().equals("HANDLES_ROUTE")
+                            && e.targetFullName().equals("GET /api/users/{id}"));
+        }
+
+        @Test
         @DisplayName("should handle parse errors gracefully")
         void shouldHandleParseErrorsGracefully() throws IOException {
-            // Arrange
             Path invalidFile = tempDir.resolve("Invalid.java");
             Files.writeString(invalidFile, """
                 package com.example;
@@ -84,11 +111,22 @@ class ParserServiceTest {
                     // Missing closing brace - syntax error
                 """);
 
-            // Act & Assert
-            // Should not throw, should return result with warnings
-            // var result = parserService.parseFile(invalidFile);
-            // assertThat(result).isNotNull();
-            // assertThat(result.getWarnings()).isNotEmpty();
+            ParseResult result = parserService.parseFile(invalidFile);
+
+            assertThat(result).isNotNull();
+            assertThat(result.getWarnings()).isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("non-.java file should return a warning and no nodes")
+        void shouldRejectNonJavaFile() throws IOException {
+            Path txtFile = tempDir.resolve("notes.txt");
+            Files.writeString(txtFile, "not java");
+
+            ParseResult result = parserService.parseFile(txtFile);
+
+            assertThat(result.getNodes()).isEmpty();
+            assertThat(result.getWarnings()).isNotEmpty();
         }
     }
 
@@ -97,10 +135,8 @@ class ParserServiceTest {
     class ParseProject {
 
         @Test
-        @Disabled("Chờ ParserServiceImpl implement")
         @DisplayName("should parse all Java files in project directory")
         void shouldParseAllJavaFiles() throws IOException {
-            // Arrange
             Path srcDir = tempDir.resolve("src/main/java/com/example");
             Files.createDirectories(srcDir);
 
@@ -126,21 +162,18 @@ class ParserServiceTest {
                 }
                 """);
 
-            // Act
-            // var result = parserService.parseProject(tempDir);
+            List<ParseResult> results = parserService.parseProject(tempDir);
 
-            // Assert
-            // assertEquals(3, result.getFileCount());
-            // assertTrue(result.getNodes().stream().anyMatch(n -> n.getName().equals("User")));
-            // assertTrue(result.getNodes().stream().anyMatch(n -> n.getName().equals("UserService")));
-            // assertTrue(result.getNodes().stream().anyMatch(n -> n.getName().equals("UserController")));
+            assertThat(results).hasSize(3);
+            assertThat(results).flatExtracting(ParseResult::getNodes)
+                    .anyMatch(n -> n.name().equals("User"))
+                    .anyMatch(n -> n.name().equals("UserService"))
+                    .anyMatch(n -> n.name().equals("UserController"));
         }
 
         @Test
-        @Disabled("Chờ ParserServiceImpl implement")
-        @DisplayName("should skip ignored directories")
+        @DisplayName("should skip ignored directories (target/)")
         void shouldSkipIgnoredDirectories() throws IOException {
-            // Arrange
             Path srcDir = tempDir.resolve("src/main/java");
             Path targetDir = tempDir.resolve("target/classes");
             Files.createDirectories(srcDir);
@@ -149,51 +182,43 @@ class ParserServiceTest {
             Files.writeString(srcDir.resolve("App.java"), "public class App {}");
             Files.writeString(targetDir.resolve("App.java"), "// compiled");
 
-            // Act
-            // var result = parserService.parseProject(tempDir);
+            List<ParseResult> results = parserService.parseProject(tempDir);
 
-            // Assert
-            // assertEquals(1, result.getFileCount());
+            assertThat(results).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("parseProject on the sample-project fixture yields non-empty nodes and edges")
+        void shouldParseSampleProjectFixture() {
+            Path sampleProject = Path.of("src/test/resources/sample-project");
+            assertThat(Files.isDirectory(sampleProject))
+                    .as("sample-project fixture must exist at " + sampleProject.toAbsolutePath())
+                    .isTrue();
+
+            List<ParseResult> results = parserService.parseProject(sampleProject);
+
+            assertThat(results).as("fixture .java files").isNotEmpty();
+            assertThat(results).flatExtracting(ParseResult::getNodes)
+                    .as("nodes must not be empty").isNotEmpty()
+                    .anyMatch(n -> n.name().equals("SampleUserService"));
+            assertThat(results).flatExtracting(ParseResult::getEdges)
+                    .as("edges must not be empty").isNotEmpty();
         }
     }
 
     @Nested
-    @DisplayName("parseIncremental")
+    @DisplayName("parseFileWithCache")
     class ParseIncremental {
 
         @Test
-        @Disabled("Chờ ParserServiceImpl implement")
-        @DisplayName("should skip file if checksum unchanged")
-        void shouldSkipUnchangedFile() throws IOException {
-            // Arrange
+        @DisplayName("should throw UnsupportedOperationException — deferred to Sprint 2")
+        void incrementalDeferred() throws IOException {
             Path javaFile = tempDir.resolve("Service.java");
             Files.writeString(javaFile, "public class Service {}");
 
-            // First parse
-            // var result1 = parserService.parseFile(javaFile);
-            // String checksum = result1.getChecksum();
-
-            // Second parse with same checksum
-            // var result2 = parserService.parseIncremental(javaFile, checksum);
-
-            // Assert
-            // assertTrue(result2.isSkipped());
-        }
-
-        @Test
-        @Disabled("Chờ ParserServiceImpl implement")
-        @DisplayName("should re-parse if checksum changed")
-        void shouldReparseIfChecksumChanged() throws IOException {
-            // Arrange
-            Path javaFile = tempDir.resolve("Service.java");
-            Files.writeString(javaFile, "public class Service {}");
-
-            // Parse with old checksum
-            // var result = parserService.parseIncremental(javaFile, "old-checksum");
-
-            // Assert
-            // assertFalse(result.isSkipped());
-            // assertNotNull(result.getNodes());
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                            () -> parserService.parseFileWithCache(javaFile, "p1"))
+                    .isInstanceOf(UnsupportedOperationException.class);
         }
     }
 }

@@ -1,6 +1,6 @@
-# VibeGraph — Architecture (2-Month Scope)
+# VibeGraph — Kiến trúc (Phạm vi 2 tháng)
 
-## High-level
+## Tổng quan
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -40,7 +40,26 @@
          └──────────────────────┘
 ```
 
-## Module Structure (Maven Multi-Module)
+## Cấu trúc module
+
+> **Quyết định (2026-05-29): giữ SINGLE-MODULE trong scope 2 tháng.**
+>
+> Code thực tế là một module Spring Boot duy nhất (`pom.xml` ở root, parent =
+> `spring-boot-starter-parent`), package phẳng dưới `com.vibegraph.{common,
+> parser, graph, mcp, diagram, watcher}`. Đây là trạng thái CHÍNH THỨC cho M1–M2.
+>
+> Lý do:
+> - Deadline 2 tháng — multi-module thêm overhead (parent POM, dependency
+>   management, build order) mà chưa có consumer thứ 2 của `vibegraph-core`.
+> - `vibegraph-cli` chưa khởi động (xem file-checklist). Khi nào cần CLI thì mới
+>   promote `parser/` thành module `vibegraph-core` — cost thấp vì boundary đã rõ
+>   (`com.vibegraph.parser.*` tách bạch `com.vibegraph.graph.*`).
+> - ArchUnit rule (cấm Neo4j leak ngoài `repository/impl/neo4j/`) chạy được trên
+>   single-module.
+>
+> Layout multi-module bên dưới là **mục tiêu M3+ (tương lai)**, không phải hiện tại.
+
+### Bố cục mục tiêu (Maven Multi-Module — M3+, chưa áp dụng)
 
 ```
 vibegraph/
@@ -66,11 +85,9 @@ vibegraph/
 │       │   ├── controller/
 │       │   ├── service/
 │       │   ├── repository/
-│       │   │   ├── GraphRepository.java          # INTERFACE (mới)
-│       │   │   ├── NodeRepository.java           # INTERFACE
+│       │   │   ├── GraphRepository.java          # INTERFACE
 │       │   │   └── impl/
 │       │   │       └── neo4j/                    # Neo4j impl
-│       │   ├── node/                # @Node classes (Neo4j-specific, dùng nội bộ trong impl)
 │       │   ├── websocket/
 │       │   └── dto/
 │       ├── diagram/                 # Use Case + Class generators
@@ -78,7 +95,7 @@ vibegraph/
 │       ├── watcher/                 # File watcher service
 │       └── import/                  # GitHub tarball stream service (mới)
 │
-├── vibegraph-cli/                   # CLI for real-time local watch (MỚI)
+├── vibegraph-cli/                   # Future CLI module (post-MVP)
 │   ├── pom.xml                      # Java module, reuse vibegraph-core
 │   └── src/main/java/com/vibegraph/cli/
 │       ├── VibeGraphCli.java        # Main entry point
@@ -94,7 +111,7 @@ vibegraph/
 │           ├── WatchCommand.java    # vibegraph watch
 │           └── SyncCommand.java     # vibegraph sync (full re-sync)
 │
-├── vibegraph-cli-npm/               # npm wrapper (MỚI)
+├── vibegraph-cli-npm/               # Future npm wrapper (post-MVP)
 │   ├── package.json                 # npm package: vibegraph
 │   ├── bin/vibegraph.js            # Entry point, gọi java -jar
 │   ├── postinstall.js              # Check Java 21 version
@@ -115,41 +132,86 @@ vibegraph/
         └── types/
 ```
 
-## Neo4j Schema
+### Bố cục hiện tại (Single-module — M1–M2, đang dùng)
 
-Theo `hungry-liskov/neo4j-schema.md` đầy đủ — không thay đổi.
+```
+vibegraph/
+├── pom.xml                          # Single Spring Boot module
+├── docker-compose.yml               # Neo4j + backend + frontend
+├── Dockerfile
+├── .env / .env.example
+│
+├── src/main/java/com/vibegraph/
+│   ├── VibeGraphApplication.java
+│   ├── common/                      # config, exception, dto, util
+│   ├── parser/                      # visitor, service, node (NodeData/EdgeData/ParseResult)
+│   ├── graph/
+│   │   ├── controller/
+│   │   ├── service/
+│   │   ├── repository/
+│   │   │   ├── GraphRepository.java         # INTERFACE
+│   │   │   └── impl/neo4j/                  # Neo4j impl (chỉ chỗ này import org.neo4j.*)
+│   │   ├── websocket/
+│   │   └── dto/
+│   ├── diagram/                     # Use Case + Class generators
+│   ├── mcp/                         # MCP tools
+│   └── watcher/                     # File watcher
+│
+├── src/main/resources/db/migration/ # Cypher migrations (V1__init_schema.cypher)
+│
+└── vibegraph-web/                   # Vue 3 frontend (Vite, độc lập build)
+```
+
+CLI (`vibegraph-cli`, `vibegraph-cli-npm`) thuộc giai đoạn post-MVP. Server-side
+watcher là hướng triển khai trong phạm vi 2 tháng. Nếu sau M2 cần một CLI riêng,
+hãy promote `com.vibegraph.parser.*` thành `vibegraph-core` trước.
+
+## Schema Neo4j
+
+Nguồn schema: `src/main/resources/db/migration/V1__init_schema.cypher` và
+`VibeGraph-specs-2month/neo4j-schema.md`.
 
 Tóm tắt:
-- **Nodes:** Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route
-- **Edges:** OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, EXTENDS, IMPLEMENTS, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, CALLS, OVERRIDES, INJECTS, HANDLES_ROUTE, ANNOTATED_BY
+- **Nodes:** Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route, External
+- **Edges:** OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, HAS_INNER, EXTENDS, IMPLEMENTS, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, THROWS, CALLS, OVERRIDES, INJECTS, HANDLES_ROUTE, ANNOTATED_BY
 - Mọi node có `projectId` property
-- Composite key cho Method: `(projectId, fullName, paramTypes)` để handle overloading
+- Composite key cho Method: `(projectId, fullName, paramTypes)` để xử lý overloading
 - Stub method khi CALLS edge gặp method chưa parse, sau đó enrich khi parse class chứa nó
 
-## Storage Abstraction
+> **Trạng thái implementation sau audit 2026-05-30:** schema file cho phép đầy đủ các label/edge trên, nhưng parser Sprint 1 chưa phát ra `Package`/`File` nodes và chưa phát ra `OWNS`/`CONTAINS`/`DEFINES`/`ANNOTATED_BY`/`OVERRIDES`. `Neo4jGraphRepository.upsertEdges` hiện tạo `External` stub cho endpoint bị thiếu; `MethodVisitor` bỏ qua call unresolved/library thay vì tạo method stub. Vì vậy phần “stub method” là design target, chưa phải behavior hiện tại.
+
+## Trừu tượng hóa lưu trữ
 
 ```java
 // graph/repository/GraphRepository.java
 public interface GraphRepository {
-    void upsertProject(ProjectData project);
+    void upsertProject(String projectId, String name, String path);
     void upsertNodes(String projectId, List<NodeData> nodes);
-    void upsertEdges(String projectId, List<EdgeData> edges);
+    int upsertEdges(String projectId, List<EdgeData> edges);
     void deleteFile(String projectId, String filePath);
-    GraphData getFullGraph(String projectId);
-    GraphData getNeighborhood(String projectId, String nodeId, int hops);
-    List<NodeData> searchNodes(String projectId, String query);
-    List<NodeData> getImpact(String projectId, String targetFullName, int maxDepth);
+    GraphDataResponse getFullGraph(String projectId);
+    GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops);
+    List<NodeDto> searchNodes(String projectId, String query);
+    List<NodeDto> getImpact(String projectId, String targetFullName, int maxDepth);
 }
 ```
 
 Impl duy nhất trong 2 tháng: `impl/neo4j/Neo4jGraphRepository.java`.
 
+Migration cho MVP: `common/config/Neo4jMigrationRunner` (ApplicationRunner) áp dụng
+`src/main/resources/db/migration/V1__init_schema.cypher` một cách idempotent lúc khởi
+động. Runner hiện CHƯA theo dõi version/metadata đã áp dụng — version tracking (ví dụ
+`:Migration` node) là kế hoạch sau. Neo4j không tự áp dụng file này theo tên file.
+
 ArchUnit test ép buộc:
-- Không class nào ngoài `repository/impl/neo4j/` import `org.neo4j.*` hoặc `org.springframework.data.neo4j.*` (ngoại trừ `common/config/Neo4jConfig.java`).
+- Không class nào ngoài `repository/impl/neo4j/` import `org.neo4j.*` hoặc `org.springframework.data.neo4j.*` (ngoại trừ package `common/config`, ví dụ `Neo4jMigrationRunner.java` cần Driver để chạy schema migration lúc startup).
 
-## Data Flow — 3 Use Cases
+## Luồng dữ liệu — các use case
 
-### 1. User paste GitHub URL (Tarball stream — không clone, không lưu disk)
+### 1. Người dùng dán URL GitHub (Tarball stream — không clone, không lưu disk)
+
+> **Luồng mục tiêu Sprint 2.** Code hiện có `ImportController` và route `POST /api/projects/import-github`, nhưng `TarballImportServiceImpl` vẫn ném `FeatureNotImplementedException`. `ParserService.parseString(content, relPath)` trong flow dưới đây là API cần bổ sung hoặc thay bằng cơ chế parse stream tương đương; hiện chỉ có `parseFile`/`parseProject` và `parseFileWithCache` chưa implement.
+
 ```
 Browser → POST /api/projects/import-github {url}
   ↓
@@ -164,7 +226,7 @@ TarballImportService.import()
     → Stream qua GzipCompressorInputStream + TarArchiveInputStream
   Step 3: Parse in-memory (KHÔNG ghi disk)
     → Iterate tar entries, lọc *.java
-    → ParserService.parseString(content, relPath) cho mỗi file
+    → ParserService.parseString(content, relPath) cho mỗi file  # target API, chưa có trong code hiện tại
     → GraphRepository.upsertNodes/Edges (batch)
   Step 4: WebSocket push progress
     → SimpMessagingTemplate.convertAndSend("/topic/projects/{id}/status", {progress})
@@ -180,11 +242,11 @@ Frontend nhận status update qua WebSocket, hiển thị progress bar
 - Nhanh hơn 3x với repo nhỏ-vừa (~80 file)
 - Không cần dependency JGit (~10MB), thay bằng commons-compress (~700KB)
 
-### 2. User chạy local với CLI (real-time, privacy mức 1)
+### 2. CLI watch cục bộ (Post-MVP, hoãn lại)
 ```
-User chạy: vibegraph watch (trong project folder)
+User runs: vibegraph watch (inside project folder)
   ↓
-CLI (vibegraph-cli.jar):
+CLI (vibegraph-cli.jar, post-MVP):
   Step 1: Initial scan
     → directory-watcher scan tất cả .java files
     → JavaParser parse mỗi file → extract metadata (nodes + edges)
@@ -209,7 +271,10 @@ Browser Sigma.js patch graph (không full reload)
 Source code KHÔNG bao giờ rời máy user.
 ```
 
-### 3. User chạy local, server-side watcher (legacy/self-host mode)
+### 3. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
+
+> **Luồng mục tiêu Sprint 2.** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã có file, nhưng start/stop watch, debounce và incremental reparse/update còn TODO; WebSocket broadcast cũng chưa nối vào pipeline thật.
+
 ```
 Java WatchService phát hiện UserService.java MODIFY
   ↓
@@ -225,6 +290,9 @@ Frontend Sigma.js patch graph (không full reload)
 ```
 
 ### 4. AI tool gọi MCP
+
+> **Luồng mục tiêu Sprint 3.** MCP packages/classes đã có scaffold, nhưng chưa có `@Tool` methods và `ArchitectureAnalyzer`/`McpToolService` còn TODO. Tên method `ArchitectureTool.getProjectArchitecture` dưới đây mô tả contract mong muốn, không phải method đang tồn tại.
+
 ```
 Cursor/Claude Code → http://localhost:8080/mcp
   ↓
@@ -236,9 +304,9 @@ Spring AI MCP Streamable HTTP
 Return ArchitectureContext JSON với Mermaid embedded
 ```
 
-## Deployment Topology
+## Topology triển khai
 
-### Dev local (mỗi dev)
+### Dev cục bộ (mỗi dev)
 ```yaml
 # docker-compose.yml
 services:
@@ -251,14 +319,16 @@ services:
     volumes: [neo4j-data:/data]
 
   backend:
-    build: ./vibegraph-server
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports: ["8080:8080"]
     depends_on: [neo4j]
     environment:
-      SPRING_NEO4J_URI: bolt://neo4j:7687
-      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
-      SPRING_NEO4J_AUTHENTICATION_PASSWORD: vibegraph
-      VIBEGRAPH_GITHUB_TOKEN: ${GITHUB_TOKEN}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: vibegraph
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
 
   frontend:
     build: ./vibegraph-web
@@ -269,8 +339,8 @@ volumes:
   neo4j-data:
 ```
 
-### Production single-tenant demo
+### Demo production single-tenant
 - VPS Hetzner CX22 ($5-7/tháng): 4GB RAM, 2 vCPU, 40GB SSD
 - Domain: `vibegraph.com` → DNS A record → VPS IP
-- nginx reverse proxy + Let's Encrypt SSL auto
-- Cùng docker-compose.yml + env file riêng (production credentials)
+- nginx reverse proxy + Let's Encrypt SSL tự động
+- Cùng docker-compose.yml + file env riêng (production credentials)

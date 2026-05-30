@@ -1,18 +1,19 @@
 package com.vibegraph.parser.visitor;
 
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.NodeData;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParseResult;
-import com.github.javaparser.ast.CompilationUnit;
-
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for ClassVisitor - extracts Class/Interface/Enum nodes from AST.
@@ -20,7 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run: mvn test -Dtest=ClassVisitorTest
  */
 @DisplayName("ClassVisitor")
-@Disabled("Chờ ClassVisitor implement getExtractedNodes() và node extraction logic")
 class ClassVisitorTest {
 
     private JavaParser parser;
@@ -38,6 +38,10 @@ class ClassVisitorTest {
         return result.getResult().orElseThrow();
     }
 
+    private Object property(NodeData node, String key) {
+        return node.properties().get(key);
+    }
+
     @Nested
     @DisplayName("Class extraction")
     class ClassExtraction {
@@ -45,7 +49,6 @@ class ClassVisitorTest {
         @Test
         @DisplayName("should extract public class with correct properties")
         void shouldExtractPublicClass() {
-            // Arrange
             String code = """
                 package com.example;
 
@@ -55,18 +58,17 @@ class ClassVisitorTest {
                 """;
             CompilationUnit cu = parse(code);
 
-            // Act
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
-            // Assert
             assertFalse(nodes.isEmpty(), "Should extract at least 1 node");
-            var classNode = nodes.get(0);
-            assertEquals("UserService", classNode.getName());
-            assertEquals("com.example.UserService", classNode.getFullName());
-            assertEquals("public", classNode.getVisibility());
-            assertFalse(classNode.isAbstract());
-            assertFalse(classNode.isFinal());
+            NodeData classNode = nodes.get(0);
+            assertEquals("Class", classNode.type());
+            assertEquals("UserService", classNode.name());
+            assertEquals("com.example.UserService", classNode.fullName());
+            assertEquals("public", property(classNode, "visibility"));
+            assertFalse((boolean) property(classNode, "abstract"));
+            assertFalse((boolean) property(classNode, "final"));
         }
 
         @Test
@@ -79,10 +81,10 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertEquals(1, nodes.size());
-            assertTrue(nodes.get(0).isAbstract());
+            assertTrue((boolean) property(nodes.get(0), "abstract"));
         }
 
         @Test
@@ -95,10 +97,10 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertEquals(1, nodes.size());
-            assertTrue(nodes.get(0).isFinal());
+            assertTrue((boolean) property(nodes.get(0), "final"));
         }
 
         @Test
@@ -114,7 +116,7 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertTrue(nodes.size() >= 2, "Should extract multiple classes");
         }
@@ -136,11 +138,11 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertFalse(nodes.isEmpty());
-            assertEquals("UserRepository", nodes.get(0).getName());
-            assertEquals("INTERFACE", nodes.get(0).getType());
+            assertEquals("UserRepository", nodes.get(0).name());
+            assertEquals("Interface", nodes.get(0).type());
         }
     }
 
@@ -160,11 +162,11 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertFalse(nodes.isEmpty());
-            assertEquals("Status", nodes.get(0).getName());
-            assertEquals("ENUM", nodes.get(0).getType());
+            assertEquals("Status", nodes.get(0).name());
+            assertEquals("Enum", nodes.get(0).type());
         }
     }
 
@@ -185,9 +187,9 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
-            assertEquals("CONTROLLER", nodes.get(0).getSpringLayer());
+            assertEquals("CONTROLLER", property(nodes.get(0), "springLayer"));
         }
 
         @Test
@@ -203,9 +205,9 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
-            assertEquals("SERVICE", nodes.get(0).getSpringLayer());
+            assertEquals("SERVICE", property(nodes.get(0), "springLayer"));
         }
 
         @Test
@@ -221,9 +223,9 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
-            assertEquals("REPOSITORY", nodes.get(0).getSpringLayer());
+            assertEquals("REPOSITORY", property(nodes.get(0), "springLayer"));
         }
 
         @Test
@@ -236,9 +238,9 @@ class ClassVisitorTest {
             CompilationUnit cu = parse(code);
 
             visitor.visit(cu, null);
-            var nodes = visitor.getExtractedNodes();
+            List<NodeData> nodes = visitor.getExtractedNodes();
 
-            assertEquals("NONE", nodes.get(0).getSpringLayer());
+            assertEquals("NONE", property(nodes.get(0), "springLayer"));
         }
     }
 }

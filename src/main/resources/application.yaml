@@ -30,6 +30,10 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  projects:
+    # Optional. When set, local project rootPath values must resolve inside this directory.
+    allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
   watcher:
     enabled: true
     debounce-ms: 500

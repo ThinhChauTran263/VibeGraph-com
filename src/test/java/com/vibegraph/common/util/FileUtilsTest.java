@@ -1,6 +1,5 @@
 package com.vibegraph.common.util;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -19,7 +18,6 @@ import static org.assertj.core.api.Assertions.*;
  * Run: mvn test -Dtest=FileUtilsTest
  */
 @DisplayName("FileUtils")
-@Disabled("Chờ FileUtils implement scanJavaFiles() và isJavaFile()")
 class FileUtilsTest {
 
     @TempDir

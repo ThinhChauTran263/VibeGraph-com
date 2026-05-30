@@ -1,67 +1,90 @@
-# VibeGraph — 2-Month Realistic Plan
+# VibeGraph - Kế hoạch thực tế 2 tháng
 
-**Deadline:** 8 tuần (6 dev + 2 buffer)
-**Status:** Active plan
-**Replaces:** `VibeGraph-specs/` (giữ làm reference dài hạn)
+**Deadline:** 8 tuần<br>
+**Trạng thái:** Kế hoạch đang triển khai<br>
+**Nguồn chân lý (source of truth):** Thư mục này, với `architecture.md` làm chuẩn nền tảng kiến trúc<br>
+**Bố cục triển khai:** backend single-module tại thư mục gốc `src/main/java/com/vibegraph/...` cùng với `vibegraph-web`
 
-## Mục tiêu duy nhất sau 2 tháng
+Thư mục này là nguồn chân lý duy nhất cho việc thực thi MVP. Nó đã thay thế bộ tài liệu dài hạn cũ `VibeGraph-specs/`, vốn đã bị gỡ khỏi repo. Các quyết định triển khai chỉ nên bám theo thư mục này.
 
-User truy cập `vibegraph.com` (hoặc chạy Docker local) → paste GitHub URL Java project → nhìn thấy graph như GitNexus → AI tools (Cursor/Claude Code/Kiro) kết nối qua MCP và đọc được architecture. Hoặc user chạy `vibegraph watch` local → graph cập nhật real-time khi tạo/sửa/xóa file.
+## Mục tiêu sau 2 tháng
 
-## Cắt scope so với spec gốc
+Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, gửi URL của một repository Java công khai trên GitHub, và thấy một đồ thị mã nguồn tương tác. Các công cụ AI như Cursor, Claude Code, và Kiro có thể kết nối qua MCP và lấy về ngữ cảnh kiến trúc.
 
-### Giữ (Critical)
-- FR-01 Java parsing
-- FR-02 Neo4j storage (Docker, không Kuzu/Postgres)
-- FR-03 Force Graph Sigma.js
-- FR-04 Use Case diagram
-- FR-05 Class diagram
-- FR-07 Realtime update
-- FR-08 Auto File Watcher
+Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
+
+> **Trạng thái sau audit 2026-05-30:** đoạn trên là mục tiêu cuối MVP 2 tháng. Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
+
+## Quyết định kiến trúc hiện tại
+
+Với MVP 2 tháng, giữ nguyên **backend single-module** hiện tại:
+
+- Mã backend nằm dưới `src/main/java/com/vibegraph/{common,parser,graph,diagram,mcp,watcher}`.
+- Mã frontend nằm dưới `vibegraph-web`.
+- Không tạo `vibegraph-core`, `vibegraph-server`, `vibegraph-cli`, hay `vibegraph-cli-npm` trong Sprint 1.
+- Package parser được giữ đủ sạch để có thể tách ra thành module `vibegraph-core` trong tương lai nếu cần đến một CLI.
+
+Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ, và đường găng là làm cho một lát cắt dọc (vertical slice) chạy được ở local. Công việc multi-module sẽ làm tăng chi phí build và phụ thuộc trước khi có một bên tiêu thụ parser thứ hai.
+
+## Phạm vi giữ lại cho MVP
+
+- FR-01 phân tích cú pháp Java
+- FR-02 lưu trữ Neo4j thông qua `GraphRepository`
+- FR-03 trực quan hóa force graph bằng Sigma.js
+- FR-04 sơ đồ Use Case
+- FR-05 sơ đồ Class
+- FR-07 cập nhật realtime
+- FR-08 file watcher phía server
 - FR-09 REST API
-- FR-10 MCP Server (USP)
+- FR-10 MCP server với 4 tool
+- FR-NEW nhập khẩu tarball từ GitHub
 
-### Defer (post-2-month)
-- FR-06 Sequence diagram (nice-to-have)
-- FR-11 Context API (đã có MCP, REST API context có thể ghép sau)
-- FR-12 Steering file auto-gen
-- FR-13 Pre-code hook templates
-- Multi-language (TypeScript/Vue/Python)
-- Auth + Stripe + Pro/Ultra plans
-- GraalVM native-image cho CLI (2 tháng dùng JAR + Java 21)
-- Kuzu embedded mode
-- Postgres+AGE SaaS multi-tenant
+## Hoãn lại sau MVP
 
-### Thêm mới (so với spec gốc)
-- **GitHub URL import (Tarball stream)** — backend stream tarball từ GitHub API, parse in-memory, KHÔNG ghi disk
-- **Local Watch CLI** — `vibegraph watch` real-time sync local folder (privacy mức 1, chỉ gửi metadata)
-- **GraphRepository interface** — tách abstraction để Phase 2 swap DB
+- Sơ đồ Sequence
+- Context REST API riêng biệt ngoài các endpoint graph/detail hiện có
+- Sinh tệp steering
+- Mẫu pre-code hook
+- Phân tích cú pháp đa ngôn ngữ ngoài Java
+- Auth, Stripe, gói dịch vụ, thanh toán
+- GitHub OAuth và nhập khẩu repository riêng tư
+- Module CLI chuyên dụng và npm wrapper
+- GraalVM native-image
+- Chế độ nhúng Kuzu
+- Chế độ SaaS multi-tenant với Postgres+AGE
+- Plugin IntelliJ
 
-## Cấu trúc folder
+## Các hợp đồng runtime quan trọng
+
+- Stack backend: Spring Boot 4.0.6, Java 21, Maven, Neo4j 5.x.
+- Stack parser: JavaParser 3.28.0 cùng Symbol Solver.
+- Stack frontend: Vue 3.5, Vite 8, TypeScript 6, Sigma.js 3, Mermaid 11.
+- WebSocket endpoint: `/ws/graph-updates`.
+- URL frontend khi dev cục bộ: `http://localhost:5173`.
+- URL frontend trên Docker: `http://localhost:3000`.
+- Khởi động Neo4j khi dev: `docker compose up -d neo4j` từ thư mục gốc repo.
+- Build context Docker cho production/backend: thư mục gốc repo dùng `Dockerfile`, không phải `./vibegraph-server`.
+
+## Bản đồ tài liệu
 
 | File | Mục đích |
 |---|---|
-| `README.md` | File này |
-| `requirements-trimmed.md` | 9 functional requirements + FR-NEW (GitHub Import) + FR-NEW-2 (CLI) |
-| `architecture.md` | System design rút gọn |
-| `task-breakdown-8week.md` | Task cụ thể 5 dev × 8 tuần |
-| `file-checklist.md` | Files cần tạo (~130 items) |
-| `deployment-plan.md` | Docker deploy + domain + SSL |
-| `presentation.html` | Trình bày dự án cho non-tech |
+| `README.md` | Chuẩn nền tảng thực thi này |
+| `requirements-trimmed.md` | Yêu cầu chức năng và phi chức năng của MVP |
+| `architecture.md` | Các quyết định về kiến trúc và luồng dữ liệu |
+| `task-breakdown-8week.md` | Thứ tự triển khai và các mốc kiểm tra theo sprint |
+| `file-checklist.md` | Các tệp hiện có và checklist hoàn thành MVP |
+| `deployment-plan.md` | Ghi chú triển khai Docker, domain, SSL, CI/CD |
+| `presentation.html` | Bản trình bày phi kỹ thuật được sinh ra, không phải nguồn chân lý triển khai |
+| `project-structure.html` | Bản đồ dự án trực quan được sinh ra, không phải nguồn chân lý triển khai |
 
-## Thay đổi cấu trúc code so với spec gốc?
+## Đường găng (critical path)
 
-**Thêm:**
-- `graph/repository/GraphRepository.java` — interface (mới)
-- `graph/repository/impl/neo4j/Neo4jGraphRepository.java` — di chuyển impl Neo4j vào subpackage
-- `graph/controller/ImportController.java` — endpoint POST /api/projects/import-github
-- `graph/service/TarballImportService.java` + impl (stream tarball, parse in-memory)
-- `vibegraph-cli/` — Maven module mới (LocalWatcher + DiffExtractor + WsClient + commands)
-- `vibegraph-cli-npm/` — npm wrapper (`vibegraph` package, requires Java 21)
-- Thêm dep `org.apache.commons:commons-compress:1.26.0` vào `vibegraph-server/pom.xml`
-- Thêm dep `io.methvin:directory-watcher`, `info.picocli:picocli` vào `vibegraph-cli/pom.xml`
+Đường găng của Sprint 1 là một lát cắt dọc (vertical slice):
 
-**Bỏ:**
-- Toàn bộ `steering/` module (FR-12 defer)
-- MCP tools `get_coding_rules`, `get_usecase_context` (giữ 4 tools đủ MVP)
-- JGit dependency (thay bằng commons-compress, không cần clone)
+1. Phân tích cú pháp một thư mục Java cục bộ thành `NodeData` và `EdgeData`.
+2. Lưu dữ liệu đồ thị thông qua `GraphRepository` vào Neo4j.
+3. Mở các endpoint `POST /api/projects`, `POST /api/projects/{id}/analyze`, và `GET /api/projects/{id}/graph`.
+4. Render đồ thị trả về trong `vibegraph-web` bằng Sigma.js.
+
+Chỉ sau khi việc này chạy được ở local thì dự án mới nên chuyển sang nhập khẩu từ GitHub, vá realtime qua WebSocket, các sơ đồ, và tinh chỉnh MCP.

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<!-- Generated structure view. Implementation source of truth: README.md, requirements-trimmed.md, architecture.md, task-breakdown-8week.md. -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VibeGraph — Project Structure</title>
@@ -416,8 +417,8 @@ const backendTree = {
         { name: 'AsyncConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình xử lý bất đồng bộ (thread pool cho async tasks)' },
         { name: 'CorsConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình CORS cho phép frontend gọi API' },
         { name: 'McpServerConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình MCP Server (Spring AI)' },
-        { name: 'Neo4jConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình kết nối Neo4j (driver, pool)' },
-        { name: 'WebSocketConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình STOMP WebSocket tại /ws/graph' },
+        { name: 'Neo4jMigrationRunner.java', icon: '📄', type: 'file', desc: 'Áp dụng V1__init_schema.cypher lúc startup (raw Driver)' },
+        { name: 'WebSocketConfig.java', icon: '📄', type: 'file', desc: 'Cấu hình STOMP WebSocket tại /ws/graph-updates' },
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package config' }
       ]},
       { name: 'dto', icon: '📁', desc: 'Data Transfer Objects dùng chung', children: [
@@ -440,8 +441,7 @@ const backendTree = {
         { name: 'ProjectNotFoundException.java', icon: '📄', type: 'file', desc: 'Ném khi project ID không tồn tại' },
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package exception' }
       ]},
-      { name: 'node', icon: '🔵', desc: 'Base entity cho Neo4j', children: [
-        { name: 'BaseNode.java', icon: '📄', type: 'file', desc: 'Abstract class với createdAt, updatedAt, deleted, deletedAt' },
+      { name: 'node', icon: '🔵', desc: '(legacy) entity OGM đã bỏ — persistence dùng raw Neo4j Driver', children: [
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
       ]},
       { name: 'util', icon: '🔧', desc: 'Tiện ích dùng chung', children: [
@@ -505,38 +505,21 @@ const backendTree = {
         ]},
         { name: 'response', icon: '📁', desc: 'DTO cho graph responses', children: [
           { name: 'EdgeDto.java', icon: '📄', type: 'file', desc: 'DTO edge: source, target, type, properties' },
+          { name: 'EdgeTypeEnum.java', icon: '📄', type: 'file', desc: 'Backend/frontend edge type contract' },
           { name: 'GraphDataResponse.java', icon: '📄', type: 'file', desc: 'Response graph data: nodes[], edges[], metadata' },
           { name: 'ImpactAnalysisResponse.java', icon: '📄', type: 'file', desc: 'Response impact: affectedNodes[], callChain[], riskLevel' },
           { name: 'NodeDetailResponse.java', icon: '📄', type: 'file', desc: 'Response chi tiết node: properties, sourceCode, callers' },
           { name: 'NodeDto.java', icon: '📄', type: 'file', desc: 'DTO node: id, type, name, properties, position' },
+          { name: 'NodeTypeEnum.java', icon: '📄', type: 'file', desc: 'Backend/frontend node type contract' },
           { name: 'ProjectResponse.java', icon: '📄', type: 'file', desc: 'Response project: id, name, status, stats' },
           { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package response' }
         ]}
       ]},
-      { name: 'node', icon: '🔵', desc: '@Node entities - ánh xạ Neo4j labels', children: [
-        { name: 'AnnotationNode.java', icon: '📄', type: 'file', desc: ':Annotation - @interface definitions' },
-        { name: 'ClassNode.java', icon: '📄', type: 'file', desc: ':Class - class/abstract class với annotations' },
-        { name: 'EnumNode.java', icon: '📄', type: 'file', desc: ':Enum - enum với constants' },
-        { name: 'FieldNode.java', icon: '📄', type: 'file', desc: ':Field - field với type, visibility' },
-        { name: 'FileNode.java', icon: '📄', type: 'file', desc: ':File - file .java với filePath relative' },
-        { name: 'InterfaceNode.java', icon: '📄', type: 'file', desc: ':Interface - Java interface' },
-        { name: 'MethodNode.java', icon: '📄', type: 'file', desc: ':Method - method với params, return type, modifiers' },
-        { name: 'PackageNode.java', icon: '📄', type: 'file', desc: ':Package - Java package (com.example.service)' },
-        { name: 'ProjectNode.java', icon: '📄', type: 'file', desc: ':Project - root node, chứa metadata dự án' },
-        { name: 'RouteNode.java', icon: '📄', type: 'file', desc: ':Route - REST endpoint (GET /api/users)' },
-        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
-      ]},
-      { name: 'repository', icon: '🗃️', desc: 'Neo4j repositories', children: [
-        { name: 'ClassNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD + search cho :Class nodes' },
-        { name: 'FileNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD cho :File nodes (theo filePath)' },
-        { name: 'GraphRepository.java', icon: '📄', type: 'file', desc: 'Interface custom Cypher queries phức tạp' },
-        { name: 'MethodNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD + find callers/callees cho :Method' },
-        { name: 'NodeRepository.java', icon: '📄', type: 'file', desc: 'Generic repository cho mọi node types' },
-        { name: 'ProjectNodeRepository.java', icon: '📄', type: 'file', desc: 'CRUD cho :Project nodes' },
-        { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package repository' },
-        { name: 'impl', icon: '📁', desc: 'Implementations của repository interfaces', children: [
-          { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' },
+      { name: 'repository', icon: '🗃️', desc: 'Storage abstraction and Neo4j raw-driver implementation', children: [
+        { name: 'GraphRepository.java', icon: '📄', type: 'file', desc: 'Storage abstraction for graph operations' },
+        { name: 'impl', icon: '📁', desc: 'Repository implementations', children: [
           { name: 'neo4j', icon: '📁', desc: 'Neo4j-specific implementations', children: [
+            { name: 'GraphSchema.java', icon: '📄', type: 'file', desc: 'Label, relationship, and property whitelist' },
             { name: 'Neo4jGraphRepository.java', icon: '📄', type: 'file', desc: 'Impl GraphRepository với Neo4j Driver + Cypher' },
             { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package neo4j' }
           ]}
@@ -617,7 +600,7 @@ const backendTree = {
       ]},
       { name: 'node', icon: '🔵', desc: 'Intermediate data từ parser (chưa lưu Neo4j)', children: [
         { name: 'EdgeData.java', icon: '📄', type: 'file', desc: 'Record chứa source→target + relationship type (CALLS, IMPORTS...)' },
-        { name: 'NodeData.java', icon: '📄', type: 'file', desc: 'Record chứa thông tin node trước khi map sang Neo4j entity' },
+        { name: 'NodeData.java', icon: '📄', type: 'file', desc: 'Record chứa thông tin node — parser-neutral graph node data' },
         { name: 'ParseResult.java', icon: '📄', type: 'file', desc: 'Kết quả parse 1 file: List<NodeData> + List<EdgeData>' },
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package node' }
       ]},

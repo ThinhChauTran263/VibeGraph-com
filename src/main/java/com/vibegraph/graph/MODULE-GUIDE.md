@@ -26,23 +26,10 @@ graph/
 │       └── TarballImportServiceImpl.java (MỚI)
 ├── repository/
 │   ├── GraphRepository.java        — INTERFACE (storage abstraction)
-│   ├── ProjectNodeRepository.java  — Spring Data Neo4j repository
-│   ├── ClassNodeRepository.java
-│   ├── MethodNodeRepository.java
-│   ├── FileNodeRepository.java
 │   └── impl/
 │       └── neo4j/
-│           └── Neo4jGraphRepository.java — Neo4j impl of GraphRepository
-├── node/                           — Neo4j @Node entities (CHỈ dùng trong impl/neo4j/)
-│   ├── ProjectNode.java
-│   ├── ClassNode.java
-│   ├── InterfaceNode.java
-│   ├── EnumNode.java
-│   ├── MethodNode.java
-│   ├── FieldNode.java
-│   ├── FileNode.java
-│   ├── PackageNode.java
-│   └── RouteNode.java
+│           ├── Neo4jGraphRepository.java — raw Neo4j Java Driver impl of GraphRepository
+│           └── GraphSchema.java          — allow-list label/edge-type + validate Cypher key
 ├── websocket/
 │   ├── GraphUpdateController.java  — @MessageMapping for STOMP
 │   └── WebSocketEventListener.java — Connection/disconnect events
@@ -60,6 +47,13 @@ graph/
         ├── NodeDetailResponse.java    — {node, incoming[], outgoing[]}
         └── ImpactAnalysisResponse.java — {affectedNodes[], risk, depth}
 ```
+
+## Trạng thái hiện thực (đối soát code thực tế)
+
+- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph); `AnalyzeServiceImpl`; `GraphServiceImpl`.
+- 🚧 Scaffold / in-progress (Sprint 2/3): `getNeighborhood` + `getImpact` (ném `UnsupportedOperationException`); `ImpactController` + `ImpactServiceImpl` và `DiagramController` (`// TODO`); `TarballImportServiceImpl` (ném "not implemented yet"). Các endpoint neighbors / impact / diagrams chưa nối.
+
+> Các checkbox `[ ]` ở dưới là đặc tả mục tiêu MVP, không phải trạng thái đã xong.
 
 ## Yêu cầu chức năng
 
@@ -117,22 +111,14 @@ graph/
   4. WebSocket push progress: `/topic/projects/{id}/status`
   5. Return {projectId, status: "ANALYZING"} sau pre-flight (parse async)
 
-### Neo4j Nodes
-Tất cả extends `BaseNode` từ common module:
-- [ ] `ProjectNode`: {name, path, description, lastAnalyzedAt}
-- [ ] `ClassNode`: {name, fullName, filePath, lineNumber, visibility, isAbstract, isFinal, springLayer, springAnnotations[]}
-- [ ] `InterfaceNode`: {name, fullName, filePath, lineNumber, visibility}
-- [ ] `EnumNode`: {name, fullName, filePath, lineNumber}
-- [ ] `MethodNode`: {name, fullName, filePath, lineNumber, visibility, isAbstract, isStatic, returnType, parameters[], httpMethod, routePath}
-- [ ] `FieldNode`: {name, fullName, filePath, lineNumber, visibility, isStatic, isFinal, declaredType, isInjected}
-- [ ] `FileNode`: {name, filePath, lastModified, checksum}
-- [ ] `PackageNode`: {name, fullName}
-- [ ] `RouteNode`: {httpMethod, routePath, handlerMethod, filePath, lineNumber}
-
-### Relationships (Neo4j)
-- [ ] EXTENDS, IMPLEMENTS, CALLS, HAS_METHOD, HAS_FIELD
-- [ ] IMPORTS, INJECTS, HANDLES_ROUTE, CONTAINS, DEFINES
-- [ ] Edge properties: type, confidence, lineNumber (where applicable)
+### Graph data model (raw Driver — KHÔNG dùng @Node entities)
+Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph mang bởi parser:
+- Parser xuất `NodeData` / `EdgeData` / `ParseResult` (parser-neutral, xem `parser/node/`).
+- `GraphRepository` là storage abstraction; impl duy nhất `Neo4jGraphRepository` ghi xuống bằng **raw Neo4j Java Driver + parameterized Cypher**.
+- Label node và relationship type được validate qua `GraphSchema` (allow-list), không phải class entity Java.
+- Node labels: Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route (+ `External` stub cho ref chưa resolve).
+- Relationship types: OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, HAS_INNER, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, THROWS, CALLS, INJECTS, HANDLES_ROUTE, ANNOTATED_BY.
+- Edge properties: type, confidence, lineNumber (where applicable).
 
 ### WebSocket
 - [ ] Topic `/topic/projects/{id}/updates`: Push graph changes
@@ -144,9 +130,9 @@ Tất cả extends `BaseNode` từ common module:
 
 1. **Storage Abstraction (QUAN TRỌNG)**: Tất cả graph access qua `GraphRepository` interface
    - Impl duy nhất trong 2 tháng: `impl/neo4j/Neo4jGraphRepository.java`
-   - ArchUnit test ép buộc: không class nào ngoài `repository/impl/neo4j/` import `org.neo4j.*` hoặc `org.springframework.data.neo4j.*` (ngoại trừ `common/config/Neo4jConfig.java`)
-2. **Repository Pattern**: Tất cả Neo4j access qua Repository interfaces
-3. **DTO Mapping**: Không expose @Node entities trực tiếp, map sang DTOs
+   - ArchUnit test ép buộc: không class nào ngoài `repository/impl/neo4j/` import `org.neo4j.*` hoặc `org.springframework.data.neo4j.*` (ngoại trừ `common/config/Neo4jMigrationRunner.java`)
+2. **Raw Driver only**: Không dùng Spring Data Neo4j OGM, không `@Node`/`@Relationship`, không `*NodeRepository`. Mọi Neo4j access qua `GraphRepository` → `Neo4jGraphRepository` (driver + Cypher).
+3. **DTO Mapping**: DTOs (`NodeDto`/`EdgeDto`/`GraphDataResponse`) map từ kết quả query repository (raw Neo4j `Record`) hoặc từ `NodeData`/`EdgeData` — không có entity để expose.
 4. **Transaction per file**: Batch write nodes/edges trong 1 transaction per file
 5. **Pagination**: Tất cả list endpoints phải support pagination
 6. **Indexes**: Đảm bảo indexes được tạo cho fullName, filePath, routePath

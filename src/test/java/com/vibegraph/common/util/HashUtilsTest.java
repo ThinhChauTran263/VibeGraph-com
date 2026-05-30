@@ -1,6 +1,5 @@
 package com.vibegraph.common.util;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -18,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run: mvn test -Dtest=HashUtilsTest
  */
 @DisplayName("HashUtils")
-@Disabled("Chờ HashUtils implement sha256(Path) và sha256(String)")
 class HashUtilsTest {
 
     @TempDir
