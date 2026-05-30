@@ -186,6 +186,24 @@ class ParserServiceTest {
 
             assertThat(results).hasSize(1);
         }
+
+        @Test
+        @DisplayName("parseProject on the sample-project fixture yields non-empty nodes and edges")
+        void shouldParseSampleProjectFixture() {
+            Path sampleProject = Path.of("src/test/resources/sample-project");
+            assertThat(Files.isDirectory(sampleProject))
+                    .as("sample-project fixture must exist at " + sampleProject.toAbsolutePath())
+                    .isTrue();
+
+            List<ParseResult> results = parserService.parseProject(sampleProject);
+
+            assertThat(results).as("fixture .java files").isNotEmpty();
+            assertThat(results).flatExtracting(ParseResult::getNodes)
+                    .as("nodes must not be empty").isNotEmpty()
+                    .anyMatch(n -> n.name().equals("SampleUserService"));
+            assertThat(results).flatExtracting(ParseResult::getEdges)
+                    .as("edges must not be empty").isNotEmpty();
+        }
     }
 
     @Nested

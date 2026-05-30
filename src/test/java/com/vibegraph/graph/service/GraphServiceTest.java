@@ -1,103 +1,69 @@
 package com.vibegraph.graph.service;
 
-import org.junit.jupiter.api.Disabled;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.service.impl.GraphServiceImpl;
 
 /**
- * Tests for GraphService - graph query operations.
- *
- * Setup with @DataNeo4jTest hoặc @SpringBootTest khi GraphServiceImpl ready.
+ * Unit tests for GraphServiceImpl against the current Sprint 1 API
+ * (getFullGraph, searchNodes). The service delegates to GraphRepository, so we
+ * mock the repository (no Neo4j) and verify delegation + pass-through.
  *
  * Run: mvn test -Dtest=GraphServiceTest
  */
 @DisplayName("GraphService")
 class GraphServiceTest {
 
-    @Nested
-    @DisplayName("getGraph")
-    class GetGraph {
+    private GraphRepository repository;
+    private GraphService graphService;
 
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should return all nodes and edges for project")
-        void shouldReturnAllNodesAndEdges() {
-            // Arrange: Setup test project with sample nodes
-            // graphService.saveProject("test-project", samplePath);
-            // graphService.saveNodes(testNodes);
-            // graphService.saveEdges(testEdges);
-
-            // Act
-            // GraphDataResponse result = graphService.getGraph("test-project", null);
-
-            // Assert
-            // assertThat(result).isNotNull();
-            // assertThat(result.getNodes()).isNotEmpty();
-            // assertThat(result.getEdges()).isNotEmpty();
-        }
-
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should filter by node type")
-        void shouldFilterByNodeType() {
-            // GraphFilterRequest filter = new GraphFilterRequest();
-            // filter.setNodeTypes(List.of("CLASS"));
-            // GraphDataResponse result = graphService.getGraph("test-project", filter);
-            // assertThat(result.getNodes()).allMatch(n -> n.getType().equals("CLASS"));
-        }
-
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should filter by package")
-        void shouldFilterByPackage() {
-            // GraphFilterRequest filter = new GraphFilterRequest();
-            // filter.setPackages(List.of("com.example.service"));
-            // GraphDataResponse result = graphService.getGraph("test-project", filter);
-            // assertThat(result.getNodes()).allMatch(n -> n.getFullName().startsWith("com.example.service"));
-        }
+    @BeforeEach
+    void setUp() {
+        repository = Mockito.mock(GraphRepository.class);
+        graphService = new GraphServiceImpl(repository);
     }
 
-    @Nested
-    @DisplayName("getNeighbors")
-    class GetNeighbors {
+    @Test
+    @DisplayName("getFullGraph delegates to the repository and returns its result")
+    void getFullGraphDelegates() {
+        GraphDataResponse expected = GraphDataResponse.builder()
+                .nodes(List.of(NodeDto.builder()
+                        .id("n1").type("Class").name("Foo").fullName("com.example.Foo").build()))
+                .edges(List.of())
+                .nodeStats(Map.of("Class", 1))
+                .edgeStats(Map.of())
+                .build();
+        when(repository.getFullGraph("p1")).thenReturn(expected);
 
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should return 1-hop neighbors")
-        void shouldReturnOneHopNeighbors() {
-            // GraphDataResponse result = graphService.getNeighbors("node-id", 1);
-            // assertThat(result).isNotNull();
-        }
+        GraphDataResponse result = graphService.getFullGraph("p1");
 
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should return N-hop neighbors")
-        void shouldReturnNHopNeighbors() {
-            // GraphDataResponse result = graphService.getNeighbors("node-id", 3);
-            // assertThat(result).isNotNull();
-        }
-
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should throw NodeNotFoundException for invalid id")
-        void shouldThrowForInvalidNodeId() {
-            // assertThatThrownBy(() -> graphService.getNeighbors("non-existent", 1))
-            //     .isInstanceOf(NodeNotFoundException.class);
-        }
+        assertThat(result).isSameAs(expected);
+        assertThat(result.getNodes()).hasSize(1);
+        verify(repository).getFullGraph("p1");
     }
 
-    @Nested
-    @DisplayName("getNodeDetail")
-    class GetNodeDetail {
+    @Test
+    @DisplayName("searchNodes delegates to the repository and returns its result")
+    void searchNodesDelegates() {
+        List<NodeDto> hits = List.of(NodeDto.builder()
+                .id("n1").type("Class").name("UserService").fullName("com.example.UserService").build());
+        when(repository.searchNodes("p1", "User")).thenReturn(hits);
 
-        @Test
-        @Disabled("Chờ GraphServiceImpl + @DataNeo4jTest setup")
-        @DisplayName("should return INCOMING and OUTGOING connections")
-        void shouldReturnIncomingAndOutgoing() {
-            // NodeDetailResponse result = graphService.getNodeDetail("node-id");
-            // assertThat(result.getIncoming()).isNotNull();
-            // assertThat(result.getOutgoing()).isNotNull();
-        }
+        List<NodeDto> result = graphService.searchNodes("p1", "User");
+
+        assertThat(result).isEqualTo(hits);
+        verify(repository).searchNodes("p1", "User");
     }
 }
