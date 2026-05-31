@@ -1,0 +1,11 @@
+# Thư mục này chứa source code do người dùng bỏ vào để VibeGraph phân tích.
+# Đó là dữ liệu đầu vào lúc chạy (mount read-only vào Docker), KHÔNG commit lên repo.
+# Chỉ giữ lại khung thư mục + tài liệu hướng dẫn.
+
+# Bỏ qua tất cả
+*
+
+# Trừ các file khung
+!.gitignore
+!.gitkeep
+!README.md
