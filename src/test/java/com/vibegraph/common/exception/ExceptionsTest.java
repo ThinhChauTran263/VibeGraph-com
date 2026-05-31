@@ -2,6 +2,10 @@ package com.vibegraph.common.exception;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import com.vibegraph.common.dto.response.ApiResponse;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -52,5 +56,24 @@ class ExceptionsTest {
         GithubImportException ex = new GithubImportException("Tarball download failed", cause);
         assertEquals("Tarball download failed", ex.getMessage());
         assertEquals(cause, ex.getCause());
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler maps generic exception to typed INTERNAL_ERROR 500")
+    void globalHandlerMapsGenericExceptionToInternalError() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleGeneric(new RuntimeException("boom — DB connection lost"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
+        assertNotNull(body);
+        assertFalse(body.isSuccess());
+        assertNotNull(body.getError());
+        assertEquals("INTERNAL_ERROR", body.getError().getCode());
+        // Internal detail must not leak to the client.
+        assertEquals("An unexpected error occurred", body.getError().getMessage());
+        assertNull(body.getData());
     }
 }

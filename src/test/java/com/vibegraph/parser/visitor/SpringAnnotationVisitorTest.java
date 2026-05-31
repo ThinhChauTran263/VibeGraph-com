@@ -1,108 +1,157 @@
 package com.vibegraph.parser.visitor;
 
-import org.junit.jupiter.api.Disabled;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.EdgeData;
+import com.vibegraph.parser.node.NodeData;
+
 /**
- * Tests for SpringAnnotationVisitor - detects Spring annotations and assigns layers.
+ * Tests for SpringAnnotationVisitor — detects Spring annotations, produces Route nodes,
+ * HANDLES_ROUTE edges, and INJECTS edges.
  *
  * Run: mvn test -Dtest=SpringAnnotationVisitorTest
  */
 @DisplayName("SpringAnnotationVisitor")
-@Disabled("Chờ SpringAnnotationVisitor implement")
 class SpringAnnotationVisitorTest {
 
+    private SpringAnnotationVisitor visit(String source) {
+        CompilationUnit cu = StaticJavaParser.parse(source);
+        SpringAnnotationVisitor visitor = new SpringAnnotationVisitor();
+        visitor.visit(cu, null);
+        return visitor;
+    }
+
     @Nested
-    @DisplayName("Class layer detection")
-    class ClassLayerDetection {
+    @DisplayName("Route extraction")
+    class RouteExtraction {
 
         @Test
-        @DisplayName("should detect @RestController as CONTROLLER layer")
-        void shouldDetectRestController() {
-            // @RestController class → springLayer = "CONTROLLER"
+        @DisplayName("@GetMapping should produce a Route node AND a HANDLES_ROUTE edge to it")
+        void getMappingProducesRouteNodeAndEdge() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                @RequestMapping("/api/users")
+                public class UserController {
+                    @GetMapping("/{id}")
+                    public String findById(Long id) { return null; }
+                }
+                """);
+
+            List<NodeData> nodes = visitor.getExtractedNodes();
+            List<EdgeData> edges = visitor.getExtractedEdges();
+
+            // The route node must exist...
+            NodeData route = nodes.stream()
+                    .filter(n -> n.type().equals("Route"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("No Route node extracted"));
+            assertThat(route.fullName()).isEqualTo("GET /api/users/{id}");
+            assertThat(route.properties()).containsEntry("httpMethod", "GET");
+            assertThat(route.properties()).containsEntry("routePath", "/api/users/{id}");
+
+            // ...and a HANDLES_ROUTE edge must target that exact node id.
+            // This pairing is the regression guard: if the node is dropped from the
+            // aggregate, MATCH-based upsert silently drops this edge.
+            EdgeData handles = edges.stream()
+                    .filter(e -> e.type().equals("HANDLES_ROUTE"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("No HANDLES_ROUTE edge extracted"));
+            assertThat(handles.targetFullName()).isEqualTo(route.fullName());
+            assertThat(handles.sourceFullName()).contains("UserController.findById");
         }
 
         @Test
-        @DisplayName("should detect @Controller as CONTROLLER layer")
-        void shouldDetectController() {
+        @DisplayName("class-level @RequestMapping prefix is combined with method path")
+        void combinesClassPrefixWithMethodPath() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.PostMapping;
+                import org.springframework.web.bind.annotation.RequestMapping;
+
+                @RequestMapping("/api")
+                public class OrderController {
+                    @PostMapping("/orders")
+                    public void create() { }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("Route"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.fullName()).isEqualTo("POST /api/orders");
         }
 
         @Test
-        @DisplayName("should detect @Service as SERVICE layer")
-        void shouldDetectService() {
-        }
+        @DisplayName("non-mapping methods produce no Route node")
+        void noRouteForPlainMethod() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                public class PlainService {
+                    public void doWork() { }
+                }
+                """);
 
-        @Test
-        @DisplayName("should detect @Repository as REPOSITORY layer")
-        void shouldDetectRepository() {
-        }
-
-        @Test
-        @DisplayName("should detect @Component as COMPONENT layer")
-        void shouldDetectComponent() {
-        }
-
-        @Test
-        @DisplayName("should detect @Configuration as CONFIG layer")
-        void shouldDetectConfiguration() {
-        }
-
-        @Test
-        @DisplayName("should detect @Entity as ENTITY layer")
-        void shouldDetectEntity() {
+            assertThat(visitor.getExtractedNodes())
+                    .noneMatch(n -> n.type().equals("Route"));
+            assertThat(visitor.getExtractedEdges())
+                    .noneMatch(e -> e.type().equals("HANDLES_ROUTE"));
         }
     }
 
     @Nested
-    @DisplayName("Method annotation detection")
-    class MethodAnnotationDetection {
+    @DisplayName("Injection detection")
+    class InjectionDetection {
 
         @Test
-        @DisplayName("should detect @GetMapping and extract route path")
-        void shouldDetectGetMapping() {
-            // @GetMapping("/users") → httpMethod=GET, routePath="/users"
+        @DisplayName("@Autowired field produces an INJECTS edge")
+        void autowiredFieldProducesInjectsEdge() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.beans.factory.annotation.Autowired;
+
+                public class UserController {
+                    @Autowired
+                    private UserService userService;
+                }
+                """);
+
+            EdgeData injects = visitor.getExtractedEdges().stream()
+                    .filter(e -> e.type().equals("INJECTS"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("No INJECTS edge extracted"));
+            assertThat(injects.sourceFullName()).contains("UserController");
+            assertThat(injects.targetFullName()).isEqualTo("com.example.UserService");
         }
 
         @Test
-        @DisplayName("should detect @PostMapping and extract route path")
-        void shouldDetectPostMapping() {
-        }
+        @DisplayName("@RequiredArgsConstructor + final field produces an INJECTS edge")
+        void lombokConstructorInjectionProducesInjectsEdge() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import lombok.RequiredArgsConstructor;
 
-        @Test
-        @DisplayName("should detect @RequestMapping with method attribute")
-        void shouldDetectRequestMapping() {
-            // @RequestMapping(value="/users", method=RequestMethod.GET)
-        }
+                @RequiredArgsConstructor
+                public class OrderService {
+                    private final OrderRepository repository;
+                }
+                """);
 
-        @Test
-        @DisplayName("should detect @Scheduled method")
-        void shouldDetectScheduled() {
-            // @Scheduled → actor = "Scheduler"
-        }
-
-        @Test
-        @DisplayName("should detect @KafkaListener method")
-        void shouldDetectKafkaListener() {
-            // @KafkaListener → actor = "Message Queue"
-        }
-    }
-
-    @Nested
-    @DisplayName("Field annotation detection")
-    class FieldAnnotationDetection {
-
-        @Test
-        @DisplayName("should detect @Autowired field")
-        void shouldDetectAutowired() {
-            // @Autowired UserService userService → isInjected = true
-        }
-
-        @Test
-        @DisplayName("should detect @Inject field")
-        void shouldDetectInject() {
-            // @Inject (Jakarta) → isInjected = true
+            assertThat(visitor.getExtractedEdges())
+                    .anyMatch(e -> e.type().equals("INJECTS")
+                            && e.targetFullName().equals("com.example.OrderRepository"));
         }
     }
 }

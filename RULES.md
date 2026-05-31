@@ -49,11 +49,11 @@
 
 ### Phase 1: Understand
 1. Run `/understand` or `gitnexus_query({query: "feature area"})` to map relevant code.
-2. Read existing specs in `VibeGraph-specs/` if the feature touches architecture.
+2. Read existing specs in `VibeGraph-specs-2month/` if the feature touches architecture.
 3. Check `gitnexus://repo/VibeGraph-com/processes` for affected execution flows.
 
 ### Phase 2: Plan
-1. Write a brief spec (1 page max) in `VibeGraph-specs/` for non-trivial features.
+1. Write a brief spec (1 page max) in `VibeGraph-specs-2month/` for non-trivial features.
 2. Break into tasks — each task = one commit-sized unit.
 3. Identify risk: run `gitnexus_impact` on symbols you plan to change.
 
@@ -80,9 +80,9 @@
 - **Immutability:** Use `record` for read-only response DTOs. Use class with `@Builder` for DTOs needing MapStruct mapping. Prefer `final` fields. No setters on domain objects.
 - **Layering:** Controller → Service (interface) → Repository. No cross-layer shortcuts.
 - **Lombok:** `@Getter`, `@RequiredArgsConstructor`, `@Builder` only. No `@Data` on entities.
-- **Neo4j nodes:** `@Node` classes in `node/` package. Relationships via `@Relationship`.
-- **Cypher:** Complex queries in `@Query` annotations or dedicated `*Repository` methods.
-- **API Response:** All REST endpoints MUST return `ApiResponse<T>` wrapper:
+- **Neo4j persistence:** KHÔNG dùng Spring Data Neo4j OGM. KHÔNG tạo `@Node`/`@Relationship` model classes hay `*NodeRepository`. Persist graph qua `GraphRepository` → `Neo4jGraphRepository` dùng **raw Neo4j Java Driver + parameterized Cypher**. Graph metadata là Neo4j node properties (từ Cypher của repository hoặc `NodeData` properties), không phải field của entity Java.
+- **Driver isolation:** Service KHÔNG import `org.neo4j.*` / `org.springframework.data.neo4j.*`; chỉ `repository/impl/neo4j/` và `common/config` (vd `Neo4jMigrationRunner`) được dùng driver. ArchUnit ép buộc (`StorageAbstractionTest`).
+- **API Response:** REST endpoints trả về wrapper `ApiResponse<T>` cho response body. Ngoại lệ: các action delete / no-content được phép trả `204 No Content` với body rỗng (vd `DELETE /api/projects/{id}` → `ResponseEntity<Void>`):
   ```java
   public record ApiResponse<T>(int code, String message, T data) {
       public static <T> ApiResponse<T> success(T data) { return new ApiResponse<>(200, "OK", data); }
@@ -95,17 +95,14 @@
   - Never use `e.printStackTrace()` or `System.out.println`
   - Log with context: `log.error("Failed to parse {}: {}", filePath, e.getMessage(), e);`
 - **CORS:** Configure global CORS in `WebConfig` allowing frontend origin (`http://localhost:3000` dev, env-configurable in prod).
-- **Data Mapping:** Use **MapStruct** for Entity ↔ DTO conversion. Never write manual getter/setter mapping.
-  ```java
-  @Mapper(componentModel = "spring")
-  public interface SymbolMapper {
-      SymbolDTO toDto(Symbol entity);
-      List<SymbolDTO> toDtoList(List<Symbol> entities);
-  }
-  ```
-- **Neo4j Migration:** NEVER rely on auto-schema. Use Cypher migration scripts in `src/main/resources/neo4j/migrations/` with version prefix (`V1__init.cypher`, `V2__add_index.cypher`). Track applied migrations via custom `:Migration` node.
-- **Soft Delete:** All major entities must have `deleted: boolean` + `deletedAt: LocalDateTime` properties. Never run `DETACH DELETE` directly — set `deleted=true` instead.
-- **Auditing:** All `@Node` entities must include `createdAt`, `updatedAt`, `createdBy`, `updatedBy` properties. Use `@CreatedDate`/`@LastModifiedDate` annotations.
+- **Data Mapping:** Không dùng `@Node` entity. Tại ranh giới Neo4j driver repository (`Neo4jGraphRepository`), ánh xạ **explicit/manual** từ raw `org.neo4j.driver.Record`/`Node` sang DTO (vd `mapNodeToDto`) là chấp nhận được — driver record không phải bean để MapStruct map tự động. MapStruct vẫn dùng được cho ánh xạ POJO ↔ DTO thuần ở nơi khác.
+- **Neo4j Migration:** NEVER rely on auto-schema. Cypher migrations sống trong `src/main/resources/db/migration/` (vd `V1__init_schema.cypher`). `Neo4jMigrationRunner` áp dụng chúng idempotently lúc khởi động. Theo dõi version/metadata các migration đã áp dụng (vd `:Migration` node) là kế hoạch sau, CHƯA hiện thực.
+- **Soft Delete / Hard Delete:**
+  - Soft delete (`deleted: boolean` + `deletedAt`) áp dụng cho business / user-owned persistent entities (nếu/khi có).
+  - Derived graph data (sinh từ parser) ĐƯỢC PHÉP hard delete bằng parameterized Cypher trong `GraphRepository`/`Neo4jGraphRepository`.
+  - `DETACH DELETE` được phép cho `deleteFile` / incremental re-parse cleanup và migration/maintenance Cypher.
+  - `DETACH DELETE` KHÔNG được dùng ở controller/service và KHÔNG được nối chuỗi input người dùng (chỉ parameterized Cypher trong `repository/impl/neo4j`).
+- **Auditing:** KHÔNG dùng Spring Data auditing annotations (`@CreatedDate`/`@LastModifiedDate`/`@CreatedBy`) cho graph — không có `@Node` entity. Nếu cần timestamp, set như node property trong Cypher của `Neo4jGraphRepository`.
 - **API Documentation:** Add OpenAPI 3 annotations (`@Tag`, `@Operation`, `@Schema`) on all controllers and DTOs.
 
 ### TypeScript / Vue (Frontend)
@@ -257,7 +254,7 @@
 ### Pull Requests
 - Title: same format as commit message.
 - Body must include: **Summary**, **Test Plan**, **Risk Assessment** (from `gitnexus_impact`).
-- Link related specs in `VibeGraph-specs/`.
+- Link related specs in `VibeGraph-specs-2month/`.
 - Wait for all CI checks green before merge.
 
 ---
@@ -378,7 +375,7 @@ VibeGraph/
 │       ├── types/       # TypeScript interfaces
 │       ├── views/       # Route-level pages
 │       └── router/      # Vue Router config
-├── VibeGraph-specs/     # Feature specs & architecture docs
+├── VibeGraph-specs-2month/     # Feature specs & architecture docs
 ├── RULES.md             # THIS FILE — single source of truth
 ├── docker-compose.yml   # Full local stack
 └── pom.xml              # Maven build

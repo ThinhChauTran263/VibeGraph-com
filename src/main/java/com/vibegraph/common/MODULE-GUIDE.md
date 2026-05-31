@@ -1,14 +1,14 @@
 # Module: common
 
 ## Mục đích
-Module chứa các thành phần dùng chung cho toàn bộ dự án: configuration, exception handling, DTOs, base models, và utilities.
+Module chứa các thành phần dùng chung cho toàn bộ dự án: configuration, exception handling, DTOs, và utilities.
 
 ## Cấu trúc
 
 ```
 common/
 ├── config/
-│   ├── Neo4jConfig.java          — Spring Data Neo4j connection config
+│   ├── Neo4jMigrationRunner.java — Áp dụng V1__init_schema.cypher lúc startup (raw Driver)
 │   ├── WebSocketConfig.java      — STOMP WebSocket setup (/ws/graph-updates)
 │   ├── CorsConfig.java           — CORS policy (allow Vue dev server localhost:5173)
 │   ├── McpServerConfig.java      — MCP Server bean registration
@@ -25,8 +25,6 @@ common/
 │   ├── ParseException.java
 │   ├── NodeNotFoundException.java
 │   └── GithubImportException.java  — GitHub tarball import errors
-├── node/
-│   └── BaseNode.java             — Abstract @Node parent (id, createdAt, updatedAt)
 └── util/
     ├── FileUtils.java            — File I/O helpers (scan directory, filter .java)
     ├── HashUtils.java            — SHA-256 checksum cho incremental cache
@@ -36,7 +34,7 @@ common/
 ## Yêu cầu chức năng
 
 ### Config
-- [ ] `Neo4jConfig`: Cấu hình connection tới Neo4j (bolt://localhost:7687), authentication, transaction manager
+- [x] `Neo4jMigrationRunner`: Áp dụng `V1__init_schema.cypher` lúc khởi động qua raw Neo4j Java Driver (không dùng Spring Data Neo4j OGM)
 - [ ] `WebSocketConfig`: Enable STOMP over SockJS, endpoint `/ws/graph-updates`, allowed origins
 - [ ] `CorsConfig`: Allow origins `http://localhost:5173` (Vue dev), configurable qua application.yaml
 - [ ] `McpServerConfig`: Register MCP Server beans, transport = Streamable HTTP tại `/mcp`
@@ -54,9 +52,10 @@ common/
 - [ ] `ApiResponse<T>`: generic wrapper `{success: boolean, data: T, error: String, timestamp: Instant}`
 - [ ] `ErrorResponse`: `{code: String, message: String, details: Map<String, Object>}`
 
-### Base Node
-- [ ] `BaseNode`: Abstract class với `@Id @GeneratedValue Long id`, `Instant createdAt`, `Instant updatedAt`
-- [ ] Tất cả Neo4j node classes trong các module khác phải extends `BaseNode`
+### Persistence (lưu ý kiến trúc)
+- Module này KHÔNG chứa entity Neo4j — không dùng `@Node` / Spring Data Neo4j OGM và không có `BaseNode`.
+- `common/config` chỉ giữ config dùng chung; riêng `Neo4jMigrationRunner` áp dụng `V1__init_schema.cypher` qua raw Neo4j Java Driver lúc khởi động.
+- Toàn bộ persistence nằm ở `graph/repository/impl/neo4j` (raw Driver + Cypher).
 
 ### Utilities
 - [ ] `FileUtils.scanJavaFiles(Path dir)`: Recursive scan, trả về `List<Path>`, bỏ qua build/, target/, .git/, node_modules/
@@ -76,7 +75,7 @@ common/
 ## Dependencies
 
 - Spring Boot Starter Web
-- Spring Data Neo4j
+- Neo4j Java Driver (raw — không dùng Spring Data Neo4j OGM)
 - Spring WebSocket
 - Spring AI MCP Server
 - Lombok
@@ -87,7 +86,6 @@ common/
 - [ ] Tất cả config classes có `@Configuration` annotation
 - [ ] GlobalExceptionHandler handle được: RuntimeException, ProjectNotFoundException, ParseException, NodeNotFoundException, GithubImportException
 - [ ] ApiResponse wrapper được dùng nhất quán ở tất cả REST endpoints
-- [ ] BaseNode có auto-generated ID
 - [ ] FileUtils scan đúng, bỏ qua ignored paths
 - [ ] HashUtils trả về consistent SHA-256 hex string
 - [ ] Unit tests pass với coverage > 80% cho util classes

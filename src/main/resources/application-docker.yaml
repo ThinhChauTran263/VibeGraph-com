@@ -6,6 +6,12 @@ spring:
       password: ${NEO4J_PASSWORD}
 
 vibegraph:
+  # Uploaded archives are materialized on the writable named volume (see docker-compose.yml),
+  # never on the read-only /projects mount.
+  import:
+    archive:
+      workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:/uploads}
+
   cors:
     allowed-origins:
       - http://localhost:3000

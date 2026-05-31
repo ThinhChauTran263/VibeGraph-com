@@ -27,7 +27,7 @@
 
 ### Workflow (Spec-driven)
 1. **Understand** → use `understand` skill or `gitnexus_query`
-2. **Plan** → write 1-page spec in `VibeGraph-specs/`
+2. **Plan** → write 1-page spec in `VibeGraph-specs-2month/`
 3. **Execute** → free-flow within planned scope
 4. **Commit** → run mandatory checklist (RULES.md Section 2 Phase 4)
 

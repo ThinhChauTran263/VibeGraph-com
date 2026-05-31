@@ -4,21 +4,34 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 
 ## Features
 
-- Parse Java source code with JavaParser
-- Build knowledge graph in Neo4j
-- Force-directed graph visualization (Sigma.js)
-- Auto-generate UML diagrams (Use Case, Class, Sequence) with Mermaid
-- Realtime updates via File Watcher + WebSocket
-- MCP Server for AI tools (Cursor, Kiro, Claude Code)
-- Auto-generate steering files for AI tools
+> Trạng thái phản ánh kế hoạch 8 tuần trong `VibeGraph-specs-2month/`
+> (chi tiết: `task-breakdown-8week.md`, `file-checklist.md`).
+
+**Đã có (MVP — Sprint 1):**
+- Parse Java source code with JavaParser → `NodeData` / `EdgeData`
+- Build knowledge graph in Neo4j via `GraphRepository` (raw Neo4j Java Driver)
+- Force-directed graph visualization (Sigma.js) with filtering + focus mode
+- REST API: register project (local path), run analysis, fetch full graph
+
+**Đang phát triển (Sprint 2–3):**
+- Project archive upload (`.zip`/`.tar`/`.tar.gz`) — flow chính mới thay cho việc nhập local path thủ công (`POST /api/projects/import-archive`)
+- GitHub public-repo import (tarball stream — backend path in place, UI pending)
+- Realtime incremental updates via server-side File Watcher + WebSocket/STOMP
+- UML diagrams: Use Case & Class (Mermaid)
+- MCP Server tools for AI tools (Cursor, Kiro, Claude Code)
+
+**Hoãn sau MVP (post-MVP):**
+- Sequence diagram
+- Steering-file generation for AI tools
+- Multi-language parsing, authentication/billing
 
 ## Tech Stack
 
-- Backend: Spring Boot 3.x / Java 21
-- Parser: JavaParser 3.28
-- Database: Neo4j 5.x
-- Frontend: Vue 3 + Vite + Sigma.js
-- MCP: Spring AI MCP Boot Starter
+- Backend: Spring Boot 4.0.6 / Java 21
+- Parser: JavaParser 3.28.0 (+ Symbol Solver)
+- Database: Neo4j 5.x (raw Java Driver — no Spring Data Neo4j OGM)
+- Frontend: Vue 3.5 + Vite 8 + TypeScript 6 + Sigma.js 3 + Mermaid 11
+- MCP: Spring AI MCP Server (`spring-ai-starter-mcp-server`)
 - Build: Maven
 - Container: Docker Compose
 
@@ -55,12 +68,13 @@ Open: http://localhost:5173
 
 ## Project Structure
 
-See `VibeGraph-specs/` for detailed documentation:
-- `requirements.md` — Functional requirements
+See `VibeGraph-specs-2month/` for detailed documentation:
+- `requirements-trimmed.md` — Functional requirements (MVP scope)
 - `architecture.md` — System design
-- `task-breakdown.md` — Sprint tasks
-- `presentation.md` — Customer-facing overview
+- `task-breakdown-8week.md` — Sprint tasks
 - `file-checklist.md` — File creation checklist
+- `deployment-plan.md` — Docker / domain / SSL / CI notes
+- `presentation.html` — Customer-facing overview (generated)
 
 ## MCP Configuration
 
