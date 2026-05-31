@@ -2,14 +2,14 @@
 
 ## Mục tiêu
 
-Đến cuối giai đoạn MVP, `vibegraph.com` phục vụ frontend qua HTTPS, proxy lưu lượng API/WebSocket/MCP đến backend Spring Boot, và có thể import một repo Java công khai trên GitHub vào Neo4j.
+Đến cuối giai đoạn MVP, `vibegraph.com` phục vụ frontend qua HTTPS, proxy lưu lượng API/WebSocket/MCP đến backend Spring Boot, và có thể cho người dùng upload một project Java bằng ZIP/TAR qua `POST /api/projects/import-archive` để ghi graph vào Neo4j. Import GitHub công khai là flow phụ dùng lại pipeline archive.
 
 ## Các cổng giai đoạn
 
 | Tuần | Môi trường | URL | Yêu cầu |
 |---|---|---|---|
 | 2 | Local dev | `http://localhost:5173` hoặc Docker `http://localhost:3000` | Lát cắt dọc cục bộ hoạt động |
-| 6 | Staging | `staging.vibegraph.com` | Import GitHub, sơ đồ, kiểm thử nhanh MCP |
+| 6 | Staging | `staging.vibegraph.com` | Upload ZIP/TAR end-to-end, import GitHub phụ, sơ đồ, kiểm thử nhanh MCP |
 | 8 | Production | `vibegraph.com` | Ra mắt bản demo công khai |
 
 `dev.vibegraph.com` là tùy chọn. Đừng để việc triển khai domain chặn Sprint 1.
@@ -208,7 +208,8 @@ GitHub Actions cần chạy trước khi deploy:
 - [ ] `NEO4J_PASSWORD` ngẫu nhiên và mạnh.
 - [ ] Các cổng Neo4j không công khai trong production.
 - [ ] Cổng backend 8080 không công khai trong production.
-- [ ] `/api/projects/import-github` được giới hạn tần suất (rate-limit).
+- [ ] `/api/projects/import-archive` và `/api/projects/import-github` được giới hạn tần suất (rate-limit).
+- [ ] Archive upload có giới hạn dung lượng, chống path traversal, symlink nguy hiểm và archive bomb trước khi expose public.
 - [ ] Việc xác thực GitHub URL từ chối các host không phải GitHub.
 - [ ] CORS chỉ cho phép origin production trong prod.
 - [ ] Firewall chỉ mở 22, 80, và 443.

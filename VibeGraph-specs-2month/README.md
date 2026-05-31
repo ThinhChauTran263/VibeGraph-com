@@ -9,11 +9,11 @@ Thư mục này là nguồn chân lý duy nhất cho việc thực thi MVP. Nó 
 
 ## Mục tiêu sau 2 tháng
 
-Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, gửi URL của một repository Java công khai trên GitHub, và thấy một đồ thị mã nguồn tương tác. Các công cụ AI như Cursor, Claude Code, và Kiro có thể kết nối qua MCP và lấy về ngữ cảnh kiến trúc.
+Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, upload một file ZIP/TAR của project Java, và thấy một đồ thị mã nguồn tương tác. GitHub public-repo import vẫn nằm trong MVP, nhưng archive upload là flow chính Sprint 2 để thay cho việc nhập local path thủ công. Các công cụ AI như Cursor, Claude Code, và Kiro có thể kết nối qua MCP và lấy về ngữ cảnh kiến trúc.
 
 Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
 
-> **Trạng thái sau audit 2026-05-30:** đoạn trên là mục tiêu cuối MVP 2 tháng. Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
+> **Trạng thái sau audit 2026-05-30 và quyết định product 2026-05-31:** Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. Từ Sprint 2, UX chính chuyển sang `upload ZIP/TAR archive -> parse -> Neo4j -> graph`; local path giữ lại như dev/internal fallback. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
 
 ## Quyết định kiến trúc hiện tại
 
@@ -38,6 +38,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 - FR-09 REST API
 - FR-10 MCP server với 4 tool
 - FR-NEW nhập khẩu tarball từ GitHub
+- FR-NEW-2 upload project bằng ZIP/TAR archive (flow chính Sprint 2 thay cho nhập local path thủ công)
 
 ## Hoãn lại sau MVP
 
@@ -84,7 +85,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 
 1. Phân tích cú pháp một thư mục Java cục bộ thành `NodeData` và `EdgeData`.
 2. Lưu dữ liệu đồ thị thông qua `GraphRepository` vào Neo4j.
-3. Mở các endpoint `POST /api/projects`, `POST /api/projects/{id}/analyze`, và `GET /api/projects/{id}/graph`.
+3. Sprint 1 đã mở các endpoint dev/internal `POST /api/projects`, `POST /api/projects/{id}/analyze`, và `GET /api/projects/{id}/graph`; Sprint 2 chuyển UX chính sang `POST /api/projects/import-archive` để user upload ZIP/TAR thay vì nhập local path thủ công.
 4. Render đồ thị trả về trong `vibegraph-web` bằng Sigma.js.
 
 Chỉ sau khi việc này chạy được ở local thì dự án mới nên chuyển sang nhập khẩu từ GitHub, vá realtime qua WebSocket, các sơ đồ, và tinh chỉnh MCP.

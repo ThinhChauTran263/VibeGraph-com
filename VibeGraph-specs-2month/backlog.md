@@ -31,8 +31,8 @@ Hoãn có chủ đích → Sprint 2: `VibeGraphApplicationTests` còn `@Disabled
 |---|------|----------|----------------|
 | 1 | Testcontainers context smoke — enable `VibeGraphApplicationTests` | 🟡 Medium | `VibeGraphApplicationTests` (@Disabled) |
 | 2 | Public deploy: **auth + rate-limit** | 🔴 Critical | no spring-security; REST/MCP/actuator |
-| 3 | Public deploy: **SSRF / path validation** | 🔴 Critical | `ProjectServiceImpl.validateRootPath` (allowed-root), `GithubImportRequest` |
-| 4 | Async analyze + WebSocket progress | 🟠 Important | `ProjectController.analyze`, `graph/websocket/*` |
+| 3 | Public deploy: **archive upload safety + path validation** | 🔴 Critical | `import-archive`, archive extraction, `ProjectServiceImpl.validateRootPath` fallback, `GithubImportRequest` |
+| 4 | Archive upload + async analyze + WebSocket progress | 🟠 Important | `POST /api/projects/import-archive`, `ProjectController.analyze`, `graph/websocket/*` |
 | 5 | `getFullGraph` pagination/limits | 🟠 Important | `Neo4jGraphRepository.getFullGraph` |
 | 6 | INJECTS single source + D1/D2/D3 parser cleanup | 🟠 Important | `FieldVisitor`+`SpringAnnotationVisitor`; visitors |
 | 7 | Persist project registry to Neo4j | 🟠 Important | `ProjectServiceImpl` (in-memory) |
@@ -44,8 +44,8 @@ Hoãn có chủ đích → Sprint 2: `VibeGraphApplicationTests` còn `@Disabled
 ### Chi tiết
 1. **Testcontainers context smoke** — thêm Testcontainers Neo4j, enable `VibeGraphApplicationTests.contextLoads()` (hiện cần Driver bean + `Neo4jMigrationRunner` lúc startup). AC: context load xanh trong CI không cần Neo4j ngoài.
 2. **Auth + rate-limit** — auth (API key/OIDC) cho REST + MCP; ẩn/bảo vệ actuator `metrics`/`prometheus`; rate-limit `analyze` + `import-github`.
-3. **SSRF / path validation** — set `VIBEGRAPH_PROJECTS_ALLOWED_ROOT` ở prod (đang rỗng) hoặc tắt đăng ký local-path trên demo công khai; giữ regex chặn `github.com` cho import. *(🔴 xử lý trước khi expose demo công khai)*
-4. **Async analyze + WS** — `AsyncConfig` virtual-thread executor; `analyze` trả `202` ngay; broadcast progress qua `/topic/projects/{id}/status`; FE `useWebSocket`.
+3. **Archive upload safety + path validation** — flow chính Sprint 2 là upload ZIP/TAR, nên phải chặn path traversal (`../`, absolute path), symlink nguy hiểm, file quá lớn, archive bomb; local-path registration chỉ giữ dev/internal fallback và phải tắt/allow-list khi expose demo công khai. Giữ regex chặn `github.com` cho import. *(🔴 xử lý trước khi expose demo công khai)*
+4. **Archive upload + async analyze + WS** — thêm `POST /api/projects/import-archive`; `AsyncConfig` executor; import/analyze trả `202` hoặc project status ngay; broadcast progress qua `/topic/projects/{id}/status`; FE `useWebSocket`.
 5. **Pagination** — `LIMIT`/phân trang `getFullGraph` (FR-09 "paginated").
 6. **INJECTS single source + D1/D2/D3** — gộp INJECTS một nguồn; `TypeNames.resolveFqn`; `Signatures.method(...)`; `springLayer` một nguồn (+ test ghim).
 7. **Persist registry** — lưu project metadata vào `:Project` node, đọc lại khi `list/get` (tránh orphan khi restart).

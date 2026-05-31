@@ -2,6 +2,14 @@ spring:
   application:
     name: VibeGraph
 
+  # Multipart limits for archive upload (POST /api/projects/import-archive).
+  # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
+  # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 105MB
+
   # Neo4j connection
   neo4j:
     uri: ${NEO4J_URI:bolt://localhost:7687}
@@ -33,6 +41,19 @@ vibegraph:
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
+  # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
+  import:
+    archive:
+      max-size: 100MB
+      # Writable workspace for uploaded archives. Never the read-only /projects mount.
+      workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
+      ignored-paths:
+        - target
+        - build
+        - .git
+        - .idea
+        - node_modules
 
   watcher:
     enabled: true

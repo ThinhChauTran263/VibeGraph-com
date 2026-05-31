@@ -490,7 +490,7 @@ const backendTree = {
       { name: 'controller', icon: '🎯', desc: 'REST API cho graph operations', children: [
         { name: 'GraphController.java', icon: '📄', type: 'file', desc: 'API /api/graph - query nodes, search, filter' },
         { name: 'ImpactController.java', icon: '📄', type: 'file', desc: 'API /api/impact - phân tích ảnh hưởng khi sửa code' },
-        { name: 'ImportController.java', icon: '📄', type: 'file', desc: 'API /api/import - import từ GitHub URL' },
+        { name: 'ImportController.java', icon: '📄', type: 'file', desc: 'API /api/projects/import-archive (upload ZIP/TAR) + import-github (GitHub URL)' },
         { name: 'ProjectController.java', icon: '📄', type: 'file', desc: 'API /api/projects - CRUD project, trigger analyze' },
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package controller' }
       ]},
@@ -527,6 +527,7 @@ const backendTree = {
       ]},
       { name: 'service', icon: '⚙️', desc: 'Business logic interfaces cho graph', children: [
         { name: 'AnalyzeService.java', icon: '📄', type: 'file', desc: 'Interface điều phối parse toàn bộ project' },
+        { name: 'ArchiveImportService.java', icon: '📄', type: 'file', desc: 'Interface nhận upload ZIP/TAR, validate, parse .java theo relative path (flow chính)' },
         { name: 'GraphService.java', icon: '📄', type: 'file', desc: 'Interface query nodes, traverse relationships' },
         { name: 'ImpactService.java', icon: '📄', type: 'file', desc: 'Interface tính blast radius khi sửa code' },
         { name: 'ProjectService.java', icon: '📄', type: 'file', desc: 'Interface quản lý project CRUD' },
@@ -534,6 +535,7 @@ const backendTree = {
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
         { name: 'impl', icon: '📁', desc: 'Implementations của service interfaces', children: [
           { name: 'AnalyzeServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: orchestrate parser, save nodes/edges to Neo4j' },
+          { name: 'ArchiveImportServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: nhận multipart, chống path traversal/symlink, parse .java từ archive' },
           { name: 'GraphServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: query, filter, search fulltext với Neo4j' },
           { name: 'ImpactServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: traverse call graph, calculate affected nodes' },
           { name: 'ProjectServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: CRUD project, manage analyze status' },

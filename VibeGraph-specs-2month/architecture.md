@@ -208,7 +208,33 @@ ArchUnit test ép buộc:
 
 ## Luồng dữ liệu — các use case
 
-### 1. Người dùng dán URL GitHub (Tarball stream — không clone, không lưu disk)
+### 1. Người dùng upload ZIP/TAR project (flow chính Sprint 2)
+
+> **Luồng mục tiêu Sprint 2.** Quyết định product ngày 2026-05-31: user không nhập local path thủ công trong UX chính. User chọn archive từ file explorer, backend nhận multipart, parse các file `.java`, lưu graph rồi frontend mở graph. Local-path registration của Sprint 1 giữ lại cho dev/internal fallback.
+
+```
+Browser → POST /api/projects/import-archive multipart {name, file=.zip|.tar|.tar.gz}
+  ↓
+ArchiveImportService.importArchive(...)
+  Step 1: Validate request
+    → Reject archive > 100MB
+    → Reject unsupported extension/MIME
+  Step 2: Stream archive entries
+    → ZIP via ZipInputStream, TAR/TAR.GZ via commons-compress
+    → Reject path traversal, absolute path, unsafe symlink, archive bomb patterns
+    → Skip target/build/.git/.idea/node_modules and non-.java files
+  Step 3: Parse Java entries
+    → Preserve relative path as filePath
+    → Materialize safe `.java` entries into a server-owned workspace
+    → ParserService.parseProject(workspacePath)  # dùng API hiện có; parseString là target API tương lai, chưa có trong code hiện tại
+    → GraphRepository.upsertProject/upsertNodes/upsertEdges
+  Step 4: WebSocket progress
+    → /topic/projects/{id}/status
+  ↓
+Frontend redirects to /projects/{id}/graph when READY
+```
+
+### 2. Người dùng dán URL GitHub (Tarball stream — không clone, không lưu disk)
 
 > **Luồng mục tiêu Sprint 2.** Code hiện có `ImportController` và route `POST /api/projects/import-github`, nhưng `TarballImportServiceImpl` vẫn ném `FeatureNotImplementedException`. `ParserService.parseString(content, relPath)` trong flow dưới đây là API cần bổ sung hoặc thay bằng cơ chế parse stream tương đương; hiện chỉ có `parseFile`/`parseProject` và `parseFileWithCache` chưa implement.
 
@@ -242,7 +268,7 @@ Frontend nhận status update qua WebSocket, hiển thị progress bar
 - Nhanh hơn 3x với repo nhỏ-vừa (~80 file)
 - Không cần dependency JGit (~10MB), thay bằng commons-compress (~700KB)
 
-### 2. CLI watch cục bộ (Post-MVP, hoãn lại)
+### 3. CLI watch cục bộ (Post-MVP, hoãn lại)
 ```
 User runs: vibegraph watch (inside project folder)
   ↓
@@ -271,7 +297,7 @@ Browser Sigma.js patch graph (không full reload)
 Source code KHÔNG bao giờ rời máy user.
 ```
 
-### 3. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
+### 4. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
 
 > **Luồng mục tiêu Sprint 2.** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã có file, nhưng start/stop watch, debounce và incremental reparse/update còn TODO; WebSocket broadcast cũng chưa nối vào pipeline thật.
 
@@ -289,7 +315,7 @@ FileWatcherServiceImpl.onChange(filePath)
 Frontend Sigma.js patch graph (không full reload)
 ```
 
-### 4. AI tool gọi MCP
+### 5. AI tool gọi MCP
 
 > **Luồng mục tiêu Sprint 3.** MCP packages/classes đã có scaffold, nhưng chưa có `@Tool` methods và `ArchitectureAnalyzer`/`McpToolService` còn TODO. Tên method `ArchitectureTool.getProjectArchitecture` dưới đây mô tả contract mong muốn, không phải method đang tồn tại.
 
