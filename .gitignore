@@ -80,3 +80,19 @@ Thumbs.db
 # Root-level npm artifacts (accidental npm install at repo root; Vue app lives in vibegraph-web/)
 # ========================================
 /node_modules/
+
+# ========================================
+# Local AI / IDE Tooling
+# ========================================
+AGENTS.md
+RULES.md
+CLAUDE.md
+GEMINI.md
+.cursorrules
+.claude/
+.factory/
+.kiro/
+.codex/
+.agents/
+.cursor/
+.antigravity/
