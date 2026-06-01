@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.dto.response.ErrorResponse;
@@ -70,6 +71,28 @@ public class GlobalExceptionHandler {
                 .message(ex.getMessage())
                 .build();
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ArchiveImportException.class)
+    public ResponseEntity<ApiResponse<Void>> handleArchiveImport(ArchiveImportException ex) {
+        // User-correctable archive-upload failure (unsupported type, oversize, unsafe entry,
+        // empty archive, ...). Surface the stable reason code instead of a generic 500.
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        // Spring rejects oversized multipart uploads before the controller runs — map to 413
+        // so the archive-upload client gets a clear "too large" instead of a generic 500.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("ARCHIVE_OVERSIZE")
+                .message("Uploaded archive exceeds the maximum allowed size")
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.error(error));
     }
 
     @ExceptionHandler(Exception.class)
