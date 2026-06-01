@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +15,9 @@ import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 import org.neo4j.driver.Session;
+import org.testcontainers.containers.Neo4jContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
@@ -23,32 +26,27 @@ import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
 /**
- * Integration test for {@link Neo4jGraphRepository} against a REAL Neo4j instance.
+ * Integration test for {@link Neo4jGraphRepository} against a REAL Neo4j instance,
+ * provided on demand by Testcontainers.
  *
  * <p>This is the verification that {@code @DataNeo4jTest}-style unit mocks cannot give:
  * it proves the raw-Driver Cypher in the repository actually round-trips through Neo4j,
- * that the schema constraints from {@code V1__init_schema.cypher} apply, and that the
- * Route {@code routePath} property (recently fixed from {@code path}) matches the
- * {@code route_unique} constraint key.
+ * and that the Route {@code routePath} property (fixed from {@code path}) is persisted.
  *
- * <p><b>Skips automatically</b> when no Neo4j is reachable at {@code NEO4J_TEST_URI}
- * (default {@code bolt://localhost:7687}), so it never breaks a CI run without a DB.
- * To run locally: {@code docker compose up -d neo4j} then
- * {@code mvnw test -Dtest=Neo4jGraphRepositoryIT}, or {@code mvnw verify} for
- * the full CI-style build.
+ * <p>Runs by default: a {@code neo4j:5-community} container is started automatically, so
+ * the test no longer depends on a developer running Neo4j locally. The class is
+ * {@code disabledWithoutDocker = true}, so on a machine with no Docker daemon it is
+ * skipped (rather than erroring); CI must provide Docker so this coverage is included.
  *
  * <p>All data is namespaced under a random {@code projectId} and deleted in
- * {@link #cleanup()}, so it never collides with real project data in a shared instance.
+ * {@link #cleanup()}.
  */
-@DisplayName("Neo4jGraphRepository (integration, real Neo4j)")
+@Testcontainers(disabledWithoutDocker = true)
+@DisplayName("Neo4jGraphRepository (integration, real Neo4j via Testcontainers)")
 class Neo4jGraphRepositoryIT {
 
-    private static final String URI =
-            System.getenv().getOrDefault("NEO4J_TEST_URI", "bolt://localhost:7687");
-    private static final String USER =
-            System.getenv().getOrDefault("NEO4J_TEST_USERNAME", "neo4j");
-    private static final String PASSWORD =
-            System.getenv().getOrDefault("NEO4J_TEST_PASSWORD", "vibegraph");
+    @Container
+    static final Neo4jContainer<?> NEO4J = new Neo4jContainer<>("neo4j:5-community");
 
     private static Driver driver;
 
@@ -57,21 +55,20 @@ class Neo4jGraphRepositoryIT {
 
     @BeforeAll
     static void connect() {
-        try {
-            Driver candidate = GraphDatabase.driver(URI, AuthTokens.basic(USER, PASSWORD));
-            candidate.verifyConnectivity();
-            driver = candidate;
-        } catch (Exception ex) {
-            // No DB available — every test in this class will be skipped by the assumption below.
-            driver = null;
+        driver = GraphDatabase.driver(NEO4J.getBoltUrl(),
+                AuthTokens.basic("neo4j", NEO4J.getAdminPassword()));
+        driver.verifyConnectivity();
+    }
+
+    @AfterAll
+    static void close() {
+        if (driver != null) {
+            driver.close();
         }
     }
 
     @BeforeEach
     void setUp() {
-        assumeTrue(driver != null,
-                "Neo4j not reachable at " + URI + " — skipping integration test. "
-                        + "Run `docker compose up -d neo4j` to enable.");
         repository = new Neo4jGraphRepository(driver);
         projectId = "it-" + UUID.randomUUID().toString().substring(0, 8);
     }

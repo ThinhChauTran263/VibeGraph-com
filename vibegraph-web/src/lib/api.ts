@@ -23,16 +23,68 @@ interface ApiResponse<T> {
   error?: { code: string; message: string }
 }
 
+/**
+ * Project DTO returned by both `POST /api/projects` and
+ * `POST /api/projects/import-archive`. Mirrors the backend
+ * `graph.dto.response.ProjectResponse` Java record.
+ */
+export interface Project {
+  id: string
+  name: string
+  /** ISO-8601 timestamp string (Java `Instant`). */
+  createdAt?: string
+  /** ISO-8601 timestamp string; absent until first analyze completes. */
+  lastAnalyzedAt?: string
+  totalFiles: number
+  totalNodes: number
+  totalEdges: number
+  /** Backend status enum: `ANALYZING`, `ANALYZED`, or `FAILED`. */
+  status: string
+  /** Analysis progress 0-100. Present on async import (202) and status events. */
+  progress?: number
+}
+
+/** Terminal + in-flight statuses pushed over the project-status WebSocket topic. */
+export type ProjectStatus = 'ANALYZING' | 'ANALYZED' | 'FAILED'
+
+/**
+ * Status event pushed to `/topic/projects/{projectId}/status` while an async
+ * archive import is analyzing. Mirrors the backend status payload.
+ */
+export interface ProjectStatusEvent {
+  projectId: string
+  status: ProjectStatus
+  /** Progress 0-100. */
+  progress: number
+  /** Human-readable detail; null when the backend has nothing to add. */
+  message: string | null
+  /** ISO-8601 timestamp string. */
+  timestamp: string
+}
+
 async function unwrap<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new ApiError(res.status, res.statusText, body || undefined)
+    // Try to extract a structured error message from the response body
+    // before falling back to the raw text or HTTP status.
+    const message = await extractErrorMessage(res)
+    throw new ApiError(res.status, res.statusText, message)
   }
   const json = (await res.json()) as ApiResponse<T>
   if (!json.success) {
     throw new ApiError(400, 'API Error', json.error?.message ?? 'Unknown error')
   }
   return json.data
+}
+
+async function extractErrorMessage(res: Response): Promise<string | undefined> {
+  const text = await res.text().catch(() => '')
+  if (!text) return undefined
+  try {
+    const parsed = JSON.parse(text) as Partial<ApiResponse<unknown>>
+    return parsed?.error?.message ?? text
+  } catch {
+    return text
+  }
 }
 
 export const api = {
@@ -52,11 +104,24 @@ export const api = {
     return unwrap<T>(res)
   },
 
+  /**
+   * POST a `multipart/form-data` request. Do NOT set `Content-Type` manually -
+   * the browser must compute the multipart boundary. Setting it explicitly
+   * breaks the upload.
+   */
+  async postMultipart<T>(path: string, form: FormData): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      body: form,
+    })
+    return unwrap<T>(res)
+  },
+
   async delete(path: string): Promise<void> {
     const res = await fetch(`${this.baseUrl}${path}`, { method: 'DELETE' })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new ApiError(res.status, res.statusText, body || undefined)
+      const message = await extractErrorMessage(res)
+      throw new ApiError(res.status, res.statusText, message)
     }
   },
 }
@@ -71,8 +136,43 @@ export async function fetchFullGraph(projectId: string): Promise<GraphData> {
 
 // Project endpoints
 export const projectApi = {
-  list: () => api.get('/api/projects'),
-  create: (data: unknown) => api.post('/api/projects', data),
+  list: () => api.get<Project[]>('/api/projects'),
+  get: (id: string) => api.get<Project>(`/api/projects/${id}`),
+  create: (data: unknown) => api.post<Project>('/api/projects', data),
+}
+
+/**
+ * Project import endpoints.
+ *
+ * `POST /api/projects/import-archive` accepts a `multipart/form-data` body
+ * with two fields:
+ *   - `name` - string, the project name
+ *   - `file` - the archive file (.zip, .tar, .tar.gz, .tgz)
+ *
+ * Two modes:
+ *   - `uploadArchive` (default, sync): server analyzes inline and returns a
+ *     terminal `ANALYZED` project. Behavior is unchanged from the baseline.
+ *   - `uploadArchiveAsync`: adds `?async=true`, server returns `202 Accepted`
+ *     with an `ANALYZING` project; progress arrives over the WebSocket
+ *     `/topic/projects/{id}/status` topic.
+ *
+ * The frontend treats a network error or non-2xx response as an upload
+ * failure (see `useArchiveImport`).
+ */
+export const importApi = {
+  uploadArchive(name: string, file: File): Promise<Project> {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('file', file)
+    return api.postMultipart<Project>('/api/projects/import-archive', form)
+  },
+
+  uploadArchiveAsync(name: string, file: File): Promise<Project> {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('file', file)
+    return api.postMultipart<Project>('/api/projects/import-archive?async=true', form)
+  },
 }
 
 // Graph endpoints

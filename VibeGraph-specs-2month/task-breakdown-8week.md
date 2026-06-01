@@ -71,7 +71,7 @@ Cột mốc lịch sử của Sprint 1: dev có thể đăng ký một project J
 | 1.20 | Hiện thực `AnalyzeService` bản MVP | `POST /api/projects/{id}/analyze` parse và lưu đồ thị |
 | 1.21 | Hiện thực `GraphService` và `GraphController` bản MVP | `GET /api/projects/{id}/graph` trả về nodes, edges, và stats |
 | 1.22 | Hiện thực `GlobalExceptionHandler` | Lỗi validation, not found, parse, và lỗi chung được map sang các response có kiểu |
-| 1.23 | Cấu hình CORS cho môi trường dev | `http://localhost:5173` và origin của frontend Docker được cho phép ở dev |
+| 1.23 | Cấu hình CORS cho môi trường dev | `http://localhost:5173`, `http://127.0.0.1:5173`, và origin của frontend Docker được cho phép ở dev |
 
 Điểm kiểm tra:
 
@@ -108,13 +108,29 @@ Một số task vốn được lên kế hoạch cho Sprint 2 đã được hoà
 
 Cột mốc: người dùng có thể upload file ZIP/TAR của một project Java, xem tiến độ qua WebSocket, thấy graph sau khi parse xong, sau đó tiếp tục với import GitHub công khai và các diagram Use Case/Class.
 
+### Cập nhật foundation hiện tại (2026-06-01)
+
+- `mvn test` pass. `mvn verify` từng fail vì coverage khoảng 66% < 70%, nhưng blocker đã được xử lý bằng Testcontainers Neo4j.
+- `Neo4jGraphRepositoryIT` hiện chạy Neo4j thật bằng Testcontainers: 5 tests run, 0 skipped khi Docker daemon đang chạy.
+- `mvn verify` xanh khi Docker daemon available và coverage gate 70% pass. CI/runner phải có Docker daemon; nếu Docker không có, Testcontainers IT có thể skip và coverage có thể tụt lại.
+- Archive foundation và import end-to-end đã có: `ArchiveImportException`, `ArchiveType`, `ArchiveTypeDetector`, `ProjectService.createProjectFromWorkspace`, `GlobalExceptionHandler` mapping archive 400 và upload oversize 413, `ArchiveExtractor`, `ArchiveImportService` orchestration sync, và `POST /api/projects/import-archive` sync.
+- `ArchiveExtractor` đã xong: hỗ trợ ZIP, TAR, TAR_GZ/TGZ; chỉ materialize `.java`; chống path traversal, absolute path, Windows drive path; reject TAR symlink/hardlink/special file; bỏ qua ignored paths; test `EMPTY_ARCHIVE` / `OVERSIZE` / `EXTRACTION_FAILED`; `mvn verify` xanh sau khi thêm extractor.
+- Sync archive upload E2E đã pass: `POST /api/projects/import-archive` trả `200 OK`, project status `ANALYZED`, progress `100`, frontend navigate sang `/projects/{id}/graph`.
+- Async archive import đã có: `POST /api/projects/import-archive?async=true` trả `202 Accepted`, project status `ANALYZING`, progress `0`, background analyze qua `analysisExecutor`, status model `ANALYZED`/`FAILED`, và WebSocket status events `/topic/projects/{id}/status`.
+- Frontend async support đã có: `importApi.uploadArchiveAsync(...)`, `useWebSocket.ts`, async mode trong `useArchiveImport`, `AddProjectArchive` prop `async?: boolean`, polling fallback `GET /api/projects/{id}`, watchdog timeout, và Vite SockJS fix `define.global = globalThis`.
+- Async browser E2E đã pass qua poll fallback: nhận `202`, SockJS handshake `/ws/graph-updates/info` trả `200`, poll fallback thấy `ANALYZED`, navigate graph thành công; `no-java.zip` async trả `400` trước pha WebSocket.
+- Default UI vẫn sync: `HomeView` render `<AddProjectArchive @imported="onImported" />`. Async support có sẵn qua `AddProjectArchive async` prop nhưng chưa bật mặc định.
+- Hardening sau E2E đã xong: public JSON không còn expose server absolute `rootPath` (`ProjectResponse` vẫn giữ field/getter cho Java nội bộ), frontend `Project` type/test fixtures đã bỏ `rootPath`, và dev CORS đã allow thêm `http://127.0.0.1:5173`.
+- Parser D3 đã xong: `Signatures.method(ownerFqcn, methodName, paramTypes)`, `MethodVisitor` dùng `Signatures`, `SpringAnnotationVisitor` dùng `Signatures` cho HANDLES_ROUTE source. Format signature không đổi: `owner.method(param1,param2)`.
+- Frontend Upload UI đã xong cho sync flow và có async support; Home route `/` vẫn dùng sync mặc định.
+
 | # | Task | Tiêu chí chấp nhận |
 |---|---|---|
-| 2.1 | Cấu hình STOMP endpoint `/ws/graph-updates` | Frontend có thể kết nối và subscribe các topic của project |
-| 2.2 | Hiện thực các method broadcast cập nhật đồ thị | Các topic cập nhật toàn phần và tăng dần publish payload có kiểu |
+| 2.1 | Cấu hình STOMP endpoint `/ws/graph-updates` | ✅ Done cho SockJS/STOMP handshake; async E2E xác nhận `/ws/graph-updates/info` trả `200` |
+| 2.2 | Hiện thực các method broadcast cập nhật đồ thị | ✅ Done cho project status events `/topic/projects/{id}/status`; watch debt: chưa quan sát push event thắng poll fallback |
 | 2.3 | Hiện thực pipeline tăng dần cho file watcher | CREATE/MODIFY/DELETE re-parse một file và cập nhật đồ thị < 3s |
-| 2.4 | Hiện thực `POST /api/projects/import-archive` | Nhận multipart `name` + `.zip`/`.tar`/`.tar.gz`, giới hạn size, chống path traversal, parse `.java` theo relative path |
-| 2.5 | Hiện thực UI Add Project bằng upload ZIP/TAR | User chọn archive từ file explorer, bấm Add, thấy progress, không phải nhập local path |
+| 2.4 | Hiện thực `POST /api/projects/import-archive` | ✅ Done sync và async. Sync trả `200 OK` + `ANALYZED`/progress `100`; async `?async=true` trả `202 Accepted` + `ANALYZING`/progress `0`, analyze nền qua `analysisExecutor` |
+| 2.5 | Hiện thực UI Add Project bằng upload ZIP/TAR | ✅ Done sync default và async support. User chọn archive từ file explorer, bấm Add, graph mở sau analyze. Async có sẵn qua prop `AddProjectArchive async` nhưng HomeView chưa bật mặc định |
 | 2.6 | Hiện thực pre-flight + parse stream cho import GitHub | Dùng `GET /repos/{owner}/{repo}`, từ chối repo private/quá lớn, parse tarball GitHub như cùng pipeline archive |
 | 2.6a | Hiện thực `POST /api/projects/import-github` end-to-end | Trả về response project được chấp nhận và gửi cập nhật tiến độ |
 | 2.7 | Hiện thực endpoint lân cận đồ thị | `GET /graph/neighbors/{nodeId}?hops=N` hoạt động với giới hạn |
@@ -133,7 +149,16 @@ Những mục này phát sinh khi hoàn thiện lát cắt dọc Sprint 1. Chún
 |---|---|---|---|---|
 | D1 | `springLayer()` bị trùng lặp ở `ClassVisitor` và `SpringAnnotationVisitor` | `ClassVisitor.java:175` (giữ logic + mở rộng với CONFIG/ENTITY/ControllerAdvice), `SpringAnnotationVisitor.java` (đã có phần đọc annotation riêng) | Mâu thuẫn trực tiếp với tiêu chí chấp nhận của task 2.12 ("loại bỏ logic layer trùng lặp khỏi `ClassVisitor`"). Hai nguồn sự thật = lệch nhau khi thêm annotation mới. | Chuyển toàn bộ `springLayer()` vào `SpringAnnotationVisitor`; để `ClassVisitor` ủy quyền hoặc ngừng phát ra property này; đóng 2.12 đúng cách. |
 | D2 | `resolveTypeName()` bị copy-paste ở 3 visitor | `ClassVisitor.java:83`, `MethodVisitor.java:144`, `SpringAnnotationVisitor.java:127` | Độ chính xác của symbol resolution là đòn bẩy lớn nhất cho chất lượng đồ thị (target của CALLS, INJECTS, EXTENDS). Ba bản hiện thực nghĩa là ba lỗi phải sửa khi nó thay đổi. Lần thử trước với tiện ích `TypeNames` đã bị xóa vì chưa bao giờ được nối vào — phần việc đó cần làm lại, nhưng lần này phải thực sự được áp dụng. | Tách ra một tiện ích dùng chung (`TypeNames.resolveFqn(typeName, node)`); refactor cả 3 visitor để gọi nó; thêm test ghim hành vi chuẩn. |
-| D3 | Method signature được dựng inline ở nhiều nơi | `MethodVisitor.java:248` (`fullName()`), `MethodVisitor.java:122-126` (target của CALLS), `SpringAnnotationVisitor.java:57-61` (source của HANDLES_ROUTE) | Việc upsert edge làm `MATCH (a {fullName}) MATCH (b {fullName}) MERGE`. Lệch một ký tự giữa bên ghi và bên đọc = edge bị âm thầm bỏ qua, không lỗi, không log. Đây là loại bug tệ nhất để debug — liên quan trực tiếp đến tiêu chuẩn chất lượng của 2.13. | Một builder chuẩn duy nhất: `Signatures.method(ownerFqcn, name, paramTypes)`. Mọi nơi gọi đều dùng nó. Thêm unit test ghim cố định format string. |
+| D3 | Method signature được dựng inline ở nhiều nơi | `MethodVisitor.java`, `SpringAnnotationVisitor.java`, `Signatures.java` | ✅ Xong. Một builder chuẩn duy nhất `Signatures.method(ownerFqcn, methodName, paramTypes)` đã được dùng cho method nodes/CALLS target và HANDLES_ROUTE source; format không đổi: `owner.method(param1,param2)`. | Giữ test ghim format và dùng `Signatures.method(...)` cho mọi signature mới. |
+
+### Việc tiếp theo trong Sprint 2
+
+1. Decide whether to enable async UI by default in `HomeView`; hiện mặc định vẫn sync, async chỉ bật khi truyền `AddProjectArchive async`.
+2. Persist project registry thay vì in-memory.
+3. Cleanup graph/project state khi analyze failure; async failure hiện có thể để lại project `FAILED` và partial graph debt.
+4. Test WebSocket push path với project lớn hơn hoặc delayed analyze để quan sát progress meaningful và push thắng poll fallback.
+5. `getFullGraph` limit/pagination hoặc project size cap trước khi xử lý repo lớn.
+6. GitHub import dùng lại archive pipeline sau khi archive local đã an toàn.
 
 ## Sprint 3 - MCP, độ bền vững, hoàn thiện
 

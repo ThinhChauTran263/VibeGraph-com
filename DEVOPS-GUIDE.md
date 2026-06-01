@@ -323,6 +323,28 @@ PROJECTS_DIR=./projects
 
 ## 8. GitHub Actions CI
 
+### Backend verify + Testcontainers note
+
+Backend `mvn verify` now depends on Docker being available because `Neo4jGraphRepositoryIT` uses Testcontainers to run a real Neo4j container. Current expected state when Docker daemon is available:
+
+- `Neo4jGraphRepositoryIT`: 5 tests run, 0 skipped.
+- JaCoCo coverage gate 70% passes.
+- `mvn verify` is green without relying on an externally managed Neo4j instance.
+
+CI runners must expose a working Docker daemon. If Docker is unavailable, Testcontainers integration tests may skip and coverage can drop below the gate; that is not a valid merge signal for backend verify.
+
+### Sprint 2 archive import verification note
+
+Current archive import verification status:
+
+- Backend verify passes when Docker daemon is available for Testcontainers.
+- Sync browser E2E passes: `POST /api/projects/import-archive` returns `200 OK`, project reaches `ANALYZED` with progress `100`, and the frontend navigates to `/projects/{id}/graph`.
+- Async browser E2E passes through fallback path: `POST /api/projects/import-archive?async=true` returns `202 Accepted`, SockJS handshake `/ws/graph-updates/info` returns `200`, polling fallback `GET /api/projects/{id}` observes `ANALYZED`, and the frontend navigates to graph.
+- The async E2E currently verifies WebSocket availability plus poll fallback. It does not yet prove the push event path wins over polling because analysis completes too quickly.
+- Dev CORS now allows both `http://localhost:5173` and `http://127.0.0.1:5173`.
+- Public project responses no longer expose the server absolute `rootPath`; backend keeps the Java field/getter internally, and the frontend `Project` contract no longer includes `rootPath`.
+- Upload UI remains sync by default; async upload is still opt-in rather than enabled by default.
+
 ### `.github/workflows/ci.yml`
 **Mục tiêu:** Run on every PR + push to `main`.
 
@@ -331,12 +353,6 @@ PROJECTS_DIR=./projects
 #### `backend-test`
 ```yaml
 runs-on: ubuntu-latest
-services:
-  neo4j:
-    image: neo4j:5-community
-    env:
-      NEO4J_AUTH: neo4j/test
-    ports: ['7687:7687', '7474:7474']
 steps:
   - uses: actions/checkout@v4
   - uses: actions/setup-java@v4
@@ -344,9 +360,12 @@ steps:
       java-version: 21
       distribution: temurin
       cache: maven
+  - run: docker info
   - run: mvn -B verify
   - uses: codecov/codecov-action@v4
 ```
+
+Testcontainers starts Neo4j itself, so the workflow does not need a separate `services.neo4j` block unless a future test explicitly targets an external database.
 
 #### `frontend-test`
 ```yaml

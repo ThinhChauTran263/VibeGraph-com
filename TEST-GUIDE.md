@@ -4,7 +4,16 @@
 
 Project sử dụng **JUnit 5** + **AssertJ** + **Mockito**. Tất cả test được tổ chức theo module và đánh dấu `@Disabled` cho đến khi source code được implement.
 
-**Trạng thái hiện tại:** 103 tests (3 pass, 100 skipped via `@Disabled`)
+**Trạng thái hiện tại:** Sprint 1 vertical slice tests pass. Backend verify pass khi Docker daemon đang chạy để Testcontainers Neo4j có thể start container và coverage gate 70% được tính đúng. Trạng thái này vẫn xanh sau archive import sync/async backend work.
+
+Archive upload browser E2E hiện đã pass cho sync và async:
+- Sync: `POST /api/projects/import-archive` trả `200 OK`, project status `ANALYZED`, progress `100`, frontend navigate sang `/projects/{id}/graph`.
+- Async: `POST /api/projects/import-archive?async=true` trả `202 Accepted`, SockJS handshake `/ws/graph-updates/info` trả `200`, polling fallback `GET /api/projects/{id}` bắt được `ANALYZED`, frontend navigate graph thành công. WebSocket push event path chưa được quan sát thắng poll vì analyze quá nhanh.
+- Async failure validation: `no-java.zip` trả `400` trước pha WebSocket.
+- Hardening sau E2E: API JSON không còn expose server absolute `rootPath`; frontend `Project` type và test fixtures không còn `rootPath`; dev CORS đã allow thêm `http://127.0.0.1:5173`.
+- Upload UI vẫn sync mặc định; async upload support vẫn là opt-in.
+
+Lưu ý CI: runner phải có Docker daemon. Nếu Docker không available, Testcontainers integration tests có thể skip; coverage có thể tụt lại dưới 70%, nên không coi runner không Docker là verify hợp lệ.
 
 ---
 
@@ -52,6 +61,28 @@ Project sử dụng **JUnit 5** + **AssertJ** + **Mockito**. Tất cả test đ�
 # Report tại: target/site/jacoco/index.html
 # Build FAIL nếu coverage < 70%
 ```
+
+### Chạy integration tests với Testcontainers Neo4j
+
+`Neo4jGraphRepositoryIT` dùng Testcontainers để chạy Neo4j thật bằng container. Khi Docker daemon đang chạy, expected status hiện tại là 5 tests run, 0 skipped, và `./mvnw verify` pass coverage gate 70%.
+
+```bash
+docker info
+./mvnw verify
+```
+
+Nếu Docker không chạy, Testcontainers có thể skip integration test. Trường hợp đó chỉ hữu ích cho dev feedback nhanh; CI/merge gate phải chạy trên runner có Docker.
+
+### Archive import E2E scenarios
+
+Các kịch bản browser E2E đã được xác minh cho Sprint 2 archive import:
+
+1. Sync archive upload: upload ZIP/TAR Java qua UI mặc định, backend trả `200 OK`, response có status `ANALYZED` và progress `100`, UI điều hướng đến `/projects/{id}/graph`.
+2. Async archive upload: upload với async mode, backend trả `202 Accepted`, project bắt đầu ở `ANALYZING` progress `0`, SockJS handshake `/ws/graph-updates/info` thành công, polling fallback thấy `ANALYZED`, UI điều hướng đến graph.
+3. Invalid archive async: archive không có `.java` trả `400` trước khi vào pha WebSocket/progress.
+4. Response contract: project JSON không trả `rootPath`; frontend contract khớp vì `Project` type không còn field này.
+
+Lưu ý: async E2E hiện chứng minh handshake WebSocket và poll fallback. Cần thêm test với project lớn hơn hoặc delayed analyze để chứng minh push event thắng poll fallback.
 
 ---
 
@@ -228,8 +259,13 @@ Lý do: mỗi tầng phụ thuộc tầng trước. Parser cần utils, graph c�
 ### Test không compile
 Kiểm tra source code đã có method/class mà test gọi chưa. Stub methods (throw `UnsupportedOperationException`) đã có sẵn để đảm bảo compile.
 
-### Spring context test fail
-`VibeGraphApplicationTests` cần Neo4j running:
+### Spring context / Neo4j integration test fail
+`Neo4jGraphRepositoryIT` cần Docker daemon để Testcontainers start Neo4j. Kiểm tra trước:
+```bash
+docker info
+```
+
+Nếu chạy Neo4j local thủ công cho debug, có thể dùng:
 ```bash
 docker run -d -p 7687:7687 -e NEO4J_AUTH=neo4j/vibegraph neo4j:5
 ```

@@ -15,6 +15,7 @@ import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.Signatures;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -54,11 +55,12 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
     }
 
     private void processMethodAnnotations(MethodDeclaration method, String classFqcn, String classPrefix) {
-        String methodFqcn = classFqcn + "." + method.getNameAsString() + "(" +
+        String methodFqcn = Signatures.method(
+                classFqcn,
+                method.getNameAsString(),
                 method.getParameters().stream()
                         .map(p -> p.getType().asString())
-                        .reduce((a, b) -> a + "," + b)
-                        .orElse("") + ")";
+                        .toList());
 
         for (AnnotationExpr annotation : method.getAnnotations()) {
             String name = annotation.getName().getIdentifier();
