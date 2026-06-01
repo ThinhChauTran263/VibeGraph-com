@@ -38,7 +38,6 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p-123',
     name: 'sample',
-    rootPath: '/uploads/p-123/source',
     totalFiles: 0,
     totalNodes: 0,
     totalEdges: 0,

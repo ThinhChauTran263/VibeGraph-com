@@ -31,7 +31,6 @@ interface ApiResponse<T> {
 export interface Project {
   id: string
   name: string
-  rootPath: string
   /** ISO-8601 timestamp string (Java `Instant`). */
   createdAt?: string
   /** ISO-8601 timestamp string; absent until first analyze completes. */

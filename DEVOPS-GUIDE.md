@@ -341,7 +341,9 @@ Current archive import verification status:
 - Sync browser E2E passes: `POST /api/projects/import-archive` returns `200 OK`, project reaches `ANALYZED` with progress `100`, and the frontend navigates to `/projects/{id}/graph`.
 - Async browser E2E passes through fallback path: `POST /api/projects/import-archive?async=true` returns `202 Accepted`, SockJS handshake `/ws/graph-updates/info` returns `200`, polling fallback `GET /api/projects/{id}` observes `ANALYZED`, and the frontend navigates to graph.
 - The async E2E currently verifies WebSocket availability plus poll fallback. It does not yet prove the push event path wins over polling because analysis completes too quickly.
-- Dev CORS still needs either `http://127.0.0.1:5173` in allowed origins or a Vite proxy standard path.
+- Dev CORS now allows both `http://localhost:5173` and `http://127.0.0.1:5173`.
+- Public project responses no longer expose the server absolute `rootPath`; backend keeps the Java field/getter internally, and the frontend `Project` contract no longer includes `rootPath`.
+- Upload UI remains sync by default; async upload is still opt-in rather than enabled by default.
 
 ### `.github/workflows/ci.yml`
 **Mục tiêu:** Run on every PR + push to `main`.

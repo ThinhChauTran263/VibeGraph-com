@@ -71,7 +71,7 @@ Cột mốc lịch sử của Sprint 1: dev có thể đăng ký một project J
 | 1.20 | Hiện thực `AnalyzeService` bản MVP | `POST /api/projects/{id}/analyze` parse và lưu đồ thị |
 | 1.21 | Hiện thực `GraphService` và `GraphController` bản MVP | `GET /api/projects/{id}/graph` trả về nodes, edges, và stats |
 | 1.22 | Hiện thực `GlobalExceptionHandler` | Lỗi validation, not found, parse, và lỗi chung được map sang các response có kiểu |
-| 1.23 | Cấu hình CORS cho môi trường dev | `http://localhost:5173` và origin của frontend Docker được cho phép ở dev |
+| 1.23 | Cấu hình CORS cho môi trường dev | `http://localhost:5173`, `http://127.0.0.1:5173`, và origin của frontend Docker được cho phép ở dev |
 
 Điểm kiểm tra:
 
@@ -120,6 +120,7 @@ Cột mốc: người dùng có thể upload file ZIP/TAR của một project Ja
 - Frontend async support đã có: `importApi.uploadArchiveAsync(...)`, `useWebSocket.ts`, async mode trong `useArchiveImport`, `AddProjectArchive` prop `async?: boolean`, polling fallback `GET /api/projects/{id}`, watchdog timeout, và Vite SockJS fix `define.global = globalThis`.
 - Async browser E2E đã pass qua poll fallback: nhận `202`, SockJS handshake `/ws/graph-updates/info` trả `200`, poll fallback thấy `ANALYZED`, navigate graph thành công; `no-java.zip` async trả `400` trước pha WebSocket.
 - Default UI vẫn sync: `HomeView` render `<AddProjectArchive @imported="onImported" />`. Async support có sẵn qua `AddProjectArchive async` prop nhưng chưa bật mặc định.
+- Hardening sau E2E đã xong: public JSON không còn expose server absolute `rootPath` (`ProjectResponse` vẫn giữ field/getter cho Java nội bộ), frontend `Project` type/test fixtures đã bỏ `rootPath`, và dev CORS đã allow thêm `http://127.0.0.1:5173`.
 - Parser D3 đã xong: `Signatures.method(ownerFqcn, methodName, paramTypes)`, `MethodVisitor` dùng `Signatures`, `SpringAnnotationVisitor` dùng `Signatures` cho HANDLES_ROUTE source. Format signature không đổi: `owner.method(param1,param2)`.
 - Frontend Upload UI đã xong cho sync flow và có async support; Home route `/` vẫn dùng sync mặc định.
 
@@ -153,13 +154,11 @@ Những mục này phát sinh khi hoàn thiện lát cắt dọc Sprint 1. Chún
 ### Việc tiếp theo trong Sprint 2
 
 1. Decide whether to enable async UI by default in `HomeView`; hiện mặc định vẫn sync, async chỉ bật khi truyền `AddProjectArchive async`.
-2. Fix dev CORS gap cho `http://127.0.0.1:5173` hoặc chuẩn hóa qua Vite proxy.
-3. Loại `rootPath` absolute server temp path khỏi public response/DTO.
-4. Persist project registry thay vì in-memory.
-5. Cleanup graph/project state khi analyze failure; async failure hiện có thể để lại project `FAILED` với `rootPath` trỏ tới workspace đã cleanup và partial graph debt.
-6. Test WebSocket push path với project lớn hơn hoặc delayed analyze để quan sát push thắng poll fallback.
-7. `getFullGraph` limit/pagination hoặc project size cap trước khi xử lý repo lớn.
-8. GitHub import dùng lại archive pipeline sau khi archive local đã an toàn.
+2. Persist project registry thay vì in-memory.
+3. Cleanup graph/project state khi analyze failure; async failure hiện có thể để lại project `FAILED` và partial graph debt.
+4. Test WebSocket push path với project lớn hơn hoặc delayed analyze để quan sát progress meaningful và push thắng poll fallback.
+5. `getFullGraph` limit/pagination hoặc project size cap trước khi xử lý repo lớn.
+6. GitHub import dùng lại archive pipeline sau khi archive local đã an toàn.
 
 ## Sprint 3 - MCP, độ bền vững, hoàn thiện
 

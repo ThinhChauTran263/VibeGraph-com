@@ -10,6 +10,8 @@ Archive upload browser E2E hiện đã pass cho sync và async:
 - Sync: `POST /api/projects/import-archive` trả `200 OK`, project status `ANALYZED`, progress `100`, frontend navigate sang `/projects/{id}/graph`.
 - Async: `POST /api/projects/import-archive?async=true` trả `202 Accepted`, SockJS handshake `/ws/graph-updates/info` trả `200`, polling fallback `GET /api/projects/{id}` bắt được `ANALYZED`, frontend navigate graph thành công. WebSocket push event path chưa được quan sát thắng poll vì analyze quá nhanh.
 - Async failure validation: `no-java.zip` trả `400` trước pha WebSocket.
+- Hardening sau E2E: API JSON không còn expose server absolute `rootPath`; frontend `Project` type và test fixtures không còn `rootPath`; dev CORS đã allow thêm `http://127.0.0.1:5173`.
+- Upload UI vẫn sync mặc định; async upload support vẫn là opt-in.
 
 Lưu ý CI: runner phải có Docker daemon. Nếu Docker không available, Testcontainers integration tests có thể skip; coverage có thể tụt lại dưới 70%, nên không coi runner không Docker là verify hợp lệ.
 
@@ -78,6 +80,7 @@ Các kịch bản browser E2E đã được xác minh cho Sprint 2 archive impor
 1. Sync archive upload: upload ZIP/TAR Java qua UI mặc định, backend trả `200 OK`, response có status `ANALYZED` và progress `100`, UI điều hướng đến `/projects/{id}/graph`.
 2. Async archive upload: upload với async mode, backend trả `202 Accepted`, project bắt đầu ở `ANALYZING` progress `0`, SockJS handshake `/ws/graph-updates/info` thành công, polling fallback thấy `ANALYZED`, UI điều hướng đến graph.
 3. Invalid archive async: archive không có `.java` trả `400` trước khi vào pha WebSocket/progress.
+4. Response contract: project JSON không trả `rootPath`; frontend contract khớp vì `Project` type không còn field này.
 
 Lưu ý: async E2E hiện chứng minh handshake WebSocket và poll fallback. Cần thêm test với project lớn hơn hoặc delayed analyze để chứng minh push event thắng poll fallback.
 
