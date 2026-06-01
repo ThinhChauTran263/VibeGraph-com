@@ -74,3 +74,9 @@ Thumbs.db
 .gitnexus/
 .understand-anything/
 .vite/
+
+
+# ========================================
+# Root-level npm artifacts (accidental npm install at repo root; Vue app lives in vibegraph-web/)
+# ========================================
+/node_modules/
