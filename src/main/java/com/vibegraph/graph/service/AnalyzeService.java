@@ -3,16 +3,27 @@ package com.vibegraph.graph.service;
 /**
  * Project analysis service.
  *
- * TODO:
- * - analyzeProject(projectId, request) → trigger full analysis
- * - analyzeFile(projectId, filePath) → incremental update
- * - getStatus(projectId) → progress info
- *
- * Flow:
- * 1. Scan project directory for .java files
- * 2. For each file: parse → extract → save to Neo4j
- * 3. Notify WebSocket subscribers
+ * Sprint 1 scope: trigger full analysis (parse all .java files → upsert to Neo4j).
  */
 public interface AnalyzeService {
-    // TODO: Define methods
+
+    /**
+     * Run full analysis on a project: parse all .java files and persist to graph store.
+     *
+     * @param projectId tenant identifier
+     * @param projectPath absolute path to project root containing .java files
+     * @return summary of analysis result
+     */
+    AnalysisResult analyzeProject(String projectId, String projectPath);
+
+    /**
+     * Result summary of an analysis run.
+     */
+    record AnalysisResult(
+            String projectId,
+            int filesParsed,
+            int nodesUpserted,
+            int edgesUpserted,
+            int warnings
+    ) {}
 }

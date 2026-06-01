@@ -1,50 +1,185 @@
 /**
  * HTTP API client for VibeGraph backend.
- *
- * TODO:
- * - Use axios or fetch
- * - Handle errors
- * - Type-safe responses
- * - Auth header (for SaaS phase)
+ * All responses are wrapped in ApiResponse<T> = { success, data, error }.
  */
 
 import { API_BASE_URL } from './constants'
+import type { GraphData } from '@/types/graph'
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly statusText: string,
+    message?: string,
+  ) {
+    super(message ?? `HTTP ${status}: ${statusText}`)
+    this.name = 'ApiError'
+  }
+}
+
+interface ApiResponse<T> {
+  success: boolean
+  data: T
+  error?: { code: string; message: string }
+}
+
+/**
+ * Project DTO returned by both `POST /api/projects` and
+ * `POST /api/projects/import-archive`. Mirrors the backend
+ * `graph.dto.response.ProjectResponse` Java record.
+ */
+export interface Project {
+  id: string
+  name: string
+  /** ISO-8601 timestamp string (Java `Instant`). */
+  createdAt?: string
+  /** ISO-8601 timestamp string; absent until first analyze completes. */
+  lastAnalyzedAt?: string
+  totalFiles: number
+  totalNodes: number
+  totalEdges: number
+  /** Backend status enum: `ANALYZING`, `ANALYZED`, or `FAILED`. */
+  status: string
+  /** Analysis progress 0-100. Present on async import (202) and status events. */
+  progress?: number
+}
+
+/** Terminal + in-flight statuses pushed over the project-status WebSocket topic. */
+export type ProjectStatus = 'ANALYZING' | 'ANALYZED' | 'FAILED'
+
+/**
+ * Status event pushed to `/topic/projects/{projectId}/status` while an async
+ * archive import is analyzing. Mirrors the backend status payload.
+ */
+export interface ProjectStatusEvent {
+  projectId: string
+  status: ProjectStatus
+  /** Progress 0-100. */
+  progress: number
+  /** Human-readable detail; null when the backend has nothing to add. */
+  message: string | null
+  /** ISO-8601 timestamp string. */
+  timestamp: string
+}
+
+async function unwrap<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    // Try to extract a structured error message from the response body
+    // before falling back to the raw text or HTTP status.
+    const message = await extractErrorMessage(res)
+    throw new ApiError(res.status, res.statusText, message)
+  }
+  const json = (await res.json()) as ApiResponse<T>
+  if (!json.success) {
+    throw new ApiError(400, 'API Error', json.error?.message ?? 'Unknown error')
+  }
+  return json.data
+}
+
+async function extractErrorMessage(res: Response): Promise<string | undefined> {
+  const text = await res.text().catch(() => '')
+  if (!text) return undefined
+  try {
+    const parsed = JSON.parse(text) as Partial<ApiResponse<unknown>>
+    return parsed?.error?.message ?? text
+  } catch {
+    return text
+  }
+}
 
 export const api = {
   baseUrl: API_BASE_URL,
 
   async get<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json() as Promise<T>
+    return unwrap<T>(res)
   },
 
-  async post<T>(path: string, body: unknown): Promise<T> {
+  async post<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: body ? JSON.stringify(body) : undefined,
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json() as Promise<T>
+    return unwrap<T>(res)
   },
 
-  // TODO: put, delete, with-auth wrapper
+  /**
+   * POST a `multipart/form-data` request. Do NOT set `Content-Type` manually -
+   * the browser must compute the multipart boundary. Setting it explicitly
+   * breaks the upload.
+   */
+  async postMultipart<T>(path: string, form: FormData): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      body: form,
+    })
+    return unwrap<T>(res)
+  },
+
+  async delete(path: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}${path}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const message = await extractErrorMessage(res)
+      throw new ApiError(res.status, res.statusText, message)
+    }
+  },
+}
+
+/**
+ * Fetch the full graph for a project.
+ * GET /api/projects/{projectId}/graph
+ */
+export async function fetchFullGraph(projectId: string): Promise<GraphData> {
+  return api.get<GraphData>(`/api/projects/${projectId}/graph`)
 }
 
 // Project endpoints
 export const projectApi = {
-  list: () => api.get('/api/projects'),
-  create: (data: unknown) => api.post('/api/projects', data),
-  // TODO: more endpoints
+  list: () => api.get<Project[]>('/api/projects'),
+  get: (id: string) => api.get<Project>(`/api/projects/${id}`),
+  create: (data: unknown) => api.post<Project>('/api/projects', data),
+}
+
+/**
+ * Project import endpoints.
+ *
+ * `POST /api/projects/import-archive` accepts a `multipart/form-data` body
+ * with two fields:
+ *   - `name` - string, the project name
+ *   - `file` - the archive file (.zip, .tar, .tar.gz, .tgz)
+ *
+ * Two modes:
+ *   - `uploadArchive` (default, sync): server analyzes inline and returns a
+ *     terminal `ANALYZED` project. Behavior is unchanged from the baseline.
+ *   - `uploadArchiveAsync`: adds `?async=true`, server returns `202 Accepted`
+ *     with an `ANALYZING` project; progress arrives over the WebSocket
+ *     `/topic/projects/{id}/status` topic.
+ *
+ * The frontend treats a network error or non-2xx response as an upload
+ * failure (see `useArchiveImport`).
+ */
+export const importApi = {
+  uploadArchive(name: string, file: File): Promise<Project> {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('file', file)
+    return api.postMultipart<Project>('/api/projects/import-archive', form)
+  },
+
+  uploadArchiveAsync(name: string, file: File): Promise<Project> {
+    const form = new FormData()
+    form.append('name', name)
+    form.append('file', file)
+    return api.postMultipart<Project>('/api/projects/import-archive?async=true', form)
+  },
 }
 
 // Graph endpoints
 export const graphApi = {
-  getGraph: (projectId: string) => api.get(`/api/projects/${projectId}/graph`),
+  getGraph: (projectId: string) => fetchFullGraph(projectId),
   getNeighbors: (projectId: string, nodeId: string, hops: number) =>
     api.get(`/api/projects/${projectId}/graph/neighbors/${nodeId}?hops=${hops}`),
-  // TODO: more endpoints
 }
 
 // Diagram endpoints

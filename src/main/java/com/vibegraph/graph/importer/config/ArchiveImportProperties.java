@@ -1,0 +1,43 @@
+package com.vibegraph.graph.importer.config;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.util.unit.DataSize;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+
+/**
+ * Archive import properties (read from application.yaml) for the archive-upload
+ * onboarding flow (POST /api/projects/import-archive).
+ *
+ * Example yaml:
+ *
+ * vibegraph:
+ *   import:
+ *     archive:
+ *       max-size: 100MB
+ *       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
+ *       ignored-paths:
+ *         - target
+ *         - build
+ *         - .git
+ *         - .idea
+ *         - node_modules
+ */
+@Data
+@Configuration
+@ConfigurationProperties(prefix = "vibegraph.import.archive")
+public class ArchiveImportProperties {
+
+    /** Max uploaded archive size; larger archives are rejected before extraction. */
+    private DataSize maxSize = DataSize.ofMegabytes(100);
+
+    /** Writable root where uploaded archives are materialized before parsing. Must never be the read-only /projects mount. */
+    private Path workspaceRoot = Paths.get(System.getProperty("java.io.tmpdir"), "vibegraph", "uploads");
+
+    /** Directory names skipped during extraction. */
+    private List<String> ignoredPaths = List.of("target", "build", ".git", ".idea", "node_modules");
+}

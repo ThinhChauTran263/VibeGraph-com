@@ -37,7 +37,7 @@
 - Mọi `@RestController` method có `@Operation(summary = "...")`
 - Mọi DTO field có `@Schema(description = "...", example = "...")`
 - Custom error response → `@ApiResponse(responseCode = "404", description = "...")`
-- WebSocket message: viết riêng schema trong `VibeGraph-specs/websocket-schema.md` (OpenAPI không cover WS)
+- WebSocket message: tài liệu hóa schema riêng (OpenAPI không cover WS) — hợp đồng WS hiện mô tả trong `VibeGraph-specs-2month/requirements-trimmed.md` (FR-07) + `architecture.md`, chưa tách file schema riêng
 
 ### 2.2 Frontend codegen (Sprint 1, Dev 3 làm)
 
@@ -179,7 +179,7 @@ Mỗi dev post 09:30:
 1. **Recap milestones tuần** (5 phút) — Tech Lead
 2. **Demo end-to-end** (15 phút) — driver dev
 3. **Blockers / risks tuần sau** (5 phút) — cả team
-4. **Action items** (5 phút) — capture trong `VibeGraph-specs/demo-log.md`
+4. **Action items** (5 phút) — capture vào GitHub Issues/Discussions (kênh `#vibegraph-dev`)
 
 **Tiêu chí demo PASS:**
 - Flow end-to-end chạy được trên Docker (không phải localhost dev mode)
@@ -221,7 +221,7 @@ Mỗi dev post 09:30:
 **Lý do:** Risk Spring AI MCP API thay đổi → flush sớm.
 
 ### 5.3 Pair programming Day 1-3
-**Bắt buộc:** Dev 1 + Dev 2 pair 3 ngày đầu chốt `ParseResult` → Neo4j entity mapping.
+**Bắt buộc:** Dev 1 + Dev 2 pair 3 ngày đầu chốt luồng `ParseResult` → `NodeData`/`EdgeData` → `GraphRepository` → `Neo4jGraphRepository` (raw Cypher).
 **Format:** Cùng IDE (VS Code Live Share / IntelliJ Code With Me), 4 giờ/ngày.
 **Output:** Interface `ParserService` + `AnalyzeService` lock cứng, có 1 happy-path integration test pass.
 
@@ -252,10 +252,10 @@ try {
 
 ### 5.5 Neo4j schema versioning
 **Owner:** Dev 2 Sprint 1.
-**Cách:** Lưu `schemaVersion` (int) trong `ProjectNode`. Khi schema đổi:
-1. Tăng version trong code
-2. Viết Cypher migration script `src/main/resources/migrations/v2.cypher`
-3. App startup: detect version mismatch → log WARN, hint user `docker compose down -v` (Phase 1)
+**Cách:** Trạng thái schema/migration do cơ chế migration (`Neo4jMigrationRunner` + metadata trong Neo4j) theo dõi, KHÔNG lưu trong entity Java. Khi schema đổi:
+1. Thêm Cypher migration mới dưới `src/main/resources/db/migration/` (vd `V2__*.cypher`)
+2. `Neo4jMigrationRunner` áp dụng lúc startup và ghi lại version đã áp dụng
+3. Nếu mismatch không tự migrate được → log WARN, hint user `docker compose down -v` (Phase 1)
 4. Phase 2: tự động migrate
 
 ---
@@ -269,17 +269,17 @@ try {
 - [ ] Đọc `DEVOPS-GUIDE.md` Quickstart
 
 ### Đọc specs (theo thứ tự)
-1. [ ] `VibeGraph-specs/CONTEXT-PROMPT.md` (10 phút) — overview
-2. [ ] `VibeGraph-specs/requirements.md` (20 phút) — 13 FR + acceptance
-3. [ ] `VibeGraph-specs/architecture.md` (30 phút) — system design + Neo4j schema
-4. [ ] `VibeGraph-specs/task-breakdown.md` (10 phút) — task của bản thân theo Sprint
+1. [ ] `VibeGraph-specs-2month/README.md` (10 phút) — nguồn chân lý thực thi MVP
+2. [ ] `VibeGraph-specs-2month/requirements-trimmed.md` (20 phút) — FR + acceptance
+3. [ ] `VibeGraph-specs-2month/architecture.md` (30 phút) — system design + Neo4j schema
+4. [ ] `VibeGraph-specs-2month/task-breakdown-8week.md` (10 phút) — task theo Sprint
 5. [ ] `TEAM-WORKFLOW.md` (file này, 15 phút)
 
 ### Đọc MODULE-GUIDE module mình phụ trách
 - Dev 1: `parser/MODULE-GUIDE.md`
 - Dev 2: `common/`, `graph/MODULE-GUIDE.md`
 - Dev 3: (frontend) `vibegraph-web/README.md`
-- Dev 4: `diagram/`, `steering/MODULE-GUIDE.md`
+- Dev 4: `diagram/MODULE-GUIDE.md` *(steering/ đã defer post-MVP — bỏ qua)*
 - Dev 5: `watcher/`, `mcp/MODULE-GUIDE.md`, `DEVOPS-GUIDE.md`
 
 ### Verify ready
@@ -341,3 +341,19 @@ R=Responsible, C=Consulted, I=Informed.
 - Mention `@channel` chỉ khi blocker > 4 giờ
 - DM cá nhân chỉ cho chuyện riêng tư — kỹ thuật luôn public channel để cả team học
 - Code review comment trên GitHub, không Slack
+
+
+---
+
+## 10. Removed legacy docs
+
+Bộ tài liệu dài hạn cũ `VibeGraph-specs/` đã bị gỡ khỏi repo (xem `VibeGraph-specs-2month/README.md`). Các file cũ KHÔNG còn là nguồn chân lý; một số không có bản thay thế:
+
+- `websocket-schema.md` — chưa có bản thay thế; hợp đồng WS hiện nằm trong `requirements-trimmed.md` (FR-07) + `architecture.md`
+- `demo-log.md` — bỏ; action item ghi vào GitHub Issues/Discussions
+- `CONTEXT-PROMPT.md` — bỏ; overview nằm trong `VibeGraph-specs-2month/README.md`
+- `requirements.md` → `VibeGraph-specs-2month/requirements-trimmed.md`
+- `architecture.md` → `VibeGraph-specs-2month/architecture.md`
+- `task-breakdown.md` → `VibeGraph-specs-2month/task-breakdown-8week.md`
+
+**Nguồn chân lý hiện tại:** thư mục `VibeGraph-specs-2month/` — `README.md`, `architecture.md`, `requirements-trimmed.md`, `task-breakdown-8week.md`, `file-checklist.md`, `deployment-plan.md`.

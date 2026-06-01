@@ -6,7 +6,7 @@ services:
       - "7474:7474"   # HTTP browser
       - "7687:7687"   # Bolt protocol
     environment:
-      NEO4J_AUTH: neo4j/vibegraph
+      NEO4J_AUTH: ${NEO4J_USERNAME}/${NEO4J_PASSWORD}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
     volumes:
@@ -31,10 +31,14 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_NEO4J_URI: bolt://neo4j:7687
-      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
-      SPRING_NEO4J_AUTHENTICATION_PASSWORD: vibegraph
+      NEO4J_USERNAME: ${NEO4J_USERNAME}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      VIBEGRAPH_UPLOAD_WORKSPACE: /uploads
     volumes:
+      # Read-only local-path fallback projects
       - ./projects:/projects:ro
+      # Writable workspace for uploaded archives (archive upload flow)
+      - upload-workspaces:/uploads
 
   frontend:
     build:
@@ -52,3 +56,4 @@ services:
 volumes:
   neo4j-data:
   neo4j-logs:
+  upload-workspaces:

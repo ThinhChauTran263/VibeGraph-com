@@ -1,15 +1,14 @@
 <script setup lang="ts">
-/**
- * GraphView - Main graph view (3-column layout).
- * Left: SidePanel (Filters | Explorer | Flows)
- * Center: GraphCanvas (Sigma.js)
- * Right: NodeDetailPanel (when node selected)
- */
+import { useRoute } from 'vue-router'
+import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+
+const route = useRoute()
+const projectId = (route.params.projectId as string) || 'default'
 </script>
 
 <template>
   <main class="graph-view">
-    <!-- TODO: HeaderBar, MainLayout, StatusBar -->
+    <GraphCanvas :project-id="projectId" @node-selected="(node) => console.log('selected', node)" />
   </main>
 </template>
 
