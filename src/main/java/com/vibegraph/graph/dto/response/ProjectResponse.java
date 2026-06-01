@@ -21,4 +21,6 @@ public class ProjectResponse {
     private int totalNodes;
     private int totalEdges;
     private String status;
+    /** Analysis progress 0-100: 0 until analysis finishes, 100 when ANALYZED. */
+    private int progress;
 }

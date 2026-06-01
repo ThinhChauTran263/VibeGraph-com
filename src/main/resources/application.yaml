@@ -76,6 +76,15 @@ vibegraph:
     use-cache: true
     cache-dir: .vibegraph/parse-cache
 
+  # Bounded executor for future async analysis/import (bound by AnalysisExecutorProperties).
+  # Not yet wired into the currently-synchronous upload/analyze flow.
+  analysis:
+    executor:
+      core-pool-size: 2
+      max-pool-size: 4
+      queue-capacity: 50
+      thread-name-prefix: "analysis-"
+
 logging:
   level:
     root: INFO
