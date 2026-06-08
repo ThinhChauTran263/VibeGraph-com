@@ -6,54 +6,54 @@ Check which Sprint 1 files actually exist in the codebase
 import os
 from pathlib import Path
 
-# Base path
-BASE = Path("c:/Users/Tan Phat Computer Q8/OneDrive/Desktop/CODE/Project/vibegraph/VibeGraph-com")
-SRC_MAIN = BASE / "src/main/java/com/vibegraph"
-SRC_TEST = BASE / "src/test/java/com/vibegraph"
-FRONTEND = BASE / "frontend/src"
+# Base path resolved dynamically based on script location
+SCRIPT_DIR = Path(__file__).parent
+BASE = SCRIPT_DIR.parent
+SRC_MAIN = BASE
+FRONTEND = BASE / "vibegraph-web/src"
 
 # Sprint 1 tasks to check
 sprint1_files = {
     # Import Archive
-    "T01": ["graph/dto/request/ImportArchiveRequest.java"],
-    "T02": ["graph/service/ArchiveImportService.java"],
-    "T03": ["graph/importer/ArchiveTypeDetector.java"],
-    "T04": ["graph/importer/ArchiveExtractor.java"],
-    "T05": ["graph/controller/ImportController.java"],
+    "T01": ["test: (multipart direct - no DTO)"],
+    "T02": ["src/main/java/com/vibegraph/graph/service/ArchiveImportService.java"],
+    "T03": ["src/main/java/com/vibegraph/graph/importer/ArchiveTypeDetector.java"],
+    "T04": ["src/main/java/com/vibegraph/graph/importer/ArchiveExtractor.java"],
+    "T05": ["src/main/java/com/vibegraph/graph/controller/ImportController.java"],
     "T06": ["test: ArchiveImportServiceImplTest.java"],
     
     # Parser
-    "T12": ["parser/node/NodeData.java", "parser/node/EdgeData.java", "parser/node/ParseResult.java"],
-    "T13": ["parser/visitor/ClassVisitor.java"],
-    "T14": ["parser/visitor/MethodVisitor.java"],
-    "T15": ["parser/visitor/FieldVisitor.java"],
-    "T16": ["parser/visitor/ImportVisitor.java"],
-    "T17": ["parser/visitor/SpringAnnotationVisitor.java"],
-    "T18": ["parser/visitor/ClassVisitor.java"],  # same as T13
+    "T12": ["src/main/java/com/vibegraph/parser/node/NodeData.java", "src/main/java/com/vibegraph/parser/node/EdgeData.java", "src/main/java/com/vibegraph/parser/node/ParseResult.java"],
+    "T13": ["src/main/java/com/vibegraph/parser/visitor/ClassVisitor.java"],
+    "T14": ["src/main/java/com/vibegraph/parser/visitor/MethodVisitor.java"],
+    "T15": ["src/main/java/com/vibegraph/parser/visitor/FieldVisitor.java"],
+    "T16": ["src/main/java/com/vibegraph/parser/visitor/ImportVisitor.java"],
+    "T17": ["src/main/java/com/vibegraph/parser/visitor/SpringAnnotationVisitor.java"],
+    "T18": ["src/main/java/com/vibegraph/parser/visitor/ClassVisitor.java"],  # same as T13
     "T20": ["test: *VisitorTest.java"],
     
     # Neo4j
-    "T21": ["common/config/Neo4jConfig.java"],
-    "T22": ["graph/repository/neo4j/migrations/V1__init_schema.cypher"],
-    "T23": ["graph/repository/impl/neo4j/Neo4jGraphRepository.java"],
-    "T24": ["graph/repository/impl/neo4j/Neo4jGraphRepository.java"],  # same as T23
+    "T21": ["src/main/java/com/vibegraph/common/config/Neo4jMigrationRunner.java"],
+    "T22": ["src/main/resources/db/migration/V1__init_schema.cypher"],
+    "T23": ["src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java"],
+    "T24": ["src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java"],  # same as T23
     "T26": ["test: ArchUnit"],
     
     # REST API
-    "T27": ["project/controller/ProjectController.java"],  # might be graph/controller/ProjectController
-    "T28": ["analyze/service/impl/AnalyzeServiceImpl.java"],  # might be graph/service/impl
-    "T29": ["graph/controller/GraphController.java"],
-    "T30": ["common/exception/GlobalExceptionHandler.java"],
+    "T27": ["src/main/java/com/vibegraph/graph/controller/ProjectController.java"],
+    "T28": ["src/main/java/com/vibegraph/graph/service/impl/AnalyzeServiceImpl.java"],
+    "T29": ["src/main/java/com/vibegraph/graph/controller/GraphController.java"],
+    "T30": ["src/main/java/com/vibegraph/common/exception/GlobalExceptionHandler.java"],
     "T34": ["test: integration"],
     
     # Frontend
     "T48": ["frontend: lib/api.ts"],
     "T49": ["frontend: stores/graph.ts"],
     "T50": ["frontend: lib/graphAdapter.ts"],
-    "T51": ["frontend: composables/useSigma.ts", "frontend: components/GraphCanvas.vue"],
-    "T52": ["frontend: components/SearchBar.vue"],
-    "T53": ["frontend: components/GraphCanvas.vue"],  # same as T51
-    "T54": ["frontend: components/AddProjectArchive.vue"],
+    "T51": ["frontend: composables/useSigma.ts", "frontend: components/graph/GraphCanvas.vue"],
+    "T52": ["frontend: components/graph/SearchBar.vue"],
+    "T53": ["frontend: components/graph/GraphCanvas.vue"],  # same as T51
+    "T54": ["frontend: components/projects/AddProjectArchive.vue"],
 }
 
 print("🔍 Checking Sprint 1 Files Existence...\n")
@@ -69,7 +69,7 @@ for task_id, files in sorted(sprint1_files.items()):
     
     for file_path in files:
         if file_path.startswith("test:"):
-            print(f"  ⚠️  {file_path} (test - skip check)")
+            print(f"  ⚠️  {file_path} (test/skip check)")
             continue
             
         if file_path.startswith("frontend:"):

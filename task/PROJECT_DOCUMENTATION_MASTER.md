@@ -160,7 +160,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | FilterPanel        | ❌ Scaffold | UI only, no logic     |
 | ExplorerPanel      | ❌ Scaffold | UI only, no logic     |
 | NodeDetailPanel    | ❌ Scaffold | UI only, no logic     |
-| AddProjectArchive  | 🚧 Partial  | Sync done, async TODO |
+| AddProjectArchive  | ✅ Complete  | Sync done, async support via useArchiveImport.ts |
 
 **Priority:** HIGH (Sprint 2)
 
@@ -207,8 +207,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | **Parser**   | T12-T19: ✅ Done (95%), T20: 🚧 Partial (tests) |
 | **Neo4j**    | T21-T25: ✅ Done (90%), T26: ❌ TODO (ArchUnit) |
 | **Services** | T27-T30: ✅ Done (85%), T31-T34: 🚧 Sprint 2    |
-| **Frontend** | T48-T51,T53: ✅ Done (60%), T52,T54: 🚧 Partial |
-| **Archive**  | T01-T04,T06: ✅ Done (70%), T05: 🚧 Partial     |
+| **Frontend** | T48-T51,T53,T54: ✅ Done (archive UI included), T52: 🚧 Partial |
+| **Archive**  | T01-T06: ✅ Done (sync + async backend path covered) |
 
 **Vertical slice:** ✅ Working end-to-end
 
@@ -225,13 +225,13 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Feature              | Status | Note                           |
 | -------------------- | ------ | ------------------------------ |
 | Archive upload sync  | ✅ Done | E2E working                    |
-| Archive upload async | 🚧 70%  | Framework done, testing needed |
-| WebSocket config     | ✅ 90%  | STOMP configured, broadcast TODO |
-| File watcher         | ❌ 0%   | FileWatcherService empty       |
+| Archive upload async | ✅ Done | Backend async accepted flow + status topic support |
+| WebSocket status     | ✅ Partial | STOMP configured; status broadcast done, graph full/incremental update TODO |
+| File watcher         | ❌ TODO  | FileWatcherService empty / Pending       |
 | Diagram services     | ❌ 0%   | DiagramController empty        |
 | MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
-| GitHub import        | ❌ 10%  | TarballImportService TODO      |
+| GitHub import        | ✅ Backend Done | TarballImportServiceImpl, GitHubUrlParser, pre-flight, tarball client; FE form still planned |
 
 ### Critical Path (Must Complete This Week):
 
@@ -549,7 +549,7 @@ Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
 > **Cập nhật:** 2026-06-05  
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành 20%  
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub backend đã implemented, realtime graph/watch vẫn chưa hoàn tất  
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester
@@ -574,11 +574,10 @@ Mark Sprint 1 tasks as DONE:
 - T27, T28, T29, T30 → **Done**
 
 **Frontend:**
-- T48, T49, T50, T51, T53 → **Done**
+- T48, T49, T50, T51, T53, T54 → **Done**
 
 **Archive:**
-- T01, T02, T03, T04, T06 → **Done**
-- T05 → **In Progress** (sync done, async 70%)
+- T01, T02, T03, T04, T05, T06 → **Done**
 
 #### 3. Add File Paths (CRITICAL)
 
@@ -657,20 +656,11 @@ Năng lực/sprint hiệu quả: ~240h
 - `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` - Main Sprint Backlog ⭐
 - `export_to_csv.py` - CSV export script
 - `check_sprint1_files.py` - Verification script
-- `BAO_CAO_DU_AN_VIBEGRAPH.md` - Project report
 - `PROJECT_DOCUMENTATION_MASTER.md` - This file (consolidated docs)
 
 ### CSV Outputs (Auto-generated):
 - `csv_exports/*.csv` - 5 CSV files (can be regenerated)
 
-### Consolidated Files (Can be deleted after review):
-- `EXECUTIVE_SUMMARY.md` → Merged into Section 1
-- `FILES_READ_SUMMARY.md` → Merged into Section 2
-- `SPRINT_3_4_UPDATE_COMPLETE.md` → Merged into Section 3
-- `SPRINT_TASK_UPDATE_SUMMARY.md` → Merged into Section 3
-- `TASK_DISTRIBUTION.md` → Merged into Section 4
-- `CSV_EXPORT_GUIDE.md` → Merged into Section 5
-- `UPDATE_INSTRUCTIONS.md` → Merged into Section 6
 
 ---
 

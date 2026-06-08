@@ -1,133 +1,133 @@
 ﻿Import Archive (Backend),,,,,,,,,
-T01,Create ImportArchive request/response DTO,Tạo DTO request/response cho import archive,RB01,PB01,1,Done,3,Khoa,✅ `graph/dto/request/ImportArchiveRequest.java` + Response
-T02,Design ArchiveImportService interface,Thiết kế interface ArchiveImportService,RB01,PB01,1,Done,2,Khoa,✅ `graph/service/ArchiveImportService.java`
-T03,Implement ArchiveTypeDetector,Nhận diện loại archive zip/tar/tar.gz,RB02,PB01,1,Done,4,Vinh,✅ `graph/importer/ArchiveTypeDetector.java`
-T04,Implement safe ArchiveExtractor,Giải nén chống path traversal (zip-slip),RB03,PB01,1,Done,6,Vinh,✅ `graph/importer/ArchiveExtractor.java`
-T05,Implement POST /api/projects/import-archive,Tạo endpoint upload archive multipart,RB01,PB01,1,Done,5,Khoa,✅ `graph/controller/ImportController.java`
-T06,Unit test ArchiveExtractor,Test chống zip-slip và giới hạn dung lượng,RB03,PB01,1,Done,3,Thịnh,✅ `test/.../ArchiveImportServiceImplTest.java`
+T01,Create ImportArchive request/response DTO,Tạo DTO request/response cho import archive,RB01,PB01,1,Done,3,Khoa,✅ `N/A (multipart direct)` + Response
+T02,Design ArchiveImportService interface,Thiết kế interface ArchiveImportService,RB01,PB01,1,Done,2,Khoa,✅ `src/main/java/com/vibegraph/graph/service/ArchiveImportService.java`
+T03,Implement ArchiveTypeDetector,Nhận diện loại archive zip/tar/tar.gz,RB02,PB01,1,Done,4,Vinh,✅ `src/main/java/com/vibegraph/graph/importer/ArchiveTypeDetector.java`
+T04,Implement safe ArchiveExtractor,Giải nén chống path traversal (zip-slip),RB03,PB01,1,Done,6,Vinh,✅ `src/main/java/com/vibegraph/graph/importer/ArchiveExtractor.java`
+T05,Implement POST /api/projects/import-archive,Tạo endpoint upload archive multipart,RB01,PB01,1,Done,5,Khoa,✅ `src/main/java/com/vibegraph/graph/controller/ImportController.java`
+T06,Unit test ArchiveExtractor,Test chống zip-slip và giới hạn dung lượng,RB03,PB01,1,Done,3,Thịnh,✅ `src/test/java/com/vibegraph/graph/service/impl/ArchiveImportServiceImplTest.java`
 GitHub Import (Backend),,,,,,,,,
-T07,Implement GitHubUrlParser,Tách owner/repo từ URL GitHub,RB04,PB02,2,New,3,Khoa,`import/service/impl/GitHubUrlParser.java`
-T08,Implement GitHub pre-flight check,Kiểm tra private/size/default branch qua GitHub API,RB05,PB02,2,New,4,Khoa,`import/service/impl/GitHubPreFlightService.java`
-T09,Implement TarballImportService,Stream tarball và parse .java trong bộ nhớ,RB04,PB02,2,New,6,Vinh,`import/service/impl/TarballImportService.java`
-T10,Implement POST /api/projects/import-github,Tạo endpoint import repo GitHub,RB04,PB02,2,New,4,Vinh,`import/controller/ImportController.java`
-T11,Integration test GitHub import,Test luồng import repo công khai mẫu,RB04,PB02,2,New,4,Thịnh,`import/integration/GitHubImportIT.java`
+T07,Implement GitHubUrlParser,Tách owner/repo từ URL GitHub,RB04,PB02,2,Done,3,Khoa,✅ `src/main/java/com/vibegraph/graph/importer/github/GitHubUrlParser.java`
+T08,Implement GitHub pre-flight check,Kiểm tra private/size/default branch qua GitHub API,RB05,PB02,2,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/importer/github/GitHubPreFlightService.java`
+T09,Implement TarballImportService,"Download tarball, extract .java qua archive pipeline và analyze async",RB04,PB02,2,Done,6,Vinh,✅ `src/main/java/com/vibegraph/graph/service/TarballImportService.java` + `src/main/java/com/vibegraph/graph/service/impl/TarballImportServiceImpl.java`
+T10,Implement POST /api/projects/import-github,Tạo endpoint import repo GitHub,RB04,PB02,2,Done,4,Vinh,✅ `src/main/java/com/vibegraph/graph/controller/ImportController.java`
+T11,Integration test GitHub import,Test luồng import repo công khai mẫu,RB04,PB02,2,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/graph/importer/github/GitHubImportIT.java`
 JavaParser & Visitors (Backend),,,,,,,,,
-T12,Refine NodeData/EdgeData/ParseResult,Chuẩn hóa data contract trung lập parser,RB06,PB03,1,Done,3,Thái,✅ `parser/node/NodeData.java` + EdgeData + ParseResult
-T13,Complete ClassVisitor,Trích xuất class/interface/enum,RB06,PB03,1,Done,4,Khoa,✅ `parser/visitor/ClassVisitor.java` (250 LOC)
-T14,Complete MethodVisitor,"Trích xuất method, param, return, throws",RB06,PB03,1,Done,4,Vinh,✅ `parser/visitor/MethodVisitor.java` (320 LOC)
-T15,Complete FieldVisitor,"Trích xuất field, visibility, injection",RB06,PB03,1,Done,3,Vinh,✅ `parser/visitor/FieldVisitor.java` (200 LOC)
-T16,Complete ImportVisitor,Sinh IMPORTS edge từ import statement,RB07,PB03,1,Done,3,Thái,✅ `parser/visitor/ImportVisitor.java` (120 LOC)
-T17,Complete SpringAnnotationVisitor,Phát hiện annotation và layer Spring,RB08,PB03,1,Done,4,Khoa,✅ `parser/visitor/SpringAnnotationVisitor.java` (180 LOC)
-T18,Emit structural edges,Sinh HAS_METHOD/HAS_FIELD/EXTENDS/IMPLEMENTS,RB07,PB03,1,Done,5,Khoa,✅ `parser/visitor/ClassVisitor.java` (edges in same file)
-T19,Wire JavaSymbolSolver for CALLS,Resolve CALLS edge bằng Symbol Solver,RB09,PB03,2,Done,6,Vinh,✅ `parser/service/impl/ParserServiceImpl.java` (380 LOC)
-T20,Unit test visitors,Bật và pass test các visitor,RB06,PB03,1,New,4,Thịnh,`parser/visitor/*VisitorTest.java`
+T12,Refine NodeData/EdgeData/ParseResult,Chuẩn hóa data contract trung lập parser,RB06,PB03,1,Done,3,Thái,✅ `src/main/java/com/vibegraph/parser/node/NodeData.java` + EdgeData + ParseResult
+T13,Complete ClassVisitor,Trích xuất class/interface/enum,RB06,PB03,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/parser/visitor/ClassVisitor.java` (250 LOC)
+T14,Complete MethodVisitor,"Trích xuất method, param, return, throws",RB06,PB03,1,Done,4,Vinh,✅ `src/main/java/com/vibegraph/parser/visitor/MethodVisitor.java` (320 LOC)
+T15,Complete FieldVisitor,"Trích xuất field, visibility, injection",RB06,PB03,1,Done,3,Vinh,✅ `src/main/java/com/vibegraph/parser/visitor/FieldVisitor.java` (200 LOC)
+T16,Complete ImportVisitor,Sinh IMPORTS edge từ import statement,RB07,PB03,1,Done,3,Thái,✅ `src/main/java/com/vibegraph/parser/visitor/ImportVisitor.java` (120 LOC)
+T17,Complete SpringAnnotationVisitor,Phát hiện annotation và layer Spring,RB08,PB03,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/parser/visitor/SpringAnnotationVisitor.java` (180 LOC)
+T18,Emit structural edges,Sinh HAS_METHOD/HAS_FIELD/EXTENDS/IMPLEMENTS,RB07,PB03,1,Done,5,Khoa,✅ `src/main/java/com/vibegraph/parser/visitor/ClassVisitor.java` (edges in same file)
+T19,Wire JavaSymbolSolver for CALLS,Resolve CALLS edge bằng Symbol Solver,RB09,PB03,2,Done,6,Vinh,✅ `src/main/java/com/vibegraph/parser/service/impl/ParserServiceImpl.java` (380 LOC)
+T20,Unit test visitors,Bật và pass test các visitor,RB06,PB03,1,New,4,Thịnh,`src/test/java/com/vibegraph/parser/visitor/*VisitorTest.java`
 Neo4j Storage (Backend),,,,,,,,,
-T21,Configure Neo4j Java Driver raw,Cấu hình Neo4jConfig dùng driver thuần,RB10,PB04,1,Done,4,Vinh,✅ Spring Boot auto-config via `application.yml` + Neo4j driver dependency
-T22,Write Cypher schema migration,"Viết V1__init_schema.cypher (constraint, index)",RB11,PB04,1,Done,4,Vinh,✅ `common/config/Neo4jMigrationRunner.java` (runs migrations on startup)
-T23,Implement upsertProject/Nodes/Edges,Upsert bằng UNWIND + MERGE tham số hóa,RB10,PB04,1,Done,6,Khoa,✅ `graph/repository/impl/neo4j/Neo4jGraphRepository.java` (450 LOC)
-T24,Implement getFullGraph,Truy vấn full graph cho UI,RB12,PB04,1,Done,5,Khoa,✅ `graph/repository/impl/neo4j/Neo4jGraphRepository.java`
-T25,Implement deleteFile (incremental),Xóa/ghi đè node-edge theo file thay đổi,RB10,PB04,2,New,4,Thịnh,`graph/repository/impl/neo4j/Neo4jGraphRepository.java` (add deleteFile)
-T26,ArchUnit test storage boundary,Đảm bảo service không import Neo4j API,RB10,PB04,1,New,3,Thịnh,`common/archunit/StorageBoundaryTest.java`
+T21,Configure Neo4j Java Driver raw,Cấu hình Neo4jConfig dùng driver thuần,RB10,PB04,1,Done,4,Vinh,✅ Spring Boot auto-config via `src/main/resources/application.yaml` + Neo4j driver dependency
+T22,Write Cypher schema migration,"Viết V1__init_schema.cypher (constraint, index)",RB11,PB04,1,Done,4,Vinh,✅ `src/main/java/com/vibegraph/common/config/Neo4jMigrationRunner.java` (runs migrations on startup)
+T23,Implement upsertProject/Nodes/Edges,Upsert bằng UNWIND + MERGE tham số hóa,RB10,PB04,1,Done,6,Khoa,✅ `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (450 LOC)
+T24,Implement getFullGraph,Truy vấn full graph cho UI,RB12,PB04,1,Done,5,Khoa,✅ `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java`
+T25,Implement deleteFile (incremental),Xóa/ghi đè node-edge theo file thay đổi,RB10,PB04,2,New,4,Thịnh,`src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (add deleteFile)
+T26,ArchUnit test storage boundary,Đảm bảo service không import Neo4j API,RB10,PB04,1,New,3,Thịnh,`src/test/java/com/vibegraph/architecture/StorageAbstractionTest.java`
 REST API (Backend),,,,,,,,,
-T27,Implement ProjectController,CRUD project + ApiResponse,RB12,PB05,1,Done,4,Khoa,✅ `graph/controller/ProjectController.java` (80 LOC)
-T28,Implement AnalyzeService/Controller,Trigger parse và lưu graph,RB06,PB05,1,Done,4,Khoa,✅ `graph/service/impl/AnalyzeServiceImpl.java` (60 LOC)
-T29,Implement GraphController,GET /graph trả node/edge/stats,RB12,PB05,1,Done,3,Vinh,✅ `graph/controller/GraphController.java` (40 LOC)
-T30,Implement GlobalExceptionHandler,Map lỗi sang ApiResponse có kiểu,RB12,PB05,1,Done,3,Thái,✅ `common/exception/GlobalExceptionHandler.java` (120 LOC)
-T31,Implement Node Detail API,GET neighbors/{nodeId} có giới hạn hop,RB18,PB07,2,New,5,Vinh,`graph/controller/GraphController.java` + `Neo4jGraphRepository.java` (getNeighborhood)
-T32,Implement ImpactRepository.getImpact,Cypher duyệt blast radius có LIMIT,RB19,PB08,2,New,6,Khoa,`graph/repository/impl/neo4j/Neo4jGraphRepository.java` (add getImpact)
-T33,Implement Impact Analysis API,GET /impact/{nodeId},RB19,PB08,2,New,4,Khoa,`graph/controller/GraphController.java` (add impact endpoint)
-T34,Integration test REST API,Test project/analyze/graph end-to-end,RB12,PB05,1,New,4,Thịnh,`project/integration/ProjectApiIT.java` + `graph/integration/GraphApiIT.java`
+T27,Implement ProjectController,CRUD project + ApiResponse,RB12,PB05,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/controller/ProjectController.java` (80 LOC)
+T28,Implement AnalyzeService/Controller,Trigger parse và lưu graph,RB06,PB05,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/service/impl/AnalyzeServiceImpl.java` (60 LOC)
+T29,Implement GraphController,GET /graph trả node/edge/stats,RB12,PB05,1,Done,3,Vinh,✅ `src/main/java/com/vibegraph/graph/controller/GraphController.java` (40 LOC)
+T30,Implement GlobalExceptionHandler,Map lỗi sang ApiResponse có kiểu,RB12,PB05,1,Done,3,Thái,✅ `src/main/java/com/vibegraph/common/exception/GlobalExceptionHandler.java` (120 LOC)
+T31,Implement Node Detail API,GET neighbors/{nodeId} có giới hạn hop,RB18,PB07,2,New,5,Vinh,`src/main/java/com/vibegraph/graph/controller/GraphController.java` + `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (getNeighborhood)
+T32,Implement ImpactRepository.getImpact,Cypher duyệt blast radius có LIMIT,RB19,PB08,2,New,6,Khoa,`src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (add getImpact)
+T33,Implement Impact Analysis API,GET /impact/{nodeId},RB19,PB08,2,New,4,Khoa,`src/main/java/com/vibegraph/graph/controller/GraphController.java` (add impact endpoint)
+T34,Integration test REST API,Test project/analyze/graph end-to-end,RB12,PB05,1,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/graph/integration/ProjectApiIT.java` + `Empty placeholder: src/test/java/com/vibegraph/graph/integration/GraphApiIT.java`
 WebSocket Realtime (Backend),,,,,,,,,
-T35,Configure STOMP + AsyncConfig,Cấu hình /ws/graph-updates và executor async,RB20,PB09,2,Done,4,Vinh,✅ `common/config/WebSocketConfig.java` (60 LOC) + `AsyncConfig.java` (40 LOC)
-T36,Implement GraphUpdatePublisher,Broadcast topic updates/status có kiểu,RB20,PB09,2,New,5,Vinh,`graph/service/impl/GraphUpdatePublisher.java`
-T37,Implement FileWatcherService + debounce,"WatchService đệ quy, debounce 500ms",RB21,PB09,2,New,6,Khoa,`watcher/service/impl/FileWatcherService.java` + `util/DebounceHandler.java`
-T38,Integration test realtime update,Test luồng save→update <3s,RB20,PB09,2,New,4,Thịnh,`watcher/integration/RealtimeUpdateIT.java`
+T35,Configure STOMP + AsyncConfig,Cấu hình /ws/graph-updates và executor async,RB20,PB09,2,Done,4,Vinh,✅ `src/main/java/com/vibegraph/common/config/WebSocketConfig.java` (60 LOC) + `src/main/java/com/vibegraph/common/config/AsyncConfig.java` (40 LOC)
+T36,Implement GraphUpdateController broadcast,Broadcast status topic; graph update topic còn TODO,RB20,PB09,2,In Progress,5,Vinh,`src/main/java/com/vibegraph/graph/websocket/GraphUpdateController.java` (`broadcastStatus` done; full/incremental TODO)
+T37,Implement FileWatcherService + debounce,"WatchService đệ quy, debounce 500ms",RB21,PB09,2,New,6,Khoa,`src/main/java/com/vibegraph/watcher/service/FileWatcherService.java` + `src/main/java/com/vibegraph/watcher/service/DebouncedEventHandler.java`
+T38,Integration test realtime update,Test luồng save→update <3s,RB20,PB09,2,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/watcher/integration/RealtimeUpdateIT.java`
 Diagram Service (Backend),,,,,,,,,
-T39,Implement UseCaseDiagramService,Sinh Mermaid từ route/job/listener,RB22,PB10,2,New,5,Khoa,`diagram/service/impl/UseCaseDiagramServiceImpl.java` + `generator/MermaidUseCaseGenerator.java`
-T40,Implement ClassDiagramService,Sinh Mermaid class + lọc package,RB23,PB10,2,New,5,Thái,`diagram/service/impl/ClassDiagramServiceImpl.java` + `generator/MermaidClassGenerator.java`
-T41,Implement DiagramController,Endpoint /diagrams/usecase và /class,RB22,PB10,2,New,3,Thái,`diagram/controller/DiagramController.java`
-T42,Unit test diagram services,Test cú pháp Mermaid hợp lệ,RB23,PB10,2,New,3,Thịnh,`diagram/service/impl/*ServiceTest.java`
+T39,Implement UseCaseDiagramService,Sinh Mermaid từ route/job/listener,RB22,PB10,2,New,5,Khoa,`src/main/java/com/vibegraph/diagram/service/impl/UseCaseDiagramServiceImpl.java` + `src/main/java/com/vibegraph/diagram/service/MermaidGeneratorService.java`
+T40,Implement ClassDiagramService,Sinh Mermaid class + lọc package,RB23,PB10,2,New,5,Thái,`src/main/java/com/vibegraph/diagram/service/impl/ClassDiagramServiceImpl.java` + `src/main/java/com/vibegraph/diagram/service/MermaidGeneratorService.java`
+T41,Implement DiagramController,Endpoint /diagrams/usecase và /class,RB22,PB10,2,New,3,Thái,`src/main/java/com/vibegraph/diagram/controller/DiagramController.java`
+T42,Unit test diagram services,Test cú pháp Mermaid hợp lệ,RB23,PB10,2,New,3,Thịnh,`src/test/java/com/vibegraph/diagram/service/*ServiceTest.java`
 MCP Tools (Backend),,,,,,,,,
-T43,Implement get_project_architecture,MCP tool trả layers/counts/patterns,RB24,PB11,2,New,5,Khoa,`mcp/tool/ArchitectureTool.java` (add @Tool method)
-T44,Implement get_class_context,MCP tool trả ngữ cảnh class,RB25,PB11,2,New,5,Vinh,`mcp/tool/ClassContextTool.java` (add @Tool method)
-T45,Implement get_impact_analysis,MCP tool trả phân tích ảnh hưởng,RB26,PB11,2,New,4,Khoa,`mcp/tool/ImpactAnalysisTool.java` (add @Tool method)
-T46,Implement get_layer_pattern,MCP tool trả ví dụ theo layer,RB24,PB11,2,New,4,Thái,`mcp/tool/LayerPatternTool.java` (add @Tool method)
-T47,Configure Spring AI MCP Server,Cấu hình streamable HTTP cho MCP,RB24,PB11,2,Done,3,Thái,✅ `common/config/McpServerConfig.java`
+T43,Implement get_project_architecture,MCP tool trả layers/counts/patterns,RB24,PB11,2,New,5,Khoa,`src/main/java/com/vibegraph/mcp/tool/ArchitectureTool.java` (add @Tool method)
+T44,Implement get_class_context,MCP tool trả ngữ cảnh class,RB25,PB11,2,New,5,Vinh,`src/main/java/com/vibegraph/mcp/tool/ClassContextTool.java` (add @Tool method)
+T45,Implement get_impact_analysis,MCP tool trả phân tích ảnh hưởng,RB26,PB11,2,New,4,Khoa,`src/main/java/com/vibegraph/mcp/tool/ImpactAnalysisTool.java` (add @Tool method)
+T46,Implement get_layer_pattern,MCP tool trả ví dụ theo layer,RB24,PB11,2,New,4,Thái,`src/main/java/com/vibegraph/mcp/tool/LayerPatternTool.java` (add @Tool method)
+T47,Configure Spring AI MCP Server,Cấu hình streamable HTTP cho MCP,RB24,PB11,2,Done,3,Thái,✅ `src/main/java/com/vibegraph/common/config/McpServerConfig.java`
 Frontend Core (Frontend),,,,,,,,,
 T48,Create Axios API client,projectApi/graphApi khớp ApiResponse,RB12,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/lib/api.ts` (180 LOC)
-T49,Create Pinia graph store,State quản lý graph và filter,RB13,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/stores/graph.ts` + `filter.ts` (50 LOC)
+T49,Create Pinia graph store,State quản lý graph và filter,RB13,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/stores/graph.ts` + `vibegraph-web/src/stores/filter.ts` (50 LOC)
 T50,Implement graphAdapter,Chuyển API response sang Graphology,RB13,PB05,1,Done,4,Thái,✅ `vibegraph-web/src/lib/graphAdapter.ts` (150 LOC)
-T51,Implement useSigma + GraphCanvas,"Render Sigma.js, dọn dẹp đúng cách",RB13,PB05,1,Done,6,Thái,✅ `vibegraph-web/src/composables/useSigma.ts` (120 LOC) + `components/graph/GraphCanvas.vue` (90 LOC)
+T51,Implement useSigma + GraphCanvas,"Render Sigma.js, dọn dẹp đúng cách",RB13,PB05,1,Done,6,Thái,✅ `vibegraph-web/src/composables/useSigma.ts` (120 LOC) + `vibegraph-web/src/components/graph/GraphCanvas.vue` (90 LOC)
 T52,Implement SearchBar,Tìm node theo tên trên graph,RB15,PB06,1,New,4,Thịnh,`vibegraph-web/src/components/graph/SearchBar.vue`
 T53,Loading/empty/error states,Xử lý trạng thái tải/rỗng/lỗi của graph,RB13,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/components/graph/GraphCanvas.vue` (states in same file)
 Frontend Panels (Frontend),,,,,,,,,
-T54,Create Import Archive UI,Form Add Project upload archive,RB01,PB01,1,New,4,Thịnh,`vibegraph-web/src/components/projects/AddProjectArchive.vue` + `composables/useArchiveImport.ts`
-T55,Create GitHub Import Form,Form nhập URL repo GitHub,RB04,PB02,2,New,4,Thịnh,`vibegraph-web/src/components/projects/GitHubImportForm.vue` + `composables/useGitHubImport.ts`
-T56,Implement FilterPanel,Toggle loại node/edge kèm số đếm,RB16,PB06,2,New,5,Thái,`vibegraph-web/src/components/panels/FilterPanel.vue` + `composables/useFilters.ts`
-T57,Implement Focus Mode,Focus N-hop và làm mờ node ngoài vùng,RB17,PB06,2,New,5,Thái,`vibegraph-web/src/lib/focusMode.ts` + `components/graph/FocusModeControl.vue`
+T54,Create Import Archive UI,Form Add Project upload archive,RB01,PB01,1,Done,4,Thịnh,✅ `vibegraph-web/src/components/projects/AddProjectArchive.vue` + `vibegraph-web/src/composables/useArchiveImport.ts`
+T55,Create GitHub Import Form,Form nhập URL repo GitHub,RB04,PB02,2,New,4,Thịnh,`Empty placeholder: vibegraph-web/src/components/projects/GitHubImportForm.vue` + `Empty placeholder: vibegraph-web/src/composables/useGitHubImport.ts`
+T56,Implement FilterPanel,Toggle loại node/edge kèm số đếm,RB16,PB06,2,New,5,Thái,`vibegraph-web/src/components/panels/FilterPanel.vue` + `vibegraph-web/src/composables/useFilters.ts`
+T57,Implement Focus Mode,Focus N-hop và làm mờ node ngoài vùng,RB17,PB06,2,New,5,Thái,`vibegraph-web/src/lib/focusMode.ts` + `vibegraph-web/src/components/panels/FocusDepthControl.vue`
 T58,Implement NodeDetailPanel,Panel chi tiết node in/out,RB18,PB07,2,New,4,Thịnh,`vibegraph-web/src/components/panels/NodeDetailPanel.vue`
-T59,Implement ImpactAnalysis panel,Panel hiển thị blast radius,RB19,PB08,2,New,4,Thịnh,`vibegraph-web/src/components/panels/ImpactAnalysisPanel.vue` + `composables/useImpactAnalysis.ts`
-T60,Implement useWebSocket composable,Kết nối WS và patch graph realtime,RB20,PB09,2,New,5,Thái,`vibegraph-web/src/composables/useWebSocket.ts`
-T61,Implement DiagramPanel,Render Mermaid Use Case/Class,RB22,PB10,2,New,4,Thịnh,`vibegraph-web/src/components/diagram/DiagramPanel.vue` + `composables/useDiagrams.ts`
+T59,Implement ImpactAnalysis panel,Panel hiển thị blast radius,RB19,PB08,2,New,4,Thịnh,`Empty placeholder: vibegraph-web/src/components/panels/ImpactAnalysisPanel.vue` + `Empty placeholder: vibegraph-web/src/composables/useImpactAnalysis.ts`
+T60,Implement useWebSocket composable,Kết nối WS subscribe topic; patch graph realtime còn TODO,RB20,PB09,2,In Progress,5,Thái,`vibegraph-web/src/composables/useWebSocket.ts` (connect/subscribe done; graph patch pending)
+T61,Implement DiagramPanel,Render Mermaid Use Case/Class,RB22,PB10,2,New,4,Thịnh,`vibegraph-web/src/components/diagram/DiagramPanel.vue` + `vibegraph-web/src/composables/useDiagrams.ts`
 T62,Unit test FE components,Test component bằng Vitest,RB13,PB06,2,New,4,Thịnh,`vibegraph-web/src/__tests__/*.spec.ts`
 DevOps,,,,,,,,,
 T63,Write backend Dockerfile,Đóng gói Spring Boot backend,RB27,PB12,2,Done,3,Vinh,✅ `Dockerfile` (root) - Multi-stage build
-T64,Write frontend Dockerfile + nginx,Đóng gói Vue build + nginx.conf,RB27,PB12,2,Done,3,Vinh,✅ `vibegraph-web/Dockerfile` + `nginx.conf`
+T64,Write frontend Dockerfile + nginx,Đóng gói Vue build + nginx.conf,RB27,PB12,2,Done,3,Vinh,✅ `vibegraph-web/Dockerfile` + `vibegraph-web/nginx.conf`
 T65,Write docker-compose,Compose BE/FE/Neo4j với network/volume,RB27,PB12,2,Done,4,Vinh,✅ `docker-compose.yml` (root) - Needs production review
-T66,Configure env profiles,Tách profile dev/prod và biến môi trường,RB27,PB12,2,New,3,Thái,`src/main/resources/application-dev.yml` + `application-prod.yml` + `.env.example` (root)
-T67,GitHub Actions backend CI,Workflow build + test backend,RB28,PB12,2,New,4,Vinh,`.github/workflows/backend.yml`
-T68,GitHub Actions frontend CI,Workflow lint/type-check/test frontend,RB28,PB12,2,New,3,Thịnh,`.github/workflows/frontend.yml`
-T69,Write Docker run guide,Tài liệu chạy docker compose,RB27,PB12,2,New,2,Thái,`DOCKER.md` + Update `DEVOPS-GUIDE.md`
+T66,Configure env profiles,Tách profile dev/prod và biến môi trường,RB27,PB12,2,New,3,Thái,`src/main/resources/application-dev.yaml` + `src/main/resources/application-prod.yaml` + `.env.example` (root)
+T67,GitHub Actions backend CI,Workflow build + test backend,RB28,PB12,2,New,4,Vinh,`Empty placeholder: .github/workflows/backend.yml`
+T68,GitHub Actions frontend CI,Workflow lint/type-check/test frontend,RB28,PB12,2,New,3,Thịnh,`Empty placeholder: .github/workflows/frontend.yml`
+T69,Write Docker run guide,Tài liệu chạy docker compose,RB27,PB12,2,New,2,Thái,`DEVOPS-GUIDE.md` + Update `DEVOPS-GUIDE.md`
 Final Integration & Testing (QA),,,,,,,,,
-T70,FileWatcher incremental e2e test,Test cập nhật tăng dần đầu-cuối,RB21,PB13,2,New,4,Thịnh,`watcher/integration/FileWatcherE2ETest.java`
-T71,Final integration verification,Kiểm tra tích hợp BE+FE+Neo4j,RB28,PB14,2,New,4,Thịnh,`integration/FinalIntegrationTest.java`
-T72,Write MCP & demo documentation,Viết tài liệu MCP và kịch bản demo,RB24,PB14,2,New,3,Thái,`MCP_INTEGRATION.md` + `DEMO_SCRIPT.md`
+T70,FileWatcher incremental e2e test,Test cập nhật tăng dần đầu-cuối,RB21,PB13,2,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/watcher/integration/FileWatcherE2ETest.java`
+T71,Final integration verification,Kiểm tra tích hợp BE+FE+Neo4j,RB28,PB14,2,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/integration/FinalIntegrationTest.java`
+T72,Write MCP & demo documentation,Viết tài liệu MCP và kịch bản demo,RB24,PB14,2,New,3,Thái,`Empty placeholder: MCP_INTEGRATION.md` + `Empty placeholder: DEMO_SCRIPT.md`
 **MCP Tools Implementation (Sprint 3)**,,,,,,,,,
-T73,Implement get_project_architecture tool,"MCP tool trả về layers, counts, patterns, diagram refs",RB29,PB11,3,New,6,Khoa,`mcp/tool/ArchitectureTool.java`
-T74,Implement get_class_context tool,"MCP tool trả về class, neighbors, methods, fields, edges",RB30,PB11,3,New,6,Vinh,`mcp/tool/ClassContextTool.java`
-T75,Implement get_layer_pattern tool,MCP tool trả về examples và conventions cho layer,RB31,PB11,3,New,5,Danh,`mcp/tool/LayerPatternTool.java`
-T76,Implement get_impact_analysis tool,MCP tool dùng repository impact traversal,RB29,PB11,3,New,5,Khoa,`mcp/tool/ImpactAnalysisTool.java`
-T77,Wire MCP tools with Spring AI,Connect tools to Spring AI MCP Server,RB29,PB11,3,New,4,Danh,`common/config/McpServerConfig.java`
+T73,Implement get_project_architecture tool,"MCP tool trả về layers, counts, patterns, diagram refs",RB29,PB11,3,New,6,Khoa,`src/main/java/com/vibegraph/mcp/tool/ArchitectureTool.java`
+T74,Implement get_class_context tool,"MCP tool trả về class, neighbors, methods, fields, edges",RB30,PB11,3,New,6,Vinh,`src/main/java/com/vibegraph/mcp/tool/ClassContextTool.java`
+T75,Implement get_layer_pattern tool,MCP tool trả về examples và conventions cho layer,RB31,PB11,3,New,5,Danh,`src/main/java/com/vibegraph/mcp/tool/LayerPatternTool.java`
+T76,Implement get_impact_analysis tool,MCP tool dùng repository impact traversal,RB29,PB11,3,New,5,Khoa,`src/main/java/com/vibegraph/mcp/tool/ImpactAnalysisTool.java`
+T77,Wire MCP tools with Spring AI,Connect tools to Spring AI MCP Server,RB29,PB11,3,New,4,Danh,`src/main/java/com/vibegraph/common/config/McpServerConfig.java`
 **OpenAPI Documentation (Sprint 3)**,,,,,,,,,
-T78,Add OpenAPI annotations,Swagger docs cho REST controllers,RB29,PB11,3,New,6,Danh,All `*Controller.java`
+T78,Add OpenAPI annotations,Swagger docs cho REST controllers,RB29,PB11,3,New,6,Danh,All `src/main/java/com/vibegraph/graph/controller/*Controller.java`
 T79,Configure Swagger UI,Enable Swagger UI at /swagger-ui,RB29,PB11,3,New,2,Danh,`pom.xml` + config
 **Parser Robustness (Sprint 3)**,,,,,,,,,
-T80,Handle lambda expressions,Parse lambda without crash,RB32,PB03,3,New,6,Vinh,`MethodVisitor.java`
-T81,Handle method references,Parse method refs (::) without crash,RB32,PB03,3,New,5,Vinh,`MethodVisitor.java`
-T82,Stub-on-failure for unresolved calls,Emit low-confidence CALLS for unresolved,RB32,PB03,3,New,6,Vinh,`MethodVisitor.java`
-T83,Log symbol resolution rate,Track % of resolved CALLS (target >85%),RB32,PB03,3,New,4,Khoa,`AnalyzeService.java`
+T80,Handle lambda expressions,Parse lambda without crash,RB32,PB03,3,New,6,Vinh,`src/main/java/com/vibegraph/parser/visitor/MethodVisitor.java`
+T81,Handle method references,Parse method refs (::) without crash,RB32,PB03,3,New,5,Vinh,`src/main/java/com/vibegraph/parser/visitor/MethodVisitor.java`
+T82,Stub-on-failure for unresolved calls,Emit low-confidence CALLS for unresolved,RB32,PB03,3,New,6,Vinh,`src/main/java/com/vibegraph/parser/visitor/MethodVisitor.java`
+T83,Log symbol resolution rate,Track % of resolved CALLS (target >85%),RB32,PB03,3,New,4,Khoa,`src/main/java/com/vibegraph/graph/service/AnalyzeService.java`
 **Caching & Performance (Sprint 3)**,,,,,,,,,
-T84,Implement content-hash caching,Skip unchanged files during re-analysis,RB33,PB03,3,New,8,Vinh,`parser/service/CacheService.java`
+T84,Implement content-hash caching,Skip unchanged files during re-analysis,RB33,PB03,3,New,8,Vinh,`Empty placeholder: src/main/java/com/vibegraph/parser/service/CacheService.java`
 T85,Benchmark 500-file parse performance,Ensure parse time < 30s,RB33,PB03,3,New,4,Thái,Performance test suite
-T86,Optimize Neo4j queries,"Add indexes, LIMIT clauses, pagination",RB33,PB04,3,New,6,Vinh,`Neo4jGraphRepository.java`
+T86,Optimize Neo4j queries,"Add indexes, LIMIT clauses, pagination",RB33,PB04,3,New,6,Vinh,`src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java`
 T87,Test 5000-node rendering,Ensure Sigma.js performance @ 60fps,RB34,PB05,3,New,5,Danh,Large graph perf test
-T88,Implement graph pagination/limit,Add limit/offset for getFullGraph,RB33,PB04,3,New,6,Khoa,`GraphRepository.java` + `GraphController.java`
+T88,Implement graph pagination/limit,Add limit/offset for getFullGraph,RB33,PB04,3,New,6,Khoa,`src/main/java/com/vibegraph/graph/repository/GraphRepository.java` + `src/main/java/com/vibegraph/graph/controller/GraphController.java`
 **UI Polish (Sprint 3)**,,,,,,,,,
-T89,Add graph stats display,Show node/edge counts in UI,RB34,PB05,3,New,3,Danh,`GraphStats.vue`
-T90,Implement empty state UI,Clear message when graph is empty,RB34,PB05,3,New,3,Danh,`GraphCanvas.vue`
+T89,Add graph stats display,Show node/edge counts in UI,RB34,PB05,3,New,3,Danh,`Empty placeholder: vibegraph-web/src/components/graph/GraphStats.vue`
+T90,Implement empty state UI,Clear message when graph is empty,RB34,PB05,3,New,3,Danh,`vibegraph-web/src/components/graph/GraphCanvas.vue`
 T91,Improve error messages,User-friendly error messages,RB34,PB05,3,New,4,Thịnh,All error handlers
 T92,Add loading progress,Show parse progress during analysis,RB34,PB05,3,New,5,Danh,Progress bar component
 **Technical Debt (Sprint 3)**,,,,,,,,,
 T93,Consolidate springLayer() (D1),Move all layer detection to SpringAnnotationVisitor,RB35,PB03,3,New,4,Khoa,Fix duplicate code
-T94,Extract TypeNames utility (D2),Refactor resolveTypeName() to shared util,RB35,PB03,3,New,6,Khoa,`parser/util/TypeNames.java`
+T94,Extract TypeNames utility (D2),Refactor resolveTypeName() to shared util,RB35,PB03,3,New,6,Khoa,`Empty placeholder: src/main/java/com/vibegraph/parser/util/TypeNames.java`
 T95,Add Package/File nodes,Emit OWNS/CONTAINS/DEFINES edges,RB35,PB03,3,New,8,Vinh,Complete node hierarchy
 **Testing (Sprint 3)**,,,,,,,,,
 T96,Boost test coverage to 70%,Add unit tests for uncovered code,RB36,PB03,3,New,20,Thái + Thịnh,Target: `mvn verify` pass
-T97,Enable disabled visitor tests,Uncomment @Disabled tests,RB36,PB03,3,New,4,Thái,`*VisitorTest.java`
-T98,Add integration tests,E2E tests with Testcontainers,RB36,PB04,3,New,12,Thịnh,`*IT.java` files
+T97,Enable disabled visitor tests,Uncomment @Disabled tests,RB36,PB03,3,New,4,Thái,`src/test/java/com/vibegraph/parser/visitor/*VisitorTest.java`
+T98,Add integration tests,E2E tests with Testcontainers,RB36,PB04,3,New,12,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/VibeGraphIT.java`
 **Docker & Infrastructure (Sprint 4)**,,,,,,,,,
-T99,Configure production Docker Compose,"Multi-stage build for BE, FE with nginx",RB37,PB12,4,New,6,Vinh,`docker-compose.prod.yml`
-T100,Setup nginx reverse proxy,"Route /api → BE, / → FE static",RB37,PB12,4,New,4,Vinh,`nginx.conf`
-T101,Configure production env vars,Separate dev/prod configs,RB37,PB12,4,New,3,Vinh,`application-prod.yml`
-T102,Write deployment guide,Step-by-step VPS deployment,RB40,PB14,4,New,4,Thịnh,`DEPLOYMENT.md`
+T99,Configure production Docker Compose,"Multi-stage build for BE, FE with nginx",RB37,PB12,4,New,6,Vinh,`Empty placeholder: docker-compose.prod.yml`
+T100,Setup nginx reverse proxy,"Route /api → BE, / → FE static",RB37,PB12,4,New,4,Vinh,`vibegraph-web/nginx.conf`
+T101,Configure production env vars,Separate dev/prod configs,RB37,PB12,4,New,3,Vinh,`src/main/resources/application-prod.yaml`
+T102,Write deployment guide,Step-by-step VPS deployment,RB40,PB14,4,New,4,Thịnh,`Empty placeholder: DEPLOYMENT.md`
 **Domain & SSL (Sprint 4)**,,,,,,,,,
 T103,Setup domain DNS,Point vibegraph.com to VPS IP,RB37,PB12,4,New,2,Vinh,Domain registrar
 T104,Configure SSL with Let's Encrypt,HTTPS via certbot,RB37,PB12,4,New,3,Vinh,Certbot setup
 T105,Test HTTPS deployment,Verify SSL works end-to-end,RB37,PB12,4,New,2,Thái,Manual test checklist
 **CI/CD (Sprint 4)**,,,,,,,,,
-T106,Complete GitHub Actions backend,Build + test + coverage on PR,RB38,PB12,4,New,6,Vinh,`.github/workflows/backend.yml`
-T107,Complete GitHub Actions frontend,Lint + type-check + test on PR,RB38,PB12,4,New,5,Thịnh,`.github/workflows/frontend.yml`
-T108,Add deployment workflow,Auto-deploy main branch to VPS,RB38,PB12,4,New,6,Vinh,`.github/workflows/deploy.yml`
+T106,Complete GitHub Actions backend,Build + test + coverage on PR,RB38,PB12,4,New,6,Vinh,`Empty placeholder: .github/workflows/backend.yml`
+T107,Complete GitHub Actions frontend,Lint + type-check + test on PR,RB38,PB12,4,New,5,Thịnh,`Empty placeholder: .github/workflows/frontend.yml`
+T108,Add deployment workflow,Auto-deploy main branch to VPS,RB38,PB12,4,New,6,Vinh,`Empty placeholder: .github/workflows/deploy.yml`
 **Demo Preparation (Sprint 4)**,,,,,,,,,
 T109,Prepare sample Java project,Known public repo for demo,RB39,PB14,4,New,4,Thái,Select + test repo
 T110,Write demo script,Step-by-step demo flow,RB39,PB14,4,New,6,Thái + Thịnh,Demo script doc
@@ -135,10 +135,10 @@ T111,Record demo video,Screen recording with narration,RB39,PB14,4,New,8,Thái,V
 T112,Prepare presentation slides,Non-technical stakeholder presentation,RB39,PB14,4,New,6,Thái,PowerPoint/PDF
 **Documentation (Sprint 4)**,,,,,,,,,
 T113,Complete README,Installation + quick start + features,RB40,PB14,4,New,6,Thịnh,`README.md`
-T114,Write MCP integration guide,How to use with Cursor/Kiro/Claude,RB40,PB14,4,New,6,Thái,`MCP_INTEGRATION.md`
-T115,Write architecture documentation,System design + tech stack,RB40,PB14,4,New,8,Thịnh,`ARCHITECTURE.md`
+T114,Write MCP integration guide,How to use with Cursor/Kiro/Claude,RB40,PB14,4,New,6,Thái,`Empty placeholder: MCP_INTEGRATION.md`
+T115,Write architecture documentation,System design + tech stack,RB40,PB14,4,New,8,Thịnh,`VibeGraph-specs-2month/architecture.md`
 T116,Update API documentation,REST API reference,RB40,PB14,4,New,4,Danh,Update from Swagger
-T117,Write user guide,How to use each feature,RB40,PB14,4,New,8,Thái,`USER_GUIDE.md`
+T117,Write user guide,How to use each feature,RB40,PB14,4,New,8,Thái,`Empty placeholder: USER_GUIDE.md`
 **Bug Fixes & Polish (Sprint 4)**,,,,,,,,,
 T118,Fix high-priority bugs,Bug backlog from Sprint 1-3,RB41,PB14,4,New,16,All,Bug tracker issues
 T119,Final integration testing,Full E2E workflow verification,RB41,PB14,4,New,8,Thái + Thịnh,Test checklist

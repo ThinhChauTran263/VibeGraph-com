@@ -68,7 +68,7 @@ vibegraph/
 ├── README.md
 │
 ├── vibegraph-core/                  # Parser engine
-│   └── src/main/java/com/vibegraph/core/
+│   └── src/main/java/com/vibegraph/parser/
 │       ├── parser/
 │       │   ├── visitor/             # ClassVisitor, MethodVisitor, FieldVisitor
 │       │   ├── service/             # ParserService + impl
@@ -77,7 +77,7 @@ vibegraph/
 │       └── spring/                  # Spring annotation detection
 │
 ├── vibegraph-server/                # Spring Boot app
-│   └── src/main/java/com/vibegraph/server/
+│   └── src/main/java/com/vibegraph/
 │       ├── VibeGraphApplication.java
 │       ├── common/                  # config, exception, dto, util
 │       ├── parser/                  # Service wrappers (call core)
@@ -97,7 +97,7 @@ vibegraph/
 │
 ├── vibegraph-cli/                   # Future CLI module (post-MVP)
 │   ├── pom.xml                      # Java module, reuse vibegraph-core
-│   └── src/main/java/com/vibegraph/cli/
+│   └── # deferred CLI module; no current source folder
 │       ├── VibeGraphCli.java        # Main entry point
 │       ├── watcher/
 │       │   └── LocalWatcher.java    # directory-watcher, detect changes
@@ -178,7 +178,7 @@ Tóm tắt:
 - Composite key cho Method: `(projectId, fullName, paramTypes)` để xử lý overloading
 - Stub method khi CALLS edge gặp method chưa parse, sau đó enrich khi parse class chứa nó
 
-> **Trạng thái implementation sau audit 2026-05-30:** schema file cho phép đầy đủ các label/edge trên, nhưng parser Sprint 1 chưa phát ra `Package`/`File` nodes và chưa phát ra `OWNS`/`CONTAINS`/`DEFINES`/`ANNOTATED_BY`/`OVERRIDES`. `Neo4jGraphRepository.upsertEdges` hiện tạo `External` stub cho endpoint bị thiếu; `MethodVisitor` bỏ qua call unresolved/library thay vì tạo method stub. Vì vậy phần “stub method” là design target, chưa phải behavior hiện tại.
+> **Trạng thái implementation sau audit 2026-05-30:** schema file cho phép đầy đủ các label/edge trên, nhưng parser Sprint 1 chưa phát ra `Package`/`File` nodes và chưa phát ra `OWNS`/`CONTAINS`/`DEFINES`/`ANNOTATED_BY`/`OVERRIDES`. `Neo4jGraphRepository.upsertEdges` hiện tạo `External` stub cho endpoint bị thiếu; `MethodVisitor` bỏ qua call unresolved/library thay vì tạo method stub. Vì vậy phần “stub method┐ là design target, chưa phải behavior hiện tại.
 
 ## Trừu tượng hóa lưu trữ
 
@@ -294,7 +294,7 @@ CLI (vibegraph-cli.jar, post-MVP):
 Browser Sigma.js patch graph (không full reload)
 
 **Privacy:** CLI chỉ gửi metadata (class name, method signature, edges).
-Source code KHÔNG bao giờ rời máy user.
+Source code KHÔNG bao giờ r┐i máy user.
 ```
 
 ### 4. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
@@ -304,7 +304,7 @@ Source code KHÔNG bao giờ rời máy user.
 ```
 Java WatchService phát hiện UserService.java MODIFY
   ↓
-DebouncedEventHandler chờ 500ms (gộp nhiều save liên tiếp)
+DebouncedEventHandler ch┐ 500ms (gộp nhiều save liên tiếp)
   ↓
 FileWatcherServiceImpl.onChange(filePath)
   → ParserService.parseFile(filePath)

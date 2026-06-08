@@ -960,8 +960,8 @@ docker compose up -d --build</code></pre>
         <h3><span class="h3-bar"></span>Không nên gửi</h3>
         <ul>
           <li><code>target/</code> &mdash; build output backend</li>
-          <li><code>vibegraph-web/node_modules/</code> &mdash; dependency frontend, cài lại bằng <code>npm ci</code></li>
-          <li><code>vibegraph-web/dist/</code> &mdash; build output frontend</li>
+          <li><code>node_modules/</code> &mdash; dependency frontend, cài lại bằng <code>npm ci</code></li>
+          <li><code>dist/</code> &mdash; build output frontend</li>
           <li><code>.env</code> có production secret, token cá nhân, password thật &mdash; chỉ gửi <code>.env</code> local/dev nếu team thống nhất dùng chung credential dev</li>
           <li><code>.git/</code> nếu chỉ gửi source zip</li>
           <li><code>.idea/</code>, <code>.vscode/</code> &mdash; setting cá nhân IDE</li>
