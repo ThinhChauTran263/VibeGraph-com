@@ -113,21 +113,21 @@ Tiêu chí chấp nhận:
 
 Các endpoint MVP (cột *Trạng thái* phản ánh code thực tế, không chỉ kế hoạch):
 
-| Method | Path | Mô tả | Trạng thái |
-|---|---|---|---|
-| POST | `/api/projects` | Đăng ký một đường dẫn dự án local | ✅ implemented — dev/internal fallback, không còn là UX chính |
-| GET | `/api/projects` | Liệt kê dự án | ✅ implemented |
-| GET | `/api/projects/{id}` | Chi tiết một dự án | ✅ implemented |
-| DELETE | `/api/projects/{id}` | Xóa một dự án | ✅ implemented |
-| POST | `/api/projects/{id}/analyze` | Kích hoạt phân tích đầy đủ | ✅ implemented |
-| GET | `/api/projects/{id}/graph` | Trả về toàn bộ graph | ✅ implemented |
-| POST | `/api/projects/import-archive` | Upload file `.zip`/`.tar`/`.tar.gz` của project Java để backend parse và lưu graph | 🆕 target Sprint 2 — thay thế local-path registration làm UX chính; chưa implement |
-| GET | `/api/projects/{id}/graph/neighbors/{nodeId}?hops=N` | Trả về neighborhood N-hop | 🚧 scaffold — `Neo4jGraphRepository.getNeighborhood` ném `UnsupportedOperationException` (Sprint 2) |
-| GET | `/api/projects/{id}/diagrams/usecase` | Trả về Use Case Mermaid | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2) |
-| GET | `/api/projects/{id}/diagrams/class` | Trả về Class Mermaid | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2) |
-| GET | `/api/projects/{id}/impact/{nodeId}` | Trả về phạm vi ảnh hưởng (blast radius) | 🚧 scaffold — `ImpactController`/`ImpactServiceImpl` + `getImpact` chưa impl (Sprint 2/3) |
-| POST | `/api/projects/import-github` | Import một repo GitHub công khai qua luồng tarball | 🚧 scaffold — `TarballImportServiceImpl` ném "not implemented yet" (Sprint 2) |
-| WS | `/ws/graph-updates` | Đẩy graph/status theo thời gian thực | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2) |
+| Method | Path                                                 | Mô tả                                                                              | Trạng thái                                                                                         |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| POST   | `/api/projects`                                      | Đăng ký một đường dẫn dự án local                                                  | ✅ implemented — dev/internal fallback, không còn là UX chính                                       |
+| GET    | `/api/projects`                                      | Liệt kê dự án                                                                      | ✅ implemented                                                                                      |
+| GET    | `/api/projects/{id}`                                 | Chi tiết một dự án                                                                 | ✅ implemented                                                                                      |
+| DELETE | `/api/projects/{id}`                                 | Xóa một dự án                                                                      | ✅ implemented                                                                                      |
+| POST   | `/api/projects/{id}/analyze`                         | Kích hoạt phân tích đầy đủ                                                         | ✅ implemented                                                                                      |
+| GET    | `/api/projects/{id}/graph`                           | Trả về toàn bộ graph                                                               | ✅ implemented                                                                                      |
+| POST   | `/api/projects/import-archive`                       | Upload file `.zip`/`.tar`/`.tar.gz` của project Java để backend parse và lưu graph | 🆕 target Sprint 2 — thay thế local-path registration làm UX chính; chưa implement                  |
+| GET    | `/api/projects/{id}/graph/neighbors/{nodeId}?hops=N` | Trả về neighborhood N-hop                                                          | 🚧 scaffold — `Neo4jGraphRepository.getNeighborhood` ném `UnsupportedOperationException` (Sprint 2) |
+| GET    | `/api/projects/{id}/diagrams/usecase`                | Trả về Use Case Mermaid                                                            | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
+| GET    | `/api/projects/{id}/diagrams/class`                  | Trả về Class Mermaid                                                               | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
+| GET    | `/api/projects/{id}/impact/{nodeId}`                 | Trả về phạm vi ảnh hưởng (blast radius)                                            | 🚧 scaffold — `ImpactController`/`ImpactServiceImpl` + `getImpact` chưa impl (Sprint 2/3)           |
+| POST   | `/api/projects/import-github`                        | Import một repo GitHub công khai qua luồng tarball                                 | 🚧 scaffold — `TarballImportServiceImpl` ném "not implemented yet" (Sprint 2)                       |
+| WS     | `/ws/graph-updates`                                  | Đẩy graph/status theo thời gian thực                                               | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2)                               |
 
 > Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án local path → analyze → full graph) đã chạy thật. Từ quyết định product ngày 2026-05-31, UX chính của Sprint 2 chuyển sang **upload ZIP/TAR archive**; local-path registration giữ lại như dev/internal fallback. Các dòng `🚧 scaffold`/`🆕 target` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`) và `task-breakdown-8week.md` (Sprint 2/3).
 > `GET /graph/neighbors`, `GET /diagrams/*` và `GET /impact/*` là endpoint mục tiêu của API contract; tại thời điểm audit chưa có route controller hoạt động cho các dòng đó dù frontend client đã có hàm gọi tương ứng.
@@ -191,14 +191,14 @@ Tiêu chí chấp nhận:
 
 ## Yêu cầu phi chức năng
 
-| Chỉ số | Mục tiêu |
-|---|---|
-| Phân tích 500 file | < 30s |
-| Cập nhật tăng dần | < 3s |
-| Truy vấn 3-hop Neo4j | < 500 ms |
-| Độ trễ WebSocket | < 200 ms trên mạng local |
-| Triển khai local | `docker compose up -d` |
-| VPS tối thiểu | 4 GB RAM, 2 CPU |
+| Chỉ số               | Mục tiêu                 |
+| -------------------- | ------------------------ |
+| Phân tích 500 file   | < 30s                    |
+| Cập nhật tăng dần    | < 3s                     |
+| Truy vấn 3-hop Neo4j | < 500 ms                 |
+| Độ trễ WebSocket     | < 200 ms trên mạng local |
+| Triển khai local     | `docker compose up -d`   |
+| VPS tối thiểu        | 4 GB RAM, 2 CPU          |
 
 ## Ngoài phạm vi MVP 2 tháng
 
