@@ -56,4 +56,9 @@ public class GraphUpdateController {
     public void broadcastStatus(String projectId, ProjectStatus status, int progress) {
         broadcastStatus(projectId, status.name(), progress);
     }
+
+    /** Type-safe overload with an optional status detail message. */
+    public void broadcastStatus(String projectId, ProjectStatus status, int progress, String message) {
+        broadcastStatus(projectId, status.name(), progress, message);
+    }
 }
