@@ -7,18 +7,22 @@ import { computed } from 'vue'
 import { useGraphStore } from '@/stores/graph'
 import { fetchFullGraph } from '@/lib/api'
 import { apiToGraphology } from '@/lib/graphAdapter'
+import { useFilters } from '@/composables/useFilters'
 import type Graph from 'graphology'
-import type { GraphNode } from '@/types/graph'
+import type { GraphData, GraphNode } from '@/types/graph'
 
 export function useGraphData() {
   const store = useGraphStore()
+  const filters = useFilters()
 
-  const nodes = computed(() => store.graphData.nodes)
-  const edges = computed(() => store.graphData.edges)
+  const filteredGraphData = computed(() => filters.applyFilters(store.graphData))
+  const nodes = computed(() => filteredGraphData.value.nodes)
+  const edges = computed(() => filteredGraphData.value.edges)
+  const graphData = computed(() => store.graphData)
   const loading = computed(() => store.isLoading)
   const error = computed(() => store.error)
-  const nodeStats = computed(() => store.graphData.nodeStats)
-  const edgeStats = computed(() => store.graphData.edgeStats)
+  const nodeStats = computed(() => filteredGraphData.value.nodeStats)
+  const edgeStats = computed(() => filteredGraphData.value.edgeStats)
   const selectedNode = computed(() => store.selectedNode)
 
   /**
@@ -32,8 +36,7 @@ export function useGraphData() {
     try {
       const data = await fetchFullGraph(projectId)
       store.graphData = data
-      const graph = apiToGraphology(data)
-      return graph
+      return apiToGraphology(filters.applyFilters(data))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load graph'
       store.error = message
@@ -41,6 +44,10 @@ export function useGraphData() {
     } finally {
       store.isLoading = false
     }
+  }
+
+  function buildGraph(data: GraphData = filteredGraphData.value): Graph {
+    return apiToGraphology(data)
   }
 
   function selectNode(node: GraphNode | null) {
@@ -52,6 +59,8 @@ export function useGraphData() {
   }
 
   return {
+    graphData,
+    filteredGraphData,
     nodes,
     edges,
     loading,
@@ -60,6 +69,7 @@ export function useGraphData() {
     edgeStats,
     selectedNode,
     loadGraph,
+    buildGraph,
     selectNode,
     clearSelection,
   }

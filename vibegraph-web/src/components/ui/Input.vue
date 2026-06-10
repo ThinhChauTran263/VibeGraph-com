@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'UiInput' })
+
 defineProps<{
   modelValue: string
   placeholder?: string

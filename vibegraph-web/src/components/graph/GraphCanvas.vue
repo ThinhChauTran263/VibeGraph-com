@@ -11,20 +11,39 @@
 import { onMounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { useSigma } from '@/composables/useSigma'
+import SearchBar from '@/components/graph/SearchBar.vue'
+import FilterPanel from '@/components/panels/FilterPanel.vue'
+import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
+import NodeDetailPanel from '@/components/panels/NodeDetailPanel.vue'
+import { createFocusReducers } from '@/lib/focusMode'
+import { useFilters } from '@/composables/useFilters'
+import type { GraphNode } from '@/types/graph'
 
 const props = defineProps<{
   projectId: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'nodeSelected', nodeId: string): void
+  (e: 'nodeSelected', nodeId: string | null): void
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+const { focusDepth } = useFilters()
 
-const { loading, error, loadGraph, selectNode, nodes } = useGraphData()
+const {
+  graphData,
+  filteredGraphData,
+  loading,
+  error,
+  loadGraph,
+  buildGraph,
+  selectNode,
+  clearSelection,
+  selectedNode,
+  nodes,
+} = useGraphData()
 
-const { init: initSigma } = useSigma({
+const { init: initSigma, graphInstance, setReducers } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
@@ -33,11 +52,28 @@ const { init: initSigma } = useSigma({
   },
 })
 
+function applyFocusReducers(): void {
+  if (!graphInstance.value) return
+  setReducers(createFocusReducers(selectedNode.value?.id ?? null, focusDepth.value, graphInstance.value))
+}
+
 async function load(projectId: string) {
   const graph = await loadGraph(projectId)
   if (graph && canvasRef.value) {
     initSigma(graph)
+    applyFocusReducers()
   }
+}
+
+function onSearchSelect(node: GraphNode): void {
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+}
+
+function onSearchClear(): void {
+  clearSelection()
+  emit('nodeSelected', null)
 }
 
 onMounted(() => {
@@ -52,11 +88,47 @@ watch(
     if (newId) load(newId)
   },
 )
+
+watch(
+  [selectedNode, focusDepth],
+  () => {
+    applyFocusReducers()
+  },
+)
+
+watch(
+  filteredGraphData,
+  (graphData) => {
+    if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+      clearSelection()
+    }
+
+    if (!canvasRef.value || loading.value || error.value) return
+    initSigma(buildGraph(graphData))
+    applyFocusReducers()
+  },
+  { deep: true },
+)
 </script>
 
 <template>
   <div class="graph-canvas-wrapper">
     <div ref="canvasRef" class="graph-canvas" />
+
+    <SearchBar
+      v-if="!loading && !error"
+      :nodes="nodes"
+      :selected-node-id="selectedNode?.id ?? null"
+      @select="onSearchSelect"
+      @clear="onSearchClear"
+    />
+
+    <div v-if="!loading && !error" class="graph-canvas__controls">
+      <FocusDepthControl />
+      <FilterPanel :graph-data="graphData" />
+    </div>
+
+    <NodeDetailPanel v-if="!loading && !error && selectedNode" class="graph-canvas__detail" />
 
     <div v-if="loading" class="graph-overlay graph-overlay--loading">
       <div class="spinner" aria-label="Loading graph" />
@@ -83,6 +155,44 @@ watch(
   height: 100%;
   position: relative;
   background: #0f0f0f;
+}
+
+.graph-canvas__controls {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(22rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+}
+
+.graph-canvas__detail {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 21;
+}
+
+@media (max-height: 48rem) {
+  .graph-canvas__controls {
+    max-height: 45%;
+  }
+
+  .graph-canvas__detail {
+    max-height: 45%;
+  }
+}
+
+@media (max-width: 48rem) {
+  .graph-canvas__controls,
+  .graph-canvas__detail {
+    left: 1rem;
+    width: auto;
+  }
 }
 
 .graph-overlay {

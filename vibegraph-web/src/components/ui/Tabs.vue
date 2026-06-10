@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'UiTabs' })
+
 /**
  * Tabs - Generic tab component.
  *
