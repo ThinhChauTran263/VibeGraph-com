@@ -173,13 +173,17 @@ export const importApi = {
     form.append('file', file)
     return api.postMultipart<Project>('/api/projects/import-archive?async=true', form)
   },
+
+  importGithub(url: string): Promise<Project> {
+    return api.post<Project>('/api/projects/import-github', { url })
+  },
 }
 
 // Graph endpoints
 export const graphApi = {
   getGraph: (projectId: string) => fetchFullGraph(projectId),
   getNeighbors: (projectId: string, nodeId: string, hops: number) =>
-    api.get(`/api/projects/${projectId}/graph/neighbors/${nodeId}?hops=${hops}`),
+    api.get(`/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`),
 }
 
 // Diagram endpoints
