@@ -240,7 +240,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 3. **Diagram Services** (20h, High) - Khoa + Danh
 4. **Integration Tests** (16h, Critical) - Thái + Thịnh
 
-**Remaining:** 137h / 320h capacity = 43% utilization → khả thi
+**Remaining:** 137h / 180h capacity = 76% utilization → tight but feasible
 
 ---
 
@@ -319,10 +319,10 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ### Capacity Updates
 
 **Old:** 4 người x 8h x 12 ngày = 384h/sprint  
-**New:** 5 người x 8h x 12 ngày = 480h/sprint
+**New:** 5 người x 3h x 12 ngày = 180h/sprint
 
 **Total Estimate:** 598 hours (121 tasks)  
-**Sprints Required:** ~1.25 sprints at full capacity
+**Sprints Required:** ~3.3 sprints at capacity
 
 ---
 
@@ -331,7 +331,9 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ## 👥 Workload by Team Member
 
 ### Khoa (Fullstack Developer)
-**Total:** ~170 hours (89% capacity)
+**Total:** ~170 hours  
+**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Utilization:** 118% ⚠️ OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities                    |
 | -------- | ----- | --------------------------------------- |
@@ -340,12 +342,14 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Sprint 3 | ~45h  | MCP tools, Performance, Tech debt       |
 | Sprint 4 | ~8h   | Performance tuning                      |
 
-**Status:** ✅ Balanced
+**Status:** ⚠️ OVERLOADED - Need to redistribute ~26h
 
 ---
 
 ### Vinh (Backend + DevOps + Scrum Master)
-**Total:** ~185 hours (96% capacity)
+**Total:** ~185 hours  
+**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Utilization:** 129% ⚠️ SEVERELY OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities                  |
 | -------- | ----- | ------------------------------------- |
@@ -354,12 +358,14 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Sprint 3 | ~55h  | Parser robust, Caching, Neo4j opt     |
 | Sprint 4 | ~55h  | Docker, SSL, CI/CD, Performance       |
 
-**Status:** ✅ Balanced (high but manageable)
+**Status:** ⚠️ SEVERELY OVERLOADED - Need to redistribute ~41h
 
 ---
 
 ### Danh (Fullstack Developer)
-**Total:** ~60 hours (31% capacity)
+**Total:** ~60 hours  
+**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Utilization:** 42% ✅ UNDERUTILIZED
 
 | Sprint   | Hours | Key Responsibilities         |
 | -------- | ----- | ---------------------------- |
@@ -368,18 +374,21 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Sprint 3 | ~44h  | MCP, OpenAPI, UI polish      |
 | Sprint 4 | ~10h  | API docs, UI/UX              |
 
-**Status:** ⚠️ **Underutilized - Can take more work**
+**Status:** ✅ UNDERUTILIZED - Can absorb 80-90h more work
 
-**Recommendation:** Add 60-80h more work from:
-- Frontend components from Thái
-- UI polish tasks (T89-T92)
-- Documentation work (T113-T117)
-- Frontend integration tests
+**Recommendation:** Reassign work from Khoa and Vinh:
+- Take diagram services from Khoa (~10h)
+- Take some Sprint 3 tasks from Vinh (~20h)
+- Take documentation from Thái (~15h)
+- Add frontend polish work (~15h)
+- **Target: ~120h (83% utilization)**
 
 ---
 
 ### Thái (BA + PO + Tester)
-**Total:** ~155 hours (81% capacity)
+**Total:** ~155 hours  
+**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Utilization:** 108% ⚠️ OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities            |
 | -------- | ----- | ------------------------------- |
@@ -388,12 +397,14 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Sprint 3 | ~28h  | Performance test, Test coverage |
 | Sprint 4 | ~42h  | Demo, Docs, Integration test    |
 
-**Status:** ✅ Balanced
+**Status:** ⚠️ OVERLOADED - Need to redistribute ~11h
 
 ---
 
 ### Thịnh (Leader + PM)
-**Total:** ~140 hours (73% capacity)
+**Total:** ~140 hours  
+**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Utilization:** 97% ✅ NEAR CAPACITY
 
 | Sprint   | Hours | Key Responsibilities         |
 | -------- | ----- | ---------------------------- |
@@ -402,7 +413,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Sprint 3 | ~28h  | Error handling, Testing      |
 | Sprint 4 | ~39h  | Deployment guide, CI, Docs   |
 
-**Status:** ✅ Balanced
+**Status:** ✅ WELL BALANCED
 
 ---
 
@@ -410,18 +421,18 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ### Capacity Analysis
 
-| Sprint       | Hours | Capacity | Utilization |
-| ------------ | ----- | -------- | ----------- |
-| **Sprint 1** | 145h  | 480h     | 30% ████████ |
-| **Sprint 2** | 145h  | 480h     | 30% ████████ |
-| **Sprint 3** | 165h  | 480h     | 34% █████████ |
-| **Sprint 4** | 143h  | 480h     | 30% ████████ |
+| Sprint       | Hours | Capacity | Utilization     |
+| ------------ | ----- | -------- | --------------- |
+| **Sprint 1** | 145h  | 180h     | 81% ████████████ |
+| **Sprint 2** | 145h  | 180h     | 81% ████████████ |
+| **Sprint 3** | 165h  | 180h     | 92% █████████████ |
+| **Sprint 4** | 143h  | 180h     | 79% ████████████ |
 
 **Analysis:**
-- ✅ All sprints under 50% capacity
-- ✅ Good buffer for unknowns and unexpected work
-- ⚠️ Danh underutilized (31% vs team avg 78%)
-- 💡 Recommend reassigning 60-80h work to Danh
+- ⚠️ Sprints 1-2 at 81% utilization (high)
+- ⚠️ Sprint 3 at 92% utilization (very high, risky)
+- ✅ Sprint 4 at 79% utilization (manageable)
+- 💡 Need to rebalance Sprint 3 workload or extend timeline
 
 ---
 
@@ -634,8 +645,8 @@ Năng lực/sprint: 384h
 
 To:
 ```
-số người: 5 (3 fulltime devs + 2 part-time)
-Năng lực/sprint hiệu quả: ~240h
+số người: 5 (part-time: 3h/day)
+Năng lực/sprint: 180h (5 người x 3h x 12 ngày)
 ```
 
 ---
