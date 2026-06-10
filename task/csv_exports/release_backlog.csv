@@ -1,7 +1,7 @@
 ﻿PB01,Import Archive,Lập trình viên,Upload archive ZIP/TAR/TAR.GZ project Java,phân tích không cần local path,RB01,1,High,1,Done,Backend sync/async + FE AddProjectArchive đã có
 PB01,Import Archive,Lập trình viên,Hệ thống kiểm tra loại và dung lượng archive (≤100MB),tránh file sai định dạng hoặc quá lớn,RB02,1,High,1,Done,ArchiveTypeDetector + size limit config đã có
 PB01,Import Archive,Lập trình viên,Giải nén an toàn chống path traversal,bảo mật khi xử lý archive không tin cậy,RB03,1,High,1,Done,ArchiveExtractor safe extraction + tests đã có
-PB02,GitHub Import,Lập trình viên,Dán URL public GitHub repo để import,phân tích repo từ xa nhanh chóng,RB04,2,Medium,2,In Progress,Backend import-github done; FE GitHub form là empty placeholder
+PB02,GitHub Import,Lập trình viên,Dán URL public GitHub repo để import,phân tích repo từ xa nhanh chóng,RB04,2,Medium,2,Done,Backend import-github + FE GitHubImportForm/useGitHubImport done; frontend lint/type/unit pass
 PB02,GitHub Import,Lập trình viên,Pre-flight kiểm tra repo (private/size/branch),từ chối sớm repo không hợp lệ,RB05,2,Medium,2,Done,GitHubPreFlightService đã có
 PB03,JavaParser Analysis,Lập trình viên,Parse file .java thành Class/Method/Field/Route,có dữ liệu cấu trúc code,RB06,1,High,1,In Progress,Core parser done; visitor test task còn New
 PB03,JavaParser Analysis,Lập trình viên,"Sinh structural edges (HAS_METHOD, EXTENDS, IMPLEMENTS...)",hiểu quan hệ cấu trúc giữa các thành phần,RB07,1,High,1,Done,Import/structural edge tasks done
@@ -12,11 +12,11 @@ PB04,Neo4j Storage,Lập trình viên,"Áp dụng Cypher schema migration (ràng
 PB04,Neo4j Storage,Lập trình viên,Lấy full graph theo projectId,cung cấp dữ liệu cho UI,RB12,1,High,1,In Progress,Full graph/API path done; REST integration test remains New
 PB05,Graph Visualization,Kiến trúc sư phần mềm,Render graph bằng Sigma.js + Graphology,nhìn được kiến trúc dự án,RB13,1,High,1,In Progress,Graph render core done; FE component test task remains New
 PB05,Graph Visualization,Kiến trúc sư phần mềm,Tô màu ổn định theo loại node/edge,phân biệt các thành phần code,RB14,2,Medium,1,New,
-PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Tìm kiếm node theo tên,định vị nhanh thành phần cần xem,RB15,1,High,1,New,
-PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Lọc theo loại node và loại edge kèm số đếm,thu hẹp graph theo nhu cầu,RB16,2,Medium,2,New,
-PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Focus mode N-hop (1/2/3/5/All),tập trung vào vùng liên quan,RB17,2,Medium,2,New,
-PB07,Node Detail,Kiến trúc sư phần mềm,Xem panel chi tiết node với cạnh in/out,hiểu sâu một thành phần code,RB18,2,Medium,2,New,
-PB08,Impact Analysis,Lập trình viên,Xem blast radius của một node,đánh giá ảnh hưởng trước khi sửa code,RB19,2,Medium,2,New,
+PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Tìm kiếm node theo tên,định vị nhanh thành phần cần xem,RB15,1,High,1,Done,✅ SearchBar filters loaded nodes client-side; unit tested
+PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Lọc theo loại node và loại edge kèm số đếm,thu hẹp graph theo nhu cầu,RB16,2,Medium,2,Done,✅ FilterPanel + useFilters + graphFilters done; Sigma re-renders filtered graph
+PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Focus mode N-hop (1/2/3/5/All),tập trung vào vùng liên quan,RB17,2,Medium,2,Done,✅ `FocusDepthControl.vue` + `focusMode.ts`; Sigma reducers dim outside nodes/hide outside edges; security DoS cap reviewed
+PB07,Node Detail,Kiến trúc sư phần mềm,Xem panel chi tiết node với cạnh in/out,hiểu sâu một thành phần code,RB18,2,Medium,2,Done,✅ Frontend panel + backend Node Detail API done; `/graph/neighbors/{nodeId}` and query-param endpoint support slash-containing IDs
+PB08,Impact Analysis,Lập trình viên,Xem blast radius của một node,đánh giá ảnh hưởng trước khi sửa code,RB19,2,Medium,2,Done,✅ Backend API/repository done; frontend panel T59 remains New
 PB09,Realtime Update,Lập trình viên,Nhận cập nhật graph realtime qua WebSocket/STOMP,thấy thay đổi tức thì,RB20,2,Medium,2,In Progress,Status topic đã có; graph update topic còn TODO
 PB09,Realtime Update,Lập trình viên,File Watcher phát hiện thay đổi .java và cập nhật tăng dần,graph đồng bộ với mã nguồn,RB21,3,Low,2,New,
 PB10,Mermaid Diagram,Kiến trúc sư phần mềm,Sinh Use Case Diagram (Mermaid),xem luồng nghiệp vụ từ controller/job,RB22,2,Medium,2,New,

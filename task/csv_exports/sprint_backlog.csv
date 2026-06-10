@@ -33,9 +33,9 @@ T27,Implement ProjectController,CRUD project + ApiResponse,RB12,PB05,1,Done,4,Kh
 T28,Implement AnalyzeService/Controller,Trigger parse và lưu graph,RB06,PB05,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/service/impl/AnalyzeServiceImpl.java` (60 LOC)
 T29,Implement GraphController,GET /graph trả node/edge/stats,RB12,PB05,1,Done,3,Vinh,✅ `src/main/java/com/vibegraph/graph/controller/GraphController.java` (40 LOC)
 T30,Implement GlobalExceptionHandler,Map lỗi sang ApiResponse có kiểu,RB12,PB05,1,Done,3,Thái,✅ `src/main/java/com/vibegraph/common/exception/GlobalExceptionHandler.java` (120 LOC)
-T31,Implement Node Detail API,GET neighbors/{nodeId} có giới hạn hop,RB18,PB07,2,New,5,Vinh,`src/main/java/com/vibegraph/graph/controller/GraphController.java` + `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (getNeighborhood)
-T32,Implement ImpactRepository.getImpact,Cypher duyệt blast radius có LIMIT,RB19,PB08,2,New,6,Khoa,`src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (add getImpact)
-T33,Implement Impact Analysis API,GET /impact/{nodeId},RB19,PB08,2,New,4,Khoa,`src/main/java/com/vibegraph/graph/controller/GraphController.java` (add impact endpoint)
+T31,Implement Node Detail API,GET neighbors/{nodeId} có giới hạn hop,RB18,PB07,2,Done,5,Vinh,"✅ `GraphController` + `GraphServiceImpl` + `GraphRepository` + `Neo4jGraphRepository`; path/query endpoints, hop whitelist 0/1/2/3/5, 50 cap/direction, project-isolated traversal, 404/400 handling; `GraphControllerTest`, `GraphServiceTest`, `Neo4jGraphRepositoryIT` pass"
+T32,Implement ImpactRepository.getImpact,Cypher duyệt blast radius có LIMIT,RB19,PB08,2,Done,6,Khoa,"✅ `Neo4jGraphRepository#getImpact`; reverse dependency traversal over CALLS/IMPORTS/EXTENDS/IMPLEMENTS/INJECTS only, depth whitelist 1/2/3/5, 50 sample cap/depth, true direct/total counts, project isolation"
+T33,Implement Impact Analysis API,GET /impact/{nodeId},RB19,PB08,2,Done,4,Khoa,"✅ `GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...`; `ImpactAnalysisResponse`, service validation, 404 `NODE_NOT_FOUND`, 400 invalid params; controller/service/Neo4j tests pass"
 T34,Integration test REST API,Test project/analyze/graph end-to-end,RB12,PB05,1,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/graph/integration/ProjectApiIT.java` + `Empty placeholder: src/test/java/com/vibegraph/graph/integration/GraphApiIT.java`
 WebSocket Realtime (Backend),,,,,,,,,
 T35,Configure STOMP + AsyncConfig,Cấu hình /ws/graph-updates và executor async,RB20,PB09,2,Done,4,Vinh,✅ `src/main/java/com/vibegraph/common/config/WebSocketConfig.java` (60 LOC) + `src/main/java/com/vibegraph/common/config/AsyncConfig.java` (40 LOC)
@@ -58,18 +58,18 @@ T48,Create Axios API client,projectApi/graphApi khớp ApiResponse,RB12,PB05,1,D
 T49,Create Pinia graph store,State quản lý graph và filter,RB13,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/stores/graph.ts` + `vibegraph-web/src/stores/filter.ts` (50 LOC)
 T50,Implement graphAdapter,Chuyển API response sang Graphology,RB13,PB05,1,Done,4,Thái,✅ `vibegraph-web/src/lib/graphAdapter.ts` (150 LOC)
 T51,Implement useSigma + GraphCanvas,"Render Sigma.js, dọn dẹp đúng cách",RB13,PB05,1,Done,6,Thái,✅ `vibegraph-web/src/composables/useSigma.ts` (120 LOC) + `vibegraph-web/src/components/graph/GraphCanvas.vue` (90 LOC)
-T52,Implement SearchBar,Tìm node theo tên trên graph,RB15,PB06,1,New,4,Thịnh,`vibegraph-web/src/components/graph/SearchBar.vue`
+T52,Implement SearchBar,Tìm node theo tên trên graph,RB15,PB06,1,Done,4,Thịnh,✅ `vibegraph-web/src/components/graph/SearchBar.vue` wired into `GraphCanvas.vue`; `SearchBar.spec.ts`; lint/type/unit pass
 T53,Loading/empty/error states,Xử lý trạng thái tải/rỗng/lỗi của graph,RB13,PB05,1,Done,3,Thái,✅ `vibegraph-web/src/components/graph/GraphCanvas.vue` (states in same file)
 Frontend Panels (Frontend),,,,,,,,,
 T54,Create Import Archive UI,Form Add Project upload archive,RB01,PB01,1,Done,4,Thịnh,✅ `vibegraph-web/src/components/projects/AddProjectArchive.vue` + `vibegraph-web/src/composables/useArchiveImport.ts`
-T55,Create GitHub Import Form,Form nhập URL repo GitHub,RB04,PB02,2,New,4,Thịnh,`Empty placeholder: vibegraph-web/src/components/projects/GitHubImportForm.vue` + `Empty placeholder: vibegraph-web/src/composables/useGitHubImport.ts`
-T56,Implement FilterPanel,Toggle loại node/edge kèm số đếm,RB16,PB06,2,New,5,Thái,`vibegraph-web/src/components/panels/FilterPanel.vue` + `vibegraph-web/src/composables/useFilters.ts`
-T57,Implement Focus Mode,Focus N-hop và làm mờ node ngoài vùng,RB17,PB06,2,New,5,Thái,`vibegraph-web/src/lib/focusMode.ts` + `vibegraph-web/src/components/panels/FocusDepthControl.vue`
-T58,Implement NodeDetailPanel,Panel chi tiết node in/out,RB18,PB07,2,New,4,Thịnh,`vibegraph-web/src/components/panels/NodeDetailPanel.vue`
-T59,Implement ImpactAnalysis panel,Panel hiển thị blast radius,RB19,PB08,2,New,4,Thịnh,`Empty placeholder: vibegraph-web/src/components/panels/ImpactAnalysisPanel.vue` + `Empty placeholder: vibegraph-web/src/composables/useImpactAnalysis.ts`
+T55,Create GitHub Import Form,Form nhập URL repo GitHub,RB04,PB02,2,Done,4,Thịnh,✅ `vibegraph-web/src/components/projects/GitHubImportForm.vue` + `vibegraph-web/src/composables/useGitHubImport.ts` + `vibegraph-web/src/lib/api.ts#importApi.importGithub`; tests added; browser smoke tested
+T56,Implement FilterPanel,Toggle loại node/edge kèm số đếm,RB16,PB06,2,Done,5,Thái,✅ `vibegraph-web/src/components/panels/FilterPanel.vue` + `vibegraph-web/src/composables/useFilters.ts` + `vibegraph-web/src/lib/graphFilters.ts`; tests added; review findings fixed
+T57,Implement Focus Mode,Focus N-hop và làm mờ node ngoài vùng,RB17,PB06,2,Done,5,Thái,✅ `vibegraph-web/src/lib/focusMode.ts` + `vibegraph-web/src/components/panels/FocusDepthControl.vue` + `GraphCanvas.vue`/`useSigma.ts`; tests added; lint/type/unit pass; security review resolved DoS risk
+T58,Implement NodeDetailPanel,Panel chi tiết node in/out,RB18,PB07,2,Done,4,Thịnh,✅ `vibegraph-web/src/components/panels/NodeDetailPanel.vue` wired into `GraphCanvas.vue`; derives incoming/outgoing from loaded graph; caps/redacts sensitive data; tests added
+T59,Implement ImpactAnalysis panel,Panel hiển thị blast radius,RB19,PB08,2,New,4,Thịnh,`vibegraph-web/src/composables/useImpactAnalysis.ts` now has minimal export to satisfy lint; panel feature still pending
 T60,Implement useWebSocket composable,Kết nối WS subscribe topic; patch graph realtime còn TODO,RB20,PB09,2,In Progress,5,Thái,`vibegraph-web/src/composables/useWebSocket.ts` (connect/subscribe done; graph patch pending)
 T61,Implement DiagramPanel,Render Mermaid Use Case/Class,RB22,PB10,2,New,4,Thịnh,`vibegraph-web/src/components/diagram/DiagramPanel.vue` + `vibegraph-web/src/composables/useDiagrams.ts`
-T62,Unit test FE components,Test component bằng Vitest,RB13,PB06,2,New,4,Thịnh,`vibegraph-web/src/__tests__/*.spec.ts`
+T62,Unit test FE components,Test component bằng Vitest,RB13,PB06,2,In Progress,4,Thịnh,"Frontend checks pass: `npm --prefix vibegraph-web run lint`, `type-check`, `test:unit -- --run` (16 files, 102 tests); SearchBar/FilterPanel/FocusMode/NodeDetailPanel tests added; broader FE feature tests still pending"
 DevOps,,,,,,,,,
 T63,Write backend Dockerfile,Đóng gói Spring Boot backend,RB27,PB12,2,Done,3,Vinh,✅ `Dockerfile` (root) - Multi-stage build
 T64,Write frontend Dockerfile + nginx,Đóng gói Vue build + nginx.conf,RB27,PB12,2,Done,3,Vinh,✅ `vibegraph-web/Dockerfile` + `vibegraph-web/nginx.conf`
