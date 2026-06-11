@@ -10,6 +10,7 @@
 
 import { useRouter } from 'vue-router'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
+import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/lib/api'
 
@@ -30,7 +31,10 @@ function onImported(project: Project): void {
       <p class="home__subtitle">Import a Java project archive to start exploring its graph.</p>
     </header>
 
-    <AddProjectArchive @imported="onImported" />
+    <section class="home__import-grid" aria-label="Project import options">
+      <AddProjectArchive @imported="onImported" />
+      <GitHubImportForm @imported="onImported" />
+    </section>
   </main>
 </template>
 
@@ -60,5 +64,12 @@ function onImported(project: Project): void {
 .home__subtitle {
   margin: 0;
   color: #9ca3af;
+}
+
+.home__import-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  gap: 1.5rem;
+  align-items: start;
 }
 </style>

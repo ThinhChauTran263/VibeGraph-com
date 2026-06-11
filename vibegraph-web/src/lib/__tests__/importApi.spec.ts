@@ -21,7 +21,7 @@ function makeFile(name: string): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type: 'application/zip' })
 }
 
-const fetchMock = vi.fn()
+const fetchMock = vi.fn<typeof fetch>()
 
 beforeEach(() => {
   fetchMock.mockReset()
@@ -41,7 +41,7 @@ describe('importApi.uploadArchive (sync)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const call = fetchMock.mock.calls[0]!
     const url = call[0]
-    const init = call[1]
+    const init = call[1]!
     expect(String(url)).toMatch(/\/api\/projects\/import-archive$/)
     expect(String(url)).not.toContain('async=true')
     expect(init.method).toBe('POST')
@@ -53,12 +53,29 @@ describe('importApi.uploadArchive (sync)', () => {
 
     await importApi.uploadArchive('my-svc', makeFile('a.zip'))
 
-    const init = fetchMock.mock.calls[0]![1]
+    const init = fetchMock.mock.calls[0]![1]!
     const form = init.body as FormData
     expect(form.get('name')).toBe('my-svc')
     expect(form.get('file')).toBeInstanceOf(File)
     // Content-Type must be left for the browser to compute (multipart boundary).
     expect(init.headers).toBeUndefined()
+  })
+})
+
+describe('importApi.importGithub', () => {
+  it('POSTs to /api/projects/import-github with a JSON URL payload', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ id: 'gh-1', status: 'ANALYZING' }))
+
+    await importApi.importGithub('https://github.com/owner/repo')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const call = fetchMock.mock.calls[0]!
+    const url = call[0]
+    const init = call[1]!
+    expect(String(url)).toMatch(/\/api\/projects\/import-github$/)
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(init.body).toBe(JSON.stringify({ url: 'https://github.com/owner/repo' }))
   })
 })
 
@@ -71,7 +88,7 @@ describe('importApi.uploadArchiveAsync', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const call = fetchMock.mock.calls[0]!
     const url = call[0]
-    const init = call[1]
+    const init = call[1]!
     expect(String(url)).toContain('/api/projects/import-archive?async=true')
     expect(init.method).toBe('POST')
     expect(init.body).toBeInstanceOf(FormData)
