@@ -1,5 +1,5 @@
 # VibeGraph - Master Project Documentation
-*Tài liệu tổng hợp dự án - Cập nhật: 2026-06-05*
+*Tài liệu tổng hợp dự án - Cập nhật: 2026-06-11*
 
 > **Mục đích:** Tổng hợp toàn bộ documentation về implementation status, sprint planning, task distribution, và hướng dẫn quản lý dự án VibeGraph.
 
@@ -49,7 +49,7 @@
 | Sprint       | Status            | Progress | Tasks            | Hours     |
 | ------------ | ----------------- | -------- | ---------------- | --------- |
 | **Sprint 1** | ✅ Complete        | 95%      | T01-T72 (38 core) | ~145h     |
-| **Sprint 2** | 🚧 In Progress     | 20%      | Remaining T07-T72 | ~145h     |
+| **Sprint 2** | 🚧 In Progress     | 35%      | Remaining T07-T72 | ~145h     |
 | **Sprint 3** | ❌ Not Started     | 0%       | T73-T98          | ~165h     |
 | **Sprint 4** | ❌ Not Started     | 0%       | T99-T121         | ~143h     |
 | **Total**    | **~55% Complete** | **55%**  | **121 tasks**    | **598h**  |
@@ -231,7 +231,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Diagram services     | ❌ 0%   | DiagramController empty        |
 | MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
-| GitHub import        | ✅ Backend Done | TarballImportServiceImpl, GitHubUrlParser, pre-flight, tarball client; FE form still planned |
+| GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke blocked by backend DI bug in `GitHubPreFlightService` |
 
 ### Critical Path (Must Complete This Week):
 
@@ -549,7 +549,7 @@ Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
 > **Cập nhật:** 2026-06-05  
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub backend đã implemented, realtime graph/watch vẫn chưa hoàn tất  
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented, realtime graph/watch vẫn chưa hoàn tất  
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester
@@ -709,7 +709,7 @@ Năng lực/sprint hiệu quả: ~240h
 ---
 
 *Document Created: 2026-06-05*  
-*Last Updated: 2026-06-05*  
+*Last Updated: 2026-06-11*  
 *Total Pages: Consolidated from 7 separate documents*  
 *Maintained By: Kiro AI Assistant*
 
