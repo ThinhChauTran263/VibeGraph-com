@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.unit.DataSize;
 
@@ -19,19 +20,19 @@ import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 @Service
 public class GitHubPreFlightService {
 
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final ArchiveImportProperties properties;
     private final HttpClient httpClient;
 
-    public GitHubPreFlightService(ObjectMapper objectMapper, ArchiveImportProperties properties) {
-        this(objectMapper, properties, HttpClient.newBuilder()
+    @Autowired
+    public GitHubPreFlightService(ArchiveImportProperties properties) {
+        this(properties, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build());
     }
 
-    GitHubPreFlightService(ObjectMapper objectMapper, ArchiveImportProperties properties, HttpClient httpClient) {
-        this.objectMapper = objectMapper;
+    GitHubPreFlightService(ArchiveImportProperties properties, HttpClient httpClient) {
         this.properties = properties;
         this.httpClient = httpClient;
     }

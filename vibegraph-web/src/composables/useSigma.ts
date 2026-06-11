@@ -6,6 +6,7 @@
 import { shallowRef, onUnmounted, type Ref } from 'vue'
 import Sigma from 'sigma'
 import type Graph from 'graphology'
+import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 
 export interface UseSigmaOptions {
@@ -19,6 +20,7 @@ export function useSigma(options: UseSigmaOptions) {
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
   const layout = shallowRef<FA2Layout | null>(null)
+  const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
 
   /**
    * Initialize Sigma with a Graphology graph.
@@ -69,9 +71,10 @@ export function useSigma(options: UseSigmaOptions) {
     fa2.start()
     layout.value = fa2
 
-    // Auto-stop layout after convergence period
-    setTimeout(() => {
-      stopLayout()
+    layoutStopTimer.value = setTimeout(() => {
+      if (layout.value === fa2) {
+        stopLayout()
+      }
     }, 5000)
   }
 
@@ -79,6 +82,11 @@ export function useSigma(options: UseSigmaOptions) {
    * Stop the running layout.
    */
   function stopLayout() {
+    if (layoutStopTimer.value) {
+      clearTimeout(layoutStopTimer.value)
+      layoutStopTimer.value = null
+    }
+
     if (layout.value) {
       layout.value.kill()
       layout.value = null
@@ -95,6 +103,14 @@ export function useSigma(options: UseSigmaOptions) {
       sigmaInstance.value = null
     }
     graphInstance.value = null
+  }
+
+  function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    sigma.setSetting('nodeReducer', reducers.nodeReducer)
+    sigma.setSetting('edgeReducer', reducers.edgeReducer)
+    sigma.refresh()
   }
 
   /**
@@ -122,5 +138,6 @@ export function useSigma(options: UseSigmaOptions) {
       if (graphInstance.value) startLayout(graphInstance.value)
     },
     stopLayout,
+    setReducers,
   }
 }

@@ -15,12 +15,12 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     importApi: {
-      uploadArchive: vi.fn(),
-      uploadArchiveAsync: vi.fn(),
+      uploadArchive: vi.fn<(name: string, file: File) => Promise<Project>>(),
+      uploadArchiveAsync: vi.fn<(name: string, file: File) => Promise<Project>>(),
     },
     projectApi: {
       ...actual.projectApi,
-      get: vi.fn(),
+      get: vi.fn<(projectId: string) => Promise<Project>>(),
     },
   }
 })
@@ -42,11 +42,11 @@ vi.mock('@/composables/useWebSocket', () => {
     useWebSocket: () => ({
       status: { value: 'disconnected' },
       error: { value: null },
-      connect: vi.fn(() => wsController.connectImpl()),
-      disconnect: vi.fn(async () => {}),
-      subscribe: vi.fn((topic: string, cb: (e: unknown) => void) => {
+      connect: vi.fn<() => Promise<void>>(() => wsController.connectImpl()),
+      disconnect: vi.fn<() => Promise<void>>(async () => {}),
+      subscribe: vi.fn<(topic: string, cb: (e: unknown) => void) => { unsubscribe: () => void }>((topic, cb) => {
         wsController.captured = { topic, cb }
-        return { unsubscribe: vi.fn() }
+        return { unsubscribe: vi.fn<() => void>() }
       }),
     }),
   }
@@ -233,7 +233,8 @@ describe('AddProjectArchive - async mode', () => {
 
     const emitted = wrapper.emitted('imported')
     expect(emitted).toBeTruthy()
-    expect((emitted?.[0]?.[0] as Project).id).toBe('a3')
+    const project = emitted![0]![0] as Project
+    expect(project.id).toBe('a3')
     expect(wrapper.text()).toContain('Imported')
     wrapper.unmount()
   })
@@ -279,7 +280,8 @@ describe('AddProjectArchive - async mode', () => {
 
     const emitted = wrapper.emitted('imported')
     expect(emitted).toBeTruthy()
-    expect((emitted?.[0]?.[0] as Project).id).toBe('a5')
+    const project = emitted![0]![0] as Project
+    expect(project.id).toBe('a5')
     expect(wrapper.text()).toContain('Imported')
     wrapper.unmount()
   })

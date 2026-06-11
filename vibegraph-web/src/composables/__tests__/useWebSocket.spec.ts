@@ -121,7 +121,7 @@ describe('useWebSocket', () => {
     fake.fireConnect()
     await p
 
-    const cb = vi.fn()
+    const cb = vi.fn<(payload: unknown) => void>()
     ws.subscribe('/topic/bad', cb)
     fake.deliver('/topic/bad', 'not-json{')
 

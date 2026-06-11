@@ -1,10 +1,12 @@
 package com.vibegraph.graph.repository.impl.neo4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -19,8 +21,11 @@ import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
+import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -212,5 +217,209 @@ class Neo4jGraphRepositoryIT {
                         Map.of("projectId", otherProject));
             }
         }
+    }
+
+    @Test
+    @DisplayName("getNodeDetail returns selected node with capped incoming and outgoing relationships")
+    void shouldReturnNodeDetailWithCappedConnections() {
+        NodeData selected = NodeData.of(
+                "Class", "OrderService", "com.example.OrderService",
+                "src/OrderService.java", 10, 50, Map.of("springLayer", "SERVICE"));
+        List<NodeData> nodes = new ArrayList<>();
+        List<EdgeData> edges = new ArrayList<>();
+        nodes.add(selected);
+        for (int index = 0; index < 60; index++) {
+            String incomingFullName = "com.example.Controller" + index;
+            String outgoingFullName = "com.example.Repository" + index;
+            nodes.add(NodeData.of("Class", "Controller" + index, incomingFullName,
+                    "src/Controller" + index + ".java", 1, 5, Map.of()));
+            nodes.add(NodeData.of("Interface", "Repository" + index, outgoingFullName,
+                    "src/Repository" + index + ".java", 1, 5, Map.of()));
+            edges.add(EdgeData.of("CALLS", incomingFullName, "com.example.OrderService", Map.of()));
+            edges.add(EdgeData.of("INJECTS", "com.example.OrderService", outgoingFullName, Map.of()));
+        }
+
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, nodes);
+        repository.upsertEdges(projectId, edges);
+
+        NodeDetailResponse detail = repository.getNodeDetail(projectId, "com.example.OrderService", 1);
+
+        assertThat(detail.getNode().getFullName()).isEqualTo("com.example.OrderService");
+        assertThat(detail.getIncoming()).hasSize(50);
+        assertThat(detail.getIncoming()).allSatisfy(connection -> {
+            assertThat(connection.getDirection()).isEqualTo("INCOMING");
+            assertThat(connection.getRelationshipType()).isEqualTo("CALLS");
+        });
+        assertThat(detail.getOutgoing()).hasSize(50);
+        assertThat(detail.getOutgoing()).allSatisfy(connection -> {
+            assertThat(connection.getDirection()).isEqualTo("OUTGOING");
+            assertThat(connection.getRelationshipType()).isEqualTo("INJECTS");
+        });
+    }
+
+    @Test
+    @DisplayName("getNodeDetail keeps multi-hop traversal isolated to the selected project")
+    void shouldRejectCrossProjectIntermediatePaths() {
+        String otherProject = "it-" + UUID.randomUUID().toString().substring(0, 8);
+        try {
+            repository.upsertProject(projectId, projectId, "/tmp/demo");
+            repository.upsertNodes(projectId, List.of(
+                    NodeData.of("Class", "Start", "com.example.Start", "src/Start.java", 1, 5, Map.of()),
+                    NodeData.of("Class", "End", "com.example.End", "src/End.java", 1, 5, Map.of())));
+            repository.upsertProject(otherProject, otherProject, "/tmp/other");
+            repository.upsertNodes(otherProject, List.of(
+                    NodeData.of("Class", "Foreign", "com.example.Foreign", "src/Foreign.java", 1, 5, Map.of())));
+
+            try (Session session = driver.session()) {
+                session.run("MATCH (start {projectId: $projectId, fullName: $start}), " +
+                                "(foreign {projectId: $otherProject, fullName: $foreign}), " +
+                                "(end {projectId: $projectId, fullName: $end}) " +
+                                "MERGE (start)-[:CALLS]->(foreign) " +
+                                "MERGE (foreign)-[:CALLS]->(end)",
+                        Map.of(
+                                "projectId", projectId,
+                                "otherProject", otherProject,
+                                "start", "com.example.Start",
+                                "foreign", "com.example.Foreign",
+                                "end", "com.example.End"));
+            }
+
+            NodeDetailResponse detail = repository.getNodeDetail(projectId, "com.example.Start", 2);
+
+            assertThat(detail.getOutgoing()).isEmpty();
+        } finally {
+            try (Session session = driver.session()) {
+                session.run("MATCH (n {projectId: $projectId}) DETACH DELETE n",
+                        Map.of("projectId", otherProject));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("getImpact groups reverse dependents by traversal depth and caps results")
+    void shouldReturnImpactAnalysisByDepthWithCap() {
+        List<NodeData> nodes = new ArrayList<>();
+        List<EdgeData> edges = new ArrayList<>();
+        nodes.add(NodeData.of("Class", "Target", "com.example.Target", "src/Target.java", 1, 5, Map.of()));
+        for (int index = 0; index < 60; index++) {
+            String direct = "com.example.Direct" + index;
+            nodes.add(NodeData.of("Class", "Direct" + index, direct, "src/Direct" + index + ".java", 1, 5, Map.of()));
+            edges.add(EdgeData.of("CALLS", direct, "com.example.Target", Map.of()));
+        }
+        nodes.add(NodeData.of("Class", "Likely", "com.example.Likely", "src/Likely.java", 1, 5, Map.of()));
+        nodes.add(NodeData.of("Class", "Maybe", "com.example.Maybe", "src/Maybe.java", 1, 5, Map.of()));
+        edges.add(EdgeData.of("CALLS", "com.example.Likely", "com.example.Direct0", Map.of()));
+        edges.add(EdgeData.of("CALLS", "com.example.Maybe", "com.example.Likely", Map.of()));
+
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, nodes);
+        repository.upsertEdges(projectId, edges);
+
+        ImpactAnalysisResponse impact = repository.getImpact(projectId, "com.example.Target", 3);
+
+        assertThat(impact.getTarget().getFullName()).isEqualTo("com.example.Target");
+        assertThat(impact.getRiskLevel()).isEqualTo("CRITICAL");
+        assertThat(impact.getDirectDependents()).isEqualTo(60);
+        assertThat(impact.getTotalDependents()).isEqualTo(62);
+        assertThat(impact.getWillBreak()).hasSize(50);
+        assertThat(impact.getLikelyAffected())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Likely");
+        assertThat(impact.getMayNeedTesting())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Maybe");
+    }
+
+    @Test
+    @DisplayName("getImpact ignores non-dependency relationship types")
+    void shouldIgnoreNonDependencyRelationshipTypesForImpact() {
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Class", "Target", "com.example.Target", "src/Target.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Container", "com.example.Container", "src/Container.java", 1, 5, Map.of())));
+
+        try (Session session = driver.session()) {
+            session.run("MATCH (container {projectId: $projectId, fullName: $container}), " +
+                            "(target {projectId: $projectId, fullName: $target}) " +
+                            "MERGE (container)-[:HAS_METHOD]->(target)",
+                    Map.of("projectId", projectId, "container", "com.example.Container", "target", "com.example.Target"));
+        }
+
+        ImpactAnalysisResponse impact = repository.getImpact(projectId, "com.example.Target", 1);
+
+        assertThat(impact.getDirectDependents()).isZero();
+        assertThat(impact.getTotalDependents()).isZero();
+        assertThat(impact.getWillBreak()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getImpact keeps traversal isolated to the selected project")
+    void shouldKeepImpactTraversalProjectIsolated() {
+        String otherProject = "it-" + UUID.randomUUID().toString().substring(0, 8);
+        try {
+            repository.upsertProject(projectId, projectId, "/tmp/demo");
+            repository.upsertNodes(projectId, List.of(
+                    NodeData.of("Class", "Target", "com.example.Target", "src/Target.java", 1, 5, Map.of()),
+                    NodeData.of("Class", "Local", "com.example.Local", "src/Local.java", 1, 5, Map.of())));
+            repository.upsertProject(otherProject, otherProject, "/tmp/other");
+            repository.upsertNodes(otherProject, List.of(
+                    NodeData.of("Class", "Foreign", "com.example.Foreign", "src/Foreign.java", 1, 5, Map.of())));
+
+            try (Session session = driver.session()) {
+                session.run("MATCH (foreign {projectId: $otherProject, fullName: $foreign}), " +
+                                "(target {projectId: $projectId, fullName: $target}) " +
+                                "MERGE (foreign)-[:CALLS]->(target)",
+                        Map.of(
+                                "projectId", projectId,
+                                "otherProject", otherProject,
+                                "foreign", "com.example.Foreign",
+                                "target", "com.example.Target"));
+                session.run("MATCH (local {projectId: $projectId, fullName: $local}), " +
+                                "(target {projectId: $projectId, fullName: $target}) " +
+                                "MERGE (local)-[:CALLS]->(target)",
+                        Map.of("projectId", projectId, "local", "com.example.Local", "target", "com.example.Target"));
+            }
+
+            ImpactAnalysisResponse impact = repository.getImpact(projectId, "com.example.Target", 1);
+
+            assertThat(impact.getWillBreak())
+                    .extracting(NodeDto::getFullName)
+                    .containsExactly("com.example.Local");
+        } finally {
+            try (Session session = driver.session()) {
+                session.run("MATCH (n {projectId: $projectId}) DETACH DELETE n",
+                        Map.of("projectId", otherProject));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("getImpact treats Cypher-looking target names as parameter values")
+    void shouldTreatCypherLookingTargetNamesAsParameters() {
+        String targetFullName = "Target'}) MATCH (n) DETACH DELETE n //";
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Class", "Target", targetFullName, "src/Target.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Caller", "com.example.Caller", "src/Caller.java", 1, 5, Map.of())));
+        repository.upsertEdges(projectId, List.of(EdgeData.of("CALLS", "com.example.Caller", targetFullName, Map.of())));
+
+        ImpactAnalysisResponse impact = repository.getImpact(projectId, targetFullName, 1);
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+
+        assertThat(impact.getWillBreak())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Caller");
+        assertThat(graph.getNodes()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("getImpact throws NodeNotFoundException when the target node is missing")
+    void shouldRejectMissingImpactTarget() {
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+
+        assertThatThrownBy(() -> repository.getImpact(projectId, "missing.Node", 3))
+                .isInstanceOf(NodeNotFoundException.class)
+                .hasMessageContaining("Node not found");
     }
 }

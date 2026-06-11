@@ -8,7 +8,7 @@ const projectId = (route.params.projectId as string) || 'default'
 
 <template>
   <main class="graph-view">
-    <GraphCanvas :project-id="projectId" @node-selected="(node) => console.log('selected', node)" />
+    <GraphCanvas :project-id="projectId" />
   </main>
 </template>
 

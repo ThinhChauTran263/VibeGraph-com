@@ -14,8 +14,11 @@ import org.neo4j.driver.types.Node;
 import org.neo4j.driver.types.Relationship;
 import org.springframework.stereotype.Repository;
 
+import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
+import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.parser.node.EdgeData;
@@ -28,6 +31,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class Neo4jGraphRepository implements GraphRepository {
+
+    private static final int MAX_DETAIL_CONNECTIONS = 50;
+    private static final int MAX_IMPACT_NODES_PER_DEPTH = 50;
 
     private final Driver neo4jDriver;
 
@@ -216,6 +222,26 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
+    public NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops) {
+        try (Session session = neo4jDriver.session()) {
+            var nodeResult = session.run(
+                    "MATCH (n {projectId: $projectId, fullName: $nodeId}) RETURN n",
+                    Map.of("projectId", projectId, "nodeId", nodeId)
+            );
+            if (!nodeResult.hasNext()) {
+                throw new NodeNotFoundException("Node not found");
+            }
+
+            Node node = nodeResult.single().get("n").asNode();
+            return NodeDetailResponse.builder()
+                    .node(mapNodeToDto(node))
+                    .incoming(getNodeConnections(session, projectId, nodeId, hops, "INCOMING"))
+                    .outgoing(getNodeConnections(session, projectId, nodeId, hops, "OUTGOING"))
+                    .build();
+        }
+    }
+
+    @Override
     public List<NodeDto> searchNodes(String projectId, String query) {
         try (Session session = neo4jDriver.session()) {
             var result = session.run(
@@ -236,8 +262,158 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
-    public List<NodeDto> getImpact(String projectId, String targetFullName, int maxDepth) {
-        throw new UnsupportedOperationException("Not implemented yet — Sprint 2");
+    public ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth) {
+        int boundedDepth = validateImpactDepth(maxDepth);
+        try (Session session = neo4jDriver.session()) {
+            var targetResult = session.run(
+                    "MATCH (target {projectId: $projectId, fullName: $targetFullName}) RETURN target",
+                    Map.of("projectId", projectId, "targetFullName", targetFullName)
+            );
+            if (!targetResult.hasNext()) {
+                throw new NodeNotFoundException("Node not found");
+            }
+
+            NodeDto target = mapNodeToDto(targetResult.single().get("target").asNode());
+            Map<Integer, List<NodeDto>> byDepth = getImpactNodesByDepth(session, projectId, targetFullName, boundedDepth);
+            Map<Integer, Integer> countsByDepth = getImpactCountsByDepth(session, projectId, targetFullName, boundedDepth);
+            List<NodeDto> willBreak = byDepth.getOrDefault(1, List.of());
+            List<NodeDto> likelyAffected = byDepth.getOrDefault(2, List.of());
+            List<NodeDto> mayNeedTesting = byDepth.getOrDefault(3, List.of());
+            int directDependents = countsByDepth.getOrDefault(1, 0);
+            int totalDependents = countsByDepth.values().stream().mapToInt(Integer::intValue).sum();
+
+            return ImpactAnalysisResponse.builder()
+                    .target(target)
+                    .riskLevel(riskLevel(directDependents))
+                    .directDependents(directDependents)
+                    .totalDependents(totalDependents)
+                    .willBreak(willBreak)
+                    .likelyAffected(likelyAffected)
+                    .mayNeedTesting(mayNeedTesting)
+                    .build();
+        }
+    }
+
+    private int validateImpactDepth(int depth) {
+        if (depth == 1 || depth == 2 || depth == 3 || depth == 5) {
+            return depth;
+        }
+        throw new IllegalArgumentException("depth must be one of 1, 2, 3, 5");
+    }
+
+    private Map<Integer, List<NodeDto>> getImpactNodesByDepth(
+            Session session,
+            String projectId,
+            String targetFullName,
+            int maxDepth) {
+        var result = session.run(impactTraversalCypher(maxDepth,
+                        "WITH dependent, min(length(path)) AS depth " +
+                        "ORDER BY depth, dependent.fullName " +
+                        "WITH depth, collect(dependent)[..$limit] AS dependents " +
+                        "RETURN depth, dependents ORDER BY depth"),
+                Map.of(
+                        "projectId", projectId,
+                        "targetFullName", targetFullName,
+                        "limit", MAX_IMPACT_NODES_PER_DEPTH));
+
+        Map<Integer, List<NodeDto>> byDepth = new LinkedHashMap<>();
+        while (result.hasNext()) {
+            Record record = result.next();
+            int depth = record.get("depth").asInt();
+            List<NodeDto> nodes = record.get("dependents").asList(value -> mapNodeToDto(value.asNode()));
+            byDepth.put(depth, nodes);
+        }
+        return byDepth;
+    }
+
+    private Map<Integer, Integer> getImpactCountsByDepth(
+            Session session,
+            String projectId,
+            String targetFullName,
+            int maxDepth) {
+        var result = session.run(impactTraversalCypher(maxDepth,
+                        "WITH dependent, min(length(path)) AS depth " +
+                        "RETURN depth, count(dependent) AS dependentCount ORDER BY depth"),
+                Map.of("projectId", projectId, "targetFullName", targetFullName));
+
+        Map<Integer, Integer> countsByDepth = new LinkedHashMap<>();
+        while (result.hasNext()) {
+            Record record = result.next();
+            countsByDepth.put(record.get("depth").asInt(), record.get("dependentCount").asInt());
+        }
+        return countsByDepth;
+    }
+
+    private String impactTraversalCypher(int maxDepth, String projection) {
+        return String.format(
+                "MATCH path = (dependent)-[:CALLS|IMPORTS|EXTENDS|IMPLEMENTS|INJECTS*1..%d]->" +
+                "(target {projectId: $projectId, fullName: $targetFullName}) " +
+                "WHERE dependent.projectId = $projectId " +
+                "AND all(node IN nodes(path) WHERE node.projectId = $projectId) " +
+                "%s",
+                maxDepth,
+                projection);
+    }
+
+    private String riskLevel(int directDependents) {
+        if (directDependents >= 50) {
+            return "CRITICAL";
+        }
+        if (directDependents >= 15) {
+            return "HIGH";
+        }
+        if (directDependents >= 5) {
+            return "MEDIUM";
+        }
+        return "LOW";
+    }
+
+    private int validateDetailHops(int hops) {
+        if (hops == 1 || hops == 2 || hops == 3 || hops == 5) {
+            return hops;
+        }
+        throw new IllegalArgumentException("hops must be one of 0, 1, 2, 3, 5");
+    }
+
+    private List<NodeDetailResponse.ConnectionDto> getNodeConnections(
+            Session session,
+            String projectId,
+            String nodeId,
+            int hops,
+            String direction) {
+        if (hops == 0) {
+            return List.of();
+        }
+
+        int boundedHops = validateDetailHops(hops);
+        String cypher = "INCOMING".equals(direction)
+                ? String.format("MATCH path = (other)-[rels*1..%d]->(n {projectId: $projectId, fullName: $nodeId}) ", boundedHops)
+                : String.format("MATCH path = (n {projectId: $projectId, fullName: $nodeId})-[rels*1..%d]->(other) ", boundedHops);
+        var result = session.run(
+                cypher +
+                "WHERE other.projectId = $projectId " +
+                "AND length(path) <= $hops " +
+                "AND all(node IN nodes(path) WHERE node.projectId = $projectId) " +
+                "WITH other, head(collect(rels[0])) AS rel " +
+                "RETURN other, type(rel) AS relationshipType " +
+                "ORDER BY other.fullName LIMIT $limit",
+                Map.of(
+                        "projectId", projectId,
+                        "nodeId", nodeId,
+                        "hops", hops,
+                        "limit", MAX_DETAIL_CONNECTIONS)
+        );
+
+        List<NodeDetailResponse.ConnectionDto> connections = new ArrayList<>();
+        while (result.hasNext()) {
+            Record record = result.next();
+            connections.add(NodeDetailResponse.ConnectionDto.builder()
+                    .otherNode(mapNodeToDto(record.get("other").asNode()))
+                    .relationshipType(record.get("relationshipType").asString())
+                    .direction(direction)
+                    .build());
+        }
+        return connections;
     }
 
     private void addNodeToMap(Map<String, NodeDto> nodeMap, Node node, Map<String, Integer> nodeStats) {

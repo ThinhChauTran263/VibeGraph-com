@@ -17,8 +17,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
+import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
+import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
 
@@ -86,5 +89,181 @@ class GraphControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.nodes").isEmpty());
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph/neighbors/{nodeId} returns wrapped node detail")
+    void shouldReturnNodeDetail() throws Exception {
+        NodeDetailResponse response = NodeDetailResponse.builder()
+                .node(NodeDto.builder()
+                        .id("com.example.OrderService")
+                        .type("Class")
+                        .name("OrderService")
+                        .fullName("com.example.OrderService")
+                        .filePath("src/OrderService.java")
+                        .lineNumber(12)
+                        .build())
+                .incoming(List.of(NodeDetailResponse.ConnectionDto.builder()
+                        .otherNode(NodeDto.builder()
+                                .id("com.example.OrderController")
+                                .type("Class")
+                                .name("OrderController")
+                                .fullName("com.example.OrderController")
+                                .build())
+                        .relationshipType("CALLS")
+                        .direction("INCOMING")
+                        .build()))
+                .outgoing(List.of(NodeDetailResponse.ConnectionDto.builder()
+                        .otherNode(NodeDto.builder()
+                                .id("com.example.OrderRepository")
+                                .type("Interface")
+                                .name("OrderRepository")
+                                .fullName("com.example.OrderRepository")
+                                .build())
+                        .relationshipType("INJECTS")
+                        .direction("OUTGOING")
+                        .build()))
+                .build();
+        when(graphService.getNodeDetail("p1", "com.example.OrderService", 1)).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph/neighbors/{nodeId}", "com.example.OrderService")
+                        .param("hops", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.node.fullName").value("com.example.OrderService"))
+                .andExpect(jsonPath("$.data.incoming[0].relationshipType").value("CALLS"))
+                .andExpect(jsonPath("$.data.incoming[0].direction").value("INCOMING"))
+                .andExpect(jsonPath("$.data.outgoing[0].otherNode.type").value("Interface"));
+
+        verify(graphService, times(1)).getNodeDetail("p1", "com.example.OrderService", 1);
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph/neighbors supports slash-containing node IDs via query parameter")
+    void shouldReturnNodeDetailForSlashContainingNodeId() throws Exception {
+        NodeDetailResponse response = NodeDetailResponse.builder()
+                .node(NodeDto.builder()
+                        .id("GET /api/users/{id}")
+                        .type("Route")
+                        .name("GET /api/users/{id}")
+                        .fullName("GET /api/users/{id}")
+                        .build())
+                .incoming(List.of())
+                .outgoing(List.of())
+                .build();
+        when(graphService.getNodeDetail("p1", "GET /api/users/{id}", 1)).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph/neighbors")
+                        .param("nodeId", "GET /api/users/{id}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.node.fullName").value("GET /api/users/{id}"));
+
+        verify(graphService, times(1)).getNodeDetail("p1", "GET /api/users/{id}", 1);
+    }
+
+    @Test
+    @DisplayName("GET node detail rejects unsupported hop counts")
+    void shouldRejectUnsupportedHopCounts() throws Exception {
+        when(graphService.getNodeDetail("p1", "com.example.OrderService", 99))
+                .thenThrow(new IllegalArgumentException("hops must be one of 0, 1, 2, 3, 5"));
+
+        mockMvc.perform(get("/api/projects/p1/graph/neighbors/{nodeId}", "com.example.OrderService")
+                        .param("hops", "99"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("GET node detail returns 404 when the selected node is missing")
+    void shouldReturnNotFoundForMissingNode() throws Exception {
+        when(graphService.getNodeDetail("p1", "missing.Node", 1))
+                .thenThrow(new NodeNotFoundException("Node not found"));
+
+        mockMvc.perform(get("/api/projects/p1/graph/neighbors/{nodeId}", "missing.Node"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("NODE_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("GET node detail rejects non-numeric hop counts")
+    void shouldRejectNonNumericHopCounts() throws Exception {
+        mockMvc.perform(get("/api/projects/p1/graph/neighbors/{nodeId}", "com.example.OrderService")
+                        .param("hops", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph/impact returns wrapped blast radius")
+    void shouldReturnImpactAnalysis() throws Exception {
+        ImpactAnalysisResponse response = ImpactAnalysisResponse.builder()
+                .target(NodeDto.builder()
+                        .id("com.example.OrderService")
+                        .type("Class")
+                        .name("OrderService")
+                        .fullName("com.example.OrderService")
+                        .build())
+                .riskLevel("LOW")
+                .directDependents(1)
+                .totalDependents(2)
+                .willBreak(List.of(NodeDto.builder()
+                        .id("com.example.OrderController")
+                        .type("Class")
+                        .name("OrderController")
+                        .fullName("com.example.OrderController")
+                        .build()))
+                .likelyAffected(List.of(NodeDto.builder()
+                        .id("com.example.ApiGateway")
+                        .type("Class")
+                        .name("ApiGateway")
+                        .fullName("com.example.ApiGateway")
+                        .build()))
+                .mayNeedTesting(List.of())
+                .build();
+        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 3)).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph/impact")
+                        .param("nodeId", "com.example.OrderService")
+                        .param("depth", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.target.fullName").value("com.example.OrderService"))
+                .andExpect(jsonPath("$.data.riskLevel").value("LOW"))
+                .andExpect(jsonPath("$.data.willBreak[0].fullName").value("com.example.OrderController"))
+                .andExpect(jsonPath("$.data.likelyAffected[0].fullName").value("com.example.ApiGateway"));
+
+        verify(graphService, times(1)).getImpactAnalysis("p1", "com.example.OrderService", 3);
+    }
+
+    @Test
+    @DisplayName("GET impact rejects unsupported depth counts")
+    void shouldRejectUnsupportedImpactDepths() throws Exception {
+        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 99))
+                .thenThrow(new IllegalArgumentException("depth must be one of 1, 2, 3, 5"));
+
+        mockMvc.perform(get("/api/projects/p1/graph/impact")
+                        .param("nodeId", "com.example.OrderService")
+                        .param("depth", "99"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("GET impact returns 404 when target node is missing")
+    void shouldReturnNotFoundForMissingImpactTarget() throws Exception {
+        when(graphService.getImpactAnalysis("p1", "missing.Node", 3))
+                .thenThrow(new NodeNotFoundException("Node not found"));
+
+        mockMvc.perform(get("/api/projects/p1/graph/impact")
+                        .param("nodeId", "missing.Node")
+                        .param("depth", "3"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("NODE_NOT_FOUND"));
     }
 }

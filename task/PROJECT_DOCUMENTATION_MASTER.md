@@ -1,5 +1,5 @@
 # VibeGraph - Master Project Documentation
-*Tài liệu tổng hợp dự án - Cập nhật: 2026-06-05*
+*Tài liệu tổng hợp dự án - Cập nhật: 2026-06-11*
 
 > **Mục đích:** Tổng hợp toàn bộ documentation về implementation status, sprint planning, task distribution, và hướng dẫn quản lý dự án VibeGraph.
 
@@ -49,7 +49,7 @@
 | Sprint       | Status            | Progress | Tasks            | Hours     |
 | ------------ | ----------------- | -------- | ---------------- | --------- |
 | **Sprint 1** | ✅ Complete        | 95%      | T01-T72 (38 core) | ~145h     |
-| **Sprint 2** | 🚧 In Progress     | 20%      | Remaining T07-T72 | ~145h     |
+| **Sprint 2** | 🚧 In Progress     | 35%      | Remaining T07-T72 | ~145h     |
 | **Sprint 3** | ❌ Not Started     | 0%       | T73-T98          | ~165h     |
 | **Sprint 4** | ❌ Not Started     | 0%       | T99-T121         | ~143h     |
 | **Total**    | **~55% Complete** | **55%**  | **121 tasks**    | **598h**  |
@@ -57,14 +57,14 @@
 ### Vertical Slice Status: ✅ WORKING END-TO-END
 
 ```
-Upload Archive → Extract → Parse Java → Resolve Symbols → 
-Create Nodes/Edges → Persist Neo4j → REST API → 
+Upload Archive → Extract → Parse Java → Resolve Symbols →
+Create Nodes/Edges → Persist Neo4j → REST API →
 Fetch Graph Data → Convert Graphology → Render Sigma.js
 ```
 
-**Confidence Level:** HIGH ✅  
-**Completion Date:** End of Week 7 (on schedule)  
-**Risk Level:** Low  
+**Confidence Level:** HIGH ✅
+**Completion Date:** End of Week 7 (on schedule)
+**Risk Level:** Low
 **Blocker Count:** 0 critical, 4 high-priority
 
 
@@ -159,7 +159,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | GraphCanvas        | ✅ Complete | Sigma rendering       |
 | FilterPanel        | ❌ Scaffold | UI only, no logic     |
 | ExplorerPanel      | ❌ Scaffold | UI only, no logic     |
-| NodeDetailPanel    | ❌ Scaffold | UI only, no logic     |
+| NodeDetailPanel    | ✅ Complete | T58: in/out edges, caps/redacts sensitive props, wired into GraphCanvas |
+| ImpactAnalysisPanel | ✅ Complete | T59: blast radius via `useImpactAnalysis` + `graphApi.getImpact`; depth 1/2/3/5, risk + counts, grouped affected nodes; live smoke pending (backend offline) |
 | AddProjectArchive  | ✅ Complete  | Sync done, async support via useArchiveImport.ts |
 
 **Priority:** HIGH (Sprint 2)
@@ -186,18 +187,18 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ## Sprint 1 ✅ 95% COMPLETE (Weeks 1-2)
 
-**Kế hoạch ban đầu:** 108 giờ  
+**Kế hoạch ban đầu:** 108 giờ
 **Thực tế hoàn thành:** ~180 giờ công việc
 
 ### Đã làm được:
 
-✅ Core parser (đã lên kế hoạch)  
-✅ Neo4j persistence (đã lên kế hoạch)  
-✅ REST API cơ bản (đã lên kế hoạch)  
-✅ Graph rendering cơ bản (đã lên kế hoạch)  
-✅ **BONUS:** Symbol Solver integration  
-✅ **BONUS:** Spring detection hoàn chỉnh  
-✅ **BONUS:** HTTP route detection  
+✅ Core parser (đã lên kế hoạch)
+✅ Neo4j persistence (đã lên kế hoạch)
+✅ REST API cơ bản (đã lên kế hoạch)
+✅ Graph rendering cơ bản (đã lên kế hoạch)
+✅ **BONUS:** Symbol Solver integration
+✅ **BONUS:** Spring detection hoàn chỉnh
+✅ **BONUS:** HTTP route detection
 ✅ **BONUS:** Archive upload foundation (sync + async framework)
 
 ### Key Tasks Completed (Sprint 1):
@@ -216,8 +217,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ## Sprint 2 🚧 20% IN PROGRESS (Weeks 3-4)
 
-**Kế hoạch:** 172 giờ  
-**Đã hoàn thành:** ~35 giờ  
+**Kế hoạch:** 172 giờ
+**Đã hoàn thành:** ~35 giờ
 **Còn lại:** 137 giờ
 
 ### Progress by Feature:
@@ -231,7 +232,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Diagram services     | ❌ 0%   | DiagramController empty        |
 | MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
-| GitHub import        | ✅ Backend Done | TarballImportServiceImpl, GitHubUrlParser, pre-flight, tarball client; FE form still planned |
+| GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke tested (import-github 202 -> ANALYZED 47 files/310 nodes/1220 edges); backend DI bug in `GitHubPreFlightService` resolved |
 
 ### Critical Path (Must Complete This Week):
 
@@ -246,8 +247,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ## Sprint 3 ❌ NOT STARTED (Weeks 5-6)
 
-**Tasks:** T73-T98 (26 tasks)  
-**Hours:** ~165h  
+**Tasks:** T73-T98 (26 tasks)
+**Hours:** ~165h
 **Capacity:** 480h (34% utilization)
 
 ### Key Deliverables:
@@ -272,8 +273,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ## Sprint 4 ❌ NOT STARTED (Weeks 7-8)
 
-**Tasks:** T99-T121 (23 tasks)  
-**Hours:** ~143h  
+**Tasks:** T99-T121 (23 tasks)
+**Hours:** ~143h
 **Capacity:** 480h (30% utilization)
 
 ### Key Deliverables:
@@ -318,10 +319,10 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 ### Capacity Updates
 
-**Old:** 4 người x 8h x 12 ngày = 384h/sprint  
+**Old:** 4 người x 8h x 12 ngày = 384h/sprint
 **New:** 5 người x 3h x 12 ngày = 180h/sprint
 
-**Total Estimate:** 598 hours (121 tasks)  
+**Total Estimate:** 598 hours (121 tasks)
 **Sprints Required:** ~3.3 sprints at capacity
 
 ---
@@ -331,8 +332,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ## 👥 Workload by Team Member
 
 ### Khoa (Fullstack Developer)
-**Total:** ~170 hours  
-**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Total:** ~170 hours
+**Capacity:** 144h (36h/sprint x 4 sprints)
 **Utilization:** 118% ⚠️ OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities                    |
@@ -347,8 +348,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ---
 
 ### Vinh (Backend + DevOps + Scrum Master)
-**Total:** ~185 hours  
-**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Total:** ~185 hours
+**Capacity:** 144h (36h/sprint x 4 sprints)
 **Utilization:** 129% ⚠️ SEVERELY OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities                  |
@@ -363,8 +364,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ---
 
 ### Danh (Fullstack Developer)
-**Total:** ~60 hours  
-**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Total:** ~60 hours
+**Capacity:** 144h (36h/sprint x 4 sprints)
 **Utilization:** 42% ✅ UNDERUTILIZED
 
 | Sprint   | Hours | Key Responsibilities         |
@@ -386,8 +387,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ---
 
 ### Thái (BA + PO + Tester)
-**Total:** ~155 hours  
-**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Total:** ~155 hours
+**Capacity:** 144h (36h/sprint x 4 sprints)
 **Utilization:** 108% ⚠️ OVERLOADED
 
 | Sprint   | Hours | Key Responsibilities            |
@@ -402,8 +403,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 ---
 
 ### Thịnh (Leader + PM)
-**Total:** ~140 hours  
-**Capacity:** 144h (36h/sprint x 4 sprints)  
+**Total:** ~140 hours
+**Capacity:** 144h (36h/sprint x 4 sprints)
 **Utilization:** 97% ✅ NEAR CAPACITY
 
 | Sprint   | Hours | Key Responsibilities         |
@@ -559,14 +560,14 @@ Check:
 Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
-> **Cập nhật:** 2026-06-05  
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub backend đã implemented, realtime graph/watch vẫn chưa hoàn tất  
+> **Cập nhật:** 2026-06-05
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented, realtime graph/watch vẫn chưa hoàn tất
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester
 > - **Thịnh:** Leader, Quản lý dự án, Vibecode
 > - **Khoa:** Fullstack Developer
-> - **Danh:** Fullstack Developer  
+> - **Danh:** Fullstack Developer
 > - **Vinh:** Backend Developer, Scrum Master
 ```
 
@@ -702,11 +703,11 @@ Năng lực/sprint: 180h (5 người x 3h x 12 ngày)
 
 ### What This Document Contains:
 
-✅ **Executive Summary** - Project overview and progress  
-✅ **Implementation Status** - Detailed module analysis  
-✅ **Sprint Progress** - Sprint 1-4 planning and updates  
-✅ **Task Distribution** - Workload by team member  
-✅ **CSV Export Guide** - How to export and upload  
+✅ **Executive Summary** - Project overview and progress
+✅ **Implementation Status** - Detailed module analysis
+✅ **Sprint Progress** - Sprint 1-4 planning and updates
+✅ **Task Distribution** - Workload by team member
+✅ **CSV Export Guide** - How to export and upload
 ✅ **Update Instructions** - How to maintain backlog
 
 ### Next Actions:
@@ -719,8 +720,8 @@ Năng lực/sprint: 180h (5 người x 3h x 12 ngày)
 
 ---
 
-*Document Created: 2026-06-05*  
-*Last Updated: 2026-06-05*  
-*Total Pages: Consolidated from 7 separate documents*  
+*Document Created: 2026-06-05*
+*Last Updated: 2026-06-11*
+*Total Pages: Consolidated from 7 separate documents*
 *Maintained By: Kiro AI Assistant*
 

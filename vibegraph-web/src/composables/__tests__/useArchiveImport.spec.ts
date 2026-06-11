@@ -14,8 +14,8 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     importApi: {
-      uploadArchive: vi.fn(),
-      uploadArchiveAsync: vi.fn(),
+      uploadArchive: vi.fn<(name: string, file: File) => Promise<Project>>(),
+      uploadArchiveAsync: vi.fn<(name: string, file: File) => Promise<Project>>(),
     },
   }
 })
@@ -197,13 +197,13 @@ function makeFakeWs(opts: { connectRejects?: boolean } = {}) {
   const ws: UseWebSocketReturn = {
     status: ref('disconnected'),
     error: ref<string | null>(null),
-    connect: vi.fn(async () => {
+    connect: vi.fn<() => Promise<void>>(async () => {
       if (opts.connectRejects) {
         throw new Error('WebSocket connection failed.')
       }
       ws.status.value = 'connected'
     }),
-    disconnect: vi.fn(async () => {
+    disconnect: vi.fn<() => Promise<void>>(async () => {
       ws.status.value = 'disconnected'
     }),
     subscribe,
@@ -223,7 +223,7 @@ function makeFakeWs(opts: { connectRejects?: boolean } = {}) {
  * fallback override the resolved value.
  */
 function makePoll(project: Project) {
-  return vi.fn(async () => project)
+  return vi.fn<() => Promise<Project>>(async () => project)
 }
 
 // Long poll interval + timeout so the fallback/watchdog never fire in
