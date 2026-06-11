@@ -231,7 +231,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | Diagram services     | ❌ 0%   | DiagramController empty        |
 | MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
-| GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke blocked by backend DI bug in `GitHubPreFlightService` |
+| GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke tested (import-github 202 -> ANALYZED 47 files/310 nodes/1220 edges); backend DI bug in `GitHubPreFlightService` resolved |
 
 ### Critical Path (Must Complete This Week):
 
