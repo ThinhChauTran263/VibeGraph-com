@@ -18,6 +18,7 @@ import NodeDetailPanel from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
 import { createFocusReducers } from '@/lib/focusMode'
 import { useFilters } from '@/composables/useFilters'
+import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphNode } from '@/types/graph'
 
 const props = defineProps<{
@@ -30,6 +31,10 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLDivElement | null>(null)
 const { focusDepth } = useFilters()
+
+// T60: subscribe to realtime graph updates for the active project and patch the
+// store in place. Resubscribes on project change and cleans up on unmount.
+useGraphRealtime(() => props.projectId)
 
 const {
   graphData,

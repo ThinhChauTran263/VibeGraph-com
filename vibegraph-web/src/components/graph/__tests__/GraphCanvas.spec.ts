@@ -51,6 +51,17 @@ vi.mock('@/composables/useFilters', () => ({
   }),
 }))
 
+// T60: GraphCanvas now wires the realtime consumer. Stub it so this test stays
+// focused on canvas/search behavior and avoids pulling in Pinia + a socket.
+vi.mock('@/composables/useGraphRealtime', () => ({
+  useGraphRealtime: () => ({
+    status: ref('disconnected'),
+    error: ref(null),
+    lastError: ref(null),
+    stop: () => {},
+  }),
+}))
+
 vi.mock('@/components/panels/FilterPanel.vue', () => ({
   default: { template: '<div data-test="filter-panel" />', props: ['graphData'] },
 }))
