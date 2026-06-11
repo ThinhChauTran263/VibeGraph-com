@@ -72,11 +72,12 @@ export interface GraphData {
  * Realtime graph-update events delivered over the STOMP topic
  * `/topic/projects/{projectId}/updates`.
  *
- * PROVISIONAL CONTRACT (Sprint 2): mirrors the spec sketch in
- * `VibeGraph-specs-2month/architecture.md`. The backend producer is NOT yet
- * implemented (T36 `broadcastFullUpdate`/`broadcastIncremental`, T25 file
- * watcher), so this shape is provisional and may change when the producer
- * lands. The frontend consumer validates payloads defensively at the boundary.
+ * CONTRACT (Sprint 2): kept in sync with the backend producer records
+ * `graph/websocket/{GraphUpdateEvent, GraphChangeSet, GraphRemoval}.java`
+ * (T36). The broadcast producer is implemented; the automatic file-change
+ * trigger (T25 file watcher) is still pending, so events are not yet emitted
+ * on real source edits. The consumer validates payloads defensively at the
+ * boundary regardless.
  */
 export interface GraphFullUpdateEvent {
   type: 'FULL_UPDATE'

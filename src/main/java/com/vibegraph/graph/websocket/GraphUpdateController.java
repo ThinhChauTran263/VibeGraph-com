@@ -4,7 +4,9 @@ import java.time.Instant;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.StringUtils;
 
+import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 
 import lombok.RequiredArgsConstructor;
@@ -16,20 +18,65 @@ import lombok.extern.slf4j.Slf4j;
  * Topics:
  * - /topic/projects/{id}/updates  (FULL_UPDATE / INCREMENTAL events)
  * - /topic/projects/{id}/status   (analysis progress)
+ *
+ * The broadcast methods receive their payload from the caller (e.g. the import
+ * pipeline or a future file watcher); this controller does not query the graph
+ * store itself.
  */
 @Controller
 @RequiredArgsConstructor
 @Slf4j
 public class GraphUpdateController {
 
+    private static final String UPDATES_TOPIC_TEMPLATE = "/topic/projects/%s/updates";
+
     private final SimpMessagingTemplate messagingTemplate;
 
-    public void broadcastFullUpdate(String projectId) {
-        // TODO: Send to /topic/projects/{projectId}/updates
+    /**
+     * Broadcast a full-graph replacement to {@code /topic/projects/{projectId}/updates}.
+     * No-op (with a warning) when {@code projectId} is blank.
+     *
+     * @param projectId the project whose graph changed
+     * @param graph     the complete current graph snapshot
+     */
+    public void broadcastFullUpdate(String projectId, GraphDataResponse graph) {
+        if (!StringUtils.hasText(projectId)) {
+            log.warn("Skipping full graph update broadcast: blank projectId");
+            return;
+        }
+        GraphUpdateEvent event = GraphUpdateEvent.fullUpdate(projectId, graph);
+        messagingTemplate.convertAndSend(updatesTopic(projectId), event);
+        log.debug("Full graph update broadcast: project={}", projectId);
     }
 
-    public void broadcastIncremental(String projectId, Object diff) {
-        // TODO: Send incremental update
+    /**
+     * Broadcast an incremental diff to {@code /topic/projects/{projectId}/updates}.
+     * Any of {@code added}/{@code modified}/{@code removed} may be null; null
+     * sections are simply omitted from the payload. No-op (with a warning) when
+     * {@code projectId} is blank.
+     *
+     * @param projectId the project whose graph changed
+     * @param added     nodes/edges added by the change; may be null
+     * @param modified  nodes/edges modified by the change; may be null
+     * @param removed   node/edge ids removed by the change; may be null
+     */
+    public void broadcastIncremental(
+            String projectId,
+            GraphChangeSet added,
+            GraphChangeSet modified,
+            GraphRemoval removed
+    ) {
+        if (!StringUtils.hasText(projectId)) {
+            log.warn("Skipping incremental graph update broadcast: blank projectId");
+            return;
+        }
+        GraphUpdateEvent event = GraphUpdateEvent.incremental(projectId, added, modified, removed);
+        messagingTemplate.convertAndSend(updatesTopic(projectId), event);
+        log.debug("Incremental graph update broadcast: project={}", projectId);
+    }
+
+    private static String updatesTopic(String projectId) {
+        return String.format(UPDATES_TOPIC_TEMPLATE, projectId);
     }
 
     /**
