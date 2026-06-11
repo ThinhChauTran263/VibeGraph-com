@@ -159,7 +159,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | GraphCanvas        | ✅ Complete | Sigma rendering       |
 | FilterPanel        | ❌ Scaffold | UI only, no logic     |
 | ExplorerPanel      | ❌ Scaffold | UI only, no logic     |
-| NodeDetailPanel    | ❌ Scaffold | UI only, no logic     |
+| NodeDetailPanel    | ✅ Complete | T58: in/out edges, caps/redacts sensitive props, wired into GraphCanvas |
+| ImpactAnalysisPanel | ✅ Complete | T59: blast radius via `useImpactAnalysis` + `graphApi.getImpact`; depth 1/2/3/5, risk + counts, grouped affected nodes; live smoke pending (backend offline) |
 | AddProjectArchive  | ✅ Complete  | Sync done, async support via useArchiveImport.ts |
 
 **Priority:** HIGH (Sprint 2)
