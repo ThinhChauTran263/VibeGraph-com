@@ -15,6 +15,7 @@ import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
 import NodeDetailPanel from '@/components/panels/NodeDetailPanel.vue'
+import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
 import { createFocusReducers } from '@/lib/focusMode'
 import { useFilters } from '@/composables/useFilters'
 import type { GraphNode } from '@/types/graph'
@@ -128,7 +129,10 @@ watch(
       <FilterPanel :graph-data="graphData" />
     </div>
 
-    <NodeDetailPanel v-if="!loading && !error && selectedNode" class="graph-canvas__detail" />
+    <div v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+      <NodeDetailPanel />
+      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
+    </div>
 
     <div v-if="loading" class="graph-overlay graph-overlay--loading">
       <div class="spinner" aria-label="Loading graph" />
@@ -175,6 +179,11 @@ watch(
   right: 1rem;
   bottom: 1rem;
   z-index: 21;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: calc(100% - 2rem);
+  overflow-y: auto;
 }
 
 @media (max-height: 48rem) {

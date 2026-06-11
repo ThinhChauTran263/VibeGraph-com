@@ -6,6 +6,48 @@
 import { API_BASE_URL } from './constants'
 import type { GraphData } from '@/types/graph'
 
+/**
+ * A node as returned inside an impact-analysis result. Mirrors the backend
+ * `graph.dto.response.NodeDto` Java record. `lineNumber` is nullable on the
+ * backend (`Integer`), so it is optional here.
+ */
+export interface ImpactNode {
+  id: string
+  type: string
+  name: string
+  fullName: string
+  filePath: string
+  lineNumber?: number | null
+  properties?: Record<string, unknown>
+}
+
+/** Risk levels reported by the backend impact analysis. */
+export type ImpactRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+
+/**
+ * Blast-radius analysis result.
+ * Mirrors the backend `graph.dto.response.ImpactAnalysisResponse` record.
+ *
+ * Affected nodes are grouped by traversal depth:
+ * - `willBreak`     — d=1 direct dependents (WILL BREAK)
+ * - `likelyAffected`— d=2 indirect dependents (LIKELY AFFECTED)
+ * - `mayNeedTesting`— d>=3 transitive dependents (MAY NEED TESTING)
+ */
+export interface ImpactAnalysisResponse {
+  target: ImpactNode
+  /** `LOW` | `MEDIUM` | `HIGH` | `CRITICAL`; typed loosely to tolerate backend drift. */
+  riskLevel: string
+  directDependents: number
+  totalDependents: number
+  willBreak: ImpactNode[]
+  likelyAffected: ImpactNode[]
+  mayNeedTesting: ImpactNode[]
+}
+
+/** Traversal depths the backend accepts (see GraphServiceImpl ALLOWED_IMPACT_DEPTHS). */
+export const IMPACT_ALLOWED_DEPTHS = [1, 2, 3, 5] as const
+export type ImpactDepth = (typeof IMPACT_ALLOWED_DEPTHS)[number]
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -184,6 +226,20 @@ export const graphApi = {
   getGraph: (projectId: string) => fetchFullGraph(projectId),
   getNeighbors: (projectId: string, nodeId: string, hops: number) =>
     api.get(`/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`),
+
+  /**
+   * Fetch the blast radius (impact analysis) for a node.
+   * GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...
+   *
+   * `depth` must be one of {@link IMPACT_ALLOWED_DEPTHS}; the backend rejects
+   * other values with a 400. Query params are encoded via URLSearchParams.
+   */
+  getImpact: (projectId: string, nodeId: string, depth: number) => {
+    const query = new URLSearchParams({ nodeId, depth: String(depth) })
+    return api.get<ImpactAnalysisResponse>(
+      `/api/projects/${projectId}/graph/impact?${query}`,
+    )
+  },
 }
 
 // Diagram endpoints
