@@ -25,6 +25,7 @@ import com.vibegraph.graph.importer.github.GitHubUrlParser;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.service.TarballImportService;
+import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
     private final GraphUpdateController graphUpdateController;
+    private final FileChangeBroadcaster fileChangeBroadcaster;
     private final Executor analysisExecutor;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
@@ -52,6 +54,7 @@ public class TarballImportServiceImpl implements TarballImportService {
                                     ProjectService projectService,
                                     AnalyzeService analyzeService,
                                     GraphUpdateController graphUpdateController,
+                                    FileChangeBroadcaster fileChangeBroadcaster,
                                     @Qualifier("analysisExecutor") Executor analysisExecutor) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
@@ -61,6 +64,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.graphUpdateController = graphUpdateController;
+        this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.analysisExecutor = analysisExecutor;
     }
 
@@ -119,6 +123,7 @@ public class TarballImportServiceImpl implements TarballImportService {
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100,
                     "GitHub repository analysis completed");
+            fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
             log.info("GitHub analysis complete for project {} from {}@{} ({} .java files)",
                     ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount());
         } catch (RuntimeException e) {

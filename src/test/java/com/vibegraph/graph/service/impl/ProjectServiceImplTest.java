@@ -1,21 +1,24 @@
 package com.vibegraph.graph.service.impl;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.watcher.service.FileWatcherService;
 
 @DisplayName("ProjectServiceImpl")
 class ProjectServiceImplTest {
@@ -167,6 +170,41 @@ class ProjectServiceImplTest {
 
         assertThatThrownBy(() -> service.getProject("nope"))
                 .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("deleteProject stops the file watcher for the project")
+    void shouldStopWatcherOnDelete() throws IOException {
+        FileWatcherService fileWatcherService = mock(FileWatcherService.class);
+        ReflectionTestUtils.setField(service, "fileWatcherService", fileWatcherService);
+        String id = createProject("watched");
+
+        service.deleteProject(id);
+
+        verify(fileWatcherService).stopWatching(id);
+        assertThatThrownBy(() -> service.getProject(id)).isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("deleteProject of an unknown project throws and never stops a watcher")
+    void shouldNotStopWatcherWhenProjectUnknown() {
+        FileWatcherService fileWatcherService = mock(FileWatcherService.class);
+        ReflectionTestUtils.setField(service, "fileWatcherService", fileWatcherService);
+
+        assertThatThrownBy(() -> service.deleteProject("missing"))
+                .isInstanceOf(ProjectNotFoundException.class);
+
+        verifyNoInteractions(fileWatcherService);
+    }
+
+    @Test
+    @DisplayName("deleteProject works when no file watcher is wired (optional dependency)")
+    void shouldDeleteWhenWatcherNotWired() throws IOException {
+        String id = createProject("no-watcher");
+
+        service.deleteProject(id);
+
+        assertThatThrownBy(() -> service.getProject(id)).isInstanceOf(ProjectNotFoundException.class);
     }
 
     private String createProject(String name) throws IOException {

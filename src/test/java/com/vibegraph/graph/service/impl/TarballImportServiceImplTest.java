@@ -1,24 +1,23 @@
 package com.vibegraph.graph.service.impl;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.vibegraph.graph.dto.request.GithubImportRequest;
@@ -35,6 +34,7 @@ import com.vibegraph.graph.importer.github.GitHubUrlParser;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.ProjectService;
+import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +56,8 @@ class TarballImportServiceImplTest {
     AnalyzeService analyzeService;
     @Mock
     GraphUpdateController graphUpdateController;
+    @Mock
+    FileChangeBroadcaster fileChangeBroadcaster;
 
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
@@ -67,7 +69,8 @@ class TarballImportServiceImplTest {
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
-                archiveExtractor, projectService, analyzeService, graphUpdateController, backgroundTasks::add);
+                archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
+                backgroundTasks::add);
     }
 
     @Test
@@ -102,6 +105,7 @@ class TarballImportServiceImplTest {
 
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZED), eq(100), any(String.class));
+        verify(fileChangeBroadcaster).watchProject("p1", "rp");
     }
 
     @Test
@@ -123,6 +127,7 @@ class TarballImportServiceImplTest {
                 .isInstanceOf(IllegalStateException.class);
 
         verify(projectService).deleteProject("p1");
+        verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         ArgumentCaptor<Path> tarballPath = ArgumentCaptor.forClass(Path.class);
         verify(tarballClient).downloadTarball(eq(resolved), tarballPath.capture(), eq(104857600L));
         assertThat(Files.exists(tarballPath.getValue().getParent())).isFalse();

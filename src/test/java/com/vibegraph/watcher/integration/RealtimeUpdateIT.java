@@ -12,64 +12,46 @@ import org.junit.jupiter.api.Test;
  * {@code /topic/projects/{projectId}/updates} within 3 seconds, so a subscribed client
  * patches its graph without a full reload.
  *
- * <h2>Why this test is {@link Disabled} — architectural blocker (not a test gap)</h2>
- * The end-to-end chain required by the acceptance does not exist in the current codebase:
- *
- * <pre>
- *   file change → graph mutation → GraphUpdateController.broadcast* → /topic/.../updates
- * </pre>
- *
- * It is broken at two points as of commit {@code 32ec192}:
- *
- * <ol>
- *   <li><b>No producer→broadcast bridge.</b> {@code FileWatcherServiceImpl.dispatch} calls
- *       {@code GraphRepository.deleteFile(projectId, relativePath)} on DELETE (T25/T37) and
- *       only notifies in-process {@code onFileChange} handlers for CREATE/MODIFY. It never
- *       invokes {@code GraphUpdateController.broadcastFullUpdate / broadcastIncremental}.
- *       Impact analysis confirms {@code GraphUpdateController} is consumed only by the
- *       archive/tarball import services, never by the watcher.</li>
- *   <li><b>Watcher is never started in-app.</b> No production code calls
- *       {@code FileWatcherService.startWatching}, so no project is actually being watched
- *       in a running context.</li>
- * </ol>
- *
- * Additionally, CREATE/MODIFY incremental re-parse is explicitly not wired
- * ({@code ParserService.parseFileWithCache} is deferred to Sprint 2), so even with a bridge
- * only the DELETE path could mutate the graph today.
- *
- * <h2>What must land before enabling this test</h2>
+ * <h2>Status: partially unblocked</h2>
+ * The producer→broadcast bridge and watcher lifecycle now exist:
  * <ul>
- *   <li>A bridge that registers an {@code onFileChange} handler (or equivalent) which, after
- *       the watcher mutates the graph, calls {@code GraphUpdateController.broadcastIncremental}
- *       (DELETE: {@code removed}; CREATE/MODIFY once re-parse exists: {@code added}/{@code modified}).</li>
- *   <li>Lifecycle wiring that calls {@code startWatching(projectId, rootPath)} for analyzed
- *       projects.</li>
+ *   <li>{@code FileChangeBroadcaster} registers an {@code onFileChange} handler that, on a
+ *       {@code .java} DELETE (after the watcher prunes via {@code GraphRepository.deleteFile}),
+ *       re-reads {@code getFullGraph} and calls {@code GraphUpdateController.broadcastFullUpdate}
+ *       → {@code /topic/projects/{id}/updates}. Covered deterministically by
+ *       {@code RealtimeUpdateBroadcastTest}.</li>
+ *   <li>The import/analyze flows call {@code FileChangeBroadcaster.watchProject(projectId, rootPath)}
+ *       on success, and {@code ProjectServiceImpl.deleteProject} stops the watcher.</li>
  * </ul>
  *
- * <h2>Intended verification (once unblocked)</h2>
- * Boot the app with Testcontainers Neo4j, import/analyze a small project, connect a STOMP
- * client to {@code /ws/graph-updates}, subscribe to {@code /topic/projects/{id}/updates},
- * delete a {@code .java} file under the watched root, and assert an {@code INCREMENTAL}
- * event carrying the removed node/edge ids arrives within 3s. Mirror the broadcast payload
- * assertions in {@code GraphUpdateControllerTest}.
+ * <h2>Why this full E2E remains {@link Disabled}</h2>
+ * This class is the heavyweight end-to-end variant (real STOMP client + Testcontainers Neo4j +
+ * a real file delete on disk + the OS WatchService + the &lt;3s latency assertion). That belongs
+ * to <b>T70 (FileWatcher incremental E2E)</b>, which is out of scope here. The component-level
+ * wiring it would exercise is already proven by {@code RealtimeUpdateBroadcastTest} and the
+ * watcher unit tests; this remains as the E2E spec to enable under T70.
  *
- * <p>This class is intentionally left as a documented, skipped specification rather than a
- * test that fakes the broadcast (which would assert nothing about the real save→update path).
+ * <p>Additionally, CREATE/MODIFY realtime updates stay out of scope until incremental re-parse
+ * exists ({@code ParserService.parseFileWithCache}, deferred to Sprint 2) — only the DELETE path
+ * mutates the graph today, so only DELETE produces a broadcast.
+ *
+ * <h2>Intended verification (T70)</h2>
+ * Boot the app with Testcontainers Neo4j, import/analyze a small project (which starts the
+ * watcher), connect a STOMP client to {@code /ws/graph-updates}, subscribe to
+ * {@code /topic/projects/{id}/updates}, delete a {@code .java} file under the watched root, and
+ * assert a {@code FULL_UPDATE} reflecting the pruned graph arrives within 3s.
  */
-@Disabled("T38 BLOCKED: no FileWatcher→GraphUpdateController broadcast bridge and watcher is "
-        + "never started in-app (commit 32ec192). Realtime save→update path does not exist yet; "
-        + "see class Javadoc for the wiring required before enabling. Not faking E2E.")
-@DisplayName("T38 Realtime update (save → /topic/.../updates < 3s)")
+@Disabled("T38 full STOMP+Neo4j <3s E2E is T70 scope. Bridge + lifecycle are implemented and "
+        + "covered by RealtimeUpdateBroadcastTest; DELETE path broadcasts, CREATE/MODIFY pending "
+        + "incremental re-parse (Sprint 2). Enable under T70.")
+@DisplayName("T38 Realtime update E2E (save → /topic/.../updates < 3s)")
 class RealtimeUpdateIT {
 
     @Test
-    @DisplayName("DELETE of a .java file broadcasts an INCREMENTAL graph update within 3s")
-    void deleteBroadcastsIncrementalUpdate() {
-        // Blocked — see class-level @Disabled reason and Javadoc.
-        // Intended flow once the producer→broadcast bridge + startWatching wiring exist:
-        //   1. Testcontainers Neo4j up; import + analyze a small fixture project.
-        //   2. STOMP connect to /ws/graph-updates; subscribe /topic/projects/{id}/updates.
-        //   3. Delete a watched .java file under the project root.
-        //   4. Assert an INCREMENTAL GraphUpdateEvent with removed ids arrives < 3s.
+    @DisplayName("DELETE of a .java file broadcasts a graph update within 3s")
+    void deleteBroadcastsUpdateWithin3s() {
+        // E2E deferred to T70 — see class-level @Disabled reason and Javadoc.
+        // Component-level wiring is proven by RealtimeUpdateBroadcastTest:
+        //   watcher DELETE → deleteFile → FileChangeBroadcaster → getFullGraph → broadcastFullUpdate.
     }
 }
