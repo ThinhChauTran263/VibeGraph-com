@@ -155,6 +155,12 @@ public class Neo4jGraphRepository implements GraphRepository {
                     "MATCH (n {projectId: $projectId, filePath: $filePath}) DETACH DELETE n",
                     Map.of("projectId", projectId, "filePath", filePath)
             );
+            session.run(
+                    "MATCH (n:External {projectId: $projectId}) " +
+                    "WHERE NOT (n)--() " +
+                    "DETACH DELETE n",
+                    Map.of("projectId", projectId)
+            );
         }
     }
 

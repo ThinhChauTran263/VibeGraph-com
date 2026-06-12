@@ -457,7 +457,7 @@ RETURN r
 
 ### 5.4 Xóa file (Quyết định #6 — đổi tên = xóa + tạo mới)
 
-> **Implementation hiện tại:** `Neo4jGraphRepository.deleteFile(projectId, filePath)` xóa mỗi node có property `filePath` tương ứng bằng `DETACH DELETE`, không đi theo `File-[:DEFINES]->typeNode` vì `File` node chưa được parser emit.
+> **Implementation hiện tại:** `Neo4jGraphRepository.deleteFile(projectId, filePath)` xóa mỗi node có property `filePath` tương ứng bằng `DETACH DELETE`, sau đó prune các `External` stub cùng project không còn relationship nào. Code chưa đi theo `File-[:DEFINES]->typeNode` vì `File` node chưa được parser emit.
 
 ```cypher
 // Khi watcher báo file bị xóa hoặc bị đổi tên

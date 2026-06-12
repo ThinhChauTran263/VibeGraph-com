@@ -220,6 +220,33 @@ class Neo4jGraphRepositoryIT {
     }
 
     @Test
+    @DisplayName("deleteFile removes file nodes and orphan External stubs while preserving shared stubs")
+    void shouldDeleteFileGraphAndPruneOnlyOrphanExternalStubs() {
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Method", "changed", "com.example.Changed.changed()",
+                        "src/Changed.java", 1, 5, Map.of()),
+                NodeData.of("Method", "other", "com.example.Other.other()",
+                        "src/Other.java", 1, 5, Map.of())));
+        repository.upsertEdges(projectId, List.of(
+                EdgeData.of("CALLS", "com.example.Changed.changed()", "lib.Orphan.call()", Map.of()),
+                EdgeData.of("CALLS", "com.example.Changed.changed()", "lib.Shared.call()", Map.of()),
+                EdgeData.of("CALLS", "com.example.Other.other()", "lib.Shared.call()", Map.of())));
+
+        repository.deleteFile(projectId, "src/Changed.java");
+
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+        assertThat(graph.getNodes())
+                .extracting(NodeDto::getFullName)
+                .doesNotContain("com.example.Changed.changed()", "lib.Orphan.call()")
+                .contains("com.example.Other.other()", "lib.Shared.call()");
+        assertThat(graph.getEdges())
+                .extracting(EdgeDto::getSource)
+                .doesNotContain("com.example.Changed.changed()")
+                .contains("com.example.Other.other()");
+    }
+
+    @Test
     @DisplayName("getNodeDetail returns selected node with capped incoming and outgoing relationships")
     void shouldReturnNodeDetailWithCappedConnections() {
         NodeData selected = NodeData.of(
