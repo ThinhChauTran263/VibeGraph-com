@@ -2,6 +2,7 @@ package com.vibegraph.mcp.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -28,12 +29,15 @@ import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ArchitectureContextResponse;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
 import com.vibegraph.mcp.dto.response.ImpactAnalysisContextResponse;
+import com.vibegraph.mcp.dto.response.LayerPatternResponse;
 import com.vibegraph.mcp.service.ArchitectureAnalyzer;
 import com.vibegraph.mcp.service.ClassContextAnalyzer;
 import com.vibegraph.mcp.service.ImpactAnalysisAnalyzer;
+import com.vibegraph.mcp.service.LayerPatternAnalyzer;
 import com.vibegraph.mcp.service.impl.ArchitectureAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.ClassContextAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.ImpactAnalysisAnalyzerImpl;
+import com.vibegraph.mcp.service.impl.LayerPatternAnalyzerImpl;
 
 @DisplayName("MCP Tools")
 class McpToolsTest {
@@ -104,8 +108,9 @@ class McpToolsTest {
         void getProjectArchitecture_registeredAsToolCallback() {
             ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
             ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
+            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
             ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool);
+                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
@@ -263,13 +268,14 @@ class McpToolsTest {
         void getClassContext_registeredAsToolCallback() {
             ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
             ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
+            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
             ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool);
+                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis");
+                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
         }
 
         private GraphDataResponse classGraph() {
@@ -339,10 +345,185 @@ class McpToolsTest {
     @DisplayName("LayerPatternTool")
     class LayerPatternToolTest {
 
+        private final GraphService graphService = Mockito.mock(GraphService.class);
+        private final LayerPatternAnalyzer layerPatternAnalyzer = new LayerPatternAnalyzerImpl(graphService);
+        private final LayerPatternTool layerPatternTool = new LayerPatternTool(layerPatternAnalyzer);
+
         @Test
-        @Disabled("Chờ T46 LayerPatternTool implement")
-        @DisplayName("should return conventions for CONTROLLER layer")
-        void shouldReturnControllerConventions() {
+        @DisplayName("get_layer_pattern returns controller examples, dependencies, and rules")
+        void getLayerPattern_controllerLayer_returnsPatternContext() {
+            when(graphService.getFullGraph("p1")).thenReturn(layerGraph());
+
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "controller");
+
+            assertThat(result.getProjectId()).isEqualTo("p1");
+            assertThat(result.getRequestedLayer()).isEqualTo("controller");
+            assertThat(result.getNormalizedLayer()).isEqualTo("CONTROLLER");
+            assertThat(result.getDescription()).contains("HTTP/API");
+            assertThat(result.getExamples()).extracting(LayerPatternResponse.LayerExample::getFullName)
+                    .containsExactly("com.app.controller.AdminController", "com.app.controller.UserController");
+            assertThat(result.getCommonDependencies()).extracting(LayerPatternResponse.DependencySummary::getTargetLayer)
+                    .containsExactly("SERVICE");
+            assertThat(result.getNamingConventions()).containsEntry("classSuffix", "*Controller");
+            assertThat(result.getDoRules()).contains("Delegate business logic to services");
+            assertThat(result.getDontRules()).contains("Do not put business logic in controllers");
+            assertThat(result.getWarnings()).isEmpty();
+            assertThat(result.toString()).doesNotContain("C:/secret/project");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern returns repository conventions")
+        void getLayerPattern_repositoryLayer_returnsPatternContext() {
+            when(graphService.getFullGraph("p1")).thenReturn(layerGraph());
+
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "Repository");
+
+            assertThat(result.getNormalizedLayer()).isEqualTo("REPOSITORY");
+            assertThat(result.getExamples()).extracting(LayerPatternResponse.LayerExample::getName)
+                    .containsExactly("UserRepository");
+            assertThat(result.getNamingConventions()).containsEntry("classSuffix", "*Repository");
+            assertThat(result.getDoRules()).contains("Use parameterized queries");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern returns warning for unknown layer")
+        void getLayerPattern_unknownLayer_returnsClearWarning() {
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "worker");
+
+            assertThat(result.getExamples()).isEmpty();
+            assertThat(result.getCommonDependencies()).isEmpty();
+            assertThat(result.getWarnings()).containsExactly("Unknown layer: WORKER");
+            assertThat(result.getPatternNotes()).containsExactly("Requested layer is not one of the built-in layers: CONTROLLER, SERVICE, REPOSITORY, CONFIG, ROUTE.");
+            verifyNoInteractions(graphService);
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern rejects invalid input")
+        void getLayerPattern_invalidInput_throws() {
+            assertThatThrownBy(() -> layerPatternTool.getLayerPattern(" ", "SERVICE"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("projectId");
+            assertThatThrownBy(() -> layerPatternTool.getLayerPattern("p1", "SERVICE\nInjected"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("printable");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern propagates project not found signal")
+        void getLayerPattern_projectNotFound_propagatesSignal() {
+            when(graphService.getFullGraph("missing")).thenThrow(new ProjectNotFoundException("Project not found: missing"));
+
+            assertThatThrownBy(() -> layerPatternTool.getLayerPattern("missing", "SERVICE"))
+                    .isInstanceOf(ProjectNotFoundException.class)
+                    .hasMessageContaining("missing");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern returns safe warning when graph service fails")
+        void getLayerPattern_graphFailure_returnsSafeWarning() {
+            when(graphService.getFullGraph("p1")).thenThrow(new IllegalStateException("C:/secret/project/db failed"));
+
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "SERVICE");
+
+            assertThat(result.getWarnings()).containsExactly("Layer pattern is temporarily unavailable.");
+            assertThat(result.toString()).doesNotContain("C:/secret/project");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern bounds examples and reports truncation")
+        void getLayerPattern_manyExamples_returnsBoundedOutput() {
+            when(graphService.getFullGraph("p1")).thenReturn(manyControllersGraph());
+
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "CONTROLLER");
+
+            assertThat(result.getExamples()).hasSize(10);
+            assertThat(result.getWarnings()).containsExactly("examples truncated to 10 of 12");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern returns safe warning when graph is too large")
+        void getLayerPattern_largeGraph_returnsSafeWarning() {
+            when(graphService.getFullGraph("p1")).thenReturn(largeLayerGraph());
+
+            LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "SERVICE");
+
+            assertThat(result.getExamples()).isEmpty();
+            assertThat(result.getWarnings()).containsExactly("Graph is too large for layer pattern: 10001 nodes, 0 edges.");
+        }
+
+        @Test
+        @DisplayName("get_layer_pattern is registered as a Spring AI tool callback")
+        void getLayerPattern_registeredAsToolCallback() {
+            ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
+            ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
+            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
+            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
+                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
+
+            assertThat(provider.getToolCallbacks())
+                    .extracting(ToolCallback::getToolDefinition)
+                    .extracting(definition -> definition.name())
+                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
+        }
+
+        private GraphDataResponse layerGraph() {
+            return GraphDataResponse.builder()
+                    .nodes(List.of(
+                            layerNode("controller-b", "Class", "UserController", "com.app.controller.UserController", "CONTROLLER"),
+                            layerNode("controller-a", "Class", "AdminController", "com.app.controller.AdminController", "CONTROLLER"),
+                            layerNode("service", "Class", "UserService", "com.app.service.UserService", "SERVICE"),
+                            layerNode("repository", "Interface", "UserRepository", "com.app.repository.UserRepository", "REPOSITORY"),
+                            layerNode("config", "Class", "McpServerConfig", "com.app.config.McpServerConfig", "CONFIG")))
+                    .edges(List.of(
+                            edge("e1", "controller-b", "service", "CALLS"),
+                            edge("e2", "controller-a", "service", "CALLS"),
+                            edge("e3", "service", "repository", "CALLS")))
+                    .build();
+        }
+
+        private GraphDataResponse manyControllersGraph() {
+            List<NodeDto> nodes = new ArrayList<>();
+            for (int index = 0; index < 12; index++) {
+                nodes.add(layerNode("controller-" + index, "Class", "Controller" + index, "com.app.controller.Controller" + index, "CONTROLLER"));
+            }
+            return GraphDataResponse.builder()
+                    .nodes(nodes)
+                    .edges(List.of())
+                    .build();
+        }
+
+        private GraphDataResponse largeLayerGraph() {
+            List<NodeDto> nodes = new ArrayList<>();
+            for (int index = 0; index < 10_001; index++) {
+                nodes.add(layerNode("service-" + index, "Class", "Service" + index, "com.app.service.Service" + index, "SERVICE"));
+            }
+            return GraphDataResponse.builder()
+                    .nodes(nodes)
+                    .edges(List.of())
+                    .build();
+        }
+
+        private NodeDto layerNode(String id, String type, String name, String fullName, String layer) {
+            return NodeDto.builder()
+                    .id(id)
+                    .type(type)
+                    .name(name)
+                    .fullName(fullName)
+                    .filePath("C:/secret/project/src/main/java/" + name + ".java")
+                    .lineNumber(11)
+                    .properties(Map.of("springLayer", layer))
+                    .build();
+        }
+
+        private EdgeDto edge(String id, String source, String target, String type) {
+            return EdgeDto.builder()
+                    .id(id)
+                    .source(source)
+                    .target(target)
+                    .type(type)
+                    .confidence(1.0)
+                    .lineNumber(12)
+                    .build();
         }
     }
 
@@ -458,13 +639,14 @@ class McpToolsTest {
         void getImpactAnalysis_registeredAsToolCallback() {
             ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
             ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
+            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
             ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool);
+                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis");
+                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
         }
 
         private ImpactAnalysisResponse impactResponse() {
