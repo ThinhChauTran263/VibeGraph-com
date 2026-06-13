@@ -74,7 +74,7 @@ DevOps,,,,,,,,,
 T63,Write backend Dockerfile,Đóng gói Spring Boot backend,RB27,PB12,2,Done,3,Danh,✅ `Dockerfile` (root) - Multi-stage build
 T64,Write frontend Dockerfile + nginx,Đóng gói Vue build + nginx.conf,RB27,PB12,2,Done,3,Danh,✅ `vibegraph-web/Dockerfile` + `vibegraph-web/nginx.conf`
 T65,Write docker-compose,Compose BE/FE/Neo4j với network/volume,RB27,PB12,2,Done,4,Danh,✅ `docker-compose.yml` (root) - Needs production review
-T66,Configure env profiles,Tách profile dev/prod và biến môi trường,RB27,PB12,2,New,3,Vinh,`src/main/resources/application-dev.yaml` + `src/main/resources/application-prod.yaml` + `.env.example` (root)
+T66,Configure env profiles,Tách profile dev/prod và biến môi trường,RB27,PB12,2,Done,3,Vinh,✅ `src/main/resources/application-dev.yaml` + `src/main/resources/application-prod.yaml` + `.env.example` (root) - dev/prod env-backed profiles configured; T67/T68/T69 remain pending
 T67,GitHub Actions backend CI,Workflow build + test backend,RB28,PB12,2,New,4,Thịnh,`Empty placeholder: .github/workflows/backend.yml`
 T68,GitHub Actions frontend CI,Workflow lint/type-check/test frontend,RB28,PB12,2,New,3,Thịnh,`Empty placeholder: .github/workflows/frontend.yml`
 T69,Write Docker run guide,Tài liệu chạy docker compose,RB27,PB12,2,New,2,Danh,`DEVOPS-GUIDE.md` + Update `DEVOPS-GUIDE.md`
