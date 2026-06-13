@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -106,6 +107,20 @@ class DiagramControllerTest {
     }
 
     @Test
+    @DisplayName("GET /diagrams/class forwards a blank package filter unchanged")
+    void getClassDiagramWithBlankPackageFilter() throws Exception {
+        stubAnalyzed("p1");
+        when(classDiagramService.generateClassDiagram("p1", "")).thenReturn(
+                DiagramResponse.builder().diagramType("class").mermaidSyntax("classDiagram").build());
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/class").param("package", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(classDiagramService).generateClassDiagram("p1", "");
+    }
+
+    @Test
     @DisplayName("GET /diagrams/usecase returns 404 when the project does not exist")
     void useCaseProjectNotFound() throws Exception {
         when(projectService.getProject("nope"))
@@ -114,7 +129,27 @@ class DiagramControllerTest {
         mockMvc.perform(get("/api/projects/nope/diagrams/usecase"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_FOUND"));
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_FOUND"))
+                .andExpect(jsonPath("$.error.message").exists());
+
+        verifyNoInteractions(useCaseDiagramService);
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/class returns 404 when the project does not exist")
+    void classProjectNotFound() throws Exception {
+        when(projectService.getProject("nope"))
+                .thenThrow(new ProjectNotFoundException("Project not found: nope"));
+
+        mockMvc.perform(get("/api/projects/nope/diagrams/class"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_FOUND"))
+                .andExpect(jsonPath("$.error.message").exists());
+
+        verifyNoInteractions(classDiagramService);
     }
 
     @Test
@@ -126,7 +161,11 @@ class DiagramControllerTest {
         mockMvc.perform(get("/api/projects/p2/diagrams/usecase"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_ANALYZED"));
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_ANALYZED"))
+                .andExpect(jsonPath("$.error.message").exists());
+
+        verifyNoInteractions(useCaseDiagramService);
     }
 
     @Test
@@ -137,8 +176,11 @@ class DiagramControllerTest {
 
         mockMvc.perform(get("/api/projects/p3/diagrams/class"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_ANALYZED"));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_ANALYZED"))
+                .andExpect(jsonPath("$.error.message").exists());
 
-        Mockito.verifyNoInteractions(classDiagramService);
+        verifyNoInteractions(classDiagramService);
     }
 }
