@@ -1,0 +1,58 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches:
+      - poc
+      - develop
+      - main
+    paths:
+      - 'vibegraph-web/**'
+      - '.github/workflows/frontend.yml'
+  push:
+    branches:
+      - poc
+      - develop
+      - main
+    paths:
+      - 'vibegraph-web/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, test, and build frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vibegraph-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix vibegraph-web ci
+
+      - name: Type check
+        run: npm --prefix vibegraph-web run type-check
+
+      - name: Run unit tests
+        run: npm --prefix vibegraph-web run test:unit -- --run
+
+      - name: Lint
+        run: npm --prefix vibegraph-web run lint
+
+      - name: Build
+        run: npm --prefix vibegraph-web run build
+
+      - name: Audit dependencies
+        run: npm --prefix vibegraph-web audit --audit-level=high

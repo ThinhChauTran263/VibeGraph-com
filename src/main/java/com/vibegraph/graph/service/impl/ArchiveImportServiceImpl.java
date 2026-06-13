@@ -24,6 +24,7 @@ import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.ProjectService;
+import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
     private final GraphUpdateController graphUpdateController;
+    private final FileChangeBroadcaster fileChangeBroadcaster;
     private final Executor analysisExecutor;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
@@ -52,12 +54,14 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     ProjectService projectService,
                                     AnalyzeService analyzeService,
                                     GraphUpdateController graphUpdateController,
+                                    FileChangeBroadcaster fileChangeBroadcaster,
                                     @Qualifier("analysisExecutor") Executor analysisExecutor) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.graphUpdateController = graphUpdateController;
+        this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.analysisExecutor = analysisExecutor;
     }
 
@@ -68,6 +72,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.rootPath());
             projectService.updateProjectStats(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
+            fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
             log.info("Imported archive '{}' as project {} ({} .java files)",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount());
             return projectService.getProject(ctx.projectId());
@@ -142,6 +147,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);
+            fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
             log.info("Async-imported archive '{}' as project {} ({} .java files)",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount());
         } catch (RuntimeException e) {

@@ -1,13 +1,5 @@
 package com.vibegraph.graph.service.impl;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +12,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +21,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -40,6 +39,7 @@ import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.ProjectService;
+import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,6 +55,8 @@ class ArchiveImportServiceImplTest {
     AnalyzeService analyzeService;
     @Mock
     GraphUpdateController graphUpdateController;
+    @Mock
+    FileChangeBroadcaster fileChangeBroadcaster;
 
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
@@ -67,7 +69,7 @@ class ArchiveImportServiceImplTest {
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
-                projectService, analyzeService, graphUpdateController, backgroundTasks::add);
+                projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add);
     }
 
     @Test
@@ -89,6 +91,7 @@ class ArchiveImportServiceImplTest {
         assertThat(Files.readString(source.getValue().resolve("src/App.java"))).contains("class App");
         verify(analyzeService).analyzeProject("p1", "rp");
         verify(projectService).updateProjectStats("p1", 1, 5, 4);
+        verify(fileChangeBroadcaster).watchProject("p1", "rp");
     }
 
     @Test
@@ -135,6 +138,7 @@ class ArchiveImportServiceImplTest {
         assertThatThrownBy(() -> service.importArchive("demo", file)).isInstanceOf(IllegalStateException.class);
 
         verify(projectService).deleteProject("p1");
+        verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         assertNoWorkspaceLeftover();
     }
 
@@ -162,6 +166,7 @@ class ArchiveImportServiceImplTest {
         verify(analyzeService).analyzeProject("p1", "rp");
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZED, 100);
+        verify(fileChangeBroadcaster).watchProject("p1", "rp");
     }
 
     @Test
@@ -179,6 +184,7 @@ class ArchiveImportServiceImplTest {
         verify(projectService).markFailed("p1", "neo4j down");
         verify(graphUpdateController).broadcastStatus("p1", "FAILED", 0, "neo4j down");
         verify(projectService, never()).deleteProject("p1");
+        verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         assertNoWorkspaceLeftover();
     }
 

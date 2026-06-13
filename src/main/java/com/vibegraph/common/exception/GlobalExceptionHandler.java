@@ -9,8 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
@@ -40,6 +40,17 @@ public class GlobalExceptionHandler {
                 .message(ex.getMessage())
                 .build();
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ProjectNotAnalyzedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProjectNotAnalyzed(ProjectNotAnalyzedException ex) {
+        // Project exists but its graph has not been built yet — surface a clear 409 so
+        // diagram clients don't mistake an empty result for a real (empty) diagram.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("PROJECT_NOT_ANALYZED")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

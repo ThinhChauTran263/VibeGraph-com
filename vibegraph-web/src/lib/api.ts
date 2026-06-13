@@ -242,11 +242,27 @@ export const graphApi = {
   },
 }
 
+export interface UseCaseResponse {
+  projectId: string
+  mermaid: string
+}
+
+export interface DiagramResponse {
+  projectId: string
+  diagramType: string
+  mermaid: string
+}
+
 // Diagram endpoints
 export const diagramApi = {
-  useCase: (projectId: string) => api.get(`/api/projects/${projectId}/diagrams/usecase`),
-  classDiagram: (projectId: string, pkg?: string) =>
-    api.get(`/api/projects/${projectId}/diagrams/class${pkg ? `?package=${pkg}` : ''}`),
-  sequence: (projectId: string, entry: string) =>
-    api.get(`/api/projects/${projectId}/diagrams/sequence?entry=${entry}`),
+  useCase: (projectId: string) =>
+    api.get<UseCaseResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase`),
+  classDiagram: (projectId: string, pkg?: string) => {
+    const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
+    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`)
+  },
+  sequence: (projectId: string, entry: string) => {
+    const query = new URLSearchParams({ entry })
+    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`)
+  },
 }

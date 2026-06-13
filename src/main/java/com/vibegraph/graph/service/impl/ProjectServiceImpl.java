@@ -20,6 +20,7 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 import com.vibegraph.graph.service.ProjectService;
+import com.vibegraph.watcher.service.FileWatcherService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,6 +35,13 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Autowired
     private ArchiveImportProperties archiveImportProperties;
+
+    /**
+     * Optional: present in the running app to stop the file watcher when a project is deleted.
+     * Left null in plain unit tests that construct this service directly.
+     */
+    @Autowired(required = false)
+    private FileWatcherService fileWatcherService;
 
     @Override
     public ProjectResponse createProject(CreateProjectRequest request) {
@@ -140,6 +148,9 @@ public class ProjectServiceImpl implements ProjectService {
     public void deleteProject(String id) {
         if (projects.remove(id) == null) {
             throw new ProjectNotFoundException("Project not found: " + id);
+        }
+        if (fileWatcherService != null) {
+            fileWatcherService.stopWatching(id);
         }
         log.info("Deleted project {}", id);
     }
