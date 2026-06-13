@@ -1,14 +1,8 @@
 package com.vibegraph.mcp.service;
 
-/**
- * Architecture pattern detector.
- *
- * TODO:
- * - detectLayers(projectId) → ["controller", "service", "repository"]
- * - detectPatterns(projectId) → {"DI": "constructor", "validation": "@Valid"...}
- * - detectNamingConventions(projectId) → naming patterns
- * - detectAntiPatterns(projectId) → warnings
- */
+import com.vibegraph.mcp.dto.response.ArchitectureContextResponse;
+
 public interface ArchitectureAnalyzer {
-    // TODO: Define methods
+
+    ArchitectureContextResponse analyzeProject(String projectId);
 }
