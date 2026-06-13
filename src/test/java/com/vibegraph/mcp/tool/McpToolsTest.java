@@ -18,17 +18,22 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 
 import com.vibegraph.common.config.McpServerConfig;
 
+import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ArchitectureContextResponse;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
+import com.vibegraph.mcp.dto.response.ImpactAnalysisContextResponse;
 import com.vibegraph.mcp.service.ArchitectureAnalyzer;
 import com.vibegraph.mcp.service.ClassContextAnalyzer;
+import com.vibegraph.mcp.service.ImpactAnalysisAnalyzer;
 import com.vibegraph.mcp.service.impl.ArchitectureAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.ClassContextAnalyzerImpl;
+import com.vibegraph.mcp.service.impl.ImpactAnalysisAnalyzerImpl;
 
 @DisplayName("MCP Tools")
 class McpToolsTest {
@@ -98,7 +103,9 @@ class McpToolsTest {
         @DisplayName("get_project_architecture is registered as a Spring AI tool callback")
         void getProjectArchitecture_registeredAsToolCallback() {
             ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(architectureTool, classContextTool);
+            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
+            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
+                    architectureTool, classContextTool, impactAnalysisTool);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
@@ -255,12 +262,14 @@ class McpToolsTest {
         @DisplayName("get_class_context is registered as a Spring AI tool callback")
         void getClassContext_registeredAsToolCallback() {
             ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(architectureTool, classContextTool);
+            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
+            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
+                    architectureTool, classContextTool, impactAnalysisTool);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context");
+                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis");
         }
 
         private GraphDataResponse classGraph() {
@@ -341,10 +350,156 @@ class McpToolsTest {
     @DisplayName("ImpactAnalysisTool")
     class ImpactAnalysisToolTest {
 
+        private final GraphService graphService = Mockito.mock(GraphService.class);
+        private final ImpactAnalysisAnalyzer impactAnalysisAnalyzer = new ImpactAnalysisAnalyzerImpl(graphService);
+        private final ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(impactAnalysisAnalyzer);
+
         @Test
-        @Disabled("Chờ T45 ImpactAnalysisTool implement")
-        @DisplayName("should delegate to ImpactService")
-        void shouldDelegateToImpactService() {
+        @DisplayName("get_impact_analysis returns direct and transitive impact summary")
+        void getImpactAnalysis_existingNode_returnsImpactContext() {
+            when(graphService.getImpactAnalysis("p1", "com.app.service.UserService", 3)).thenReturn(impactResponse());
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "com.app.service.UserService", 3);
+
+            assertThat(result.getProjectId()).isEqualTo("p1");
+            assertThat(result.getNodeQuery()).isEqualTo("com.app.service.UserService");
+            assertThat(result.getDepth()).isEqualTo(3);
+            assertThat(result.getSummary().getTargetFullName()).isEqualTo("com.app.service.UserService");
+            assertThat(result.getSummary().getDirectDependents()).isEqualTo(2);
+            assertThat(result.getSummary().getTotalDependents()).isEqualTo(4);
+            assertThat(result.getRiskLevel()).isEqualTo("MEDIUM");
+            assertThat(result.getDirectImpact()).extracting(ImpactAnalysisContextResponse.NodeImpact::getFullName)
+                    .containsExactly("com.app.api.UserController", "com.app.web.UserPage");
+            assertThat(result.getTransitiveImpact()).extracting(ImpactAnalysisContextResponse.NodeImpact::getFullName)
+                    .containsExactly("com.app.audit.AuditService", "com.app.job.UserSyncJob");
+            assertThat(result.getWarnings()).isEmpty();
+            assertThat(result.toString()).doesNotContain("C:/secret/project");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis rejects unsupported depth")
+        void getImpactAnalysis_unsupportedDepth_throws() {
+            assertThatThrownBy(() -> impactAnalysisTool.getImpactAnalysis("p1", "UserService", 4))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("depth");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis rejects invalid input")
+        void getImpactAnalysis_invalidInput_throws() {
+            assertThatThrownBy(() -> impactAnalysisTool.getImpactAnalysis(" ", "UserService", 3))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("projectId");
+            assertThatThrownBy(() -> impactAnalysisTool.getImpactAnalysis("p1", "UserService\nInjected", 3))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("printable");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis returns clear warning when target is missing")
+        void getImpactAnalysis_missingTarget_returnsWarning() {
+            when(graphService.getImpactAnalysis("p1", "MissingService", 3)).thenThrow(new NodeNotFoundException("C:/secret/project/missing"));
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "MissingService", 3);
+
+            assertThat(result.getSummary()).isNull();
+            assertThat(result.getDirectImpact()).isEmpty();
+            assertThat(result.getTransitiveImpact()).isEmpty();
+            assertThat(result.getWarnings()).containsExactly("Impact target not found: MissingService");
+            assertThat(result.toString()).doesNotContain("C:/secret/project");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis propagates project not found signal")
+        void getImpactAnalysis_projectNotFound_propagatesSignal() {
+            when(graphService.getImpactAnalysis("missing", "UserService", 3)).thenThrow(new ProjectNotFoundException("Project not found: missing"));
+
+            assertThatThrownBy(() -> impactAnalysisTool.getImpactAnalysis("missing", "UserService", 3))
+                    .isInstanceOf(ProjectNotFoundException.class)
+                    .hasMessageContaining("missing");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis returns safe warning when graph service fails")
+        void getImpactAnalysis_graphFailure_returnsSafeWarning() {
+            when(graphService.getImpactAnalysis("p1", "UserService", 3)).thenThrow(new IllegalStateException("C:/secret/project/db failed"));
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "UserService", 3);
+
+            assertThat(result.getWarnings()).containsExactly("Impact analysis is temporarily unavailable.");
+            assertThat(result.toString()).doesNotContain("C:/secret/project");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis bounds output and reports truncation")
+        void getImpactAnalysis_manyDependents_returnsBoundedOutput() {
+            ImpactAnalysisResponse impact = ImpactAnalysisResponse.builder()
+                    .target(impactNode("target", "Class", "UserService", "com.app.UserService"))
+                    .riskLevel("CRITICAL")
+                    .directDependents(75)
+                    .totalDependents(180)
+                    .willBreak(impactNodes("direct", 75))
+                    .likelyAffected(impactNodes("likely", 75))
+                    .mayNeedTesting(impactNodes("testing", 75))
+                    .build();
+            when(graphService.getImpactAnalysis("p1", "com.app.UserService", 5)).thenReturn(impact);
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "com.app.UserService", 5);
+
+            assertThat(result.getDirectImpact()).hasSize(50);
+            assertThat(result.getTransitiveImpact()).hasSize(100);
+            assertThat(result.getWarnings()).containsExactly(
+                    "directImpact truncated to 50 of 75",
+                    "transitiveImpact truncated to 100 of 150");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis is registered as a Spring AI tool callback")
+        void getImpactAnalysis_registeredAsToolCallback() {
+            ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
+            ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
+            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
+                    architectureTool, classContextTool, impactAnalysisTool);
+
+            assertThat(provider.getToolCallbacks())
+                    .extracting(ToolCallback::getToolDefinition)
+                    .extracting(definition -> definition.name())
+                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis");
+        }
+
+        private ImpactAnalysisResponse impactResponse() {
+            return ImpactAnalysisResponse.builder()
+                    .target(impactNode("target", "Class", "UserService", "com.app.service.UserService"))
+                    .riskLevel("MEDIUM")
+                    .directDependents(2)
+                    .totalDependents(4)
+                    .willBreak(List.of(
+                            impactNode("direct-b", "Class", "UserPage", "com.app.web.UserPage"),
+                            impactNode("direct-a", "Class", "UserController", "com.app.api.UserController")))
+                    .likelyAffected(List.of(
+                            impactNode("likely-b", "Class", "UserSyncJob", "com.app.job.UserSyncJob"),
+                            impactNode("likely-a", "Class", "AuditService", "com.app.audit.AuditService")))
+                    .mayNeedTesting(List.of())
+                    .build();
+        }
+
+        private List<NodeDto> impactNodes(String prefix, int count) {
+            List<NodeDto> nodes = new ArrayList<>();
+            for (int index = 0; index < count; index++) {
+                nodes.add(impactNode(prefix + "-" + index, "Class", prefix + index, "com.app." + prefix + index));
+            }
+            return nodes;
+        }
+
+        private NodeDto impactNode(String id, String type, String name, String fullName) {
+            return NodeDto.builder()
+                    .id(id)
+                    .type(type)
+                    .name(name)
+                    .fullName(fullName)
+                    .filePath("C:/secret/project/src/main/java/" + name + ".java")
+                    .lineNumber(9)
+                    .build();
         }
     }
 }
