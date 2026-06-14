@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -22,7 +24,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
+import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
+import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.TarballImportService;
@@ -37,11 +41,12 @@ class ImportControllerTest {
 
     private MockMvc mockMvc;
     private ArchiveImportService archiveImportService;
+    private TarballImportService tarballImportService;
 
     @BeforeEach
     void setUp() {
         archiveImportService = Mockito.mock(ArchiveImportService.class);
-        TarballImportService tarballImportService = Mockito.mock(TarballImportService.class);
+        tarballImportService = Mockito.mock(TarballImportService.class);
         ImportController controller = new ImportController(tarballImportService, archiveImportService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -86,6 +91,56 @@ class ImportControllerTest {
 
         verify(archiveImportService).importArchiveAsync(eq("demo"), any(MultipartFile.class));
         verify(archiveImportService, never()).importArchive(any(), any());
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/import-github returns 202 with ANALYZING project")
+    void shouldImportGithubRepository() throws Exception {
+        ProjectResponse project = ProjectResponse.builder()
+                .id("p3").name("acme/demo").status("ANALYZING").progress(0).build();
+        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .thenReturn(project);
+
+        mockMvc.perform(post("/api/projects/import-github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://github.com/acme/demo\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value("p3"))
+                .andExpect(jsonPath("$.data.name").value("acme/demo"))
+                .andExpect(jsonPath("$.data.status").value("ANALYZING"));
+
+        verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/import-github rejects invalid GitHub URL before import")
+    void shouldRejectInvalidGithubUrlBeforeImport() throws Exception {
+        mockMvc.perform(post("/api/projects/import-github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://example.com/acme/demo\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        verify(tarballImportService, never()).importFromGithub(any());
+    }
+
+    @Test
+    @DisplayName("GitHub import failures map to 422 with safe error envelope")
+    void shouldMapGithubImportExceptionTo422() throws Exception {
+        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/private")))
+                .thenThrow(new GithubImportException("GitHub repository is private or not found"));
+
+        mockMvc.perform(post("/api/projects/import-github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://github.com/acme/private\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("GITHUB_IMPORT_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("GitHub repository is private or not found"));
+
+        verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/private"));
     }
 
     @Test

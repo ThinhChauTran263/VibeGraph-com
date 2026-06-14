@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -106,6 +109,27 @@ class TarballImportServiceImplTest {
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZED), eq(100), any(String.class));
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+    }
+
+    @Test
+    @DisplayName("preflight failure stops before tarball download and project creation")
+    void rejectsPreflightFailureBeforeDownload() {
+        GitHubRepositoryRef parsed = new GitHubRepositoryRef("acme", "private", null);
+        when(preFlightService.validatePublicRepository(parsed))
+                .thenThrow(new GithubImportException("GitHub repository is private or not found"));
+
+        assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/private")))
+                .isInstanceOf(GithubImportException.class)
+                .hasMessage("GitHub repository is private or not found");
+
+        verify(preFlightService).validatePublicRepository(parsed);
+        verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
+        verify(archiveExtractor, never()).extract(any(), any(), any());
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
+        verify(graphUpdateController, never()).broadcastStatus(any(), any(ProjectStatus.class), any(Integer.class), any());
+        verify(analyzeService, never()).analyzeProject(any(), any());
+        verify(fileChangeBroadcaster, never()).watchProject(any(), any());
+        assertThat(backgroundTasks).isEmpty();
     }
 
     @Test
