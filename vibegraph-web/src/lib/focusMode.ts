@@ -81,9 +81,23 @@ export function createFocusReducers(selectedId: string | null, depth: number, gr
   }
 }
 
-const DIMMED_NODE_COLOR = '#1e293b'
-const DIMMED_EDGE_COLOR = '#1e293b'
-const HIGHLIGHTED_EDGE_COLOR = '#e2e8f0'
+// Unrelated context is pushed deep into the background with low-alpha colors
+// (rgba) rather than a solid dark fill, so dimmed nodes/edges read as faint
+// context instead of opaque blobs that sit on top of the focused cluster.
+const DIMMED_NODE_COLOR = 'rgba(100, 116, 139, 0.10)'
+const DIMMED_EDGE_COLOR = 'rgba(100, 116, 139, 0.05)'
+
+// Related edges keep their edge-type color (set by graphAdapter) — we only bump
+// thickness modestly. They are NEVER recolored to white, which previously made
+// thick white bands that hid the edge label text.
+const RELATED_EDGE_SIZE_MULTIPLIER = 1.6
+
+// zIndex layers (requires Sigma `zIndex: true`). Higher renders on top.
+const Z_SELECTED = 3
+const Z_NEIGHBOR = 2
+const Z_RELATED_EDGE = 2
+const Z_NEIGHBOR_EDGE = 1
+const Z_DIMMED = 0
 
 /**
  * Direct (1-hop) neighbors of a node plus the node itself, undirected.
@@ -123,6 +137,7 @@ export function createSelectionFocusReducers(selectedId: string | null, graph: G
           size: typeof attributes.size === 'number' ? attributes.size + 4 : attributes.size,
           highlighted: true,
           forceLabel: true,
+          zIndex: Z_SELECTED,
         }
       }
 
@@ -131,33 +146,45 @@ export function createSelectionFocusReducers(selectedId: string | null, graph: G
           ...attributes,
           size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
           forceLabel: true,
+          zIndex: Z_NEIGHBOR,
         }
       }
 
+      // Unrelated node: shrink, deep-fade via low-alpha color, drop the label,
+      // and sink to the bottom layer so it reads as faint background context.
       return {
         ...attributes,
+        size: typeof attributes.size === 'number' ? Math.max(attributes.size * 0.6, 1) : attributes.size,
         color: DIMMED_NODE_COLOR,
         label: '',
+        zIndex: Z_DIMMED,
       }
     },
     edgeReducer: (edge, attributes) => {
       const source = graph.source(edge)
       const target = graph.target(edge)
 
+      // Edge touching the selected node: keep its edge-type color (set by
+      // graphAdapter), bump width modestly, show its label. NEVER recolor to
+      // white — that produced the thick white band that hid the label text.
       if (source === selectedId || target === selectedId) {
         return {
           ...attributes,
-          color: HIGHLIGHTED_EDGE_COLOR,
-          size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
+          size:
+            typeof attributes.size === 'number'
+              ? attributes.size * RELATED_EDGE_SIZE_MULTIPLIER
+              : attributes.size,
           forceLabel: true,
+          zIndex: Z_RELATED_EDGE,
         }
       }
 
+      // Edge between two direct neighbors: keep it as-is but layer it above dim.
       if (neighborIds.has(source) && neighborIds.has(target)) {
-        return attributes
+        return { ...attributes, zIndex: Z_NEIGHBOR_EDGE }
       }
 
-      return { ...attributes, color: DIMMED_EDGE_COLOR, label: '' }
+      return { ...attributes, color: DIMMED_EDGE_COLOR, label: '', zIndex: Z_DIMMED }
     },
   }
 }

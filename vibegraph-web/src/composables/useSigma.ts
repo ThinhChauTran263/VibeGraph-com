@@ -23,6 +23,10 @@ export function useSigma(options: UseSigmaOptions) {
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Node currently being dragged (null when idle). While set, the camera pan is
+  // disabled and the layout worker is stopped so the node stays where dropped.
+  const draggedNode = shallowRef<string | null>(null)
+
   /**
    * Initialize Sigma with a Graphology graph.
    * Starts ForceAtlas2 layout in a web worker.
@@ -38,6 +42,7 @@ export function useSigma(options: UseSigmaOptions) {
       allowInvalidContainer: true,
       renderEdgeLabels: false,
       defaultEdgeType: 'line',
+      zIndex: true,
       labelRenderedSizeThreshold: 8,
       labelColor: { color: '#e5e7eb' },
       labelFont: 'Inter, system-ui, sans-serif',
@@ -63,8 +68,60 @@ export function useSigma(options: UseSigmaOptions) {
       })
     }
 
+    registerDragHandlers(sigma, graph)
+
     // Start ForceAtlas2 layout in a web worker
     startLayout(graph)
+  }
+
+  /**
+   * Wire up manual node dragging. Sigma natively distinguishes a click from a
+   * drag (small pointer movement = click, larger = drag), so a real drag does
+   * NOT fire `clickNode` and the selected state is preserved. While dragging we
+   * stop the layout worker and disable camera panning so the node lands and
+   * stays exactly where it is dropped instead of snapping back.
+   */
+  function registerDragHandlers(sigma: Sigma, graph: Graph) {
+    sigma.on('downNode', ({ node }) => {
+      draggedNode.value = node
+      stopLayout()
+      sigma.setSetting('enableCameraPanning', false)
+      if (container.value) container.value.style.cursor = 'grabbing'
+    })
+
+    // Hover affordance: show a grab cursor over a draggable node when idle.
+    sigma.on('enterNode', () => {
+      if (!draggedNode.value && container.value) container.value.style.cursor = 'grab'
+    })
+
+    sigma.on('leaveNode', () => {
+      if (!draggedNode.value && container.value) container.value.style.cursor = ''
+    })
+
+    const mouseCaptor = sigma.getMouseCaptor()
+
+    mouseCaptor.on('mousemovebody', (event) => {
+      const node = draggedNode.value
+      if (!node) return
+
+      const pos = sigma.viewportToGraph(event)
+      graph.setNodeAttribute(node, 'x', pos.x)
+      graph.setNodeAttribute(node, 'y', pos.y)
+
+      // Prevent Sigma's default camera move while a node is being dragged.
+      event.preventSigmaDefault()
+      event.original.preventDefault()
+      event.original.stopPropagation()
+    })
+
+    const releaseDrag = () => {
+      if (!draggedNode.value) return
+      draggedNode.value = null
+      sigma.setSetting('enableCameraPanning', true)
+      if (container.value) container.value.style.cursor = ''
+    }
+
+    mouseCaptor.on('mouseup', releaseDrag)
   }
 
   /**
@@ -156,6 +213,7 @@ export function useSigma(options: UseSigmaOptions) {
   return {
     sigmaInstance,
     graphInstance,
+    draggedNode,
     init,
     dispose,
     zoomToFit,

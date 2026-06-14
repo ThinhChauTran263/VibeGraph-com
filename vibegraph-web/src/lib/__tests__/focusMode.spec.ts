@@ -122,10 +122,11 @@ describe('createSelectionFocusReducers', () => {
       size: 10,
       highlighted: true,
       forceLabel: true,
+      zIndex: 3,
     })
   })
 
-  it('keeps direct neighbors readable and dims unrelated nodes', () => {
+  it('keeps direct neighbors readable and deep-dims unrelated nodes to the bottom layer', () => {
     const graph = buildGraph()
     const reducers = createSelectionFocusReducers('selected', graph)
 
@@ -133,26 +134,52 @@ describe('createSelectionFocusReducers', () => {
       color: '#fff',
       size: 7,
       forceLabel: true,
+      zIndex: 2,
     })
-    expect(reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })).toEqual({
-      color: '#1e293b',
-      size: 6,
+    const dimmed = reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })
+    expect(dimmed).toMatchObject({
+      color: 'rgba(100, 116, 139, 0.10)',
       label: '',
+      zIndex: 0,
     })
+    expect(dimmed?.size as number).toBeCloseTo(3.6)
   })
 
-  it('highlights edges touching the selected node and dims unrelated edges without hiding them', () => {
+  it('thickens edges touching the selected node without recoloring them white, and deep-dims unrelated edges', () => {
     const graph = buildGraph()
     const reducers = createSelectionFocusReducers('selected', graph)
 
+    // Related edge keeps its edge-type color (no white), just thickens + labels.
     expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
-      color: '#e2e8f0',
-      size: 2,
+      color: '#93c5fd',
+      size: 1.6,
       forceLabel: true,
+      zIndex: 2,
     })
     expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS' })).toEqual({
-      color: '#1e293b',
+      color: 'rgba(100, 116, 139, 0.05)',
       label: '',
+      zIndex: 0,
+    })
+  })
+
+  it('layers neighbor-to-neighbor edges above the dimmed background without thickening them', () => {
+    // center is connected to a and b; a->b is an edge between two direct
+    // neighbors of center where neither endpoint is the selected node.
+    const graph = new Graph({ type: 'directed', multi: true })
+    graph.addNode('center', { label: 'Center', color: '#fff' })
+    graph.addNode('a', { label: 'A', color: '#fff' })
+    graph.addNode('b', { label: 'B', color: '#fff' })
+    graph.addEdgeWithKey('center->a', 'center', 'a', { color: '#93c5fd' })
+    graph.addEdgeWithKey('center->b', 'center', 'b', { color: '#93c5fd' })
+    graph.addEdgeWithKey('a->b', 'a', 'b', { color: '#93c5fd' })
+
+    const reducers = createSelectionFocusReducers('center', graph)
+
+    expect(reducers.edgeReducer?.('a->b', { color: '#93c5fd', size: 1 })).toEqual({
+      color: '#93c5fd',
+      size: 1,
+      zIndex: 1,
     })
   })
 })
