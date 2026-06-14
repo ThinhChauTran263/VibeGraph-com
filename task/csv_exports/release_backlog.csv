@@ -10,7 +10,7 @@ PB03,JavaParser Analysis,Lập trình viên,Resolve CALLS edge bằng JavaSymbol
 PB04,Neo4j Storage,Lập trình viên,Lưu node/edge vào Neo4j qua Java Driver raw,persistence không phụ thuộc OGM,RB10,1,High,1,In Progress,Raw driver persistence + deleteFile incremental done; ArchUnit task remains New
 PB04,Neo4j Storage,Lập trình viên,"Áp dụng Cypher schema migration (ràng buộc, index)",đảm bảo toàn vẹn dữ liệu graph,RB11,1,High,1,Done,Neo4jMigrationRunner done
 PB04,Neo4j Storage,Lập trình viên,Lấy full graph theo projectId,cung cấp dữ liệu cho UI,RB12,1,High,1,In Progress,Full graph/API path done; REST integration test remains New
-PB05,Graph Visualization,Kiến trúc sư phần mềm,Render graph bằng Sigma.js + Graphology,nhìn được kiến trúc dự án,RB13,1,High,1,In Progress,Graph render core done; FE component test task remains New
+PB05,Graph Visualization,Kiến trúc sư phần mềm,Render graph bằng Sigma.js + Graphology,nhìn được kiến trúc dự án,RB13,1,High,1,In Progress,Graph render core done; T62 FE component/unit test coverage done with 23 Vitest files / 161 tests passing
 PB05,Graph Visualization,Kiến trúc sư phần mềm,Tô màu ổn định theo loại node/edge,phân biệt các thành phần code,RB14,2,Medium,1,New,
 PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Tìm kiếm node theo tên,định vị nhanh thành phần cần xem,RB15,1,High,1,Done,✅ SearchBar filters loaded nodes client-side; unit tested
 PB06,Search / Filter / Focus,Kiến trúc sư phần mềm,Lọc theo loại node và loại edge kèm số đếm,thu hẹp graph theo nhu cầu,RB16,2,Medium,2,Done,✅ FilterPanel + useFilters + graphFilters done; Sigma re-renders filtered graph

@@ -77,6 +77,24 @@ describe('importApi.importGithub', () => {
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(init.body).toBe(JSON.stringify({ url: 'https://github.com/owner/repo' }))
   })
+
+  it('throws ApiError with the safe backend GitHub import message', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      text: async () =>
+        JSON.stringify({
+          success: false,
+          error: { code: 'GITHUB_IMPORT_ERROR', message: 'GitHub repository is private or not found' },
+        }),
+    } as unknown as Response)
+
+    await expect(importApi.importGithub('https://github.com/owner/private')).rejects.toMatchObject({
+      status: 422,
+      message: 'GitHub repository is private or not found',
+    })
+  })
 })
 
 describe('importApi.uploadArchiveAsync', () => {

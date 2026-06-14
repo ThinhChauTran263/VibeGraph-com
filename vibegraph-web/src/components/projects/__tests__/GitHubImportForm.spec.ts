@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import GitHubImportForm from '../GitHubImportForm.vue'
 import type { Project } from '@/lib/api'
@@ -28,6 +28,14 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
     status: 'ANALYZING',
     ...overrides,
   }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
 }
 
 beforeEach(() => {
@@ -67,5 +75,38 @@ describe('GitHubImportForm', () => {
 
     expect(importGithubMock).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('URL must match')
+  })
+
+  it('disables controls and shows importing state while the request is pending', async () => {
+    const pending = deferred<Project>()
+    importGithubMock.mockReturnValueOnce(pending.promise)
+    const wrapper = mount(GitHubImportForm)
+
+    await wrapper.get('input[type="url"]').setValue('https://github.com/owner/repo')
+    await wrapper.get('form').trigger('submit.prevent')
+    await nextTick()
+
+    expect(wrapper.get('input[type="url"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('button[type="button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Importing...')
+
+    pending.resolve(fakeProject())
+    await flushPromises()
+  })
+
+  it('reset clears the current URL and status message', async () => {
+    const wrapper = mount(GitHubImportForm)
+
+    await wrapper.get('input[type="url"]').setValue('https://example.com/owner/repo')
+    await wrapper.get('form').trigger('submit.prevent')
+    await nextTick()
+    expect(wrapper.text()).toContain('URL must match')
+
+    await wrapper.get('button[type="button"]').trigger('click')
+    await nextTick()
+
+    expect((wrapper.get('input[type="url"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.text()).not.toContain('URL must match')
   })
 })
