@@ -71,7 +71,7 @@ function clearForm(): void {
       </p>
 
       <p v-if="status === 'success' && importedProject" class="github-import__success" role="status">
-        Import started for <strong>{{ importedProject.name }}</strong> (status:
+        Import completed for <strong>{{ importedProject.name }}</strong> (status:
         {{ importedProject.status }}).
       </p>
     </form>

@@ -50,7 +50,7 @@ describe('GitHubImportForm', () => {
   })
 
   it('submits a GitHub URL and emits the imported project', async () => {
-    const project = fakeProject({ id: 'gh-2', name: 'spring-petclinic' })
+    const project = fakeProject({ id: 'gh-2', name: 'spring-petclinic', status: 'ANALYZED' })
     importGithubMock.mockResolvedValueOnce(project)
     const wrapper = mount(GitHubImportForm)
 
@@ -63,7 +63,7 @@ describe('GitHubImportForm', () => {
     const emitted = wrapper.emitted('imported')
     expect(emitted).toBeTruthy()
     expect(emitted![0]![0]).toEqual(project)
-    expect(wrapper.text()).toContain('Import started')
+    expect(wrapper.text()).toContain('Import completed')
   })
 
   it('shows validation errors without calling the API', async () => {

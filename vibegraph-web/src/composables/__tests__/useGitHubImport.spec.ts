@@ -1,20 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type Project } from '@/lib/api'
+import type { GraphData } from '@/types/graph'
 import { useGitHubImport, validateGitHubRepoUrl } from '../useGitHubImport'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
     ...actual,
+    fetchFullGraph: vi.fn<typeof actual.fetchFullGraph>(),
     importApi: {
       ...actual.importApi,
       importGithub: vi.fn<(url: string) => Promise<Project>>(),
     },
+    projectApi: {
+      ...actual.projectApi,
+      get: vi.fn<(id: string) => Promise<Project>>(),
+    },
   }
 })
 
-const { importApi } = await import('@/lib/api')
+const { fetchFullGraph, importApi, projectApi } = await import('@/lib/api')
+const fetchFullGraphMock = fetchFullGraph as ReturnType<typeof vi.fn>
 const importGithubMock = importApi.importGithub as ReturnType<typeof vi.fn>
+const getProjectMock = projectApi.get as ReturnType<typeof vi.fn>
 
 function fakeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -28,8 +36,30 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
   }
 }
 
+function fakeGraph(overrides: Partial<GraphData> = {}): GraphData {
+  return {
+    nodes: [
+      {
+        id: 'node-1',
+        type: 'Class',
+        name: 'Sample',
+        fullName: 'com.example.Sample',
+        filePath: 'src/Sample.java',
+        lineNumber: 1,
+        properties: {},
+      },
+    ],
+    edges: [],
+    nodeStats: { Class: 1 } as GraphData['nodeStats'],
+    edgeStats: {} as GraphData['edgeStats'],
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
+  fetchFullGraphMock.mockReset()
   importGithubMock.mockReset()
+  getProjectMock.mockReset()
 })
 
 describe('validateGitHubRepoUrl', () => {
@@ -57,7 +87,7 @@ describe('useGitHubImport', () => {
   })
 
   it('imports a valid repo and exposes the returned project', async () => {
-    const project = fakeProject({ id: 'gh-2', name: 'spring-petclinic' })
+    const project = fakeProject({ id: 'gh-2', name: 'spring-petclinic', status: 'ANALYZED' })
     importGithubMock.mockResolvedValueOnce(project)
     const composable = useGitHubImport()
 
@@ -67,6 +97,38 @@ describe('useGitHubImport', () => {
     expect(result).toEqual(project)
     expect(composable.status.value).toBe('success')
     expect(composable.importedProject.value).toEqual(project)
+  })
+
+  it('waits for an async import to finish before exposing success', async () => {
+    vi.useFakeTimers()
+    const analyzingProject = fakeProject({ id: 'gh-3', name: 'lab7', status: 'ANALYZING', progress: 20 })
+    const analyzedProject = fakeProject({
+      id: 'gh-3',
+      name: 'lab7',
+      status: 'ANALYZED',
+      progress: 100,
+      totalFiles: 24,
+      totalNodes: 133,
+      totalEdges: 434,
+    })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockResolvedValueOnce(analyzedProject)
+    fetchFullGraphMock.mockResolvedValueOnce(fakeGraph())
+    const composable = useGitHubImport()
+
+    try {
+      const resultPromise = composable.importGithub('https://github.com/owner/lab7')
+      await vi.advanceTimersByTimeAsync(1_000)
+      const result = await resultPromise
+
+      expect(getProjectMock).toHaveBeenCalledWith('gh-3')
+      expect(fetchFullGraphMock).toHaveBeenCalledWith('gh-3')
+      expect(result).toEqual(analyzedProject)
+      expect(composable.status.value).toBe('success')
+      expect(composable.importedProject.value).toEqual(analyzedProject)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('maps safe API errors to user-visible error state', async () => {
