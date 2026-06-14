@@ -23,9 +23,6 @@ import org.neo4j.driver.Session;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
@@ -40,23 +37,18 @@ import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import com.vibegraph.common.config.WebSocketConfig;
+import com.vibegraph.VibeGraphApplication;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.repository.GraphRepository;
-import com.vibegraph.graph.repository.impl.neo4j.Neo4jGraphRepository;
-import com.vibegraph.graph.websocket.FileChangeBroadcaster;
-import com.vibegraph.graph.websocket.GraphUpdateController;
 import com.vibegraph.graph.websocket.GraphUpdateEvent;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
-import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.DebouncedEventHandler;
 import com.vibegraph.watcher.service.FileWatcherService;
-import com.vibegraph.watcher.service.impl.FileWatcherServiceImpl;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        classes = RealtimeUpdateIT.TestApplication.class,
+        classes = VibeGraphApplication.class,
         properties = {
                 "vibegraph.watcher.debounce-ms=100",
                 "spring.main.allow-bean-definition-overriding=true"
@@ -209,54 +201,4 @@ class RealtimeUpdateIT {
         }
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @Import(WebSocketConfig.class)
-    static class TestApplication {
-
-        @Bean
-        WatcherProperties watcherProperties() {
-            WatcherProperties properties = new WatcherProperties();
-            properties.setDebounceMs(100);
-            return properties;
-        }
-
-        @Bean
-        Driver driver() {
-            return GraphDatabase.driver(NEO4J.getBoltUrl(),
-                    AuthTokens.basic("neo4j", NEO4J.getAdminPassword()));
-        }
-
-        @Bean
-        GraphRepository graphRepository(Driver driver) {
-            return new Neo4jGraphRepository(driver);
-        }
-
-        @Bean
-        DebouncedEventHandler debouncedEventHandler(WatcherProperties properties) {
-            return new DebouncedEventHandler(properties);
-        }
-
-        @Bean
-        FileWatcherService fileWatcherService(
-                WatcherProperties properties,
-                GraphRepository graphRepository,
-                DebouncedEventHandler debouncer
-        ) {
-            return new FileWatcherServiceImpl(properties, graphRepository, debouncer);
-        }
-
-        @Bean
-        GraphUpdateController graphUpdateController(org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate) {
-            return new GraphUpdateController(messagingTemplate);
-        }
-
-        @Bean
-        FileChangeBroadcaster fileChangeBroadcaster(
-                FileWatcherService fileWatcherService,
-                GraphRepository graphRepository,
-                GraphUpdateController graphUpdateController
-        ) {
-            return new FileChangeBroadcaster(fileWatcherService, graphRepository, graphUpdateController);
-        }
-    }
 }
