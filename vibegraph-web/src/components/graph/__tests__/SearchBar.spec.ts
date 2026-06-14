@@ -40,6 +40,29 @@ describe('SearchBar', () => {
     expect(wrapper.emitted('select')?.[0]?.[0]).toEqual(nodes[0])
   })
 
+  it('collapses the results dropdown after selecting a node but keeps the query', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await wrapper.get('input[type="search"]').setValue('order')
+    await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
+
+    expect(wrapper.find('.search-bar__results').exists()).toBe(false)
+    expect((wrapper.get('input[type="search"]').element as HTMLInputElement).value).toBe('OrderService')
+    expect(wrapper.emitted('clear')).toBeUndefined()
+  })
+
+  it('reopens the dropdown when the input is focused again', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await wrapper.get('input[type="search"]').setValue('order')
+    await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
+    expect(wrapper.find('.search-bar__results').exists()).toBe(false)
+
+    await wrapper.get('input[type="search"]').trigger('focus')
+
+    expect(wrapper.find('.search-bar__results').exists()).toBe(true)
+  })
+
   it('shows an empty state when no nodes match', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 

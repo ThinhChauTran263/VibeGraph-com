@@ -15,6 +15,7 @@ const emit = defineEmits<{
 const inputId = useId()
 const resultsId = useId()
 const query = ref('')
+const isOpen = ref(false)
 
 const results = computed(() => {
   const term = query.value.trim().toLowerCase()
@@ -31,14 +32,21 @@ const results = computed(() => {
 
 const hasQuery = computed(() => query.value.trim().length > 0)
 const hasResults = computed(() => results.value.length > 0)
+const showResults = computed(() => isOpen.value && hasQuery.value)
+
+function onInput(): void {
+  isOpen.value = true
+}
 
 function selectNode(node: GraphNode): void {
   query.value = node.name
+  isOpen.value = false
   emit('select', node)
 }
 
 function clearSearch(): void {
   query.value = ''
+  isOpen.value = false
   emit('clear')
 }
 </script>
@@ -56,13 +64,15 @@ function clearSearch(): void {
         autocomplete="off"
         spellcheck="false"
         :aria-controls="resultsId"
+        @input="onInput"
+        @focus="onInput"
       />
       <button v-if="hasQuery" class="search-bar__clear" type="button" aria-label="Clear search" @click="clearSearch">
         Clear
       </button>
     </div>
 
-    <div v-if="hasQuery" :id="resultsId" class="search-bar__results">
+    <div v-if="showResults" :id="resultsId" class="search-bar__results">
       <button
         v-for="node in results"
         :key="node.id"

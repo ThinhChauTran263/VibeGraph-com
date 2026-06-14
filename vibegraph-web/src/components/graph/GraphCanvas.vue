@@ -16,7 +16,7 @@ import FilterPanel from '@/components/panels/FilterPanel.vue'
 import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
 import NodeDetailPanel from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
-import { createFocusReducers } from '@/lib/focusMode'
+import { createFocusReducers, createSelectionFocusReducers } from '@/lib/focusMode'
 import { useFilters } from '@/composables/useFilters'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphNode } from '@/types/graph'
@@ -49,18 +49,36 @@ const {
   nodes,
 } = useGraphData()
 
-const { init: initSigma, graphInstance, setReducers } = useSigma({
+const { init: initSigma, graphInstance, setReducers, setEdgeLabelsVisible } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
     selectNode(node)
     emit('nodeSelected', nodeId)
   },
+  onStageClick: () => {
+    if (!selectedNode.value) return
+    clearSelection()
+    emit('nodeSelected', null)
+  },
 })
 
+/**
+ * Apply visual reducers. A clicked/searched selection always focuses its
+ * directly-connected neighborhood (dimming the rest). When no node is selected
+ * we fall back to the focus-depth filter control.
+ */
 function applyFocusReducers(): void {
   if (!graphInstance.value) return
-  setReducers(createFocusReducers(selectedNode.value?.id ?? null, focusDepth.value, graphInstance.value))
+
+  if (selectedNode.value) {
+    setReducers(createSelectionFocusReducers(selectedNode.value.id, graphInstance.value))
+    setEdgeLabelsVisible?.(true)
+    return
+  }
+
+  setReducers(createFocusReducers(null, focusDepth.value, graphInstance.value))
+  setEdgeLabelsVisible?.(false)
 }
 
 async function load(projectId: string) {
@@ -78,6 +96,11 @@ function onSearchSelect(node: GraphNode): void {
 }
 
 function onSearchClear(): void {
+  clearSelection()
+  emit('nodeSelected', null)
+}
+
+function onDetailClose(): void {
   clearSelection()
   emit('nodeSelected', null)
 }
@@ -118,44 +141,68 @@ watch(
 </script>
 
 <template>
-  <div class="graph-canvas-wrapper">
-    <div ref="canvasRef" class="graph-canvas" />
-
-    <SearchBar
-      v-if="!loading && !error"
-      :nodes="nodes"
-      :selected-node-id="selectedNode?.id ?? null"
-      @select="onSearchSelect"
-      @clear="onSearchClear"
-    />
-
-    <div v-if="!loading && !error" class="graph-canvas__controls">
+  <div class="graph-canvas-wrapper" :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }">
+    <aside v-if="!loading && !error" class="graph-canvas__sidebar">
       <FocusDepthControl />
       <FilterPanel :graph-data="graphData" />
+    </aside>
+
+    <div class="graph-canvas__stage">
+      <div ref="canvasRef" class="graph-canvas" />
+
+      <SearchBar
+        v-if="!loading && !error"
+        :nodes="nodes"
+        :selected-node-id="selectedNode?.id ?? null"
+        @select="onSearchSelect"
+        @clear="onSearchClear"
+      />
+
+      <div v-if="loading" class="graph-overlay graph-overlay--loading">
+        <div class="spinner" aria-label="Loading graph" />
+        <p>Loading graph...</p>
+      </div>
+
+      <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
+        <p class="error-title">Failed to load graph</p>
+        <p class="error-message">{{ error }}</p>
+        <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
+      </div>
     </div>
 
-    <div v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
-      <NodeDetailPanel />
+    <aside v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+      <NodeDetailPanel @close="onDetailClose" />
       <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
-    </div>
-
-    <div v-if="loading" class="graph-overlay graph-overlay--loading">
-      <div class="spinner" aria-label="Loading graph" />
-      <p>Loading graph...</p>
-    </div>
-
-    <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
-      <p class="error-title">Failed to load graph</p>
-      <p class="error-message">{{ error }}</p>
-      <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
-    </div>
+    </aside>
   </div>
 </template>
 
 <style scoped>
 .graph-canvas-wrapper {
-  position: relative;
+  display: grid;
+  grid-template-columns: 18rem 1fr;
   width: 100%;
+  height: 100%;
+  background: #0f172a;
+}
+
+.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 18rem 1fr 23rem;
+}
+
+.graph-canvas__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.graph-canvas__stage {
+  position: relative;
+  min-width: 0;
   height: 100%;
 }
 
@@ -163,49 +210,42 @@ watch(
   width: 100%;
   height: 100%;
   position: relative;
-  background: #0f0f0f;
-}
-
-.graph-canvas__controls {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: min(22rem, calc(100% - 2rem));
-  max-height: calc(100% - 2rem);
-  overflow: auto;
+  background: #0f172a;
 }
 
 .graph-canvas__detail {
-  position: absolute;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 21;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: calc(100% - 2rem);
+  padding: 1rem;
   overflow-y: auto;
+  border-left: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.85);
 }
 
-@media (max-height: 48rem) {
-  .graph-canvas__controls {
-    max-height: 45%;
+@media (max-width: 64rem) {
+  .graph-canvas-wrapper,
+  .graph-canvas-wrapper--detail-open {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .graph-canvas__sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    max-height: 14rem;
+  }
+
+  .graph-canvas-wrapper--detail-open {
+    grid-template-rows: auto 1fr auto;
   }
 
   .graph-canvas__detail {
-    max-height: 45%;
-  }
-}
-
-@media (max-width: 48rem) {
-  .graph-canvas__controls,
-  .graph-canvas__detail {
-    left: 1rem;
-    width: auto;
+    border-left: none;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    max-height: 50vh;
   }
 }
 
@@ -217,7 +257,7 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: rgba(15, 15, 15, 0.85);
+  background: rgba(15, 23, 42, 0.85);
   color: #e5e5e5;
   z-index: 10;
 }
