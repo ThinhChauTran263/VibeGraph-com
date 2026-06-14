@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
-import { createFocusReducers, getNeighborsWithinHops, normalizeFocusDepth } from '../focusMode'
+import {
+  createFocusReducers,
+  createSelectionFocusReducers,
+  getDirectNeighbors,
+  getNeighborsWithinHops,
+  normalizeFocusDepth,
+} from '../focusMode'
 
 function buildGraph(): Graph {
   const graph = new Graph({ type: 'directed', multi: true })
@@ -81,6 +87,72 @@ describe('createFocusReducers', () => {
     expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd' })).toEqual({
       color: '#93c5fd',
       hidden: true,
+    })
+  })
+})
+
+describe('getDirectNeighbors', () => {
+  it('returns the node plus its direct (1-hop) neighbors, undirected', () => {
+    const graph = buildGraph()
+
+    expect(getDirectNeighbors(graph, 'selected')).toEqual(new Set(['selected', 'hop-1']))
+    expect(getDirectNeighbors(graph, 'hop-1')).toEqual(new Set(['hop-1', 'selected', 'hop-2']))
+  })
+
+  it('returns an empty set for a missing node', () => {
+    expect(getDirectNeighbors(buildGraph(), 'missing')).toEqual(new Set())
+  })
+})
+
+describe('createSelectionFocusReducers', () => {
+  it('is identity when nothing is selected', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers(null, graph)
+
+    expect(reducers.nodeReducer?.('outside', { color: '#fff' })).toEqual({ color: '#fff' })
+    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({ color: '#93c5fd' })
+  })
+
+  it('emphasizes the selected node and forces its label', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph)
+
+    expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
+      color: '#fff',
+      size: 10,
+      highlighted: true,
+      forceLabel: true,
+    })
+  })
+
+  it('keeps direct neighbors readable and dims unrelated nodes', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph)
+
+    expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
+      color: '#fff',
+      size: 7,
+      forceLabel: true,
+    })
+    expect(reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })).toEqual({
+      color: '#1e293b',
+      size: 6,
+      label: '',
+    })
+  })
+
+  it('highlights edges touching the selected node and dims unrelated edges without hiding them', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph)
+
+    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
+      color: '#e2e8f0',
+      size: 2,
+      forceLabel: true,
+    })
+    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS' })).toEqual({
+      color: '#1e293b',
+      label: '',
     })
   })
 })

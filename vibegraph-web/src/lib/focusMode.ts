@@ -80,3 +80,84 @@ export function createFocusReducers(selectedId: string | null, depth: number, gr
     },
   }
 }
+
+const DIMMED_NODE_COLOR = '#1e293b'
+const DIMMED_EDGE_COLOR = '#1e293b'
+const HIGHLIGHTED_EDGE_COLOR = '#e2e8f0'
+
+/**
+ * Direct (1-hop) neighbors of a node plus the node itself, undirected.
+ */
+export function getDirectNeighbors(graph: Graph, nodeId: string): Set<string> {
+  if (!graph.hasNode(nodeId)) return new Set<string>()
+
+  const neighbors = new Set<string>([nodeId])
+  graph.forEachNeighbor(nodeId, (neighbor) => {
+    neighbors.add(neighbor)
+  })
+  return neighbors
+}
+
+/**
+ * Click-driven neighborhood focus. Unlike createFocusReducers (depth control),
+ * this DIMS unrelated nodes/edges instead of hiding them, keeps the selected
+ * node and its directly-connected neighbors readable, and emphasizes the edges
+ * that touch the selected node. Drives requirement: clicking a node focuses its
+ * cluster regardless of the focus-depth filter.
+ */
+export function createSelectionFocusReducers(selectedId: string | null, graph: Graph): FocusReducers {
+  if (!selectedId || !graph.hasNode(selectedId)) {
+    return {
+      nodeReducer: (_node, attributes) => attributes,
+      edgeReducer: (_edge, attributes) => attributes,
+    }
+  }
+
+  const neighborIds = getDirectNeighbors(graph, selectedId)
+
+  return {
+    nodeReducer: (node, attributes) => {
+      if (node === selectedId) {
+        return {
+          ...attributes,
+          size: typeof attributes.size === 'number' ? attributes.size + 4 : attributes.size,
+          highlighted: true,
+          forceLabel: true,
+        }
+      }
+
+      if (neighborIds.has(node)) {
+        return {
+          ...attributes,
+          size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
+          forceLabel: true,
+        }
+      }
+
+      return {
+        ...attributes,
+        color: DIMMED_NODE_COLOR,
+        label: '',
+      }
+    },
+    edgeReducer: (edge, attributes) => {
+      const source = graph.source(edge)
+      const target = graph.target(edge)
+
+      if (source === selectedId || target === selectedId) {
+        return {
+          ...attributes,
+          color: HIGHLIGHTED_EDGE_COLOR,
+          size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
+          forceLabel: true,
+        }
+      }
+
+      if (neighborIds.has(source) && neighborIds.has(target)) {
+        return attributes
+      }
+
+      return { ...attributes, color: DIMMED_EDGE_COLOR, label: '' }
+    },
+  }
+}

@@ -12,10 +12,11 @@ import FA2Layout from 'graphology-layout-forceatlas2/worker'
 export interface UseSigmaOptions {
   container: Ref<HTMLDivElement | null>
   onNodeClick?: (nodeId: string) => void
+  onStageClick?: () => void
 }
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick } = options
+  const { container, onNodeClick, onStageClick } = options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
@@ -36,8 +37,14 @@ export function useSigma(options: UseSigmaOptions) {
     const sigma = new Sigma(graph, container.value, {
       allowInvalidContainer: true,
       renderEdgeLabels: false,
-      defaultEdgeType: 'arrow',
+      defaultEdgeType: 'line',
       labelRenderedSizeThreshold: 8,
+      labelColor: { color: '#e5e7eb' },
+      labelFont: 'Inter, system-ui, sans-serif',
+      labelSize: 13,
+      labelWeight: '600',
+      edgeLabelColor: { color: '#cbd5e1' },
+      edgeLabelSize: 11,
     })
 
     sigmaInstance.value = sigma
@@ -46,6 +53,13 @@ export function useSigma(options: UseSigmaOptions) {
     if (onNodeClick) {
       sigma.on('clickNode', ({ node }) => {
         onNodeClick(node)
+      })
+    }
+
+    // Background (stage) click deselects
+    if (onStageClick) {
+      sigma.on('clickStage', () => {
+        onStageClick()
       })
     }
 
@@ -114,6 +128,17 @@ export function useSigma(options: UseSigmaOptions) {
   }
 
   /**
+   * Toggle edge label rendering. Edge labels add clutter at the default view,
+   * so we only show them while a node is focused.
+   */
+  function setEdgeLabelsVisible(visible: boolean): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    sigma.setSetting('renderEdgeLabels', visible)
+    sigma.refresh()
+  }
+
+  /**
    * Zoom to fit the entire graph in view.
    */
   function zoomToFit() {
@@ -139,5 +164,6 @@ export function useSigma(options: UseSigmaOptions) {
     },
     stopLayout,
     setReducers,
+    setEdgeLabelsVisible,
   }
 }

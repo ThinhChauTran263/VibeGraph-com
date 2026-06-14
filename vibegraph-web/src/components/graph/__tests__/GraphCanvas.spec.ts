@@ -42,6 +42,7 @@ vi.mock('@/composables/useSigma', () => ({
     init: vi.fn<() => void>(),
     graphInstance: ref(null),
     setReducers: vi.fn<() => void>(),
+    setEdgeLabelsVisible: vi.fn<() => void>(),
   }),
 }))
 

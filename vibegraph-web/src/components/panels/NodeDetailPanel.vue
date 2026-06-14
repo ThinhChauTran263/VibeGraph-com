@@ -14,6 +14,15 @@ const SENSITIVE_PROPERTY_KEY_PATTERN = /(secret|token|password|credential|auth|a
 
 const { selectedNode, filteredGraphData, clearSelection } = useGraphData()
 
+const emit = defineEmits<{
+  (e: 'close'): void
+}>()
+
+function onClose(): void {
+  clearSelection()
+  emit('close')
+}
+
 const nodeById = computed(() => new Map(filteredGraphData.value.nodes.map((node) => [node.id, node])))
 
 const propertyEntries = computed(() => {
@@ -56,7 +65,7 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
           <p class="node-detail-panel__eyebrow">Node detail</p>
           <h2 id="node-detail-heading">{{ selectedNode.name }}</h2>
         </div>
-        <button class="node-detail-panel__close" type="button" aria-label="Close node details" @click="clearSelection">
+        <button class="node-detail-panel__close" type="button" aria-label="Close node details" @click="onClose">
           ×
         </button>
       </header>
@@ -109,9 +118,7 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 
 <style scoped>
 .node-detail-panel {
-  width: min(24rem, calc(100% - 2rem));
-  max-height: calc(100% - 2rem);
-  overflow-y: auto;
+  width: 100%;
   border: 1px solid rgba(96, 165, 250, 0.25);
   border-radius: 1rem;
   padding: 1rem;
