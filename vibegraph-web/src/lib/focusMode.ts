@@ -112,10 +112,19 @@ const DIMMED_EDGE_MIX = 0.9 // 90% background + 10% original hue
 const DIMMED_EDGE_SIZE_MULTIPLIER = 0.25
 const DIMMED_EDGE_MIN_SIZE = 0.2
 
-// Dimmed nodes shrink to ~45% (floored at ~1px) so they read as barely-visible
-// background specks and never form gray dots that cover the foreground edges.
+// Dimmed nodes shrink to a sub-pixel speck. This is the fix for the obstruction
+// bug: Sigma.js draws the entire node program ON TOP of the entire edge program,
+// so zIndex can only order node-vs-node and edge-vs-edge — it can NEVER push a
+// node behind an edge. A dimmed node therefore always paints over any foreground
+// related edge it overlaps. The only reliable way to stop a dimmed dot from
+// covering a bright relation line is to make it too small to obstruct.
+//
+// DIMMED_NODE_MAX_SIZE is a HARD CAP applied after the multiplier, so even a
+// large hub node (size 12+) collapses to <= 0.8px when dimmed. The floor keeps
+// it just visible as a faint colored-ghost speck (requirement: preserve context).
 const DIMMED_NODE_SIZE_MULTIPLIER = 0.45
-const DIMMED_NODE_MIN_SIZE = 1
+const DIMMED_NODE_MIN_SIZE = 0.5
+const DIMMED_NODE_MAX_SIZE = 0.8
 
 // Related edges keep their edge-type color (set by graphAdapter) — we only bump
 // thickness slightly (~20% reduction from the previous 1.6) for an elegant,
@@ -130,11 +139,15 @@ const Z_RELATED_EDGE = 2
 const Z_NEIGHBOR_EDGE = 1
 const Z_DIMMED = 0
 
-/** Shrink a node's size for the dimmed background layer, floored so it stays a faint dot. */
+/**
+ * Shrink a node to a sub-pixel speck for the dimmed background layer. Clamped to
+ * [MIN, MAX] so the dimmed dot is always too small to cover a foreground edge
+ * (Sigma always paints nodes above edges) yet still faintly visible as context.
+ */
 function dimmedNodeSize(size: unknown): unknown {
-  return typeof size === 'number'
-    ? Math.max(size * DIMMED_NODE_SIZE_MULTIPLIER, DIMMED_NODE_MIN_SIZE)
-    : size
+  if (typeof size !== 'number') return size
+  const shrunk = size * DIMMED_NODE_SIZE_MULTIPLIER
+  return Math.min(Math.max(shrunk, DIMMED_NODE_MIN_SIZE), DIMMED_NODE_MAX_SIZE)
 }
 
 /** Shrink an edge to a thin ghost line, floored so the network still reads as faint context. */

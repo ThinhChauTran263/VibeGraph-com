@@ -142,7 +142,8 @@ describe('createSelectionFocusReducers', () => {
       forceLabel: false,
       zIndex: 0,
     })
-    expect(dimmed?.size as number).toBeCloseTo(2.7)
+    // Capped to a sub-pixel speck so it cannot cover a foreground related edge.
+    expect(dimmed?.size as number).toBeLessThanOrEqual(0.8)
   })
 
   it('thickens edges touching the selected node without recoloring them white, and deep-dims unrelated edges', () => {
@@ -226,7 +227,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
       forceLabel: false,
       zIndex: 0,
     })
-    expect(dimmed?.size as number).toBeCloseTo(2.7)
+    expect(dimmed?.size as number).toBeLessThanOrEqual(0.8)
   })
 
   it('keeps only the hovered edge bright and dims every other edge', () => {
@@ -428,7 +429,6 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
     expect(out.zIndex).toBe(3)
     expect(out.size as number).toBeGreaterThan(8)
   })
-
   it('never emits a bright or near-black dimmed color for any node type (Class/File/Method/Route)', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('sel', { color: '#F59E0B', size: 6 }) // Class-style
@@ -446,5 +446,70 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
       expect(isNearBlack(out.color), `${id} must not be near-black`).toBe(false)
       expect(preservesHue(out.color), `${id} must keep some node-type hue`).toBe(true)
     }
+  })
+})
+
+/**
+ * Obstruction guarantee. The user reported that even faint dimmed nodes still
+ * render as dots ON TOP of bright related edges, breaking the relation line.
+ *
+ * Root cause: Sigma.js paints the entire node program above the entire edge
+ * program, so zIndex orders node-vs-node and edge-vs-edge only — it can never
+ * push a dimmed node behind a foreground edge. The fix is to make every dimmed
+ * node too small to obstruct: a hard size cap (<= 0.8px) applied regardless of
+ * the node's original size, while keeping it just visible as colored-ghost
+ * context and keeping selected/neighbor nodes at their normal visible size.
+ */
+describe('dimmed nodes cannot obstruct foreground related edges', () => {
+  it('caps every dimmed node to <= 0.8px even when the original node is a large hub', () => {
+    const graph = new Graph({ type: 'directed', multi: true })
+    graph.addNode('sel', { color: '#3B82F6', size: 8 })
+    graph.addNode('hub', { color: '#F59E0B', size: 24 }) // large unrelated hub
+    graph.addNode('small', { color: '#F59E0B', size: 3 }) // small unrelated node
+    graph.addNode('neighbor', { color: '#3B82F6', size: 6 })
+    graph.addEdgeWithKey('sel->neighbor', 'sel', 'neighbor', { color: '#93c5fd', size: 1 })
+
+    const reducers = createSelectionFocusReducers('sel', graph)
+
+    const hub = reducers.nodeReducer?.('hub', graph.getNodeAttributes('hub')) ?? {}
+    const small = reducers.nodeReducer?.('small', graph.getNodeAttributes('small')) ?? {}
+
+    // Both clamp into the sub-pixel band, so neither can paint over an edge.
+    expect(hub.size as number).toBeLessThanOrEqual(0.8)
+    expect(hub.size as number).toBeGreaterThan(0)
+    expect(small.size as number).toBeLessThanOrEqual(0.8)
+    expect(small.size as number).toBeGreaterThan(0)
+  })
+
+  it('keeps the related edge larger than any dimmed node and on a higher layer', () => {
+    const graph = new Graph({ type: 'directed', multi: true })
+    graph.addNode('sel', { color: '#3B82F6', size: 8 })
+    graph.addNode('neighbor', { color: '#3B82F6', size: 6 })
+    graph.addNode('hub', { color: '#F59E0B', size: 24 })
+    graph.addEdgeWithKey('sel->neighbor', 'sel', 'neighbor', { color: '#93c5fd', size: 1.5 })
+
+    const reducers = createSelectionFocusReducers('sel', graph)
+
+    const relatedEdge = reducers.edgeReducer?.('sel->neighbor', graph.getEdgeAttributes('sel->neighbor')) ?? {}
+    const dimmedHub = reducers.nodeReducer?.('hub', graph.getNodeAttributes('hub')) ?? {}
+
+    // Related edge thicker than the dimmed dot and on a strictly higher layer.
+    expect(relatedEdge.size as number).toBeGreaterThan(dimmedHub.size as number)
+    expect(relatedEdge.zIndex as number).toBeGreaterThan(dimmedHub.zIndex as number)
+  })
+
+  it('keeps selected and neighbor nodes at a normal visible size (not capped)', () => {
+    const graph = new Graph({ type: 'directed', multi: true })
+    graph.addNode('sel', { color: '#3B82F6', size: 8 })
+    graph.addNode('neighbor', { color: '#3B82F6', size: 6 })
+    graph.addEdgeWithKey('sel->neighbor', 'sel', 'neighbor', { color: '#93c5fd', size: 1 })
+
+    const reducers = createSelectionFocusReducers('sel', graph)
+
+    const selected = reducers.nodeReducer?.('sel', graph.getNodeAttributes('sel')) ?? {}
+    const neighbor = reducers.nodeReducer?.('neighbor', graph.getNodeAttributes('neighbor')) ?? {}
+
+    expect(selected.size as number).toBeGreaterThan(0.8)
+    expect(neighbor.size as number).toBeGreaterThan(0.8)
   })
 })
