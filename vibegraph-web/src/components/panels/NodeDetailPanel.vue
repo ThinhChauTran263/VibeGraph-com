@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
+import { getEdgeColor, getNodeColor } from '@/lib/graphAdapter'
 import type { GraphEdge, GraphNode } from '@/types/graph'
 
 interface NodeConnection {
   edge: GraphEdge
   node: GraphNode
+}
+
+export interface RelationHoverPayload {
+  edgeId: string
+  counterpartNodeId: string
 }
 
 const MAX_VISIBLE_PROPERTIES = 12
@@ -16,11 +22,25 @@ const { selectedNode, filteredGraphData, clearSelection } = useGraphData()
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'relationHover', payload: RelationHoverPayload | null): void
+  (e: 'relationSelect', payload: RelationHoverPayload): void
 }>()
 
 function onClose(): void {
   clearSelection()
   emit('close')
+}
+
+function onRelationHover(connection: NodeConnection): void {
+  emit('relationHover', { edgeId: connection.edge.id, counterpartNodeId: connection.node.id })
+}
+
+function onRelationLeave(): void {
+  emit('relationHover', null)
+}
+
+function onRelationSelect(connection: NodeConnection): void {
+  emit('relationSelect', { edgeId: connection.edge.id, counterpartNodeId: connection.node.id })
 }
 
 const nodeById = computed(() => new Map(filteredGraphData.value.nodes.map((node) => [node.id, node])))
@@ -90,8 +110,27 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
         <h3 id="incoming-heading">Incoming ({{ incomingConnections.length }})</h3>
         <ul v-if="incomingConnections.length > 0" class="node-detail-panel__connections">
           <li v-for="connection in incomingConnections" :key="connection.edge.id">
-            <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
-            <span class="node-detail-panel__connection-type">← {{ connection.edge.type }}</span>
+            <button
+              type="button"
+              class="node-detail-panel__connection"
+              @mouseenter="onRelationHover(connection)"
+              @mouseleave="onRelationLeave"
+              @focus="onRelationHover(connection)"
+              @blur="onRelationLeave"
+              @click="onRelationSelect(connection)"
+            >
+              <span
+                class="node-detail-panel__connection-accent"
+                :style="{ backgroundColor: getNodeColor(connection.node.type) }"
+                aria-hidden="true"
+              />
+              <span class="node-detail-panel__connection-body">
+                <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
+                <span class="node-detail-panel__connection-type" :style="{ color: getEdgeColor(connection.edge.type) }">
+                  ← {{ connection.edge.type }}
+                </span>
+              </span>
+            </button>
           </li>
         </ul>
         <p v-else class="node-detail-panel__empty-list">No incoming edges.</p>
@@ -101,8 +140,27 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
         <h3 id="outgoing-heading">Outgoing ({{ outgoingConnections.length }})</h3>
         <ul v-if="outgoingConnections.length > 0" class="node-detail-panel__connections">
           <li v-for="connection in outgoingConnections" :key="connection.edge.id">
-            <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
-            <span class="node-detail-panel__connection-type">→ {{ connection.edge.type }}</span>
+            <button
+              type="button"
+              class="node-detail-panel__connection"
+              @mouseenter="onRelationHover(connection)"
+              @mouseleave="onRelationLeave"
+              @focus="onRelationHover(connection)"
+              @blur="onRelationLeave"
+              @click="onRelationSelect(connection)"
+            >
+              <span
+                class="node-detail-panel__connection-accent"
+                :style="{ backgroundColor: getNodeColor(connection.node.type) }"
+                aria-hidden="true"
+              />
+              <span class="node-detail-panel__connection-body">
+                <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
+                <span class="node-detail-panel__connection-type" :style="{ color: getEdgeColor(connection.edge.type) }">
+                  → {{ connection.edge.type }}
+                </span>
+              </span>
+            </button>
           </li>
         </ul>
         <p v-else class="node-detail-panel__empty-list">No outgoing edges.</p>
@@ -221,24 +279,60 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   list-style: none;
 }
 
-.node-detail-panel__connections li {
+.node-detail-panel__connection {
   display: flex;
-  flex-direction: column;
-  gap: 0.1875rem;
+  align-items: stretch;
+  gap: 0.625rem;
+  width: 100%;
   border: 1px solid rgba(55, 65, 81, 0.85);
   border-radius: 0.625rem;
   padding: 0.625rem;
   background: rgba(31, 41, 55, 0.72);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+
+.node-detail-panel__connection:hover,
+.node-detail-panel__connection:focus-visible {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(37, 99, 235, 0.16);
+  transform: translateX(2px);
+}
+
+.node-detail-panel__connection:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.node-detail-panel__connection-accent {
+  flex: 0 0 auto;
+  width: 0.25rem;
+  border-radius: 999px;
+}
+
+.node-detail-panel__connection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
 }
 
 .node-detail-panel__connection-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .node-detail-panel__connection-type,
 .node-detail-panel__empty,
 .node-detail-panel__empty-list {
-  color: #9ca3af;
   font-size: 0.8125rem;
+}
+
+.node-detail-panel__empty,
+.node-detail-panel__empty-list {
+  color: #9ca3af;
 }
 </style>

@@ -14,9 +14,9 @@ import { useSigma } from '@/composables/useSigma'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
-import NodeDetailPanel from '@/components/panels/NodeDetailPanel.vue'
+import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
-import { createFocusReducers, createSelectionFocusReducers } from '@/lib/focusMode'
+import { createFocusReducers, createSelectionFocusReducers, type HoveredRelation } from '@/lib/focusMode'
 import { useFilters } from '@/composables/useFilters'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphNode } from '@/types/graph'
@@ -31,6 +31,11 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLDivElement | null>(null)
 const { focusDepth } = useFilters()
+
+// A relation the user is hovering or has clicked in the Node Detail panel. When
+// set, the graph focus narrows to just the selected node, this one counterpart,
+// and the connecting edge (everything else dims). Null = normal selection focus.
+const hoveredRelation = ref<HoveredRelation | null>(null)
 
 // T60: subscribe to realtime graph updates for the active project and patch the
 // store in place. Resubscribes on project change and cleans up on unmount.
@@ -53,11 +58,13 @@ const { init: initSigma, graphInstance, setReducers, setEdgeLabelsVisible } = us
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
+    hoveredRelation.value = null
     selectNode(node)
     emit('nodeSelected', nodeId)
   },
   onStageClick: () => {
     if (!selectedNode.value) return
+    hoveredRelation.value = null
     clearSelection()
     emit('nodeSelected', null)
   },
@@ -72,7 +79,9 @@ function applyFocusReducers(): void {
   if (!graphInstance.value) return
 
   if (selectedNode.value) {
-    setReducers(createSelectionFocusReducers(selectedNode.value.id, graphInstance.value))
+    setReducers(
+      createSelectionFocusReducers(selectedNode.value.id, graphInstance.value, hoveredRelation.value),
+    )
     setEdgeLabelsVisible?.(true)
     return
   }
@@ -101,8 +110,23 @@ function onSearchClear(): void {
 }
 
 function onDetailClose(): void {
+  hoveredRelation.value = null
   clearSelection()
   emit('nodeSelected', null)
+}
+
+function onRelationHover(payload: RelationHoverPayload | null): void {
+  hoveredRelation.value = payload
+  applyFocusReducers()
+}
+
+function onRelationSelect(payload: RelationHoverPayload): void {
+  const counterpart = nodes.value.find((node) => node.id === payload.counterpartNodeId) ?? null
+  if (!counterpart) return
+  hoveredRelation.value = null
+  selectNode(counterpart)
+  emit('nodeSelected', counterpart.id)
+  applyFocusReducers()
 }
 
 onMounted(() => {
@@ -171,7 +195,11 @@ watch(
     </div>
 
     <aside v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
-      <NodeDetailPanel @close="onDetailClose" />
+      <NodeDetailPanel
+        @close="onDetailClose"
+        @relation-hover="onRelationHover"
+        @relation-select="onRelationSelect"
+      />
       <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
     </aside>
   </div>

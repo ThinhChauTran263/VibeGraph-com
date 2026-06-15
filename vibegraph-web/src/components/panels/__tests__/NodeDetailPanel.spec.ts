@@ -140,4 +140,47 @@ describe('NodeDetailPanel', () => {
 
     expect(clearSelection).toHaveBeenCalledTimes(1)
   })
+
+  it('emits relationHover with the connecting edge and counterpart on hover, and null on leave', async () => {
+    const selected = node({ id: 'service', name: 'OrderService' })
+    const controller = node({ id: 'controller', type: 'Class', name: 'OrderController' })
+    selectedNode.value = selected
+    graphData.value = {
+      nodes: [selected, controller],
+      edges: [{ id: 'controller|CALLS|service', source: 'controller', target: 'service', type: 'CALLS' }],
+      nodeStats: {} as GraphData['nodeStats'],
+      edgeStats: {} as GraphData['edgeStats'],
+    }
+
+    const wrapper = mount(NodeDetailPanel)
+    const button = wrapper.get('.node-detail-panel__connection')
+
+    await button.trigger('mouseenter')
+    expect(wrapper.emitted('relationHover')?.[0]).toEqual([
+      { edgeId: 'controller|CALLS|service', counterpartNodeId: 'controller' },
+    ])
+
+    await button.trigger('mouseleave')
+    expect(wrapper.emitted('relationHover')?.[1]).toEqual([null])
+  })
+
+  it('emits relationSelect when a connection is clicked', async () => {
+    const selected = node({ id: 'service', name: 'OrderService' })
+    const repository = node({ id: 'repo', type: 'Interface', name: 'OrderRepository' })
+    selectedNode.value = selected
+    graphData.value = {
+      nodes: [selected, repository],
+      edges: [{ id: 'service|INJECTS|repo', source: 'service', target: 'repo', type: 'INJECTS' }],
+      nodeStats: {} as GraphData['nodeStats'],
+      edgeStats: {} as GraphData['edgeStats'],
+    }
+
+    const wrapper = mount(NodeDetailPanel)
+
+    await wrapper.get('.node-detail-panel__connection').trigger('click')
+
+    expect(wrapper.emitted('relationSelect')?.[0]).toEqual([
+      { edgeId: 'service|INJECTS|repo', counterpartNodeId: 'repo' },
+    ])
+  })
 })
