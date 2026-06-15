@@ -16,8 +16,14 @@ import { HIGHLIGHT_LABEL_COLOR } from './constants'
 type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>
 
 const LABEL_GAP = 3
-const RING_WIDTH = 2
-const RING_COLOR = '#ffffff'
+// Soft halo ring around the focused node: a thin, semi-transparent white stroke
+// with a gentle outward glow instead of a hard 2px opaque outline. Reads as a
+// soft spotlight rather than a technical selection marker.
+const RING_WIDTH = 1.25
+const RING_COLOR = 'rgba(255, 255, 255, 0.55)'
+const RING_GLOW_COLOR = 'rgba(255, 255, 255, 0.35)'
+const RING_GLOW_BLUR = 8
+const RING_GAP = 3
 
 /**
  * Draw a node label as text only (no background box). Used both as the default
@@ -69,21 +75,25 @@ export function drawDefaultNodeLabel(
 }
 
 /**
- * Hover renderer: keep a white ring around the node, draw the label text in the
- * highlight color. No white label box.
+ * Hover renderer: draw a soft, semi-transparent halo ring around the node and
+ * the label text in the highlight color. No white label box, no hard outline.
  */
 export function drawHighlightNodeHover(
   context: CanvasRenderingContext2D,
   data: HoverData,
   settings: Settings,
 ): void {
-  // White ring/outline around the hovered node (preserved on purpose).
+  // Soft halo ring around the focused node (semi-transparent + outward glow).
+  context.save()
   context.beginPath()
-  context.arc(data.x, data.y, data.size + RING_WIDTH, 0, Math.PI * 2)
+  context.arc(data.x, data.y, data.size + RING_GAP, 0, Math.PI * 2)
   context.closePath()
   context.lineWidth = RING_WIDTH
   context.strokeStyle = RING_COLOR
+  context.shadowBlur = RING_GLOW_BLUR
+  context.shadowColor = RING_GLOW_COLOR
   context.stroke()
+  context.restore()
 
   drawTextOnlyNodeLabel(context, data, settings, HIGHLIGHT_LABEL_COLOR)
 }

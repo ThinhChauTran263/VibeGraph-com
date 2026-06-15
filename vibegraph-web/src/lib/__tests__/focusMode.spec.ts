@@ -79,7 +79,7 @@ describe('createFocusReducers', () => {
       highlighted: true,
     })
     expect(reducers.nodeReducer?.('outside', { color: '#ffffff', size: 8 })).toEqual({
-      color: '#444a59',
+      color: '#313748',
       size: 8,
       label: '',
     })
@@ -133,17 +133,16 @@ describe('createSelectionFocusReducers', () => {
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       size: 7,
-      forceLabel: true,
       zIndex: 2,
     })
     const dimmed = reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })
     expect(dimmed).toMatchObject({
-      color: '#444a59',
+      color: '#313748',
       label: '',
       forceLabel: false,
       zIndex: 0,
     })
-    expect(dimmed?.size as number).toBeCloseTo(4.2)
+    expect(dimmed?.size as number).toBeCloseTo(2.7)
   })
 
   it('thickens edges touching the selected node without recoloring them white, and deep-dims unrelated edges', () => {
@@ -153,20 +152,20 @@ describe('createSelectionFocusReducers', () => {
     // Related edge keeps its edge-type color (no white), just thickens + labels.
     expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
       color: '#93c5fd',
-      size: 1.6,
+      size: 1.2,
       forceLabel: true,
       zIndex: 2,
     })
     expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
-      color: '#212f48',
-      size: 0.35,
+      color: '#1c283f',
+      size: 0.25,
       label: '',
       forceLabel: false,
       zIndex: 0,
     })
   })
 
-  it('layers neighbor-to-neighbor edges above the dimmed background without thickening them', () => {
+  it('layers neighbor-to-neighbor edges above the dimmed background, blanking their label, without thickening them', () => {
     // center is connected to a and b; a->b is an edge between two direct
     // neighbors of center where neither endpoint is the selected node.
     const graph = new Graph({ type: 'directed', multi: true })
@@ -179,9 +178,11 @@ describe('createSelectionFocusReducers', () => {
 
     const reducers = createSelectionFocusReducers('center', graph)
 
-    expect(reducers.edgeReducer?.('a->b', { color: '#93c5fd', size: 1 })).toEqual({
+    expect(reducers.edgeReducer?.('a->b', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
       color: '#93c5fd',
       size: 1,
+      label: '',
+      forceLabel: false,
       zIndex: 1,
     })
   })
@@ -220,12 +221,12 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     const dimmed = reducers.nodeReducer?.('hop-2', { color: '#fff', size: 6 })
     expect(dimmed).toMatchObject({
-      color: '#444a59',
+      color: '#313748',
       label: '',
       forceLabel: false,
       zIndex: 0,
     })
-    expect(dimmed?.size as number).toBeCloseTo(4.2)
+    expect(dimmed?.size as number).toBeCloseTo(2.7)
   })
 
   it('keeps only the hovered edge bright and dims every other edge', () => {
@@ -237,13 +238,13 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
       color: '#93c5fd',
-      size: 1.6,
+      size: 1.2,
       forceLabel: true,
       zIndex: 2,
     })
     expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
-      color: '#212f48',
-      size: 0.35,
+      color: '#1c283f',
+      size: 0.25,
       label: '',
       forceLabel: false,
       zIndex: 0,
@@ -399,7 +400,7 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
       expect(isBrightColor(out.color), `node u${i} color must not be bright`).toBe(false)
       expect(isNearBlack(out.color), `node u${i} color must not be near-black`).toBe(false)
       expect(preservesHue(out.color), `node u${i} must keep some node-type hue`).toBe(true)
-      expect(out.color).toBe('#423523') // amber mixed toward the dark background
+      expect(out.color).toBe('#2f2a26') // amber mixed toward the dark background
       expect(out.label).toBe('')
       expect(out.forceLabel).toBe(false)
       expect(out.zIndex).toBe(0)

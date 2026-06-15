@@ -100,25 +100,28 @@ export function createFocusReducers(selectedId: string | null, depth: number, gr
 // edge stays faint blue. The result is a soft "colored ghost" background —
 // never white, never pure black.
 
-// Nodes keep more of their hue than edges so node-type colors stay legible as
-// faint dots, while the denser edge web recedes further.
-const DIMMED_NODE_MIX = 0.78 // 78% background + 22% original hue
-const DIMMED_EDGE_MIX = 0.86 // 86% background + 14% original hue
+// Nodes keep a little more of their hue than edges so node-type colors survive
+// as a faint atmospheric wash, while the denser edge web recedes further. Both
+// are pushed closer to the background than before so the dimmed layer reads as
+// soft "atmosphere" rather than competing dots/lines over the focused cluster.
+const DIMMED_NODE_MIX = 0.86 // 86% background + 14% original hue
+const DIMMED_EDGE_MIX = 0.9 // 90% background + 10% original hue
 
-// Dimmed edges shrink to a thin (but visible) ghost line. Kept clearly > 0 so
-// the surrounding network still reads as faint context rather than vanishing.
-const DIMMED_EDGE_SIZE_MULTIPLIER = 0.35
-const DIMMED_EDGE_MIN_SIZE = 0.25
+// Dimmed edges shrink to a very thin ghost line. Kept just > 0 so the
+// surrounding network still reads as faint context rather than vanishing.
+const DIMMED_EDGE_SIZE_MULTIPLIER = 0.25
+const DIMMED_EDGE_MIN_SIZE = 0.2
 
-// Dimmed nodes shrink to ~70% (floored at 2px) so the focused cluster clearly
-// dominates while unrelated nodes stay visible as faint background dots.
-const DIMMED_NODE_SIZE_MULTIPLIER = 0.7
-const DIMMED_NODE_MIN_SIZE = 2
+// Dimmed nodes shrink to ~45% (floored at ~1px) so they read as barely-visible
+// background specks and never form gray dots that cover the foreground edges.
+const DIMMED_NODE_SIZE_MULTIPLIER = 0.45
+const DIMMED_NODE_MIN_SIZE = 1
 
 // Related edges keep their edge-type color (set by graphAdapter) — we only bump
-// thickness modestly. They are NEVER recolored to white, which previously made
+// thickness slightly (~20% reduction from the previous 1.6) for an elegant,
+// not-heavy look. They are NEVER recolored to white, which previously made
 // thick white bands that hid the edge label text.
-const RELATED_EDGE_SIZE_MULTIPLIER = 1.6
+const RELATED_EDGE_SIZE_MULTIPLIER = 1.2
 
 // zIndex layers (requires Sigma `zIndex: true`). Higher renders on top.
 const Z_SELECTED = 3
@@ -233,10 +236,13 @@ export function createSelectionFocusReducers(
       }
 
       if (neighborIds.has(node)) {
+        // Neighbors stay readable and layered above the dim background, but we
+        // do NOT force their labels — only the selected node (and, on hover, the
+        // single counterpart) forces a label, so the view never floods with
+        // labels at once.
         return {
           ...attributes,
           size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
-          forceLabel: true,
           zIndex: Z_NEIGHBOR,
         }
       }
@@ -297,9 +303,11 @@ export function createSelectionFocusReducers(
         }
       }
 
-      // Edge between two direct neighbors: keep it as-is but layer it above dim.
+      // Edge between two direct neighbors: keep its color, layer it above dim,
+      // but blank its label so only the selected node's own relation edges can
+      // show labels — prevents a cluster of neighbor-to-neighbor labels.
       if (neighborIds.has(source) && neighborIds.has(target)) {
-        return { ...attributes, zIndex: Z_NEIGHBOR_EDGE }
+        return { ...attributes, label: '', forceLabel: false, zIndex: Z_NEIGHBOR_EDGE }
       }
 
       // Unrelated edge: mix its own relation-type color toward the background
