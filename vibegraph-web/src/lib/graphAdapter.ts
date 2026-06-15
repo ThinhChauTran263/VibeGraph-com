@@ -115,26 +115,24 @@ export function getEdgeColor(edgeType: EdgeType): string {
  */
 function getNodeSize(nodeType: NodeType): number {
   switch (nodeType) {
-    case 'Project':
-      return NODE_SIZES.max
-    case 'Package':
-      return 12
     case 'File':
-      return 10
+      return 6.5
+    case 'Project':
+    case 'Package':
+      return 6
     case 'Class':
     case 'Interface':
     case 'Enum':
     case 'Record':
     case 'DBModel':
-      return 8
+      return 5
     case 'Method':
     case 'Constructor':
     case 'Route':
     case 'APIEndpoint':
-      return NODE_SIZES.default
+      return 4
     case 'Field':
     case 'Annotation':
-      return NODE_SIZES.min
     case 'External':
       return NODE_SIZES.min
     default:

@@ -18,6 +18,18 @@ export interface FocusReducers {
   edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
 }
 
+export type FocusLabelDensity = 'minimal' | 'nodes' | 'edges'
+
+const MINIMAL_LABEL_RATIO = 1.05
+const EDGE_LABEL_RATIO = 0.72
+
+export function resolveFocusLabelDensity(cameraRatio: number): FocusLabelDensity {
+  if (!Number.isFinite(cameraRatio)) return 'nodes'
+  if (cameraRatio > MINIMAL_LABEL_RATIO) return 'minimal'
+  if (cameraRatio > EDGE_LABEL_RATIO) return 'nodes'
+  return 'edges'
+}
+
 /**
  * Partition of the graph into a FOREGROUND set (selected + related, kept in the
  * interactive Sigma) and a BACKGROUND set (unrelated, HIDDEN in Sigma and drawn
@@ -30,7 +42,11 @@ export interface FocusPartition {
   backgroundEdges: Set<string>
 }
 
-export function getUndirectedNeighborsWithinHops(graph: Graph, nodeId: string, hops: number): Set<string> {
+export function getUndirectedNeighborsWithinHops(
+  graph: Graph,
+  nodeId: string,
+  hops: number,
+): Set<string> {
   const normalizedHops = normalizeFocusDepth(hops)
   if (normalizedHops < 0 || !graph.hasNode(nodeId)) return new Set<string>()
 
@@ -56,7 +72,11 @@ export function getUndirectedNeighborsWithinHops(graph: Graph, nodeId: string, h
   return visited
 }
 
-export function createFocusReducers(selectedId: string | null, depth: number, graph: Graph): FocusReducers {
+export function createFocusReducers(
+  selectedId: string | null,
+  depth: number,
+  graph: Graph,
+): FocusReducers {
   const normalizedDepth = normalizeFocusDepth(depth)
   if (!selectedId || normalizedDepth < 0 || !graph.hasNode(selectedId)) {
     return {
@@ -140,8 +160,8 @@ const RELATED_EDGE_SIZE_MULTIPLIER = 0.9
 // (≈1.2x) — large additive bumps made it balloon out of proportion. Direct
 // neighbors stay essentially their real size (≈1.05x). A single hovered/pinned
 // counterpart uses the slightly smaller SELECTED multiplier too (no extra growth).
-const SELECTED_NODE_SIZE_MULTIPLIER = 1.2
-const NEIGHBOR_NODE_SIZE_MULTIPLIER = 1.05
+const SELECTED_NODE_SIZE_MULTIPLIER = 1.08
+const NEIGHBOR_NODE_SIZE_MULTIPLIER = 1
 
 /** Scale a node `size` attribute by a focus multiplier, leaving non-numeric sizes untouched. */
 function scaleNodeSize(size: unknown, multiplier: number): unknown {
@@ -344,6 +364,7 @@ export function createSelectionFocusReducers(
   selectedId: string | null,
   graph: Graph,
   hovered: HoveredRelation | null = null,
+  labelDensity: FocusLabelDensity = 'edges',
 ): FocusReducers {
   if (!selectedId || !graph.hasNode(selectedId)) {
     return {
@@ -380,9 +401,12 @@ export function createSelectionFocusReducers(
       // Direct neighbor (only reachable when no hover is active). Readable and
       // layered above the ghost background, but we do NOT force its label so the
       // view never floods with labels at once.
+      const showNeighborLabel = labelDensity === 'nodes' || labelDensity === 'edges'
       return {
         ...attributes,
         hidden: false,
+        label: showNeighborLabel ? attributes.label : '',
+        forceLabel: showNeighborLabel,
         size: scaleNodeSize(attributes.size, NEIGHBOR_NODE_SIZE_MULTIPLIER),
         zIndex: Z_NEIGHBOR,
       }
@@ -398,6 +422,7 @@ export function createSelectionFocusReducers(
       // interaction. The label text takes the edge-type color so it matches the
       // legend and stays readable on the dark canvas — never the generic white.
       if (isEdgeRelatedToFocus(source, target, edge, focusState)) {
+        const showEdgeLabel = labelDensity === 'edges'
         return {
           ...attributes,
           hidden: false,
@@ -405,7 +430,8 @@ export function createSelectionFocusReducers(
             typeof attributes.size === 'number'
               ? attributes.size * RELATED_EDGE_SIZE_MULTIPLIER
               : attributes.size,
-          forceLabel: true,
+          forceLabel: showEdgeLabel,
+          label: showEdgeLabel ? attributes.label : '',
           labelColor: relatedEdgeLabelColor(attributes),
           zIndex: Z_RELATED_EDGE,
         }

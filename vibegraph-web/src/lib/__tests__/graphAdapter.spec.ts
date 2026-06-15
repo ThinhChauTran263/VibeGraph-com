@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { apiToGraphology } from '../graphAdapter'
-import { NODE_COLORS, NODE_SIZES, EDGE_COLORS } from '../constants'
+import { NODE_COLORS, EDGE_COLORS } from '../constants'
 import type { GraphData } from '@/types/graph'
 
 function baseData(): GraphData {
@@ -140,14 +140,14 @@ describe('apiToGraphology', () => {
     const graph = apiToGraphology(data)
 
     expect(graph.getNodeAttribute('file:User.java', 'color')).toBe(NODE_COLORS.File)
-    expect(graph.getNodeAttribute('file:User.java', 'size')).toBe(10)
+    expect(graph.getNodeAttribute('file:User.java', 'size')).toBe(6.5)
     expect(graph.getNodeAttribute('com.example.UserRecord', 'color')).toBe(NODE_COLORS.Record)
-    expect(graph.getNodeAttribute('com.example.UserRecord', 'size')).toBe(8)
+    expect(graph.getNodeAttribute('com.example.UserRecord', 'size')).toBe(5)
     expect(graph.getNodeAttribute('com.example.UserEntity', 'color')).toBe(NODE_COLORS.DBModel)
-    expect(graph.getNodeAttribute('com.example.UserEntity', 'size')).toBe(8)
+    expect(graph.getNodeAttribute('com.example.UserEntity', 'size')).toBe(5)
     expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'color')).toBe(NODE_COLORS.Constructor)
-    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(NODE_SIZES.default)
+    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(4)
     expect(graph.getNodeAttribute('GET /api/users', 'color')).toBe(NODE_COLORS.APIEndpoint)
-    expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(NODE_SIZES.default)
+    expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(4)
   })
 })

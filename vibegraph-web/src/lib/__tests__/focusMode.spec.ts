@@ -13,6 +13,7 @@ import {
   normalizeFocusDepth,
   partitionFocusGraph,
   relatedEdgeLabelColor,
+  resolveFocusLabelDensity,
   SELECTED_NODE_SIZE_MULTIPLIER,
 } from '../focusMode'
 import { EDGE_COLORS } from '../constants'
@@ -39,13 +40,26 @@ describe('normalizeFocusDepth', () => {
   })
 })
 
+describe('resolveFocusLabelDensity', () => {
+  it('progressively reveals focus labels as the camera zooms in', () => {
+    expect(resolveFocusLabelDensity(1.3)).toBe('minimal')
+    expect(resolveFocusLabelDensity(0.9)).toBe('nodes')
+    expect(resolveFocusLabelDensity(0.5)).toBe('edges')
+  })
+
+  it('falls back to node labels for invalid camera ratios', () => {
+    expect(resolveFocusLabelDensity(Number.NaN)).toBe('nodes')
+  })
+})
 describe('getNeighborsWithinHops', () => {
   it('returns the selected node and neighbors within the requested depth', () => {
     const graph = buildGraph()
 
     expect(getNeighborsWithinHops(graph, 'selected', 0)).toEqual(new Set(['selected']))
     expect(getNeighborsWithinHops(graph, 'selected', 1)).toEqual(new Set(['selected', 'hop-1']))
-    expect(getNeighborsWithinHops(graph, 'selected', 2)).toEqual(new Set(['selected', 'hop-1', 'hop-2']))
+    expect(getNeighborsWithinHops(graph, 'selected', 2)).toEqual(
+      new Set(['selected', 'hop-1', 'hop-2']),
+    )
   })
 
   it('returns an empty set for missing selected nodes', () => {
@@ -75,7 +89,9 @@ describe('createFocusReducers', () => {
     const reducers = createFocusReducers('selected', -1, graph)
 
     expect(reducers.nodeReducer?.('outside', { color: '#ffffff' })).toEqual({ color: '#ffffff' })
-    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({ color: '#93c5fd' })
+    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({
+      color: '#93c5fd',
+    })
   })
 
   it('highlights visible focus nodes and hides edges outside the focused neighborhood', () => {
@@ -92,7 +108,9 @@ describe('createFocusReducers', () => {
       size: 8,
       label: '',
     })
-    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd' })).toEqual({ color: '#93c5fd' })
+    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd' })).toEqual({
+      color: '#93c5fd',
+    })
     expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd' })).toEqual({
       color: '#93c5fd',
       hidden: true,
@@ -119,7 +137,9 @@ describe('createSelectionFocusReducers', () => {
     const reducers = createSelectionFocusReducers(null, graph)
 
     expect(reducers.nodeReducer?.('outside', { color: '#fff' })).toEqual({ color: '#fff' })
-    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({ color: '#93c5fd' })
+    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({
+      color: '#93c5fd',
+    })
   })
 
   it('emphasizes the selected node and forces its label', () => {
@@ -129,7 +149,7 @@ describe('createSelectionFocusReducers', () => {
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 7.2,
+      size: 6.48,
       highlighted: true,
       forceLabel: true,
       zIndex: 3,
@@ -143,10 +163,12 @@ describe('createSelectionFocusReducers', () => {
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 6.3,
+      label: undefined,
+      forceLabel: true,
+      size: 6,
       zIndex: 2,
     })
-    // Unrelated node is HIDDEN in the interactive Sigma — it is redrawn on the
+    // Unrelated node is HIDDEN in the interactive Sigma â€” it is redrawn on the
     // ghost canvas physically below the WebGL edges, so it can never paint over a
     // foreground edge. This is the true-layering fix (not size/zIndex tuning).
     expect(reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })).toEqual({
@@ -161,9 +183,11 @@ describe('createSelectionFocusReducers', () => {
     const reducers = createSelectionFocusReducers('selected', graph)
 
     // Related edge keeps its edge-type color (no white), stays THIN, and shows its
-    // type label directly from graph interaction (forceLabel: true) — not only via
+    // type label directly from graph interaction (forceLabel: true) â€” not only via
     // Node Detail hover.
-    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
+    expect(
+      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toEqual({
       color: '#93c5fd',
       hidden: false,
       size: 0.9,
@@ -173,7 +197,9 @@ describe('createSelectionFocusReducers', () => {
       zIndex: 2,
     })
     // Unrelated edge is HIDDEN in the foreground; the ghost canvas redraws it faintly.
-    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
+    expect(
+      reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toEqual({
       color: '#93c5fd',
       label: 'CALLS',
       size: 1,
@@ -214,7 +240,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 7.2,
+      size: 6.48,
       highlighted: true,
       forceLabel: true,
       zIndex: 3,
@@ -222,7 +248,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 7.2,
+      size: 6.48,
       highlighted: true,
       forceLabel: true,
       zIndex: 3,
@@ -250,7 +276,9 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
       counterpartNodeId: 'hop-1',
     })
 
-    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
+    expect(
+      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toEqual({
       color: '#93c5fd',
       hidden: false,
       size: 0.9,
@@ -259,7 +287,9 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
       labelColor: '#93c5fd',
       zIndex: 2,
     })
-    expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
+    expect(
+      reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toEqual({
       color: '#93c5fd',
       label: 'CALLS',
       size: 1,
@@ -276,11 +306,11 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     // hop-2 is a non-neighbor; without an active hover it hides via the normal
     // selection path rather than the single-relation path. We assert the
-    // selected node keeps its standard selection size multiplier (6 * 1.2).
+    // selected node keeps its standard selection size multiplier (6 * 1.08).
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 7.2,
+      size: 6.48,
       highlighted: true,
       forceLabel: true,
       zIndex: 3,
@@ -297,7 +327,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      size: 7.2,
+      size: 6.48,
       highlighted: true,
       forceLabel: true,
       zIndex: 3,
@@ -310,7 +340,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
  * true-layering split: FOREGROUND (kept in the interactive Sigma) vs BACKGROUND
  * (hidden in Sigma, redrawn on the ghost canvas below the WebGL edges). The
  * partition is what guarantees a background node cannot paint over a foreground
- * edge — they live on physically separate canvases.
+ * edge â€” they live on physically separate canvases.
  */
 describe('partitionFocusGraph', () => {
   it('returns empty sets when nothing is selected', () => {
@@ -432,7 +462,7 @@ function preservesHue(color: unknown): boolean {
   return max - min > 6
 }
 
-describe('ghost-canvas node styling (proportional, hue-preserving — never tiny, never black)', () => {
+describe('ghost-canvas node styling (proportional, hue-preserving â€” never tiny, never black)', () => {
   it('scales node size proportionally and clamps it to a readable band (not a dot)', () => {
     // ~80% of original, clamped to [2, 20].
     expect(ghostNodeSize(10)).toBeCloseTo(8, 5)
@@ -494,7 +524,7 @@ describe('ghost-canvas edge styling (thin but visible, hue-preserving)', () => {
  * reported faint dimmed nodes rendering as dots ON TOP of bright related edges.
  *
  * Root cause: Sigma.js paints the entire node program above the entire edge
- * program, so zIndex orders node-vs-node and edge-vs-edge only — it can never push
+ * program, so zIndex orders node-vs-node and edge-vs-edge only â€” it can never push
  * a node behind a foreground edge within ONE Sigma.
  *
  * The fix: unrelated nodes/edges are HIDDEN in the interactive Sigma (so they are
@@ -506,9 +536,18 @@ describe('ghost-canvas edge styling (thin but visible, hue-preserving)', () => {
 describe('unrelated elements are hidden from the foreground and routed to the ghost background', () => {
   function buildRouteGraph(): Graph {
     const graph = new Graph({ type: 'directed', multi: true })
-    graph.addNode('route', { label: 'POST /api/users/', color: '#10B981', size: 8, nodeType: 'Route' })
+    graph.addNode('route', {
+      label: 'POST /api/users/',
+      color: '#10B981',
+      size: 8,
+      nodeType: 'Route',
+    })
     graph.addNode('create', { label: 'create', color: '#3B82F6', size: 6 })
-    graph.addEdgeWithKey('route->create', 'route', 'create', { color: '#059669', size: 1, label: 'HANDLES_ROUTE' })
+    graph.addEdgeWithKey('route->create', 'route', 'create', {
+      color: '#059669',
+      size: 1,
+      label: 'HANDLES_ROUTE',
+    })
 
     for (let i = 0; i < 12; i += 1) {
       graph.addNode(`u${i}`, { label: `Unrelated ${i}`, color: '#F59E0B', size: 6 })
@@ -530,7 +569,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
 
     for (let i = 0; i < 12; i += 1) {
       const out = reducers.nodeReducer?.(`u${i}`, graph.getNodeAttributes(`u${i}`)) ?? {}
-      expect(out.hidden, `node u${i} must be hidden from the foreground`).toBe(true)
+      expect(out.hidden).toBe(true)
     }
   })
 
@@ -543,7 +582,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
       const target = graph.target(edge)
       if (source === 'route' || target === 'route') return
       const out = reducers.edgeReducer?.(edge, graph.getEdgeAttributes(edge)) ?? {}
-      expect(out.hidden, `edge ${edge} must be hidden from the foreground`).toBe(true)
+      expect(out.hidden).toBe(true)
     })
   })
 
@@ -556,7 +595,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     expect(partition.foregroundEdges).toEqual(new Set(['route->create']))
     // every unrelated node/edge is in the background, ready for the ghost layer
     for (let i = 0; i < 12; i += 1) {
-      expect(partition.backgroundNodes.has(`u${i}`), `u${i} must be background`).toBe(true)
+      expect(partition.backgroundNodes.has(`u${i}`)).toBe(true)
     }
     expect(partition.backgroundEdges.size).toBe(12)
   })
@@ -565,11 +604,12 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     const graph = buildRouteGraph()
     const reducers = createSelectionFocusReducers('route', graph)
 
-    const related = reducers.edgeReducer?.('route->create', graph.getEdgeAttributes('route->create')) ?? {}
+    const related =
+      reducers.edgeReducer?.('route->create', graph.getEdgeAttributes('route->create')) ?? {}
     expect(related.hidden).toBe(false)
     expect(related.color).toBe('#059669') // keeps edge-type color, never white
     expect(related.labelColor).toBe('#059669') // label text matches the edge-type hue
-    // related edges always show their type label from graph interaction alone
+    // related edges show their type label when zoom density allows edge labels
     expect(related.label).toBe('HANDLES_ROUTE')
     expect(related.forceLabel).toBe(true)
     expect(related.zIndex).toBe(2)
@@ -624,8 +664,10 @@ describe('createSelectionFocusReducers edge label color', () => {
     })
 
     const reducers = createSelectionFocusReducers('center', graph)
-    const callsEdge = reducers.edgeReducer?.('center->a', graph.getEdgeAttributes('center->a')) ?? {}
-    const importsEdge = reducers.edgeReducer?.('center->b', graph.getEdgeAttributes('center->b')) ?? {}
+    const callsEdge =
+      reducers.edgeReducer?.('center->a', graph.getEdgeAttributes('center->a')) ?? {}
+    const importsEdge =
+      reducers.edgeReducer?.('center->b', graph.getEdgeAttributes('center->b')) ?? {}
 
     expect(callsEdge.labelColor).toBe(EDGE_COLORS.CALLS)
     expect(importsEdge.labelColor).toBe(EDGE_COLORS.IMPORTS)
@@ -634,20 +676,20 @@ describe('createSelectionFocusReducers edge label color', () => {
 })
 
 /**
- * Req A — focus node scale bounds. The selected node was ballooning under the old
+ * Req A â€” focus node scale bounds. The selected node was ballooning under the old
  * additive bump (+4). The fix uses MULTIPLICATIVE scaling kept inside the required
- * band: selected ~1.15x–1.25x, neighbors no more than ~1.05x. These guards fail if
+ * band: selected ~1.05x-1.1x, neighbors stay at original size. These guards fail if
  * anyone reintroduces an oversized additive bump.
  */
 describe('focus node size multipliers stay within the required band (Req A)', () => {
-  it('keeps the selected multiplier modest (1.15x–1.25x)', () => {
-    expect(SELECTED_NODE_SIZE_MULTIPLIER).toBeGreaterThanOrEqual(1.15)
-    expect(SELECTED_NODE_SIZE_MULTIPLIER).toBeLessThanOrEqual(1.25)
+  it('keeps the selected multiplier subtle (1.05x-1.1x)', () => {
+    expect(SELECTED_NODE_SIZE_MULTIPLIER).toBeGreaterThanOrEqual(1.05)
+    expect(SELECTED_NODE_SIZE_MULTIPLIER).toBeLessThanOrEqual(1.1)
   })
 
-  it('keeps direct neighbors at original size or barely above (<=1.05x)', () => {
+  it('keeps direct neighbors at original size', () => {
     expect(NEIGHBOR_NODE_SIZE_MULTIPLIER).toBeGreaterThanOrEqual(1)
-    expect(NEIGHBOR_NODE_SIZE_MULTIPLIER).toBeLessThanOrEqual(1.05)
+    expect(NEIGHBOR_NODE_SIZE_MULTIPLIER).toBe(1)
   })
 
   it('scales the rendered selected/neighbor sizes by the multipliers, not a large additive bump', () => {
@@ -665,14 +707,14 @@ describe('focus node size multipliers stay within the required band (Req A)', ()
 })
 
 /**
- * Req B — graph-interaction edge labels. Selecting (clicking) or hovering a graph
+ * Req B â€” graph-interaction edge labels. Selecting (clicking) or hovering a graph
  * node must reveal the edge-type label on every related 1-hop edge, coloured by
  * edge type, WITHOUT any Node Detail interaction. Unrelated edges stay hidden (no
  * label). This is driven purely by createSelectionFocusReducers, which both the
  * click (selected) and hover (hovered graph node) focus paths use.
  */
 describe('related edge labels appear from graph interaction alone (Req B)', () => {
-  it('marks every edge touching the focused node label-visible with an edge-type colour', () => {
+  it('marks every edge touching the focused node label-visible with an edge-type colour at edge density', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('center', { color: '#fff', size: 6 })
     graph.addNode('a', { color: '#fff', size: 6 })
@@ -709,8 +751,71 @@ describe('related edge labels appear from graph interaction alone (Req B)', () =
     const graph = buildGraph()
     const reducers = createSelectionFocusReducers('selected', graph)
 
-    const unrelated = reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 }) ?? {}
+    const unrelated =
+      reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 }) ?? {}
     expect(unrelated.hidden).toBe(true)
     expect(unrelated.forceLabel).toBeUndefined()
+  })
+})
+
+describe('createSelectionFocusReducers label density', () => {
+  it('minimal density keeps only the focused node label and hides neighbor/edge labels', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph, null, 'minimal')
+
+    expect(
+      reducers.nodeReducer?.('selected', { color: '#fff', label: 'Selected', size: 6 }),
+    ).toMatchObject({
+      label: 'Selected',
+      forceLabel: true,
+    })
+    expect(
+      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
+    ).toMatchObject({
+      label: '',
+      forceLabel: false,
+    })
+    expect(
+      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toMatchObject({
+      label: '',
+      forceLabel: false,
+    })
+  })
+
+  it('node density shows neighbor node labels before edge labels', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph, null, 'nodes')
+
+    expect(
+      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
+    ).toMatchObject({
+      label: 'Hop 1',
+      forceLabel: true,
+    })
+    expect(
+      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toMatchObject({
+      label: '',
+      forceLabel: false,
+    })
+  })
+
+  it('edge density shows related edge labels after node labels', () => {
+    const graph = buildGraph()
+    const reducers = createSelectionFocusReducers('selected', graph, null, 'edges')
+
+    expect(
+      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
+    ).toMatchObject({
+      label: 'Hop 1',
+      forceLabel: true,
+    })
+    expect(
+      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toMatchObject({
+      label: 'CALLS',
+      forceLabel: true,
+    })
   })
 })

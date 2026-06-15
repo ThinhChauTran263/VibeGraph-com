@@ -16,7 +16,14 @@ import FilterPanel from '@/components/panels/FilterPanel.vue'
 import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
-import { createFocusReducers, createSelectionFocusReducers, partitionFocusGraph, type HoveredRelation } from '@/lib/focusMode'
+import {
+  createFocusReducers,
+  createSelectionFocusReducers,
+  partitionFocusGraph,
+  resolveFocusLabelDensity,
+  type FocusLabelDensity,
+  type HoveredRelation,
+} from '@/lib/focusMode'
 import { useFilters } from '@/composables/useFilters'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphNode } from '@/types/graph'
@@ -47,6 +54,7 @@ const { focusDepth } = useFilters()
 const hoveredRelation = ref<HoveredRelation | null>(null)
 const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
+const labelDensity = ref<FocusLabelDensity>('nodes')
 
 function resetRelationFocus(): void {
   hoveredRelation.value = null
@@ -70,7 +78,13 @@ const {
   nodes,
 } = useGraphData()
 
-const { init: initSigma, graphInstance, setReducers, setEdgeLabelsVisible, setGhostPartition } = useSigma({
+const {
+  init: initSigma,
+  graphInstance,
+  setReducers,
+  setEdgeLabelsVisible,
+  setGhostPartition,
+} = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
@@ -90,11 +104,18 @@ const { init: initSigma, graphInstance, setReducers, setEdgeLabelsVisible, setGh
     emit('nodeSelected', null)
   },
   onNodeHover: (nodeId: string) => {
+    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value) return
     hoveredGraphNode.value = nodeId
     applyFocusReducers()
   },
   onNodeLeave: () => {
     hoveredGraphNode.value = null
+    applyFocusReducers()
+  },
+  onCameraRatioChange: (ratio: number) => {
+    const nextDensity = resolveFocusLabelDensity(ratio)
+    if (nextDensity === labelDensity.value) return
+    labelDensity.value = nextDensity
     applyFocusReducers()
   },
 })
@@ -143,9 +164,11 @@ function applyFocusReducers(): void {
 /** Focus the graph on a node (and optional single relation), revealing edge labels. */
 function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   if (!graphInstance.value) return
-  setReducers(createSelectionFocusReducers(nodeId, graphInstance.value, relation))
+  setReducers(
+    createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
+  )
   setGhostPartition?.(partitionFocusGraph(nodeId, graphInstance.value, relation))
-  setEdgeLabelsVisible?.(true)
+  setEdgeLabelsVisible?.(labelDensity.value === 'edges')
 }
 
 async function load(projectId: string) {
@@ -204,12 +227,9 @@ watch(
   },
 )
 
-watch(
-  [selectedNode, focusDepth],
-  () => {
-    applyFocusReducers()
-  },
-)
+watch([selectedNode, focusDepth], () => {
+  applyFocusReducers()
+})
 
 watch(
   filteredGraphData,
@@ -227,7 +247,10 @@ watch(
 </script>
 
 <template>
-  <div class="graph-canvas-wrapper" :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }">
+  <div
+    class="graph-canvas-wrapper"
+    :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }"
+  >
     <aside v-if="!loading && !error" class="graph-canvas__sidebar">
       <FocusDepthControl />
       <FilterPanel :graph-data="graphData" />
@@ -235,6 +258,22 @@ watch(
 
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
+
+      <div v-if="!loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
+        <div class="graph-controls-help__title">Controls</div>
+        <div class="graph-controls-help__row">
+          <span class="graph-controls-help__icon graph-controls-help__icon--primary">L</span>
+          <span><strong>Left Click</strong><small>Select / Drag</small></span>
+        </div>
+        <div class="graph-controls-help__row">
+          <span class="graph-controls-help__icon">R</span>
+          <span><strong>Right / Mid</strong><small>Pan Canvas</small></span>
+        </div>
+        <div class="graph-controls-help__row">
+          <span class="graph-controls-help__icon">S</span>
+          <span><strong>Scroll Wheel</strong><small>Zoom In / Out</small></span>
+        </div>
+      </div>
 
       <SearchBar
         v-if="!loading && !error"
@@ -388,6 +427,81 @@ watch(
   background: #2563eb;
 }
 
+.graph-controls-help {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 6;
+  width: 12.5rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #cbd5e1;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.graph-controls-help__title {
+  margin-bottom: 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.graph-controls-help__row {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.graph-controls-help__row + .graph-controls-help__row {
+  margin-top: 0.625rem;
+}
+
+.graph-controls-help__row strong,
+.graph-controls-help__row small {
+  display: block;
+  min-width: 0;
+}
+
+.graph-controls-help__row strong {
+  font-size: 0.8125rem;
+  line-height: 1.1;
+  color: #e5e7eb;
+}
+
+.graph-controls-help__row small {
+  margin-top: 0.125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.1;
+  color: #64748b;
+}
+
+.graph-controls-help__icon {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #c4b5fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.graph-controls-help__icon--primary {
+  color: #34d399;
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);

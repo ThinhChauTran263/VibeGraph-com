@@ -102,14 +102,14 @@ describe('dimColor', () => {
   it('never collapses a dimmed color to pure/near black', () => {
     for (const source of ['#F59E0B', '#3B82F6', '#EF4444', '#10B981', '#22C55E', '#93c5fd']) {
       const dimmed = dimColor(source, 0.86)
-      expect(isNearBlack(dimmed), `${source} dimmed to ${dimmed} must not be near-black`).toBe(false)
+      expect(isNearBlack(dimmed)).toBe(false)
     }
   })
 
   it('preserves some of the original hue (the dimmed ghost stays colored)', () => {
     for (const source of ['#F59E0B', '#3B82F6', '#EF4444', '#10B981', '#22C55E', '#93c5fd']) {
       const dimmed = dimColor(source, 0.86)
-      expect(preservesHue(dimmed), `${source} dimmed to ${dimmed} must keep some hue`).toBe(true)
+      expect(preservesHue(dimmed)).toBe(true)
     }
   })
 

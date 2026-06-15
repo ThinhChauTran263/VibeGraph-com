@@ -19,10 +19,12 @@ export interface UseSigmaOptions {
   onStageClick?: () => void
   onNodeHover?: (nodeId: string) => void
   onNodeLeave?: () => void
+  onCameraRatioChange?: (ratio: number) => void
 }
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave } = options
+  const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
+    options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
@@ -53,7 +55,7 @@ export function useSigma(options: UseSigmaOptions) {
       labelRenderedSizeThreshold: 8,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
-      labelSize: 13,
+      labelSize: 15,
       labelWeight: '600',
       // Edge labels render in their own edge-type color (per-edge `labelColor`
       // attribute set by graphAdapter / focus reducer), matching the Edge Types
@@ -91,6 +93,14 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     registerDragHandlers(sigma, graph)
+
+    if (onCameraRatioChange) {
+      const camera = sigma.getCamera()
+      onCameraRatioChange(camera.getState().ratio)
+      camera.on('updated', () => {
+        onCameraRatioChange(camera.getState().ratio)
+      })
+    }
 
     // Start ForceAtlas2 layout in a web worker
     startLayout(graph)
