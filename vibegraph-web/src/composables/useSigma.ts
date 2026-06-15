@@ -10,20 +10,25 @@ import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import { drawDefaultNodeLabel, drawHighlightNodeHover } from '@/lib/sigmaRenderers'
+import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
+import type { FocusPartition } from '@/lib/focusMode'
 
 export interface UseSigmaOptions {
   container: Ref<HTMLDivElement | null>
   onNodeClick?: (nodeId: string) => void
   onStageClick?: () => void
+  onNodeHover?: (nodeId: string) => void
+  onNodeLeave?: () => void
 }
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick, onStageClick } = options
+  const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave } = options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
+  const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
 
   // Node currently being dragged (null when idle). While set, the camera pan is
   // disabled and the layout worker is stopped so the node stays where dropped.
@@ -50,7 +55,11 @@ export function useSigma(options: UseSigmaOptions) {
       labelFont: 'Inter, system-ui, sans-serif',
       labelSize: 13,
       labelWeight: '600',
-      edgeLabelColor: { color: '#cbd5e1' },
+      // Edge labels render in their own edge-type color (per-edge `labelColor`
+      // attribute set by graphAdapter / focus reducer), matching the Edge Types
+      // legend. Sigma's edge label renderer draws text only (no white box). The
+      // `color` fallback applies when an edge has no labelColor attribute.
+      edgeLabelColor: { attribute: 'labelColor', color: '#cbd5e1' },
       edgeLabelSize: 11,
       // Override Sigma's default hover renderer (which paints a solid white
       // label box) and label renderer with text-only variants. See
@@ -60,6 +69,12 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
+
+    // Ghost background canvas: a Sigma-managed 2D canvas inserted physically below
+    // the WebGL edges layer. Unrelated nodes/edges are hidden in this Sigma during
+    // focus and redrawn here, so a background node can never cover a foreground
+    // edge. Shares Sigma's camera, so pan/zoom/drag stay aligned automatically.
+    ghostLayer.value = attachGhostLayer(sigma, graph)
 
     // Register node click handler
     if (onNodeClick) {
@@ -96,13 +111,17 @@ export function useSigma(options: UseSigmaOptions) {
       if (container.value) container.value.style.cursor = 'grabbing'
     })
 
-    // Hover affordance: show a grab cursor over a draggable node when idle.
-    sigma.on('enterNode', () => {
+    // Hover affordance: show a grab cursor over a draggable node when idle, and
+    // notify the host so it can drive a temporary hover focus on the graph. We do
+    // NOT emit hover focus mid-drag (the node is being moved, not inspected).
+    sigma.on('enterNode', ({ node }) => {
       if (!draggedNode.value && container.value) container.value.style.cursor = 'grab'
+      if (!draggedNode.value) onNodeHover?.(node)
     })
 
     sigma.on('leaveNode', () => {
       if (!draggedNode.value && container.value) container.value.style.cursor = ''
+      if (!draggedNode.value) onNodeLeave?.()
     })
 
     const mouseCaptor = sigma.getMouseCaptor()
@@ -176,11 +195,23 @@ export function useSigma(options: UseSigmaOptions) {
    */
   function dispose() {
     stopLayout()
+    if (ghostLayer.value) {
+      ghostLayer.value.destroy()
+      ghostLayer.value = null
+    }
     if (sigmaInstance.value) {
       sigmaInstance.value.kill()
       sigmaInstance.value = null
     }
     graphInstance.value = null
+  }
+
+  /**
+   * Feed the ghost background layer the focus partition (unrelated nodes/edges to
+   * draw below the foreground). Pass null to clear the ghost layer in normal mode.
+   */
+  function setGhostPartition(partition: FocusPartition | null): void {
+    ghostLayer.value?.setPartition(partition)
   }
 
   function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
@@ -230,5 +261,6 @@ export function useSigma(options: UseSigmaOptions) {
     stopLayout,
     setReducers,
     setEdgeLabelsVisible,
+    setGhostPartition,
   }
 }

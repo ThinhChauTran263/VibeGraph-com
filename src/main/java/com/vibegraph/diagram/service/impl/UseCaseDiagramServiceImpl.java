@@ -25,7 +25,7 @@ import lombok.extern.slf4j.Slf4j;
  * {@inheritDoc}
  *
  * <p>Reads the project graph through {@link GraphService#getFullGraph(String)}
- * (no direct Neo4j access) and derives the use case diagram from Route nodes
+ * (no direct Neo4j access) and derives the use case diagram from APIEndpoint/Route nodes
  * and {@code HANDLES_ROUTE} edges.
  */
 @Service
@@ -34,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UseCaseDiagramServiceImpl implements UseCaseDiagramService {
 
     private static final String ROUTE_NODE_TYPE = "Route";
+    private static final String API_ENDPOINT_NODE_TYPE = "APIEndpoint";
     private static final String HANDLES_ROUTE_EDGE = "HANDLES_ROUTE";
     private static final String ACTOR_HTTP_CLIENT = "HTTP Client";
     private static final String NL = "\n";
@@ -72,18 +73,18 @@ public class UseCaseDiagramServiceImpl implements UseCaseDiagramService {
             useCasesByRoute.putIfAbsent(routeId, routeLabel(nodesById.get(routeId), routeId));
         }
 
-        // 2) Orphan Route nodes with no HANDLES_ROUTE edge — still represent a
+        // 2) Orphan APIEndpoint/Route nodes with no HANDLES_ROUTE edge - still represent a
         //    reachable endpoint, so include them rather than silently dropping.
         for (NodeDto node : nodes) {
-            if (node == null || !ROUTE_NODE_TYPE.equals(node.getType()) || node.getId() == null) {
+            if (node == null || !isRouteNode(node) || node.getId() == null) {
                 continue;
             }
             useCasesByRoute.putIfAbsent(node.getId(), routeLabel(node, node.getId()));
         }
 
         // NOTE: job/listener actors (@Scheduled, @KafkaListener, @EventListener)
-        // are not yet represented in the graph data model — the parser only emits
-        // Route nodes + HANDLES_ROUTE edges. They are skipped here until that data
+        // are not yet represented in the graph data model - the parser only emits
+        // APIEndpoint/Route nodes + HANDLES_ROUTE edges. They are skipped here until that data
         // exists (see T39 note in the sprint doc).
 
         List<String> useCaseLabels = new ArrayList<>(useCasesByRoute.values());
@@ -96,6 +97,10 @@ public class UseCaseDiagramServiceImpl implements UseCaseDiagramService {
                 .useCases(useCaseLabels)
                 .mermaidSyntax(syntax)
                 .build();
+    }
+
+    private boolean isRouteNode(NodeDto node) {
+        return ROUTE_NODE_TYPE.equals(node.getType()) || API_ENDPOINT_NODE_TYPE.equals(node.getType());
     }
 
     private String routeLabel(NodeDto routeNode, String fallback) {

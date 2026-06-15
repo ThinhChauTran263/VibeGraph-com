@@ -17,7 +17,11 @@ class GraphSchemaTest {
         @DisplayName("accepts known labels including the External stub")
         void acceptsKnownLabels() {
             assertThat(GraphSchema.nodeLabel("Class")).isEqualTo("Class");
+            assertThat(GraphSchema.nodeLabel("Record")).isEqualTo("Record");
+            assertThat(GraphSchema.nodeLabel("DBModel")).isEqualTo("DBModel");
+            assertThat(GraphSchema.nodeLabel("Constructor")).isEqualTo("Constructor");
             assertThat(GraphSchema.nodeLabel("Route")).isEqualTo("Route");
+            assertThat(GraphSchema.nodeLabel("APIEndpoint")).isEqualTo("APIEndpoint");
             assertThat(GraphSchema.nodeLabel("External")).isEqualTo("External");
         }
 

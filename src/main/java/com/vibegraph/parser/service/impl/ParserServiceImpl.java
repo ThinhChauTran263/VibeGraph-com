@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -38,7 +40,7 @@ public class ParserServiceImpl implements ParserService {
 
     @Override
     public ParseResult parseFile(Path filePath) {
-        // Single-file parsing without project context — limited symbol resolution
+        // Single-file parsing without project context - limited symbol resolution
         return parseFileInternal(filePath, null);
     }
 
@@ -88,7 +90,7 @@ public class ParserServiceImpl implements ParserService {
             fieldVisitor.visit(cu, null);
             springVisitor.visit(cu, null);
 
-            // ImportVisitor needs the source file's full name — use primary class FQCN
+            // ImportVisitor needs the source file's full name - use primary class FQCN
             String primaryFqcn = cu.getPrimaryTypeName().orElse("");
             String packageName = cu.getPackageDeclaration()
                     .map(p -> p.getNameAsString())
@@ -102,15 +104,18 @@ public class ParserServiceImpl implements ParserService {
 
             // Aggregate nodes
             List<NodeData> nodes = new ArrayList<>();
+            NodeData fileNode = fileNode(filePath);
+            nodes.add(fileNode);
             nodes.addAll(classVisitor.getExtractedNodes());
             nodes.addAll(methodVisitor.getExtractedMethods());
             nodes.addAll(fieldVisitor.getExtractedFields());
-            // Route nodes must be aggregated too — otherwise HANDLES_ROUTE edges below
+            // Route nodes must be aggregated too - otherwise HANDLES_ROUTE edges below
             // reference a target node that was never persisted and get silently dropped.
             nodes.addAll(springVisitor.getExtractedNodes());
 
             // Aggregate edges
             List<EdgeData> edges = new ArrayList<>();
+            edges.addAll(fileDefinesEdges(fileNode, nodes));
             edges.addAll(classVisitor.getExtractedEdges());
             edges.addAll(methodVisitor.getExtractedEdges());
             edges.addAll(fieldVisitor.getExtractedEdges());
@@ -132,6 +137,39 @@ public class ParserServiceImpl implements ParserService {
                     .filePath(filePath.toString())
                     .warnings(List.of("IOException parsing file: " + e.getMessage()))
                     .build();
+        }
+    }
+
+    private NodeData fileNode(Path filePath) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("extension", ".java");
+        return NodeData.of(
+                "File",
+                filePath.getFileName().toString(),
+                filePath.toString(),
+                filePath.toString(),
+                1,
+                lineCount(filePath),
+                properties
+        );
+    }
+
+    private List<EdgeData> fileDefinesEdges(NodeData fileNode, List<NodeData> nodes) {
+        return nodes.stream()
+                .filter(node -> !"File".equals(node.type()))
+                .filter(node -> fileNode.filePath().equals(node.filePath()))
+                .map(node -> EdgeData.of("DEFINES", fileNode.fullName(), node.fullName(), Map.of(
+                        "lineNumber", node.lineNumber()
+                )))
+                .toList();
+    }
+
+    private int lineCount(Path filePath) {
+        try (var lines = Files.lines(filePath, java.nio.charset.StandardCharsets.UTF_8)) {
+            long count = lines.count();
+            return count > Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.toIntExact(count);
+        } catch (IOException e) {
+            return 0;
         }
     }
 
@@ -170,7 +208,7 @@ public class ParserServiceImpl implements ParserService {
     @Override
     public ParseResult parseFileWithCache(Path filePath, String projectId) {
         // Cache-based incremental parsing deferred to Sprint 2
-        throw new UnsupportedOperationException("Not implemented yet — deferred to Sprint 2");
+        throw new UnsupportedOperationException("Not implemented yet - deferred to Sprint 2");
     }
 
     private JavaParser createParser(Path sourceRoot) {
@@ -196,7 +234,7 @@ public class ParserServiceImpl implements ParserService {
 
     /**
      * Builds a parser whose type solver indexes every source root in the project.
-     * This is what enables cross-class CALLS edges to resolve — without it,
+     * This is what enables cross-class CALLS edges to resolve - without it,
      * the type solver can only see types in the same directory as the file being parsed.
      *
      * Detection strategy:
@@ -250,7 +288,7 @@ public class ParserServiceImpl implements ParserService {
         // Strategy 2: derive from package declarations (covers non-standard layouts).
         // For a file at /a/b/c/com/example/Foo.java with `package com.example;`,
         // the source root is /a/b/c.
-        // We do a quick read of the package line — cheap, no full parse.
+        // We do a quick read of the package line - cheap, no full parse.
         for (Path javaFile : javaFiles) {
             Path derived = deriveSourceRoot(javaFile);
             if (derived != null) {
@@ -265,7 +303,7 @@ public class ParserServiceImpl implements ParserService {
         try {
             String pkg = readPackageDeclaration(javaFile);
             if (pkg == null || pkg.isBlank()) {
-                // Default-package file — its parent directory is the source root.
+                // Default-package file - its parent directory is the source root.
                 return javaFile.getParent();
             }
             // Strip package segments from the file's parent path.
@@ -273,7 +311,7 @@ public class ParserServiceImpl implements ParserService {
             String[] segments = pkg.split("\\.");
             for (int i = segments.length - 1; i >= 0 && dir != null; i--) {
                 if (!dir.getFileName().toString().equals(segments[i])) {
-                    return null; // Path doesn't match package — skip.
+                    return null; // Path doesn't match package - skip.
                 }
                 dir = dir.getParent();
             }
@@ -293,7 +331,7 @@ public class ParserServiceImpl implements ParserService {
                     .map(l -> l.substring("package ".length()).replaceAll(";.*", "").trim())
                     .orElse(null);
         } catch (java.nio.charset.MalformedInputException e) {
-            // Some files may use non-UTF-8 encoding — skip silently.
+            // Some files may use non-UTF-8 encoding - skip silently.
             return null;
         }
     }

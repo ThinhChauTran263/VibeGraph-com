@@ -13,7 +13,7 @@ import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
 /**
- * Tests for SpringAnnotationVisitor — detects Spring annotations, produces Route nodes,
+ * Tests for SpringAnnotationVisitor - detects Spring annotations, produces APIEndpoint nodes,
  * HANDLES_ROUTE edges, and INJECTS edges.
  *
  * Run: mvn test -Dtest=SpringAnnotationVisitorTest
@@ -33,7 +33,7 @@ class SpringAnnotationVisitorTest {
     class RouteExtraction {
 
         @Test
-        @DisplayName("@GetMapping should produce a Route node AND a HANDLES_ROUTE edge to it")
+        @DisplayName("@GetMapping should produce an APIEndpoint node AND a HANDLES_ROUTE edge to it")
         void getMappingProducesRouteNodeAndEdge() {
             SpringAnnotationVisitor visitor = visit("""
                 package com.example;
@@ -52,11 +52,11 @@ class SpringAnnotationVisitorTest {
             List<NodeData> nodes = visitor.getExtractedNodes();
             List<EdgeData> edges = visitor.getExtractedEdges();
 
-            // The route node must exist...
+            // The API endpoint node must exist...
             NodeData route = nodes.stream()
-                    .filter(n -> n.type().equals("Route"))
+                    .filter(n -> n.type().equals("APIEndpoint"))
                     .findFirst()
-                    .orElseThrow(() -> new AssertionError("No Route node extracted"));
+                    .orElseThrow(() -> new AssertionError("No APIEndpoint node extracted"));
             assertThat(route.fullName()).isEqualTo("GET /api/users/{id}");
             assertThat(route.properties()).containsEntry("httpMethod", "GET");
             assertThat(route.properties()).containsEntry("routePath", "/api/users/{id}");
@@ -88,14 +88,14 @@ class SpringAnnotationVisitorTest {
                 """);
 
             NodeData route = visitor.getExtractedNodes().stream()
-                    .filter(n -> n.type().equals("Route"))
+                    .filter(n -> n.type().equals("APIEndpoint"))
                     .findFirst()
                     .orElseThrow();
             assertThat(route.fullName()).isEqualTo("POST /api/orders");
         }
 
         @Test
-        @DisplayName("non-mapping methods produce no Route node")
+        @DisplayName("non-mapping methods produce no APIEndpoint node")
         void noRouteForPlainMethod() {
             SpringAnnotationVisitor visitor = visit("""
                 package com.example;
@@ -105,7 +105,7 @@ class SpringAnnotationVisitorTest {
                 """);
 
             assertThat(visitor.getExtractedNodes())
-                    .noneMatch(n -> n.type().equals("Route"));
+                    .noneMatch(n -> n.type().equals("APIEndpoint"));
             assertThat(visitor.getExtractedEdges())
                     .noneMatch(e -> e.type().equals("HANDLES_ROUTE"));
         }

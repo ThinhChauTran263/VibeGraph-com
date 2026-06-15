@@ -16,7 +16,8 @@ class GraphTypeEnumTest {
         assertThat(Arrays.stream(NodeTypeEnum.values()).map(NodeTypeEnum::label))
                 .containsExactly(
                         "Project", "Package", "File", "Class", "Interface", "Enum",
-                        "Method", "Field", "Annotation", "Route", "External")
+                        "Record", "DBModel", "Method", "Constructor", "Field", "Annotation",
+                        "Route", "APIEndpoint", "External")
                 .doesNotHaveDuplicates();
     }
 

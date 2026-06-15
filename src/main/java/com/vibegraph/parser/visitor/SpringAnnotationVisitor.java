@@ -20,7 +20,7 @@ import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
 /**
- * Detects Spring Boot annotations and produces Route nodes + HANDLES_ROUTE / INJECTS edges.
+ * Detects Spring Boot annotations and produces APIEndpoint nodes + HANDLES_ROUTE / INJECTS edges.
  */
 public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
 
@@ -73,12 +73,12 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
                     routeProps.put("httpMethod", httpMethod);
                     // Property name must match the route_unique constraint key
                     // (projectId, httpMethod, routePath) in V1__init_schema.cypher.
-                    // Using "path" here left routePath null on every Route node,
+                    // Using "path" here left routePath null on every APIEndpoint node,
                     // which silently disabled the uniqueness constraint.
                     routeProps.put("routePath", path);
 
                     extractedNodes.add(NodeData.of(
-                            "Route", routeId, routeId, "",
+                            "APIEndpoint", routeId, routeId, "",
                             method.getBegin().map(p -> p.line).orElse(0),
                             method.getEnd().map(p -> p.line).orElse(0),
                             routeProps));
