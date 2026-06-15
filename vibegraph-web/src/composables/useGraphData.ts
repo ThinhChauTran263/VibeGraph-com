@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { useGraphStore } from '@/stores/graph'
 import { fetchFullGraph } from '@/lib/api'
 import { apiToGraphology } from '@/lib/graphAdapter'
+import { sanitizeAllowedEdgeTypes } from '@/lib/graphFilters'
 import { useFilters } from '@/composables/useFilters'
 import type Graph from 'graphology'
 import type { GraphData, GraphNode } from '@/types/graph'
@@ -34,7 +35,7 @@ export function useGraphData() {
     store.error = null
 
     try {
-      const data = await fetchFullGraph(projectId)
+      const data = sanitizeAllowedEdgeTypes(await fetchFullGraph(projectId))
       store.graphData = data
       return apiToGraphology(filters.applyFilters(data))
     } catch (err) {

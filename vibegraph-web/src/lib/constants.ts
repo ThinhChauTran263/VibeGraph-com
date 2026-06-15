@@ -45,6 +45,21 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   ANNOTATED_BY: '#F59E0B', // amber
 }
 
+// Edge types shown in the graph and the Edge Types legend. The backend extracts
+// many more low-level relationship types (PARAMETER_TYPE, RETURNS, HAS_FIELD,
+// TYPE_OF, INJECTS, ...) that add noise to the view. The UI is restricted to this
+// curated structural set; every other type is dropped at the data boundary (see
+// sanitizeAllowedEdgeTypes in graphFilters.ts).
+export const ALLOWED_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'DEFINES',
+  'HAS_METHOD',
+  'CALLS',
+  'IMPORTS',
+  'HANDLES_ROUTE',
+  'IMPLEMENTS',
+  'EXTENDS',
+])
+
 // Default node sizes
 export const NODE_SIZES = {
   default: 5,

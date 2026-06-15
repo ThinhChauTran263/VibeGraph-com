@@ -312,7 +312,11 @@ watch(
   display: grid;
   grid-template-columns: 18rem 1fr;
   width: 100%;
-  height: 100%;
+  /* Fill the remaining height of the 100vh flex column in GraphView instead of
+     forcing 100% (which resolves to the full viewport and overflows past it by
+     the height of the tab bar, pushing the bottom-left controls box off-screen). */
+  flex: 1 1 0;
+  min-height: 0;
   background: #0f172a;
 }
 

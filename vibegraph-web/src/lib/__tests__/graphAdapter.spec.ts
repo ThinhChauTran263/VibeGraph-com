@@ -71,9 +71,11 @@ describe('apiToGraphology', () => {
     expect(graph.size).toBe(1)
   })
 
-  it('keeps parallel edges of the same type by suffixing duplicate keys', () => {
+  it('collapses every relationship between a pair of nodes to a single edge', () => {
     const data = baseData()
-    // Two PARAMETER_TYPE edges between the same pair collapse to one deterministic key.
+    // The base data already has UserController -> UserService (INJECTS). Adding
+    // PARAMETER_TYPE edges on the same pair must NOT create extra lines: two nodes
+    // are connected by exactly one edge on the canvas.
     const dup = {
       id: 'com.example.UserController|PARAMETER_TYPE|com.example.UserService',
       source: 'com.example.UserController',
@@ -82,8 +84,32 @@ describe('apiToGraphology', () => {
     }
     data.edges.push({ ...dup }, { ...dup })
     const graph = apiToGraphology(data)
-    // 1 INJECTS + 2 PARAMETER_TYPE (one suffixed) = 3 edges retained, none lost.
-    expect(graph.size).toBe(3)
+    // Only one edge for the pair.
+    expect(graph.size).toBe(1)
+  })
+
+  it('keeps the highest-priority relationship type when a pair has several', () => {
+    const data = baseData()
+    // Same pair as the base INJECTS edge, plus IMPORTS and EXTENDS. EXTENDS has the
+    // highest structural priority, so it defines the single rendered line.
+    data.edges.push(
+      {
+        id: 'com.example.UserController|IMPORTS|com.example.UserService',
+        source: 'com.example.UserController',
+        target: 'com.example.UserService',
+        type: 'IMPORTS' as const,
+      },
+      {
+        id: 'com.example.UserController|EXTENDS|com.example.UserService',
+        source: 'com.example.UserController',
+        target: 'com.example.UserService',
+        type: 'EXTENDS' as const,
+      },
+    )
+    const graph = apiToGraphology(data)
+    expect(graph.size).toBe(1)
+    const edgeId = graph.edges()[0]
+    expect(graph.getEdgeAttribute(edgeId, 'edgeType')).toBe('EXTENDS')
   })
 
   it('maps extended node types to explicit colors and sizes', () => {

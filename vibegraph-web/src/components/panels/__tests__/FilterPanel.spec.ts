@@ -7,6 +7,26 @@ import type { EdgeType, GraphData, NodeType } from '@/types/graph'
 const hiddenNodeTypes = ref<Set<NodeType>>(new Set())
 const hiddenEdgeTypes = ref<Set<EdgeType>>(new Set())
 
+const nextIsolate = <T>(hidden: Set<T>, type: T, available: readonly T[]): Set<T> => {
+  const all = new Set<T>(available)
+  all.add(type)
+  const visibleCount = [...all].reduce((count, t) => count + (hidden.has(t) ? 0 : 1), 0)
+  if (visibleCount === all.size) {
+    const next = new Set<T>(all)
+    next.delete(type)
+    return next
+  }
+  if (hidden.has(type)) {
+    const next = new Set<T>(hidden)
+    next.delete(type)
+    return next
+  }
+  if (visibleCount === 1) return new Set<T>()
+  const next = new Set<T>(hidden)
+  next.add(type)
+  return next
+}
+
 vi.mock('@/stores/filter', () => ({
   useFilterStore: () => ({
     hiddenNodeTypes: hiddenNodeTypes.value,
@@ -14,17 +34,11 @@ vi.mock('@/stores/filter', () => ({
     hasActiveFilters: computed(() => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0),
     focusDepth: -1,
     searchQuery: '',
-    toggleNodeType: (type: NodeType) => {
-      const next = new Set(hiddenNodeTypes.value)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      hiddenNodeTypes.value = next
+    toggleNodeType: (type: NodeType, available: readonly NodeType[] = []) => {
+      hiddenNodeTypes.value = nextIsolate(hiddenNodeTypes.value, type, available)
     },
-    toggleEdgeType: (type: EdgeType) => {
-      const next = new Set(hiddenEdgeTypes.value)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      hiddenEdgeTypes.value = next
+    toggleEdgeType: (type: EdgeType, available: readonly EdgeType[] = []) => {
+      hiddenEdgeTypes.value = nextIsolate(hiddenEdgeTypes.value, type, available)
     },
     showAllNodeTypes: () => {
       hiddenNodeTypes.value = new Set()
@@ -61,14 +75,38 @@ describe('FilterPanel', () => {
     expect(wrapper.text()).toContain('3')
   })
 
-  it('toggles node and edge types in the filter store', async () => {
+  it('isolates a clicked type and restores when re-clicked alone', async () => {
     const wrapper = mount(FilterPanel, { props: { graphData } })
 
-    await wrapper.findAll('button').find((button) => button.text().includes('Method'))!.trigger('click')
-    await wrapper.findAll('button').find((button) => button.text().includes('CALLS'))!.trigger('click')
+    const clickType = async (label: string) =>
+      wrapper.findAll('button').find((button) => button.text().includes(label))!.trigger('click')
 
-    expect(hiddenNodeTypes.value.has('Method')).toBe(true)
-    expect(hiddenEdgeTypes.value.has('CALLS')).toBe(true)
+    // First click isolates Method: every OTHER node type is hidden, Method stays.
+    await clickType('Method')
+    expect(hiddenNodeTypes.value.has('Method')).toBe(false)
+    expect(hiddenNodeTypes.value.has('Class')).toBe(true)
+
+    // Clicking the sole visible type again restores all node types.
+    await clickType('Method')
+    expect(hiddenNodeTypes.value.size).toBe(0)
+
+    // Edge types behave the same way.
+    await clickType('CALLS')
+    expect(hiddenEdgeTypes.value.has('CALLS')).toBe(false)
+    expect(hiddenEdgeTypes.value.has('HAS_METHOD')).toBe(true)
+  })
+
+  it('keeps earlier types open when adding more during isolation', async () => {
+    const wrapper = mount(FilterPanel, { props: { graphData } })
+
+    const clickType = async (label: string) =>
+      wrapper.findAll('button').find((button) => button.text().includes(label))!.trigger('click')
+
+    // Isolate Method, then add Class back: both visible, nothing hidden.
+    await clickType('Method')
+    await clickType('Class')
+    expect(hiddenNodeTypes.value.has('Method')).toBe(false)
+    expect(hiddenNodeTypes.value.has('Class')).toBe(false)
   })
 
   it('resets active filters', async () => {

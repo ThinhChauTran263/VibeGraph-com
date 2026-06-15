@@ -15,8 +15,9 @@ import { HIGHLIGHT_LABEL_COLOR } from './constants'
 
 type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>
 
-const LABEL_GAP = 3
-const FILE_LABEL_SIZE_BONUS = 4
+// Gap between the bottom of the node disc and the top of the label text.
+const LABEL_GAP = 4
+const FILE_LABEL_SIZE_BONUS = 2
 // Soft halo ring around the focused node: a thin, semi-transparent white stroke
 // with a gentle outward glow instead of a hard 2px opaque outline. Reads as a
 // soft spotlight rather than a technical selection marker.
@@ -52,12 +53,20 @@ export function drawTextOnlyNodeLabel(
   context.shadowBlur = 4
   context.shadowColor = 'rgba(0, 0, 0, 0.85)'
 
+  // Center the label horizontally and place it BELOW the node disc (instead of
+  // to the right), so the name reads cleanly under each node and never overlaps
+  // the node or its edges.
+  context.textAlign = 'center'
+  context.textBaseline = 'top'
   context.fillStyle = color
-  context.fillText(data.label, data.x + data.size + LABEL_GAP, data.y + size / 3)
+  context.fillText(data.label, data.x, data.y + data.size + LABEL_GAP)
 
-  // Reset shadow so we never leak it onto subsequently drawn elements.
+  // Reset shadow + text alignment so we never leak them onto subsequently drawn
+  // elements (Sigma reuses the same canvas context for every item).
   context.shadowBlur = 0
   context.shadowColor = 'transparent'
+  context.textAlign = 'left'
+  context.textBaseline = 'alphabetic'
 }
 
 /**

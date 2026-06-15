@@ -22,6 +22,29 @@ export interface UseSigmaOptions {
   onCameraRatioChange?: (ratio: number) => void
 }
 
+// Base label sizes at the default (ratio = 1) zoom. Labels are scaled inversely
+// with the camera ratio so they GROW as the user zooms in and shrink as they zoom
+// out, matching the node sizes (which Sigma already scales with zoom). Without
+// this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
+// while its label stays tiny.
+const BASE_NODE_LABEL_SIZE = 12
+const BASE_EDGE_LABEL_SIZE = 7
+// Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
+// oversized, while still capping growth when zoomed IN.
+const MIN_LABEL_ZOOM_SCALE = 0.5
+const MAX_LABEL_ZOOM_SCALE = 2.2
+
+function clampLabelScale(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1
+  return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_LABEL_ZOOM_SCALE)
+}
+
+function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
+  const scale = clampLabelScale(ratio)
+  sigma.setSetting('labelSize', Math.round(BASE_NODE_LABEL_SIZE * scale * 100) / 100)
+  sigma.setSetting('edgeLabelSize', Math.round(BASE_EDGE_LABEL_SIZE * scale * 100) / 100)
+}
+
 export function useSigma(options: UseSigmaOptions) {
   const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
     options
@@ -35,6 +58,13 @@ export function useSigma(options: UseSigmaOptions) {
   // Node currently being dragged (null when idle). While set, the camera pan is
   // disabled and the layout worker is stopped so the node stays where dropped.
   const draggedNode = shallowRef<string | null>(null)
+
+  // True once the pointer actually MOVED while holding a node. Sigma still fires
+  // `clickNode` on the mouse-up that ends a drag, which would wrongly select the
+  // node the user was just repositioning. We use this flag to swallow exactly
+  // that one click. A plain click (no movement) never sets it, so selecting by
+  // clicking still works.
+  const dragMoved = shallowRef(false)
 
   /**
    * Initialize Sigma with a Graphology graph.
@@ -55,14 +85,14 @@ export function useSigma(options: UseSigmaOptions) {
       labelRenderedSizeThreshold: 8,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
-      labelSize: 15,
+      labelSize: BASE_NODE_LABEL_SIZE,
       labelWeight: '600',
       // Edge labels render in their own edge-type color (per-edge `labelColor`
       // attribute set by graphAdapter / focus reducer), matching the Edge Types
       // legend. Sigma's edge label renderer draws text only (no white box). The
       // `color` fallback applies when an edge has no labelColor attribute.
       edgeLabelColor: { attribute: 'labelColor', color: '#cbd5e1' },
-      edgeLabelSize: 11,
+      edgeLabelSize: BASE_EDGE_LABEL_SIZE,
       // Override Sigma's default hover renderer (which paints a solid white
       // label box) and label renderer with text-only variants. See
       // lib/sigmaRenderers.ts.
@@ -81,6 +111,12 @@ export function useSigma(options: UseSigmaOptions) {
     // Register node click handler
     if (onNodeClick) {
       sigma.on('clickNode', ({ node }) => {
+        // Swallow the click that ends a drag so repositioning a node does not
+        // also select / highlight it. See `dragMoved`.
+        if (dragMoved.value) {
+          dragMoved.value = false
+          return
+        }
         onNodeClick(node)
       })
     }
@@ -94,13 +130,17 @@ export function useSigma(options: UseSigmaOptions) {
 
     registerDragHandlers(sigma, graph)
 
-    if (onCameraRatioChange) {
-      const camera = sigma.getCamera()
-      onCameraRatioChange(camera.getState().ratio)
-      camera.on('updated', () => {
-        onCameraRatioChange(camera.getState().ratio)
-      })
-    }
+    const camera = sigma.getCamera()
+    let lastRatio = camera.getState().ratio
+    applyZoomResponsiveLabelSize(sigma, lastRatio)
+    onCameraRatioChange?.(lastRatio)
+    camera.on('updated', () => {
+      const ratio = camera.getState().ratio
+      if (ratio === lastRatio) return
+      lastRatio = ratio
+      applyZoomResponsiveLabelSize(sigma, ratio)
+      onCameraRatioChange?.(ratio)
+    })
 
     // Start ForceAtlas2 layout in a web worker
     startLayout(graph)
@@ -116,6 +156,7 @@ export function useSigma(options: UseSigmaOptions) {
   function registerDragHandlers(sigma: Sigma, graph: Graph) {
     sigma.on('downNode', ({ node }) => {
       draggedNode.value = node
+      dragMoved.value = false
       stopLayout()
       sigma.setSetting('enableCameraPanning', false)
       if (container.value) container.value.style.cursor = 'grabbing'
@@ -139,6 +180,10 @@ export function useSigma(options: UseSigmaOptions) {
     mouseCaptor.on('mousemovebody', (event) => {
       const node = draggedNode.value
       if (!node) return
+
+      // The pointer moved while holding the node: this is a real drag, so the
+      // click that ends it must not select the node.
+      dragMoved.value = true
 
       const pos = sigma.viewportToGraph(event)
       graph.setNodeAttribute(node, 'x', pos.x)
