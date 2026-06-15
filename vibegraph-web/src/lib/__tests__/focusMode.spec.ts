@@ -163,8 +163,7 @@ describe('createSelectionFocusReducers', () => {
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      label: undefined,
-      forceLabel: true,
+      forceLabel: false,
       size: 6,
       zIndex: 2,
     })
@@ -759,63 +758,38 @@ describe('related edge labels appear from graph interaction alone (Req B)', () =
 })
 
 describe('createSelectionFocusReducers label density', () => {
-  it('minimal density keeps only the focused node label and hides neighbor/edge labels', () => {
+  it('always forces the selected node label and never forces neighbor labels (neighbors reveal by zoom)', () => {
     const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'minimal')
 
-    expect(
-      reducers.nodeReducer?.('selected', { color: '#fff', label: 'Selected', size: 6 }),
-    ).toMatchObject({
-      label: 'Selected',
-      forceLabel: true,
-    })
-    expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
+    for (const density of ['minimal', 'nodes', 'edges'] as const) {
+      const reducers = createSelectionFocusReducers('selected', graph, null, density)
+
+      // Selected node label is always forced, regardless of zoom density.
+      expect(
+        reducers.nodeReducer?.('selected', { color: '#fff', label: 'Selected', size: 6 }),
+      ).toMatchObject({ label: 'Selected', forceLabel: true })
+
+      // Neighbor keeps its label text but is NEVER force-shown: Sigma's size
+      // threshold reveals it only when zoomed in enough (progressive reveal).
+      expect(
+        reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
+      ).toMatchObject({ label: 'Hop 1', forceLabel: false })
+    }
   })
 
-  it('node density shows neighbor node labels before edge labels', () => {
+  it('only shows related edge labels at the most zoomed-in (edges) density', () => {
     const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'nodes')
 
-    expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: 'Hop 1',
-      forceLabel: true,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
-  })
+    for (const density of ['minimal', 'nodes'] as const) {
+      const reducers = createSelectionFocusReducers('selected', graph, null, density)
+      expect(
+        reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+      ).toMatchObject({ label: '', forceLabel: false })
+    }
 
-  it('edge density shows related edge labels after node labels', () => {
-    const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'edges')
-
+    const edgeReducers = createSelectionFocusReducers('selected', graph, null, 'edges')
     expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: 'Hop 1',
-      forceLabel: true,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: 'CALLS',
-      forceLabel: true,
-    })
+      edgeReducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toMatchObject({ label: 'CALLS', forceLabel: true })
   })
 })

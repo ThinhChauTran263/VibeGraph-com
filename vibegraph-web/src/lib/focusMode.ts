@@ -398,15 +398,16 @@ export function createSelectionFocusReducers(
         }
       }
 
-      // Direct neighbor (only reachable when no hover is active). Readable and
-      // layered above the ghost background, but we do NOT force its label so the
-      // view never floods with labels at once.
-      const showNeighborLabel = labelDensity === 'nodes' || labelDensity === 'edges'
+      // Direct neighbor (only reachable when no hover is active). Keep its label
+      // text but DO NOT force it: Sigma reveals it via labelRenderedSizeThreshold
+      // only once the node is big enough on screen (i.e. zoomed in enough). This
+      // drives the progressive reveal — when zoomed out there isn't room, so only
+      // the (forced) selected node label shows; neighbor names appear as you zoom
+      // in, before edge labels.
       return {
         ...attributes,
         hidden: false,
-        label: showNeighborLabel ? attributes.label : '',
-        forceLabel: showNeighborLabel,
+        forceLabel: false,
         size: scaleNodeSize(attributes.size, NEIGHBOR_NODE_SIZE_MULTIPLIER),
         zIndex: Z_NEIGHBOR,
       }
