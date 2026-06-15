@@ -10,12 +10,16 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Package: '#8B5CF6',      // purple
   File: '#EF4444',         // red
   Class: '#F59E0B',        // amber
+  DBModel: '#D6D35F',      // muted yellow - persistence/domain model
   Interface: '#22C55E',    // green
   Enum: '#A855F7',         // violet
+  Record: '#D97706',       // orange-brown - Java record
   Method: '#3B82F6',       // blue
+  Constructor: '#06B6D4',  // cyan - constructor member
   Field: '#06B6D4',        // cyan
   Annotation: '#F97316',   // orange
   Route: '#10B981',        // emerald
+  APIEndpoint: '#22C55E',  // green - HTTP endpoint
   External: '#94A3B8',     // slate-400 - library/JDK or unresolved stub
 }
 

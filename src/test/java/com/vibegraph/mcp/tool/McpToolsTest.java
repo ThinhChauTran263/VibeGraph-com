@@ -78,7 +78,7 @@ class McpToolsTest {
             assertThat(result.getLayers()).extracting(ArchitectureContextResponse.LayerSummary::getCount)
                     .containsExactly(1, 1, 1, 1);
             assertThat(result.getPatterns()).containsExactly(
-                    Map.entry("apiEndpoints", "1 route nodes"),
+                    Map.entry("apiEndpoints", "1 API endpoint nodes"),
                     Map.entry("layeredArchitecture", "CONTROLLER -> SERVICE -> REPOSITORY"),
                     Map.entry("layeredComponents", "3 controller/service/repository components"));
             assertThat(result.getNamingConventions()).containsEntry("CONTROLLER", "*Controller");

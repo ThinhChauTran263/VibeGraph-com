@@ -15,10 +15,14 @@ export type NodeType =
   | 'Class'
   | 'Interface'
   | 'Enum'
+  | 'Record'
+  | 'DBModel'
   | 'Method'
+  | 'Constructor'
   | 'Field'
   | 'Annotation'
   | 'Route'
+  | 'APIEndpoint'
   | 'External'
 
 export type EdgeType =

@@ -20,6 +20,13 @@ const SENSITIVE_PROPERTY_KEY_PATTERN = /(secret|token|password|credential|auth|a
 
 const { selectedNode, filteredGraphData, clearSelection } = useGraphData()
 
+// The id of the relation edge currently PINNED in the graph (clicked by the user).
+// Drives the persistent "selected" styling on the matching connection item so the
+// pinned relation stays visually marked after the pointer leaves it.
+const props = defineProps<{
+  pinnedEdgeId?: string | null
+}>()
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'relationHover', payload: RelationHoverPayload | null): void
@@ -113,6 +120,8 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
             <button
               type="button"
               class="node-detail-panel__connection"
+              :class="{ 'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId }"
+              :aria-pressed="connection.edge.id === props.pinnedEdgeId"
               @mouseenter="onRelationHover(connection)"
               @mouseleave="onRelationLeave"
               @focus="onRelationHover(connection)"
@@ -143,6 +152,8 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
             <button
               type="button"
               class="node-detail-panel__connection"
+              :class="{ 'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId }"
+              :aria-pressed="connection.edge.id === props.pinnedEdgeId"
               @mouseenter="onRelationHover(connection)"
               @mouseleave="onRelationLeave"
               @focus="onRelationHover(connection)"
@@ -305,6 +316,13 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 .node-detail-panel__connection:focus-visible {
   outline: 2px solid #93c5fd;
   outline-offset: 2px;
+}
+
+.node-detail-panel__connection--pinned,
+.node-detail-panel__connection--pinned:hover {
+  border-color: #60a5fa;
+  background: rgba(37, 99, 235, 0.28);
+  transform: translateX(2px);
 }
 
 .node-detail-panel__connection-accent {

@@ -96,7 +96,7 @@ public class ArchitectureAnalyzerImpl implements ArchitectureAnalyzer {
         if (springLayer instanceof String value && !value.isBlank()) {
             return value.toUpperCase(Locale.ROOT);
         }
-        if ("Route".equals(node.getType())) {
+        if (isRouteNode(node)) {
             return "ROUTE";
         }
         String name = node.getName() == null ? "" : node.getName();
@@ -110,6 +110,10 @@ public class ArchitectureAnalyzerImpl implements ArchitectureAnalyzer {
             return "REPOSITORY";
         }
         return null;
+    }
+
+    private boolean isRouteNode(NodeDto node) {
+        return "Route".equals(node.getType()) || "APIEndpoint".equals(node.getType());
     }
 
     private Map<String, String> detectPatterns(List<ArchitectureContextResponse.LayerSummary> layers) {
@@ -131,7 +135,7 @@ public class ArchitectureAnalyzerImpl implements ArchitectureAnalyzer {
         }
         int routeCount = counts.getOrDefault("ROUTE", 0);
         if (routeCount > 0) {
-            patterns.put("apiEndpoints", routeCount + " route nodes");
+            patterns.put("apiEndpoints", routeCount + " API endpoint nodes");
         }
         return new LinkedHashMap<>(patterns);
     }

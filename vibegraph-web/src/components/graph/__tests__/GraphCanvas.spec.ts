@@ -83,29 +83,68 @@ describe('GraphCanvas', () => {
     expect(wrapper.emitted('nodeSelected')?.[0]).toEqual([null])
   })
 
-  it('selects the counterpart node when a detail relation is chosen', async () => {
-    const counterpart: GraphNode = {
-      id: 'counterpart',
+  it('pins relation focus without navigating when a detail relation is chosen (Req C)', async () => {
+    const selected: GraphNode = {
+      id: 'selected',
       type: 'Class',
-      name: 'OrderController',
-      fullName: 'com.example.OrderController',
-      filePath: 'src/main/java/com/example/OrderController.java',
+      name: 'OrderService',
+      fullName: 'com.example.OrderService',
+      filePath: 'src/main/java/com/example/OrderService.java',
       lineNumber: 10,
       properties: {},
     }
-    nodes.value = [counterpart]
-    selectedNode.value = counterpart
+    nodes.value = [selected]
+    selectedNode.value = selected
     selectNode.mockClear()
 
     const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
 
     await wrapper.findComponent({ name: 'NodeDetailPanel' }).vm.$emit('relationSelect', {
-      edgeId: 'counterpart|CALLS|service',
+      edgeId: 'counterpart|CALLS|selected',
       counterpartNodeId: 'counterpart',
     })
 
-    expect(selectNode).toHaveBeenCalledWith(counterpart)
+    // Pinning keeps the current selection anchored; it must NOT navigate to the
+    // counterpart node or emit a new nodeSelected event.
+    expect(selectNode).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'counterpart' }),
+    )
+    expect(wrapper.emitted('nodeSelected')).toBeUndefined()
+
+    // The pinned edge id is forwarded to NodeDetailPanel so the chosen relation
+    // item keeps its selected styling after the pointer leaves.
+    expect(
+      wrapper.findComponent({ name: 'NodeDetailPanel' }).props('pinnedEdgeId'),
+    ).toBe('counterpart|CALLS|selected')
+  })
+
+  it('clears pinned relation focus when the detail panel closes (Req C)', async () => {
+    const selected: GraphNode = {
+      id: 'selected',
+      type: 'Class',
+      name: 'OrderService',
+      fullName: 'com.example.OrderService',
+      filePath: 'src/main/java/com/example/OrderService.java',
+      lineNumber: 10,
+      properties: {},
+    }
+    nodes.value = [selected]
+    selectedNode.value = selected
+    clearSelection.mockClear()
+
+    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const panel = wrapper.findComponent({ name: 'NodeDetailPanel' })
+
+    await panel.vm.$emit('relationSelect', {
+      edgeId: 'counterpart|CALLS|selected',
+      counterpartNodeId: 'counterpart',
+    })
+    expect(panel.props('pinnedEdgeId')).toBe('counterpart|CALLS|selected')
+
+    await panel.vm.$emit('close')
+
+    expect(clearSelection).toHaveBeenCalledTimes(1)
     const nodeSelectedEvents = wrapper.emitted('nodeSelected')
-    expect(nodeSelectedEvents?.[nodeSelectedEvents.length - 1]).toEqual(['counterpart'])
+    expect(nodeSelectedEvents?.[nodeSelectedEvents.length - 1]).toEqual([null])
   })
 })

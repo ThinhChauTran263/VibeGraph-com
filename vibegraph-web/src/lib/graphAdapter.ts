@@ -25,6 +25,10 @@ export interface SigmaNodeAttributes {
 export interface SigmaEdgeAttributes {
   label: string
   color: string
+  // Per-edge label text color (same as the edge-type color) so Sigma's edge
+  // label renderer paints each label in its relationship hue, matching the Edge
+  // Types legend. Sigma reads this via `edgeLabelColor: { attribute: 'labelColor' }`.
+  labelColor: string
   size: number
   edgeType: EdgeType
 }
@@ -82,9 +86,11 @@ function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
  * Build Sigma edge attributes from a GraphEdge.
  */
 function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
+  const color = getEdgeColor(edge.type)
   return {
     label: edge.type,
-    color: getEdgeColor(edge.type),
+    color,
+    labelColor: color,
     size: 1,
     edgeType: edge.type,
   }
@@ -109,22 +115,24 @@ export function getEdgeColor(edgeType: EdgeType): string {
  */
 function getNodeSize(nodeType: NodeType): number {
   switch (nodeType) {
-    case 'Project':
-      return NODE_SIZES.max
-    case 'Package':
-      return 12
     case 'File':
-      return 10
+      return 6.5
+    case 'Project':
+    case 'Package':
+      return 6
     case 'Class':
     case 'Interface':
     case 'Enum':
-      return 8
+    case 'Record':
+    case 'DBModel':
+      return 5
     case 'Method':
+    case 'Constructor':
     case 'Route':
-      return NODE_SIZES.default
+    case 'APIEndpoint':
+      return 4
     case 'Field':
     case 'Annotation':
-      return NODE_SIZES.min
     case 'External':
       return NODE_SIZES.min
     default:

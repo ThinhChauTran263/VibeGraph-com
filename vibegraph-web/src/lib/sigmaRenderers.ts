@@ -16,6 +16,7 @@ import { HIGHLIGHT_LABEL_COLOR } from './constants'
 type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>
 
 const LABEL_GAP = 3
+const FILE_LABEL_SIZE_BONUS = 4
 // Soft halo ring around the focused node: a thin, semi-transparent white stroke
 // with a gentle outward glow instead of a hard 2px opaque outline. Reads as a
 // soft spotlight rather than a technical selection marker.
@@ -38,7 +39,8 @@ export function drawTextOnlyNodeLabel(
 ): void {
   if (!data.label) return
 
-  const size = settings.labelSize
+  const nodeType = (data as HoverData & { nodeType?: unknown }).nodeType
+  const size = settings.labelSize + (nodeType === 'File' ? FILE_LABEL_SIZE_BONUS : 0)
   const font = settings.labelFont
   const weight = settings.labelWeight
 

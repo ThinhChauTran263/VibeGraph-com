@@ -168,10 +168,14 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
         if (springLayer != null) {
             return normalizeLayer(springLayer);
         }
-        if ("Route".equals(node.getType())) {
+        if (isRouteNode(node)) {
             return "ROUTE";
         }
         return inferLayerFromName(node);
+    }
+
+    private boolean isRouteNode(NodeDto node) {
+        return "Route".equals(node.getType()) || "APIEndpoint".equals(node.getType());
     }
 
     private String inferLayerFromName(NodeDto node) {

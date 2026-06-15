@@ -16,7 +16,7 @@ import com.vibegraph.parser.node.ParseResult;
 import com.vibegraph.parser.service.impl.ParserServiceImpl;
 
 /**
- * Tests for ParserService — main parsing orchestrator.
+ * Tests for ParserService - main parsing orchestrator.
  *
  * Run: mvn test -Dtest=ParserServiceTest
  */
@@ -69,7 +69,7 @@ class ParserServiceTest {
         }
 
         @Test
-        @DisplayName("controller file should yield a Route node inside the ParseResult")
+        @DisplayName("controller file should yield an APIEndpoint node inside the ParseResult")
         void shouldAggregateRouteNode() throws IOException {
             Path javaFile = tempDir.resolve("UserController.java");
             Files.writeString(javaFile, """
@@ -89,14 +89,14 @@ class ParserServiceTest {
 
             ParseResult result = parserService.parseFile(javaFile);
 
-            // Regression guard for the dropped-route bug: the Route node must be
+            // Regression guard for the dropped-route bug: the APIEndpoint node must be
             // present in the aggregated nodes, not only referenced by an edge.
             assertThat(result.getNodes())
-                    .as("Route node must be aggregated into ParseResult")
-                    .anyMatch(n -> n.type().equals("Route") && n.fullName().equals("GET /api/users/{id}"));
+                    .as("APIEndpoint node must be aggregated into ParseResult")
+                    .anyMatch(n -> n.type().equals("APIEndpoint") && n.fullName().equals("GET /api/users/{id}"));
 
             assertThat(result.getEdges())
-                    .as("HANDLES_ROUTE edge must target the aggregated Route node")
+                    .as("HANDLES_ROUTE edge must target the aggregated APIEndpoint node")
                     .anyMatch(e -> e.type().equals("HANDLES_ROUTE")
                             && e.targetFullName().equals("GET /api/users/{id}"));
         }
@@ -211,7 +211,7 @@ class ParserServiceTest {
     class ParseIncremental {
 
         @Test
-        @DisplayName("should throw UnsupportedOperationException — deferred to Sprint 2")
+        @DisplayName("should throw UnsupportedOperationException - deferred to Sprint 2")
         void incrementalDeferred() throws IOException {
             Path javaFile = tempDir.resolve("Service.java");
             Files.writeString(javaFile, "public class Service {}");
