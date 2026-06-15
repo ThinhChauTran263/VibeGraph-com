@@ -8,6 +8,8 @@ import Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
+import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
+import { drawDefaultNodeLabel, drawHighlightNodeHover } from '@/lib/sigmaRenderers'
 
 export interface UseSigmaOptions {
   container: Ref<HTMLDivElement | null>
@@ -44,12 +46,17 @@ export function useSigma(options: UseSigmaOptions) {
       defaultEdgeType: 'line',
       zIndex: true,
       labelRenderedSizeThreshold: 8,
-      labelColor: { color: '#e5e7eb' },
+      labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
       labelSize: 13,
       labelWeight: '600',
       edgeLabelColor: { color: '#cbd5e1' },
       edgeLabelSize: 11,
+      // Override Sigma's default hover renderer (which paints a solid white
+      // label box) and label renderer with text-only variants. See
+      // lib/sigmaRenderers.ts.
+      defaultDrawNodeLabel: drawDefaultNodeLabel,
+      defaultDrawNodeHover: drawHighlightNodeHover,
     })
 
     sigmaInstance.value = sigma

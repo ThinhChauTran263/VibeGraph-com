@@ -54,6 +54,15 @@ export const FOCUS_OPACITY = {
   dimmed: 0.1,
 }
 
+// Label color for a hovered / clicked / focused node. The default Sigma hover
+// renderer paints a solid white label box; we override the renderer (see
+// useSigma.ts) to draw text only in this highlight color over a dark halo so the
+// label stays readable on the dark canvas without an opaque white rectangle.
+export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
+
+// Default node label color on the dark canvas.
+export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
+
 // API base URL
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 

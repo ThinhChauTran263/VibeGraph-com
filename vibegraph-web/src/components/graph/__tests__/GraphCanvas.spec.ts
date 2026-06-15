@@ -20,6 +20,10 @@ const emptyGraphData: GraphData = {
   edgeStats: {} as GraphData['edgeStats'],
 }
 
+const selectNode = vi.fn<(node: GraphNode | null) => void>((node) => {
+  selectedNode.value = node
+})
+
 vi.mock('@/composables/useGraphData', () => ({
   useGraphData: () => ({
     graphData: computed(() => emptyGraphData),
@@ -28,9 +32,7 @@ vi.mock('@/composables/useGraphData', () => ({
     error: computed(() => error.value),
     loadGraph: vi.fn<() => Promise<null>>(() => Promise.resolve(null)),
     buildGraph: vi.fn<() => null>(() => null),
-    selectNode: vi.fn<(node: GraphNode | null) => void>((node) => {
-      selectedNode.value = node
-    }),
+    selectNode,
     clearSelection,
     selectedNode: computed(() => selectedNode.value),
     nodes: computed(() => nodes.value),
@@ -79,5 +81,31 @@ describe('GraphCanvas', () => {
 
     expect(clearSelection).toHaveBeenCalledTimes(1)
     expect(wrapper.emitted('nodeSelected')?.[0]).toEqual([null])
+  })
+
+  it('selects the counterpart node when a detail relation is chosen', async () => {
+    const counterpart: GraphNode = {
+      id: 'counterpart',
+      type: 'Class',
+      name: 'OrderController',
+      fullName: 'com.example.OrderController',
+      filePath: 'src/main/java/com/example/OrderController.java',
+      lineNumber: 10,
+      properties: {},
+    }
+    nodes.value = [counterpart]
+    selectedNode.value = counterpart
+    selectNode.mockClear()
+
+    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+
+    await wrapper.findComponent({ name: 'NodeDetailPanel' }).vm.$emit('relationSelect', {
+      edgeId: 'counterpart|CALLS|service',
+      counterpartNodeId: 'counterpart',
+    })
+
+    expect(selectNode).toHaveBeenCalledWith(counterpart)
+    const nodeSelectedEvents = wrapper.emitted('nodeSelected')
+    expect(nodeSelectedEvents?.[nodeSelectedEvents.length - 1]).toEqual(['counterpart'])
   })
 })
