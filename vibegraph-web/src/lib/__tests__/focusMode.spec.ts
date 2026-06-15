@@ -119,6 +119,7 @@ describe('createSelectionFocusReducers', () => {
 
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 10,
       highlighted: true,
       forceLabel: true,
@@ -126,24 +127,25 @@ describe('createSelectionFocusReducers', () => {
     })
   })
 
-  it('keeps direct neighbors readable and deep-dims unrelated nodes to the bottom layer', () => {
+  it('keeps direct neighbors readable and hides unrelated nodes entirely', () => {
     const graph = buildGraph()
     const reducers = createSelectionFocusReducers('selected', graph)
 
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 7,
       zIndex: 2,
     })
-    const dimmed = reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })
-    expect(dimmed).toMatchObject({
-      color: '#313748',
+    // Unrelated node is hidden, not dimmed: Sigma paints nodes above edges, so a
+    // visible dot — at any size — would obstruct foreground related edges.
+    const unrelated = reducers.nodeReducer?.('outside', { color: '#fff', size: 6 })
+    expect(unrelated).toMatchObject({
+      hidden: true,
       label: '',
       forceLabel: false,
       zIndex: 0,
     })
-    // Capped to a sub-pixel speck so it cannot cover a foreground related edge.
-    expect(dimmed?.size as number).toBeLessThanOrEqual(0.8)
   })
 
   it('thickens edges touching the selected node without recoloring them white, and deep-dims unrelated edges', () => {
@@ -153,12 +155,14 @@ describe('createSelectionFocusReducers', () => {
     // Related edge keeps its edge-type color (no white), just thickens + labels.
     expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
       color: '#93c5fd',
+      hidden: false,
       size: 1.2,
       forceLabel: true,
       zIndex: 2,
     })
     expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
       color: '#1c283f',
+      hidden: false,
       size: 0.25,
       label: '',
       forceLabel: false,
@@ -181,6 +185,7 @@ describe('createSelectionFocusReducers', () => {
 
     expect(reducers.edgeReducer?.('a->b', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
       color: '#93c5fd',
+      hidden: false,
       size: 1,
       label: '',
       forceLabel: false,
@@ -199,6 +204,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 9,
       highlighted: true,
       forceLabel: true,
@@ -206,6 +212,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
     })
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 9,
       highlighted: true,
       forceLabel: true,
@@ -213,21 +220,20 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
     })
   })
 
-  it('deep-dims nodes that are not part of the hovered relation', () => {
+  it('hides nodes that are not part of the hovered relation', () => {
     const graph = buildGraph()
     const reducers = createSelectionFocusReducers('selected', graph, {
       edgeId: 'selected->hop-1',
       counterpartNodeId: 'hop-1',
     })
 
-    const dimmed = reducers.nodeReducer?.('hop-2', { color: '#fff', size: 6 })
-    expect(dimmed).toMatchObject({
-      color: '#313748',
+    const hidden = reducers.nodeReducer?.('hop-2', { color: '#fff', size: 6 })
+    expect(hidden).toMatchObject({
+      hidden: true,
       label: '',
       forceLabel: false,
       zIndex: 0,
     })
-    expect(dimmed?.size as number).toBeLessThanOrEqual(0.8)
   })
 
   it('keeps only the hovered edge bright and dims every other edge', () => {
@@ -239,12 +245,14 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', size: 1 })).toEqual({
       color: '#93c5fd',
+      hidden: false,
       size: 1.2,
       forceLabel: true,
       zIndex: 2,
     })
     expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd', label: 'CALLS', size: 1 })).toEqual({
       color: '#1c283f',
+      hidden: false,
       size: 0.25,
       label: '',
       forceLabel: false,
@@ -259,11 +267,12 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
       counterpartNodeId: 'hop-1',
     })
 
-    // hop-2 is a non-neighbor; without an active hover it dims via the normal
-    // selection path rather than the single-relation path (same dim color, so
-    // we assert the selected node keeps its standard +4 selection size).
+    // hop-2 is a non-neighbor; without an active hover it hides via the normal
+    // selection path rather than the single-relation path. We assert the
+    // selected node keeps its standard +4 selection size.
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 10,
       highlighted: true,
       forceLabel: true,
@@ -280,6 +289,7 @@ describe('createSelectionFocusReducers with a hovered relation', () => {
 
     expect(reducers.nodeReducer?.('selected', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
+      hidden: false,
       size: 10,
       highlighted: true,
       forceLabel: true,
@@ -392,16 +402,13 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
     })
   })
 
-  it('dims every unrelated node to a faint colored ghost (not black) with no label when a ROUTE node is selected', () => {
+  it('hides every unrelated node entirely when a ROUTE node is selected', () => {
     const graph = buildRouteGraph()
     const reducers = createSelectionFocusReducers('route', graph)
 
     for (let i = 0; i < 12; i += 1) {
       const out = reducers.nodeReducer?.(`u${i}`, graph.getNodeAttributes(`u${i}`)) ?? {}
-      expect(isBrightColor(out.color), `node u${i} color must not be bright`).toBe(false)
-      expect(isNearBlack(out.color), `node u${i} color must not be near-black`).toBe(false)
-      expect(preservesHue(out.color), `node u${i} must keep some node-type hue`).toBe(true)
-      expect(out.color).toBe('#2f2a26') // amber mixed toward the dark background
+      expect(out.hidden, `node u${i} must be hidden`).toBe(true)
       expect(out.label).toBe('')
       expect(out.forceLabel).toBe(false)
       expect(out.zIndex).toBe(0)
@@ -429,7 +436,7 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
     expect(out.zIndex).toBe(3)
     expect(out.size as number).toBeGreaterThan(8)
   })
-  it('never emits a bright or near-black dimmed color for any node type (Class/File/Method/Route)', () => {
+  it('hides unrelated nodes of every type (Class/File/Method/Route) instead of dimming them', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('sel', { color: '#F59E0B', size: 6 }) // Class-style
     graph.addNode('other-class', { color: '#F59E0B', size: 6 })
@@ -442,9 +449,7 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
 
     for (const id of ['other-file', 'other-method', 'other-route']) {
       const out = reducers.nodeReducer?.(id, graph.getNodeAttributes(id)) ?? {}
-      expect(isBrightColor(out.color), `${id} must not be bright`).toBe(false)
-      expect(isNearBlack(out.color), `${id} must not be near-black`).toBe(false)
-      expect(preservesHue(out.color), `${id} must keep some node-type hue`).toBe(true)
+      expect(out.hidden, `${id} must be hidden`).toBe(true)
     }
   })
 })
@@ -455,13 +460,13 @@ describe('focus mode produces a colored ghost background (no bright spaghetti, n
  *
  * Root cause: Sigma.js paints the entire node program above the entire edge
  * program, so zIndex orders node-vs-node and edge-vs-edge only — it can never
- * push a dimmed node behind a foreground edge. The fix is to make every dimmed
- * node too small to obstruct: a hard size cap (<= 0.8px) applied regardless of
- * the node's original size, while keeping it just visible as colored-ghost
- * context and keeping selected/neighbor nodes at their normal visible size.
+ * push a node behind a foreground edge, and shrinking a node to a speck still
+ * leaves a dot on the line. The only reliable fix is to set `hidden: true` on
+ * every unrelated node while focus is active, so it is not rendered at all.
+ * Selected/neighbor nodes stay visible at their normal size.
  */
-describe('dimmed nodes cannot obstruct foreground related edges', () => {
-  it('caps every dimmed node to <= 0.8px even when the original node is a large hub', () => {
+describe('unrelated nodes are hidden so they cannot obstruct foreground related edges', () => {
+  it('hides every unrelated node regardless of its original size (hub or small)', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('sel', { color: '#3B82F6', size: 8 })
     graph.addNode('hub', { color: '#F59E0B', size: 24 }) // large unrelated hub
@@ -474,14 +479,11 @@ describe('dimmed nodes cannot obstruct foreground related edges', () => {
     const hub = reducers.nodeReducer?.('hub', graph.getNodeAttributes('hub')) ?? {}
     const small = reducers.nodeReducer?.('small', graph.getNodeAttributes('small')) ?? {}
 
-    // Both clamp into the sub-pixel band, so neither can paint over an edge.
-    expect(hub.size as number).toBeLessThanOrEqual(0.8)
-    expect(hub.size as number).toBeGreaterThan(0)
-    expect(small.size as number).toBeLessThanOrEqual(0.8)
-    expect(small.size as number).toBeGreaterThan(0)
+    expect(hub.hidden).toBe(true)
+    expect(small.hidden).toBe(true)
   })
 
-  it('keeps the related edge larger than any dimmed node and on a higher layer', () => {
+  it('keeps the related edge visible and on a higher layer than the hidden background', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('sel', { color: '#3B82F6', size: 8 })
     graph.addNode('neighbor', { color: '#3B82F6', size: 6 })
@@ -491,14 +493,14 @@ describe('dimmed nodes cannot obstruct foreground related edges', () => {
     const reducers = createSelectionFocusReducers('sel', graph)
 
     const relatedEdge = reducers.edgeReducer?.('sel->neighbor', graph.getEdgeAttributes('sel->neighbor')) ?? {}
-    const dimmedHub = reducers.nodeReducer?.('hub', graph.getNodeAttributes('hub')) ?? {}
+    const hiddenHub = reducers.nodeReducer?.('hub', graph.getNodeAttributes('hub')) ?? {}
 
-    // Related edge thicker than the dimmed dot and on a strictly higher layer.
-    expect(relatedEdge.size as number).toBeGreaterThan(dimmedHub.size as number)
-    expect(relatedEdge.zIndex as number).toBeGreaterThan(dimmedHub.zIndex as number)
+    expect(relatedEdge.hidden).toBe(false)
+    expect(hiddenHub.hidden).toBe(true)
+    expect(relatedEdge.zIndex as number).toBeGreaterThan(hiddenHub.zIndex as number)
   })
 
-  it('keeps selected and neighbor nodes at a normal visible size (not capped)', () => {
+  it('keeps selected and neighbor nodes visible at a normal size (not hidden)', () => {
     const graph = new Graph({ type: 'directed', multi: true })
     graph.addNode('sel', { color: '#3B82F6', size: 8 })
     graph.addNode('neighbor', { color: '#3B82F6', size: 6 })
@@ -509,7 +511,9 @@ describe('dimmed nodes cannot obstruct foreground related edges', () => {
     const selected = reducers.nodeReducer?.('sel', graph.getNodeAttributes('sel')) ?? {}
     const neighbor = reducers.nodeReducer?.('neighbor', graph.getNodeAttributes('neighbor')) ?? {}
 
-    expect(selected.size as number).toBeGreaterThan(0.8)
-    expect(neighbor.size as number).toBeGreaterThan(0.8)
+    expect(selected.hidden).toBe(false)
+    expect(neighbor.hidden).toBe(false)
+    expect(selected.size as number).toBeGreaterThan(8)
+    expect(neighbor.size as number).toBeGreaterThan(6)
   })
 })

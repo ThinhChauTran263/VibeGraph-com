@@ -100,10 +100,10 @@ export function createFocusReducers(selectedId: string | null, depth: number, gr
 // edge stays faint blue. The result is a soft "colored ghost" background —
 // never white, never pure black.
 
-// Nodes keep a little more of their hue than edges so node-type colors survive
-// as a faint atmospheric wash, while the denser edge web recedes further. Both
-// are pushed closer to the background than before so the dimmed layer reads as
-// soft "atmosphere" rather than competing dots/lines over the focused cluster.
+// Edges keep a faint hue-preserving ghost so the surrounding network still reads
+// as soft "atmosphere" rather than vanishing. In click-driven selection focus,
+// unrelated NODES are hidden entirely (see below); only the depth-filter path
+// (createFocusReducers) still color-mixes nodes toward the background.
 const DIMMED_NODE_MIX = 0.86 // 86% background + 14% original hue
 const DIMMED_EDGE_MIX = 0.9 // 90% background + 10% original hue
 
@@ -112,19 +112,15 @@ const DIMMED_EDGE_MIX = 0.9 // 90% background + 10% original hue
 const DIMMED_EDGE_SIZE_MULTIPLIER = 0.25
 const DIMMED_EDGE_MIN_SIZE = 0.2
 
-// Dimmed nodes shrink to a sub-pixel speck. This is the fix for the obstruction
-// bug: Sigma.js draws the entire node program ON TOP of the entire edge program,
-// so zIndex can only order node-vs-node and edge-vs-edge — it can NEVER push a
-// node behind an edge. A dimmed node therefore always paints over any foreground
-// related edge it overlaps. The only reliable way to stop a dimmed dot from
-// covering a bright relation line is to make it too small to obstruct.
-//
-// DIMMED_NODE_MAX_SIZE is a HARD CAP applied after the multiplier, so even a
-// large hub node (size 12+) collapses to <= 0.8px when dimmed. The floor keeps
-// it just visible as a faint colored-ghost speck (requirement: preserve context).
-const DIMMED_NODE_SIZE_MULTIPLIER = 0.45
-const DIMMED_NODE_MIN_SIZE = 0.5
-const DIMMED_NODE_MAX_SIZE = 0.8
+// ROOT CAUSE of the obstruction bug: Sigma.js draws the entire node program ON
+// TOP of the entire edge program, so zIndex can only order node-vs-node and
+// edge-vs-edge — it can NEVER push a node behind an edge. A visible unrelated
+// node therefore always paints over any foreground related edge it overlaps, no
+// matter how small or how low its zIndex. Shrinking to a sub-pixel speck (the
+// previous attempt) still left dark dots sitting on bright HAS_METHOD/IMPORTS
+// edges. The only reliable fix is to set `hidden: true` on unrelated nodes while
+// focus is active, so they are not rendered at all. Background context then
+// comes solely from the faint ghost edges.
 
 // Related edges keep their edge-type color (set by graphAdapter) — we only bump
 // thickness slightly (~20% reduction from the previous 1.6) for an elegant,
@@ -138,17 +134,6 @@ const Z_NEIGHBOR = 2
 const Z_RELATED_EDGE = 2
 const Z_NEIGHBOR_EDGE = 1
 const Z_DIMMED = 0
-
-/**
- * Shrink a node to a sub-pixel speck for the dimmed background layer. Clamped to
- * [MIN, MAX] so the dimmed dot is always too small to cover a foreground edge
- * (Sigma always paints nodes above edges) yet still faintly visible as context.
- */
-function dimmedNodeSize(size: unknown): unknown {
-  if (typeof size !== 'number') return size
-  const shrunk = size * DIMMED_NODE_SIZE_MULTIPLIER
-  return Math.min(Math.max(shrunk, DIMMED_NODE_MIN_SIZE), DIMMED_NODE_MAX_SIZE)
-}
 
 /** Shrink an edge to a thin ghost line, floored so the network still reads as faint context. */
 function dimmedEdgeSize(size: unknown): number {
@@ -182,15 +167,61 @@ export interface HoveredRelation {
 }
 
 /**
+ * Resolved focus state used by the deterministic visibility helpers. Computed
+ * once per reducer build so node/edge decisions are pure lookups.
+ */
+export interface SelectionFocusState {
+  selectedId: string
+  neighborIds: Set<string>
+  activeHover: HoveredRelation | null
+}
+
+/**
+ * Deterministic rule for whether a node is RENDERED while selection focus is
+ * active. When a single relation is hovered, only the selected node and its
+ * counterpart are visible. Otherwise the selected node and its direct neighbors
+ * are visible. Every other node is hidden — never merely dimmed — because Sigma
+ * always paints nodes above edges, so a visible unrelated node would obstruct
+ * foreground related edges.
+ */
+export function isNodeVisibleInFocus(nodeId: string, focusState: SelectionFocusState): boolean {
+  if (focusState.activeHover) {
+    return nodeId === focusState.selectedId || nodeId === focusState.activeHover.counterpartNodeId
+  }
+  return nodeId === focusState.selectedId || focusState.neighborIds.has(nodeId)
+}
+
+/**
+ * Deterministic rule for whether an edge is a FOREGROUND related edge (kept
+ * bright, labelled, layered above the ghost background). When a single relation
+ * is hovered, only that edge qualifies. Otherwise any edge touching the selected
+ * node qualifies. All other edges become faint ghost context.
+ */
+export function isEdgeRelatedToFocus(
+  source: string,
+  target: string,
+  edgeId: string,
+  focusState: SelectionFocusState,
+): boolean {
+  if (focusState.activeHover) {
+    return edgeId === focusState.activeHover.edgeId
+  }
+  return source === focusState.selectedId || target === focusState.selectedId
+}
+
+/**
  * Click-driven neighborhood focus. Unlike createFocusReducers (depth control),
- * this DIMS unrelated nodes/edges instead of hiding them, keeps the selected
- * node and its directly-connected neighbors readable, and emphasizes the edges
+ * this HIDES unrelated nodes entirely (Sigma paints nodes above edges, so a
+ * visible unrelated dot would obstruct foreground related edges), keeps the
+ * selected node and its directly-connected neighbors readable, dims unrelated
+ * edges to faint ghost lines for background context, and emphasizes the edges
  * that touch the selected node. Drives requirement: clicking a node focuses its
  * cluster regardless of the focus-depth filter.
  *
  * When `hovered` is provided, the focus narrows to a single relation (selected
- * node + one counterpart + the connecting edge), dimming everything else so the
- * hovered/clicked detail-panel item is visually isolated in the graph.
+ * node + one counterpart + the connecting edge); every other node is hidden and
+ * every other edge becomes a faint ghost, so the hovered/clicked detail-panel
+ * item is visually isolated in the graph.
  */
 export function createSelectionFocusReducers(
   selectedId: string | null,
@@ -214,99 +245,51 @@ export function createSelectionFocusReducers(
       ? hovered
       : null
 
+  const focusState: SelectionFocusState = { selectedId, neighborIds, activeHover }
+
   return {
     nodeReducer: (node, attributes) => {
-      if (activeHover) {
-        if (node === selectedId || node === activeHover.counterpartNodeId) {
-          return {
-            ...attributes,
-            size: typeof attributes.size === 'number' ? attributes.size + 3 : attributes.size,
-            highlighted: true,
-            forceLabel: true,
-            zIndex: Z_SELECTED,
-          }
-        }
-
-        // Everything else recedes while a single relation is highlighted.
-        return {
-          ...attributes,
-          size: dimmedNodeSize(attributes.size),
-          color: dimColor(attributes.color, DIMMED_NODE_MIX),
-          label: '',
-          forceLabel: false,
-          zIndex: Z_DIMMED,
-        }
+      // Unrelated node: hide it entirely. Sigma paints the node layer above the
+      // edge layer, so a visible dot — at any size or zIndex — would obstruct
+      // foreground related edges. Hiding is the only reliable fix.
+      if (!isNodeVisibleInFocus(node, focusState)) {
+        return { ...attributes, hidden: true, label: '', forceLabel: false, zIndex: Z_DIMMED }
       }
 
-      if (node === selectedId) {
+      // Selected node, or the single hover counterpart: brightest, labelled.
+      if (node === selectedId || (activeHover && node === activeHover.counterpartNodeId)) {
+        const bump = activeHover ? 3 : 4
         return {
           ...attributes,
-          size: typeof attributes.size === 'number' ? attributes.size + 4 : attributes.size,
+          hidden: false,
+          size: typeof attributes.size === 'number' ? attributes.size + bump : attributes.size,
           highlighted: true,
           forceLabel: true,
           zIndex: Z_SELECTED,
         }
       }
 
-      if (neighborIds.has(node)) {
-        // Neighbors stay readable and layered above the dim background, but we
-        // do NOT force their labels — only the selected node (and, on hover, the
-        // single counterpart) forces a label, so the view never floods with
-        // labels at once.
-        return {
-          ...attributes,
-          size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
-          zIndex: Z_NEIGHBOR,
-        }
-      }
-
-      // Unrelated node: shrink, mix its own color toward the background so it
-      // stays a faint hue-preserving ghost (never black, never white), drop the
-      // label, and sink to the bottom layer.
+      // Direct neighbor (only reachable when no hover is active). Readable and
+      // layered above the ghost background, but we do NOT force its label so the
+      // view never floods with labels at once.
       return {
         ...attributes,
-        size: dimmedNodeSize(attributes.size),
-        color: dimColor(attributes.color, DIMMED_NODE_MIX),
-        label: '',
-        forceLabel: false,
-        zIndex: Z_DIMMED,
+        hidden: false,
+        size: typeof attributes.size === 'number' ? attributes.size + 1 : attributes.size,
+        zIndex: Z_NEIGHBOR,
       }
     },
     edgeReducer: (edge, attributes) => {
       const source = graph.source(edge)
       const target = graph.target(edge)
 
-      if (activeHover) {
-        // Only the hovered relation's edge stays bright (keeps its edge-type
-        // color, bumped width, label shown). Every other edge dims.
-        if (edge === activeHover.edgeId) {
-          return {
-            ...attributes,
-            size:
-              typeof attributes.size === 'number'
-                ? attributes.size * RELATED_EDGE_SIZE_MULTIPLIER
-                : attributes.size,
-            forceLabel: true,
-            zIndex: Z_RELATED_EDGE,
-          }
-        }
-
+      // Foreground related edge: keep its edge-type color (set by graphAdapter),
+      // bump width modestly, show its label. NEVER recolor to white — that
+      // produced the thick white band that hid the label text.
+      if (isEdgeRelatedToFocus(source, target, edge, focusState)) {
         return {
           ...attributes,
-          color: dimColor(attributes.color, DIMMED_EDGE_MIX),
-          size: dimmedEdgeSize(attributes.size),
-          label: '',
-          forceLabel: false,
-          zIndex: Z_DIMMED,
-        }
-      }
-
-      // Edge touching the selected node: keep its edge-type color (set by
-      // graphAdapter), bump width modestly, show its label. NEVER recolor to
-      // white — that produced the thick white band that hid the label text.
-      if (source === selectedId || target === selectedId) {
-        return {
-          ...attributes,
+          hidden: false,
           size:
             typeof attributes.size === 'number'
               ? attributes.size * RELATED_EDGE_SIZE_MULTIPLIER
@@ -316,18 +299,20 @@ export function createSelectionFocusReducers(
         }
       }
 
-      // Edge between two direct neighbors: keep its color, layer it above dim,
-      // but blank its label so only the selected node's own relation edges can
-      // show labels — prevents a cluster of neighbor-to-neighbor labels.
-      if (neighborIds.has(source) && neighborIds.has(target)) {
-        return { ...attributes, label: '', forceLabel: false, zIndex: Z_NEIGHBOR_EDGE }
+      // Edge between two direct neighbors (no hover active): keep its color,
+      // layer it above the ghost background, but blank its label so only the
+      // selected node's own relation edges show labels.
+      if (!activeHover && neighborIds.has(source) && neighborIds.has(target)) {
+        return { ...attributes, hidden: false, label: '', forceLabel: false, zIndex: Z_NEIGHBOR_EDGE }
       }
 
-      // Unrelated edge: mix its own relation-type color toward the background
-      // so it stays a faint hue-preserving ghost line (never white, never
-      // black), drop the label, sink to the bottom layer.
+      // Unrelated edge: mix its own relation-type color toward the background so
+      // it stays a faint hue-preserving ghost line (never white, never black),
+      // drop the label, sink to the bottom layer. This faint edge web is the
+      // ONLY background context now that unrelated nodes are hidden.
       return {
         ...attributes,
+        hidden: false,
         color: dimColor(attributes.color, DIMMED_EDGE_MIX),
         size: dimmedEdgeSize(attributes.size),
         label: '',
