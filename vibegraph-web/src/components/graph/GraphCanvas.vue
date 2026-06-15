@@ -11,33 +11,122 @@
 import { onMounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { useSigma } from '@/composables/useSigma'
+import SearchBar from '@/components/graph/SearchBar.vue'
+import FilterPanel from '@/components/panels/FilterPanel.vue'
+import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
+import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
+import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
+import { createFocusReducers, createSelectionFocusReducers, type HoveredRelation } from '@/lib/focusMode'
+import { useFilters } from '@/composables/useFilters'
+import { useGraphRealtime } from '@/composables/useGraphRealtime'
+import type { GraphNode } from '@/types/graph'
 
 const props = defineProps<{
   projectId: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'nodeSelected', nodeId: string): void
+  (e: 'nodeSelected', nodeId: string | null): void
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+const { focusDepth } = useFilters()
 
-const { loading, error, loadGraph, selectNode, nodes } = useGraphData()
+// A relation the user is hovering or has clicked in the Node Detail panel. When
+// set, the graph focus narrows to just the selected node, this one counterpart,
+// and the connecting edge (everything else dims). Null = normal selection focus.
+const hoveredRelation = ref<HoveredRelation | null>(null)
 
-const { init: initSigma } = useSigma({
+// T60: subscribe to realtime graph updates for the active project and patch the
+// store in place. Resubscribes on project change and cleans up on unmount.
+useGraphRealtime(() => props.projectId)
+
+const {
+  graphData,
+  filteredGraphData,
+  loading,
+  error,
+  loadGraph,
+  buildGraph,
+  selectNode,
+  clearSelection,
+  selectedNode,
+  nodes,
+} = useGraphData()
+
+const { init: initSigma, graphInstance, setReducers, setEdgeLabelsVisible } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
+    hoveredRelation.value = null
     selectNode(node)
     emit('nodeSelected', nodeId)
   },
+  onStageClick: () => {
+    if (!selectedNode.value) return
+    hoveredRelation.value = null
+    clearSelection()
+    emit('nodeSelected', null)
+  },
 })
+
+/**
+ * Apply visual reducers. A clicked/searched selection always focuses its
+ * directly-connected neighborhood (dimming the rest). When no node is selected
+ * we fall back to the focus-depth filter control.
+ */
+function applyFocusReducers(): void {
+  if (!graphInstance.value) return
+
+  if (selectedNode.value) {
+    setReducers(
+      createSelectionFocusReducers(selectedNode.value.id, graphInstance.value, hoveredRelation.value),
+    )
+    setEdgeLabelsVisible?.(true)
+    return
+  }
+
+  setReducers(createFocusReducers(null, focusDepth.value, graphInstance.value))
+  setEdgeLabelsVisible?.(false)
+}
 
 async function load(projectId: string) {
   const graph = await loadGraph(projectId)
   if (graph && canvasRef.value) {
     initSigma(graph)
+    applyFocusReducers()
   }
+}
+
+function onSearchSelect(node: GraphNode): void {
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+}
+
+function onSearchClear(): void {
+  clearSelection()
+  emit('nodeSelected', null)
+}
+
+function onDetailClose(): void {
+  hoveredRelation.value = null
+  clearSelection()
+  emit('nodeSelected', null)
+}
+
+function onRelationHover(payload: RelationHoverPayload | null): void {
+  hoveredRelation.value = payload
+  applyFocusReducers()
+}
+
+function onRelationSelect(payload: RelationHoverPayload): void {
+  const counterpart = nodes.value.find((node) => node.id === payload.counterpartNodeId) ?? null
+  if (!counterpart) return
+  hoveredRelation.value = null
+  selectNode(counterpart)
+  emit('nodeSelected', counterpart.id)
+  applyFocusReducers()
 }
 
 onMounted(() => {
@@ -52,29 +141,96 @@ watch(
     if (newId) load(newId)
   },
 )
+
+watch(
+  [selectedNode, focusDepth],
+  () => {
+    applyFocusReducers()
+  },
+)
+
+watch(
+  filteredGraphData,
+  (graphData) => {
+    if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+      clearSelection()
+    }
+
+    if (!canvasRef.value || loading.value || error.value) return
+    initSigma(buildGraph(graphData))
+    applyFocusReducers()
+  },
+  { deep: true },
+)
 </script>
 
 <template>
-  <div class="graph-canvas-wrapper">
-    <div ref="canvasRef" class="graph-canvas" />
+  <div class="graph-canvas-wrapper" :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }">
+    <aside v-if="!loading && !error" class="graph-canvas__sidebar">
+      <FocusDepthControl />
+      <FilterPanel :graph-data="graphData" />
+    </aside>
 
-    <div v-if="loading" class="graph-overlay graph-overlay--loading">
-      <div class="spinner" aria-label="Loading graph" />
-      <p>Loading graph...</p>
+    <div class="graph-canvas__stage">
+      <div ref="canvasRef" class="graph-canvas" />
+
+      <SearchBar
+        v-if="!loading && !error"
+        :nodes="nodes"
+        :selected-node-id="selectedNode?.id ?? null"
+        @select="onSearchSelect"
+        @clear="onSearchClear"
+      />
+
+      <div v-if="loading" class="graph-overlay graph-overlay--loading">
+        <div class="spinner" aria-label="Loading graph" />
+        <p>Loading graph...</p>
+      </div>
+
+      <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
+        <p class="error-title">Failed to load graph</p>
+        <p class="error-message">{{ error }}</p>
+        <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
+      </div>
     </div>
 
-    <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
-      <p class="error-title">Failed to load graph</p>
-      <p class="error-message">{{ error }}</p>
-      <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
-    </div>
+    <aside v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+      <NodeDetailPanel
+        @close="onDetailClose"
+        @relation-hover="onRelationHover"
+        @relation-select="onRelationSelect"
+      />
+      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
+    </aside>
   </div>
 </template>
 
 <style scoped>
 .graph-canvas-wrapper {
-  position: relative;
+  display: grid;
+  grid-template-columns: 18rem 1fr;
   width: 100%;
+  height: 100%;
+  background: #0f172a;
+}
+
+.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 18rem 1fr 23rem;
+}
+
+.graph-canvas__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.graph-canvas__stage {
+  position: relative;
+  min-width: 0;
   height: 100%;
 }
 
@@ -82,7 +238,43 @@ watch(
   width: 100%;
   height: 100%;
   position: relative;
-  background: #0f0f0f;
+  background: #0f172a;
+}
+
+.graph-canvas__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border-left: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+@media (max-width: 64rem) {
+  .graph-canvas-wrapper,
+  .graph-canvas-wrapper--detail-open {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .graph-canvas__sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    max-height: 14rem;
+  }
+
+  .graph-canvas-wrapper--detail-open {
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .graph-canvas__detail {
+    border-left: none;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    max-height: 50vh;
+  }
 }
 
 .graph-overlay {
@@ -93,7 +285,7 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: rgba(15, 15, 15, 0.85);
+  background: rgba(15, 23, 42, 0.85);
   color: #e5e5e5;
   z-index: 10;
 }

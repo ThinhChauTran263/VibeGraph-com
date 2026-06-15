@@ -18,7 +18,7 @@ import jakarta.validation.constraints.Pattern;
 public record GithubImportRequest(
         @NotBlank(message = "GitHub URL is required")
         @Pattern(
-                regexp = "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?$",
+                regexp = "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?/?$",
                 message = "URL must match https://github.com/{owner}/{repo}"
         )
         String url

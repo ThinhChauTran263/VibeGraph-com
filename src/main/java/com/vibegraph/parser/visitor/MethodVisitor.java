@@ -12,6 +12,7 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.symbolsolver.javaparsermodel.declarations.JavaParserMethodDeclaration;
+import com.vibegraph.parser.Signatures;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -249,7 +250,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         String ownerName = owner
                 .flatMap(ClassOrInterfaceDeclaration::getFullyQualifiedName)
                 .orElse(owner.map(ClassOrInterfaceDeclaration::getNameAsString).orElse("<unknown>"));
-        return ownerName + "." + methodName + "(" + String.join(",", paramTypes) + ")";
+        return Signatures.method(ownerName, methodName, paramTypes);
     }
 
     private String filePath(com.github.javaparser.ast.Node node) {

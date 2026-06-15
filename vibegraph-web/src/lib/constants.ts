@@ -16,7 +16,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Field: '#06B6D4',        // cyan
   Annotation: '#F97316',   // orange
   Route: '#10B981',        // emerald
-  External: '#94A3B8',     // slate-400 — library/JDK or unresolved stub
+  External: '#94A3B8',     // slate-400 - library/JDK or unresolved stub
 }
 
 // Edge colors by relationship type - matches EdgeType from graph.ts
@@ -54,8 +54,18 @@ export const FOCUS_OPACITY = {
   dimmed: 0.1,
 }
 
+// Label color for a hovered / clicked / focused node. The default Sigma hover
+// renderer paints a solid white label box; we override the renderer (see
+// useSigma.ts) to draw text only in this highlight color over a dark halo so the
+// label stays readable on the dark canvas without an opaque white rectangle.
+export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
+
+// Default node label color on the dark canvas.
+export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
+
 // API base URL
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
-// WebSocket URL
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws'
+// WebSocket URL - SockJS endpoint for STOMP. Must match the backend
+// `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
+export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws/graph-updates'

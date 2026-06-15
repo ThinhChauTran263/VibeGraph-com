@@ -10,7 +10,7 @@
 
 | # | Quyết định | Lựa chọn |
 |---|----------|--------|
-| 1 | Multi-tenancy | `projectId` property trên mọi node |
+| 1 | Multi-tenancy | `projectId` property trên mỗi node |
 | 2 | Node identity | Composite key `(projectId, fullName, paramTypes)` |
 | 3 | Polymorphism | 1 edge tới target tĩnh + `targetType` property |
 | 4 | Constructor | `:Method` label + `kind="CONSTRUCTOR"` property |
@@ -25,7 +25,7 @@
 ## 2. Nhãn node
 
 ### 2.1 `:Project`
-Project gốc, là điểm vào cho mọi truy vấn.
+Project gốc, là điểm vào cho mỗi truy vấn.
 
 ```cypher
 (:Project {
@@ -53,7 +53,7 @@ Project gốc, là điểm vào cho mọi truy vấn.
 ```cypher
 (:File {
   projectId: STRING,
-  filePath: STRING,            // đường dẫn tương đối từ rootPath, ví dụ "src/main/java/User.java"
+  filePath: STRING,            // đường dẫn tương đối từ rootPath, ví dụ "example/source/path/User.java"
   name: STRING,                // "User.java"
   lineCount: INTEGER,
   checksum: STRING,            // SHA-256, dùng để bỏ qua khi quét incremental
@@ -238,7 +238,7 @@ Endpoint HTTP được phát hiện từ các Spring annotation.
 (:Method)-[:THROWS]->(:Class)             // các kiểu exception
 ```
 
-### 3.4 Đồ thị lời gọi (Quyết định #3 — Đa hình)
+### 3.4 Đồ thị lỗi gọi (Quyết định #3 — Đa hình)
 
 ```cypher
 (:Method)-[:CALLS {
@@ -457,7 +457,7 @@ RETURN r
 
 ### 5.4 Xóa file (Quyết định #6 — đổi tên = xóa + tạo mới)
 
-> **Implementation hiện tại:** `Neo4jGraphRepository.deleteFile(projectId, filePath)` xóa mọi node có property `filePath` tương ứng bằng `DETACH DELETE`, không đi theo `File-[:DEFINES]->typeNode` vì `File` node chưa được parser emit.
+> **Implementation hiện tại:** `Neo4jGraphRepository.deleteFile(projectId, filePath)` xóa mỗi node có property `filePath` tương ứng bằng `DETACH DELETE`, sau đó prune các `External` stub cùng project không còn relationship nào. Code chưa đi theo `File-[:DEFINES]->typeNode` vì `File` node chưa được parser emit.
 
 ```cypher
 // Khi watcher báo file bị xóa hoặc bị đổi tên
@@ -564,8 +564,8 @@ try (Session session = neo4jDriver.session()) {
 
 **Các pattern bị cấm** (sẽ bị từ chối khi review code):
 ```cypher
-MATCH (c:Class) RETURN c                  // ❌ thiếu bộ lọc projectId
-MATCH (c:Class {fullName: $fn}) RETURN c  // ❌ trùng fullName giữa các project
+MATCH (c:Class) RETURN c                  // SAI thiếu bộ lọc projectId
+MATCH (c:Class {fullName: $fn}) RETURN c  // SAI trùng fullName giữa các project
 ```
 
 ---
@@ -578,7 +578,7 @@ MATCH (c:Class {fullName: $fn}) RETURN c  // ❌ trùng fullName giữa các pro
 | Vùng lân cận N-hop (3 hop) | < 500ms | APOC subgraphAll + lọc relationship |
 | Phân tích tác động (5 hop) | < 1s | Index relationship `CALLS` |
 | Tìm node theo tên | < 100ms | Fulltext `node_search` |
-| Chèn 1 file (10 class, 50 method, 100 lời gọi) | < 200ms | Batched MERGE trong 1 transaction |
+| Chèn 1 file (10 class, 50 method, 100 lỗi gọi) | < 200ms | Batched MERGE trong 1 transaction |
 
 ---
 
@@ -586,7 +586,7 @@ MATCH (c:Class {fullName: $fn}) RETURN c  // ❌ trùng fullName giữa các pro
 
 ### v1.0 → v1.1 (dự kiến)
 - Thêm label `:TestClass` (multi-label `:Class:TestClass`) cho việc phát hiện test
-- Edge `:CALLS_IN_TEST` để tách các lời gọi trong test khỏi các lời gọi production
+- Edge `:CALLS_IN_TEST` để tách các lỗi gọi trong test khỏi các lỗi gọi production
 
 ### v1.x → v2.0 (Giai đoạn 2)
 - Đa ngôn ngữ: thêm property `language` → `:Class {language: "java"|"kotlin"|"typescript"}`

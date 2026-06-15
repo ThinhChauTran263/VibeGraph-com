@@ -1,21 +1,24 @@
 package com.vibegraph.mcp.tool;
 
-import com.vibegraph.mcp.service.McpToolService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-/**
- * MCP Tool: get_layer_pattern
- *
- * Returns: how to write code in a specific layer (Controller/Service/Repository).
- */
+import com.vibegraph.mcp.dto.response.LayerPatternResponse;
+import com.vibegraph.mcp.service.LayerPatternAnalyzer;
+
+import lombok.RequiredArgsConstructor;
+
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class LayerPatternTool {
 
-    private final McpToolService mcpToolService;
+    private final LayerPatternAnalyzer layerPatternAnalyzer;
 
-    // TODO: Add @Tool method
+    @Tool(name = "get_layer_pattern", description = "Return examples, dependency patterns, naming conventions, rules, notes, and warnings for an architecture layer.")
+    public LayerPatternResponse getLayerPattern(
+            @ToolParam(description = "Project identifier to inspect") String projectId,
+            @ToolParam(description = "Layer name such as CONTROLLER, SERVICE, REPOSITORY, CONFIG, or ROUTE") String layer) {
+        return layerPatternAnalyzer.analyzeLayer(projectId, layer);
+    }
 }

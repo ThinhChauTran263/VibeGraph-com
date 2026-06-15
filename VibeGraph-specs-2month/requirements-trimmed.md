@@ -93,7 +93,7 @@ Tiêu chí chấp nhận:
 - Mục tiêu từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây.
 - Frontend vá (patch) graph mà không cần tải lại toàn bộ trang.
 
-> **Trạng thái code sau audit 2026-05-30:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`, nhưng `GraphUpdateController`, listener và frontend `useWebSocket.ts` vẫn ở mức scaffold/TODO. Chưa có pipeline broadcast graph/status thật.
+> **Trạng thái code sau audit 2026-06-08:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`. `GraphUpdateController.broadcastStatus` đã publish `/topic/projects/{projectId}/status` và frontend `useWebSocket.ts` + `useArchiveImport.ts` đã dùng được cho progress/status import async. Pipeline realtime graph thật qua `/topic/projects/{projectId}/updates` vẫn chưa hoàn tất: `broadcastFullUpdate`/`broadcastIncremental`, file watcher và FE patch graph còn TODO.
 
 ### FR-08: File Watcher phía Server - Tối quan trọng
 
@@ -113,21 +113,21 @@ Tiêu chí chấp nhận:
 
 Các endpoint MVP (cột *Trạng thái* phản ánh code thực tế, không chỉ kế hoạch):
 
-| Method | Path | Mô tả | Trạng thái |
-|---|---|---|---|
-| POST | `/api/projects` | Đăng ký một đường dẫn dự án local | ✅ implemented — dev/internal fallback, không còn là UX chính |
-| GET | `/api/projects` | Liệt kê dự án | ✅ implemented |
-| GET | `/api/projects/{id}` | Chi tiết một dự án | ✅ implemented |
-| DELETE | `/api/projects/{id}` | Xóa một dự án | ✅ implemented |
-| POST | `/api/projects/{id}/analyze` | Kích hoạt phân tích đầy đủ | ✅ implemented |
-| GET | `/api/projects/{id}/graph` | Trả về toàn bộ graph | ✅ implemented |
-| POST | `/api/projects/import-archive` | Upload file `.zip`/`.tar`/`.tar.gz` của project Java để backend parse và lưu graph | 🆕 target Sprint 2 — thay thế local-path registration làm UX chính; chưa implement |
-| GET | `/api/projects/{id}/graph/neighbors/{nodeId}?hops=N` | Trả về neighborhood N-hop | 🚧 scaffold — `Neo4jGraphRepository.getNeighborhood` ném `UnsupportedOperationException` (Sprint 2) |
-| GET | `/api/projects/{id}/diagrams/usecase` | Trả về Use Case Mermaid | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2) |
-| GET | `/api/projects/{id}/diagrams/class` | Trả về Class Mermaid | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2) |
-| GET | `/api/projects/{id}/impact/{nodeId}` | Trả về phạm vi ảnh hưởng (blast radius) | 🚧 scaffold — `ImpactController`/`ImpactServiceImpl` + `getImpact` chưa impl (Sprint 2/3) |
-| POST | `/api/projects/import-github` | Import một repo GitHub công khai qua luồng tarball | 🚧 scaffold — `TarballImportServiceImpl` ném "not implemented yet" (Sprint 2) |
-| WS | `/ws/graph-updates` | Đẩy graph/status theo thời gian thực | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2) |
+| Method | Path                                                 | Mô tả                                                                              | Trạng thái                                                                                         |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| POST   | `/api/projects`                                      | Đăng ký một đường dẫn dự án local                                                  | ✅ implemented — dev/internal fallback, không còn là UX chính                                       |
+| GET    | `/api/projects`                                      | Liệt kê dự án                                                                      | ✅ implemented                                                                                      |
+| GET    | `/api/projects/{id}`                                 | Chi tiết một dự án                                                                 | ✅ implemented                                                                                      |
+| DELETE | `/api/projects/{id}`                                 | Xóa một dự án                                                                      | ✅ implemented                                                                                      |
+| POST   | `/api/projects/{id}/analyze`                         | Kích hoạt phân tích đầy đủ                                                         | ✅ implemented                                                                                      |
+| GET    | `/api/projects/{id}/graph`                           | Trả về toàn bộ graph                                                               | ✅ implemented                                                                                      |
+| POST   | `/api/projects/import-archive`                       | Upload file `.zip`/`.tar`/`.tar.gz` của project Java để backend parse và lưu graph | ✅ implemented — sync `200 OK`, async `202 Accepted` qua `?async=true`, status qua `/topic/projects/{id}/status` |
+| GET    | `/api/projects/{id}/graph/neighbors/{nodeId}?hops=N` | Trả về neighborhood N-hop                                                          | 🚧 scaffold — `Neo4jGraphRepository.getNeighborhood` ném `UnsupportedOperationException` (Sprint 2) |
+| GET    | `/api/projects/{id}/diagrams/usecase`                | Trả về Use Case Mermaid                                                            | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
+| GET    | `/api/projects/{id}/diagrams/class`                  | Trả về Class Mermaid                                                               | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
+| GET    | `/api/projects/{id}/impact/{nodeId}`                 | Trả về phạm vi ảnh hưởng (blast radius)                                            | 🚧 scaffold — `ImpactController`/`ImpactServiceImpl` + `getImpact` chưa impl (Sprint 2/3)           |
+| POST   | `/api/projects/import-github`                        | Import một repo GitHub công khai qua luồng tarball                                 | ✅ backend implemented — parse URL, pre-flight, download tarball, extract qua archive pipeline, analyze async; UI form vẫn planned |
+| WS     | `/ws/graph-updates`                                  | Đẩy graph/status theo thời gian thực                                               | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2)                               |
 
 > Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án local path → analyze → full graph) đã chạy thật. Từ quyết định product ngày 2026-05-31, UX chính của Sprint 2 chuyển sang **upload ZIP/TAR archive**; local-path registration giữ lại như dev/internal fallback. Các dòng `🚧 scaffold`/`🆕 target` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`) và `task-breakdown-8week.md` (Sprint 2/3).
 > `GET /graph/neighbors`, `GET /diagrams/*` và `GET /impact/*` là endpoint mục tiêu của API contract; tại thời điểm audit chưa có route controller hoạt động cho các dòng đó dù frontend client đã có hàm gọi tương ứng.
@@ -158,7 +158,7 @@ Tool hoãn lại: `get_usecase_context`, `get_coding_rules`.
 
 Cho phép người dùng dán URL của một repository GitHub công khai. Backend tải xuống tarball, phân tích các file Java trong bộ nhớ và lưu trữ dữ liệu graph.
 
-> **Trạng thái:** MVP target — `ImportController` đã có và route `POST /api/projects/import-github` đã đăng ký, nhưng `TarballImportServiceImpl` còn ném "not implemented yet"; pipeline (pre-flight → stream → parse → notify) đang tiến hành (Sprint 2). UI import (`GithubImportForm.vue`) chưa làm.
+> **Trạng thái code sau audit 2026-06-08:** backend GitHub import đã implemented: `ImportController`, `GitHubUrlParser`, `GitHubPreFlightService`, `GitHubTarballClient` và `TarballImportServiceImpl` đã có. Luồng hiện tại download tarball vào workspace server rồi dùng `ArchiveExtractor` materialize `.java` và analyze async, có status WebSocket. UI import (`GitHubImportForm.vue`/`useGitHubImport.ts`) vẫn là planned file, chưa có trong frontend.
 
 Tiêu chí chấp nhận:
 
@@ -166,7 +166,7 @@ Tiêu chí chấp nhận:
 - Pre-flight dùng `GET https://api.github.com/repos/{owner}/{repo}` để kiểm tra `private`, `size` và `default_branch`.
 - Từ chối các repository lớn hơn 100 MB.
 - Việc tải tarball dùng GitHub API và `commons-compress`.
-- Phân tích các file `.java` trực tiếp từ tar stream; không lưu file mã nguồn xuống đĩa.
+- Triển khai hiện tại download tarball vào workspace server, extract/materialize các file `.java`, rồi analyze async; mục tiêu stream-only không lưu source xuống đĩa là tối ưu hóa tương lai nếu cần.
 - Dùng `GITHUB_TOKEN` khi có sẵn để tránh giới hạn rate thấp khi không xác thực.
 - Mục tiêu timeout: 60 giây cho pre-flight cộng với việc import các repo nhỏ/vừa.
 - Endpoint: `POST /api/projects/import-github` với body `{"url":"https://github.com/owner/repo"}`.
@@ -189,16 +189,18 @@ Tiêu chí chấp nhận:
 - Endpoint mục tiêu: `POST /api/projects/import-archive` với `multipart/form-data` gồm `name` và `file`.
 - Response trả về `projectId`, trạng thái import/analyze, và frontend redirect sang graph khi xong.
 
+> **Trạng thái code sau audit 2026-06-08:** backend `POST /api/projects/import-archive` đã có sync/async; frontend `AddProjectArchive.vue` và `useArchiveImport.ts` đã có. Mặc định `HomeView` dùng sync flow; async flow được hỗ trợ qua composable/prop và status topic.
+
 ## Yêu cầu phi chức năng
 
-| Chỉ số | Mục tiêu |
-|---|---|
-| Phân tích 500 file | < 30s |
-| Cập nhật tăng dần | < 3s |
-| Truy vấn 3-hop Neo4j | < 500 ms |
-| Độ trễ WebSocket | < 200 ms trên mạng local |
-| Triển khai local | `docker compose up -d` |
-| VPS tối thiểu | 4 GB RAM, 2 CPU |
+| Chỉ số               | Mục tiêu                 |
+| -------------------- | ------------------------ |
+| Phân tích 500 file   | < 30s                    |
+| Cập nhật tăng dần    | < 3s                     |
+| Truy vấn 3-hop Neo4j | < 500 ms                 |
+| Độ trễ WebSocket     | < 200 ms trên mạng local |
+| Triển khai local     | `docker compose up -d`   |
+| VPS tối thiểu        | 4 GB RAM, 2 CPU          |
 
 ## Ngoài phạm vi MVP 2 tháng
 

@@ -3,7 +3,6 @@
  * LegendPanel - Floating legend showing node type colors.
  * Position: bottom-left of graph canvas.
  */
-import { NODE_COLORS } from '@/lib/constants'
 </script>
 
 <template>

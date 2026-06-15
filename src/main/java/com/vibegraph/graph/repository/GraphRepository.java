@@ -3,6 +3,8 @@ package com.vibegraph.graph.repository;
 import java.util.List;
 
 import com.vibegraph.graph.dto.response.GraphDataResponse;
+import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
+import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -36,7 +38,9 @@ public interface GraphRepository {
 
     GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops);
 
+    NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops);
+
     List<NodeDto> searchNodes(String projectId, String query);
 
-    List<NodeDto> getImpact(String projectId, String targetFullName, int maxDepth);
+    ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth);
 }

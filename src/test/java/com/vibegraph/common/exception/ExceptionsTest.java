@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
 
@@ -75,5 +76,47 @@ class ExceptionsTest {
         // Internal detail must not leak to the client.
         assertEquals("An unexpected error occurred", body.getError().getMessage());
         assertNull(body.getData());
+    }
+
+    @Test
+    @DisplayName("ArchiveImportException carries a stable reason and code")
+    void archiveImportExceptionCarriesReasonAndCode() {
+        ArchiveImportException ex = new ArchiveImportException(
+                ArchiveImportException.Reason.UNSUPPORTED_TYPE, "bad type");
+        assertEquals("bad type", ex.getMessage());
+        assertEquals(ArchiveImportException.Reason.UNSUPPORTED_TYPE, ex.getReason());
+        assertEquals("ARCHIVE_UNSUPPORTED_TYPE", ex.getCode());
+        assertTrue(ex instanceof RuntimeException);
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler maps ArchiveImportException to 400 with its code")
+    void globalHandlerMapsArchiveImportToBadRequest() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleArchiveImport(
+                new ArchiveImportException(ArchiveImportException.Reason.UNSAFE_ENTRY, "unsafe entry"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
+        assertNotNull(body);
+        assertFalse(body.isSuccess());
+        assertEquals("ARCHIVE_UNSAFE_ENTRY", body.getError().getCode());
+        assertEquals("unsafe entry", body.getError().getMessage());
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler maps MaxUploadSizeExceededException to 413")
+    void globalHandlerMapsMaxUploadSizeToPayloadTooLarge() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleMaxUploadSize(new MaxUploadSizeExceededException(100L));
+
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
+        assertNotNull(body);
+        assertFalse(body.isSuccess());
+        assertEquals("ARCHIVE_OVERSIZE", body.getError().getCode());
     }
 }

@@ -67,3 +67,30 @@ export interface GraphData {
   nodeStats: Record<NodeType, number>
   edgeStats: Record<EdgeType, number>
 }
+
+/**
+ * Realtime graph-update events delivered over the STOMP topic
+ * `/topic/projects/{projectId}/updates`.
+ *
+ * CONTRACT (Sprint 2): kept in sync with the backend producer records
+ * `graph/websocket/{GraphUpdateEvent, GraphChangeSet, GraphRemoval}.java`
+ * (T36). The broadcast producer is implemented; the automatic file-change
+ * trigger (T25 file watcher) is still pending, so events are not yet emitted
+ * on real source edits. The consumer validates payloads defensively at the
+ * boundary regardless.
+ */
+export interface GraphFullUpdateEvent {
+  type: 'FULL_UPDATE'
+  projectId: string
+  graph: GraphData
+}
+
+export interface GraphIncrementalEvent {
+  type: 'INCREMENTAL'
+  projectId: string
+  added?: { nodes?: GraphNode[]; edges?: GraphEdge[] }
+  modified?: { nodes?: GraphNode[]; edges?: GraphEdge[] }
+  removed?: { nodeIds?: string[]; edgeIds?: string[] }
+}
+
+export type GraphUpdateEvent = GraphFullUpdateEvent | GraphIncrementalEvent
