@@ -9,7 +9,7 @@ import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
-import { drawDefaultNodeLabel, drawHighlightNodeHover } from '@/lib/sigmaRenderers'
+import { drawDefaultNodeLabel, drawHighlightNodeHover, drawEdgeTypeLabel } from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
 import type { FocusPartition } from '@/lib/focusMode'
 
@@ -28,21 +28,32 @@ export interface UseSigmaOptions {
 // this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
 // while its label stays tiny.
 const BASE_NODE_LABEL_SIZE = 12
-const BASE_EDGE_LABEL_SIZE = 7
+const BASE_EDGE_LABEL_SIZE = 5
 // Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
 // oversized, while still capping growth when zoomed IN.
 const MIN_LABEL_ZOOM_SCALE = 0.5
 const MAX_LABEL_ZOOM_SCALE = 2.2
+// Edge labels can grow with zoom-in like node labels. Raise this to let
+// relationship text (DEFINES, IMPORTS…) get bigger as you zoom in; lower it to
+// cap the size sooner.
+const MAX_EDGE_LABEL_ZOOM_SCALE = 2.2
 
 function clampLabelScale(ratio: number): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 1
   return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_LABEL_ZOOM_SCALE)
 }
 
+function clampEdgeLabelScale(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1
+  return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_EDGE_LABEL_ZOOM_SCALE)
+}
+
 function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
-  const scale = clampLabelScale(ratio)
-  sigma.setSetting('labelSize', Math.round(BASE_NODE_LABEL_SIZE * scale * 100) / 100)
-  sigma.setSetting('edgeLabelSize', Math.round(BASE_EDGE_LABEL_SIZE * scale * 100) / 100)
+  sigma.setSetting('labelSize', Math.round(BASE_NODE_LABEL_SIZE * clampLabelScale(ratio) * 100) / 100)
+  sigma.setSetting(
+    'edgeLabelSize',
+    Math.round(BASE_EDGE_LABEL_SIZE * clampEdgeLabelScale(ratio) * 100) / 100,
+  )
 }
 
 export function useSigma(options: UseSigmaOptions) {
@@ -98,6 +109,9 @@ export function useSigma(options: UseSigmaOptions) {
       // lib/sigmaRenderers.ts.
       defaultDrawNodeLabel: drawDefaultNodeLabel,
       defaultDrawNodeHover: drawHighlightNodeHover,
+      // Edge labels: hide entirely when the full text doesn't fit the edge
+      // (no "DEFI…" truncation). See lib/sigmaRenderers.ts.
+      defaultDrawEdgeLabel: drawEdgeTypeLabel,
     })
 
     sigmaInstance.value = sigma

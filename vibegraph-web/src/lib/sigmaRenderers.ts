@@ -10,10 +10,12 @@
  */
 
 import type { Settings } from 'sigma/settings'
-import type { NodeDisplayData, PartialButFor } from 'sigma/types'
+import type { EdgeDisplayData, NodeDisplayData, PartialButFor } from 'sigma/types'
 import { HIGHLIGHT_LABEL_COLOR } from './constants'
 
 type HoverData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size' | 'label' | 'color'>
+type EdgeData = PartialButFor<EdgeDisplayData, 'label' | 'color' | 'size'>
+type EndpointData = PartialButFor<NodeDisplayData, 'x' | 'y' | 'size'>
 
 // Gap between the bottom of the node disc and the top of the label text.
 const LABEL_GAP = 4
@@ -107,4 +109,72 @@ export function drawHighlightNodeHover(
   context.restore()
 
   drawTextOnlyNodeLabel(context, data, settings, HIGHLIGHT_LABEL_COLOR)
+}
+
+/**
+ * Edge type label renderer. Behaves like Sigma's built-in straight-edge label
+ * drawer EXCEPT it never truncates: if the full label text does not fit along
+ * the visible edge it is HIDDEN entirely (no "DEFI…" ellipsis). This keeps the
+ * canvas clean — a relationship label is shown only when it can be read in full.
+ */
+export function drawEdgeTypeLabel(
+  context: CanvasRenderingContext2D,
+  edgeData: EdgeData,
+  sourceData: EndpointData,
+  targetData: EndpointData,
+  settings: Settings,
+): void {
+  const label = edgeData.label
+  if (!label) return
+
+  const size = settings.edgeLabelSize
+  const font = settings.edgeLabelFont
+  const weight = settings.edgeLabelWeight
+  const color = settings.edgeLabelColor.attribute
+    ? ((edgeData as Record<string, unknown>)[settings.edgeLabelColor.attribute] as string) ||
+      settings.edgeLabelColor.color ||
+      '#000'
+    : settings.edgeLabelColor.color
+
+  context.fillStyle = color ?? '#000'
+  context.font = `${weight} ${size}px ${font}`
+
+  // Positions, offset by node radii so the measured length is the visible span.
+  const sSize = sourceData.size
+  const tSize = targetData.size
+  let sx = sourceData.x
+  let sy = sourceData.y
+  let tx = targetData.x
+  let ty = targetData.y
+  let dx = tx - sx
+  let dy = ty - sy
+  let d = Math.sqrt(dx * dx + dy * dy)
+  if (d < sSize + tSize) return
+
+  sx += (dx * sSize) / d
+  sy += (dy * sSize) / d
+  tx -= (dx * tSize) / d
+  ty -= (dy * tSize) / d
+  const cx = (sx + tx) / 2
+  const cy = (sy + ty) / 2
+  dx = tx - sx
+  dy = ty - sy
+  d = Math.sqrt(dx * dx + dy * dy)
+
+  // The whole label must fit within the visible edge span; otherwise hide it.
+  const textLength = context.measureText(label).width
+  if (textLength > d) return
+
+  let angle: number
+  if (dx > 0) {
+    angle = dy > 0 ? Math.acos(dx / d) : Math.asin(dy / d)
+  } else {
+    angle = dy > 0 ? Math.acos(dx / d) + Math.PI : Math.asin(dx / d) + Math.PI / 2
+  }
+
+  context.save()
+  context.translate(cx, cy)
+  context.rotate(angle)
+  context.fillText(label, -textLength / 2, (edgeData.size ?? 1) / 2 + size)
+  context.restore()
 }
