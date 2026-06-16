@@ -40,6 +40,10 @@ class UseCaseDiagramServiceTest {
         return NodeDto.builder().id(id).type("Route").name(name).fullName(id).build();
     }
 
+    private NodeDto apiEndpoint(String id, String name) {
+        return NodeDto.builder().id(id).type("APIEndpoint").name(name).fullName(id).build();
+    }
+
     private NodeDto method(String id, String name) {
         return NodeDto.builder().id(id).type("Method").name(name).fullName(id).build();
     }
@@ -98,6 +102,18 @@ class UseCaseDiagramServiceTest {
 
         assertThat(response.getUseCases()).containsExactly("GET /health");
         assertThat(response.getMermaidSyntax()).contains("[\"GET /health\"]");
+    }
+
+
+    @Test
+    @DisplayName("includes orphan APIEndpoint nodes that have no HANDLES_ROUTE edge")
+    void includesOrphanApiEndpoints() {
+        stubGraph(List.of(apiEndpoint("GET /api/health", "GET /api/health")), List.of());
+
+        UseCaseResponse response = service.generateUseCaseDiagram(PROJECT_ID);
+
+        assertThat(response.getUseCases()).containsExactly("GET /api/health");
+        assertThat(response.getMermaidSyntax()).contains("[\"GET /api/health\"]");
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.vibegraph.parser.visitor;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.vibegraph.parser.node.NodeData;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +29,7 @@ class ClassVisitorTest {
 
     @BeforeEach
     void setUp() {
-        parser = new JavaParser();
+        parser = new JavaParser(new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
         visitor = new ClassVisitor();
     }
 
@@ -171,6 +172,30 @@ class ClassVisitorTest {
     }
 
     @Nested
+    @DisplayName("Record extraction")
+    class RecordExtraction {
+
+        @Test
+        @DisplayName("should extract Java record")
+        void shouldExtractRecord() {
+            String code = """
+                package com.example;
+                public record UserRecord(String id, String name) {}
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+            List<NodeData> nodes = visitor.getExtractedNodes();
+
+            assertFalse(nodes.isEmpty());
+            NodeData recordNode = nodes.get(0);
+            assertEquals("Record", recordNode.type());
+            assertEquals("UserRecord", recordNode.name());
+            assertEquals("com.example.UserRecord", recordNode.fullName());
+            assertEquals(List.of("id", "name"), property(recordNode, "components"));
+        }
+    }
+    @Nested
     @DisplayName("Spring annotation detection")
     class SpringAnnotations {
 
@@ -228,6 +253,27 @@ class ClassVisitorTest {
             assertEquals("REPOSITORY", property(nodes.get(0), "springLayer"));
         }
 
+
+        @Test
+        @DisplayName("should type persistence model annotations as DBModel")
+        void shouldTypePersistenceModelAsDbModel() {
+            String code = """
+                package com.example;
+                import jakarta.persistence.Entity;
+                import jakarta.persistence.Table;
+
+                @Entity
+                @Table(name = "users")
+                public class UserEntity {}
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+            List<NodeData> nodes = visitor.getExtractedNodes();
+
+            assertEquals("DBModel", nodes.get(0).type());
+            assertEquals("ENTITY", property(nodes.get(0), "springLayer"));
+        }
         @Test
         @DisplayName("should return NONE for unannotated class")
         void shouldReturnNoneForUnannotatedClass() {

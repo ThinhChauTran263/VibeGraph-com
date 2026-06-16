@@ -3,6 +3,7 @@ package com.vibegraph.parser.visitor;
 import com.github.javaparser.ast.body.AnnotationDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.node.EdgeData;
@@ -38,6 +39,12 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
 
     @Override
     public void visit(AnnotationDeclaration n, Object arg) {
+        extractedNodes.add(toNodeData(n));
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(RecordDeclaration n, Object arg) {
         extractedNodes.add(toNodeData(n));
         super.visit(n, arg);
     }
@@ -105,7 +112,7 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     }
 
     private NodeData toNodeData(ClassOrInterfaceDeclaration declaration) {
-        String type = declaration.isInterface() ? "Interface" : "Class";
+        String type = declaration.isInterface() ? "Interface" : classNodeType(declaration);
         Map<String, Object> properties = new HashMap<>();
         properties.put("visibility", declaration.getAccessSpecifier().asString());
         properties.put("abstract", declaration.isAbstract());
@@ -163,6 +170,41 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
                 declaration.getEnd().map(position -> position.line).orElse(0),
                 properties
         );
+    }
+
+    private NodeData toNodeData(RecordDeclaration declaration) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("visibility", declaration.getAccessSpecifier().asString());
+        properties.put("static", declaration.isStatic());
+        properties.put("inner", declaration.isNestedType());
+        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .toList()));
+        properties.put("components", declaration.getParameters().stream()
+                .map(parameter -> parameter.getNameAsString())
+                .toList());
+
+        return NodeData.of(
+                "Record",
+                declaration.getNameAsString(),
+                declaration.getFullyQualifiedName().orElse(declaration.getNameAsString()),
+                filePath(declaration),
+                declaration.getBegin().map(position -> position.line).orElse(0),
+                declaration.getEnd().map(position -> position.line).orElse(0),
+                properties
+        );
+    }
+
+    private String classNodeType(ClassOrInterfaceDeclaration declaration) {
+        List<String> annotations = declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .toList();
+        return isDbModel(annotations) ? "DBModel" : "Class";
+    }
+
+    private boolean isDbModel(List<String> annotations) {
+        return annotations.contains("Entity") || annotations.contains("Node")
+                || annotations.contains("Document") || annotations.contains("Table");
     }
 
     private String filePath(com.github.javaparser.ast.Node node) {

@@ -258,7 +258,7 @@ class MethodVisitorTest {
             visitor.visit(cu, null);
             List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertTrue(methods.stream().anyMatch(method -> method.name().equals("<init>")));
+            assertTrue(methods.stream().anyMatch(method -> method.name().equals("<init>") && method.type().equals("Constructor")));
         }
     }
 }

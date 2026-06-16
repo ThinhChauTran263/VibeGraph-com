@@ -9,25 +9,74 @@ import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
-import { drawDefaultNodeLabel, drawHighlightNodeHover } from '@/lib/sigmaRenderers'
+import { drawDefaultNodeLabel, drawHighlightNodeHover, drawEdgeTypeLabel } from '@/lib/sigmaRenderers'
+import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
+import type { FocusPartition } from '@/lib/focusMode'
 
 export interface UseSigmaOptions {
   container: Ref<HTMLDivElement | null>
   onNodeClick?: (nodeId: string) => void
   onStageClick?: () => void
+  onNodeHover?: (nodeId: string) => void
+  onNodeLeave?: () => void
+  onCameraRatioChange?: (ratio: number) => void
+}
+
+// Base label sizes at the default (ratio = 1) zoom. Labels are scaled inversely
+// with the camera ratio so they GROW as the user zooms in and shrink as they zoom
+// out, matching the node sizes (which Sigma already scales with zoom). Without
+// this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
+// while its label stays tiny.
+const BASE_NODE_LABEL_SIZE = 8
+const BASE_EDGE_LABEL_SIZE = 3
+// Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
+// oversized, while still capping growth when zoomed IN.
+const MIN_LABEL_ZOOM_SCALE = 0.5
+const MAX_LABEL_ZOOM_SCALE = 2.25
+// Edge labels can grow with zoom-in like node labels. Raise MAX to let
+// relationship text (DEFINES, IMPORTS…) get bigger when zoomed in; lower it to
+// cap sooner. MIN is the floor when zoomed out (smaller = shrinks more).
+const MIN_EDGE_LABEL_ZOOM_SCALE = 1
+const MAX_EDGE_LABEL_ZOOM_SCALE = 4
+
+function clampLabelScale(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1
+  return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_LABEL_ZOOM_SCALE)
+}
+
+function clampEdgeLabelScale(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1
+  return Math.min(Math.max(1 / ratio, MIN_EDGE_LABEL_ZOOM_SCALE), MAX_EDGE_LABEL_ZOOM_SCALE)
+}
+
+function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
+  sigma.setSetting('labelSize', Math.round(BASE_NODE_LABEL_SIZE * clampLabelScale(ratio) * 100) / 100)
+  sigma.setSetting(
+    'edgeLabelSize',
+    Math.round(BASE_EDGE_LABEL_SIZE * clampEdgeLabelScale(ratio) * 100) / 100,
+  )
 }
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick, onStageClick } = options
+  const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
+    options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
+  const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
 
   // Node currently being dragged (null when idle). While set, the camera pan is
   // disabled and the layout worker is stopped so the node stays where dropped.
   const draggedNode = shallowRef<string | null>(null)
+
+  // True once the pointer actually MOVED while holding a node. Sigma still fires
+  // `clickNode` on the mouse-up that ends a drag, which would wrongly select the
+  // node the user was just repositioning. We use this flag to swallow exactly
+  // that one click. A plain click (no movement) never sets it, so selecting by
+  // clicking still works.
+  const dragMoved = shallowRef(false)
 
   /**
    * Initialize Sigma with a Graphology graph.
@@ -45,25 +94,44 @@ export function useSigma(options: UseSigmaOptions) {
       renderEdgeLabels: false,
       defaultEdgeType: 'line',
       zIndex: true,
-      labelRenderedSizeThreshold: 8,
+      labelRenderedSizeThreshold: 15,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
-      labelSize: 13,
+      labelSize: BASE_NODE_LABEL_SIZE,
       labelWeight: '600',
-      edgeLabelColor: { color: '#cbd5e1' },
-      edgeLabelSize: 11,
+      // Edge labels render in their own edge-type color (per-edge `labelColor`
+      // attribute set by graphAdapter / focus reducer), matching the Edge Types
+      // legend. Sigma's edge label renderer draws text only (no white box). The
+      // `color` fallback applies when an edge has no labelColor attribute.
+      edgeLabelColor: { attribute: 'labelColor', color: '#cbd5e1' },
+      edgeLabelSize: BASE_EDGE_LABEL_SIZE,
       // Override Sigma's default hover renderer (which paints a solid white
       // label box) and label renderer with text-only variants. See
       // lib/sigmaRenderers.ts.
       defaultDrawNodeLabel: drawDefaultNodeLabel,
       defaultDrawNodeHover: drawHighlightNodeHover,
+      // Edge labels: hide entirely when the full text doesn't fit the edge
+      // (no "DEFI…" truncation). See lib/sigmaRenderers.ts.
+      defaultDrawEdgeLabel: drawEdgeTypeLabel,
     })
 
     sigmaInstance.value = sigma
 
+    // Ghost background canvas: a Sigma-managed 2D canvas inserted physically below
+    // the WebGL edges layer. Unrelated nodes/edges are hidden in this Sigma during
+    // focus and redrawn here, so a background node can never cover a foreground
+    // edge. Shares Sigma's camera, so pan/zoom/drag stay aligned automatically.
+    ghostLayer.value = attachGhostLayer(sigma, graph)
+
     // Register node click handler
     if (onNodeClick) {
       sigma.on('clickNode', ({ node }) => {
+        // Swallow the click that ends a drag so repositioning a node does not
+        // also select / highlight it. See `dragMoved`.
+        if (dragMoved.value) {
+          dragMoved.value = false
+          return
+        }
         onNodeClick(node)
       })
     }
@@ -76,6 +144,18 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     registerDragHandlers(sigma, graph)
+
+    const camera = sigma.getCamera()
+    let lastRatio = camera.getState().ratio
+    applyZoomResponsiveLabelSize(sigma, lastRatio)
+    onCameraRatioChange?.(lastRatio)
+    camera.on('updated', () => {
+      const ratio = camera.getState().ratio
+      if (ratio === lastRatio) return
+      lastRatio = ratio
+      applyZoomResponsiveLabelSize(sigma, ratio)
+      onCameraRatioChange?.(ratio)
+    })
 
     // Start ForceAtlas2 layout in a web worker
     startLayout(graph)
@@ -91,18 +171,23 @@ export function useSigma(options: UseSigmaOptions) {
   function registerDragHandlers(sigma: Sigma, graph: Graph) {
     sigma.on('downNode', ({ node }) => {
       draggedNode.value = node
+      dragMoved.value = false
       stopLayout()
       sigma.setSetting('enableCameraPanning', false)
       if (container.value) container.value.style.cursor = 'grabbing'
     })
 
-    // Hover affordance: show a grab cursor over a draggable node when idle.
-    sigma.on('enterNode', () => {
+    // Hover affordance: show a grab cursor over a draggable node when idle, and
+    // notify the host so it can drive a temporary hover focus on the graph. We do
+    // NOT emit hover focus mid-drag (the node is being moved, not inspected).
+    sigma.on('enterNode', ({ node }) => {
       if (!draggedNode.value && container.value) container.value.style.cursor = 'grab'
+      if (!draggedNode.value) onNodeHover?.(node)
     })
 
     sigma.on('leaveNode', () => {
       if (!draggedNode.value && container.value) container.value.style.cursor = ''
+      if (!draggedNode.value) onNodeLeave?.()
     })
 
     const mouseCaptor = sigma.getMouseCaptor()
@@ -110,6 +195,10 @@ export function useSigma(options: UseSigmaOptions) {
     mouseCaptor.on('mousemovebody', (event) => {
       const node = draggedNode.value
       if (!node) return
+
+      // The pointer moved while holding the node: this is a real drag, so the
+      // click that ends it must not select the node.
+      dragMoved.value = true
 
       const pos = sigma.viewportToGraph(event)
       graph.setNodeAttribute(node, 'x', pos.x)
@@ -176,11 +265,23 @@ export function useSigma(options: UseSigmaOptions) {
    */
   function dispose() {
     stopLayout()
+    if (ghostLayer.value) {
+      ghostLayer.value.destroy()
+      ghostLayer.value = null
+    }
     if (sigmaInstance.value) {
       sigmaInstance.value.kill()
       sigmaInstance.value = null
     }
     graphInstance.value = null
+  }
+
+  /**
+   * Feed the ghost background layer the focus partition (unrelated nodes/edges to
+   * draw below the foreground). Pass null to clear the ghost layer in normal mode.
+   */
+  function setGhostPartition(partition: FocusPartition | null): void {
+    ghostLayer.value?.setPartition(partition)
   }
 
   function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
@@ -230,5 +331,6 @@ export function useSigma(options: UseSigmaOptions) {
     stopLayout,
     setReducers,
     setEdgeLabelsVisible,
+    setGhostPartition,
   }
 }

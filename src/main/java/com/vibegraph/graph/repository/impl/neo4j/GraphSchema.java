@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 /**
  * Whitelist for Neo4j labels, relationship types, and property keys.
  *
- * Neo4j cannot parameterize labels or relationship types — they must be string-
+ * Neo4j cannot parameterize labels or relationship types - they must be string-
  * interpolated into Cypher. To keep that safe and stable, every interpolated
  * token is validated against a fixed allow-list here before it reaches a query.
  * Anything outside the schema is rejected loudly instead of silently producing
@@ -22,7 +22,8 @@ public final class GraphSchema {
 
     private static final Set<String> NODE_LABELS = Set.of(
             "Project", "Package", "File", "Class", "Interface", "Enum",
-            "Method", "Field", "Annotation", "Route", EXTERNAL_LABEL
+            "Record", "DBModel", "Method", "Constructor", "Field", "Annotation",
+            "Route", "APIEndpoint", EXTERNAL_LABEL
     );
 
     private static final Set<String> RELATIONSHIP_TYPES = Set.of(

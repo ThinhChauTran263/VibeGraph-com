@@ -236,7 +236,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         properties.put("routePath", null);
 
         return NodeData.of(
-                "Method",
+                "Constructor",
                 "<init>",
                 fullName("<init>", declaration.findAncestor(ClassOrInterfaceDeclaration.class), paramTypes),
                 filePath(declaration),
