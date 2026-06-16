@@ -27,16 +27,17 @@ export interface UseSigmaOptions {
 // out, matching the node sizes (which Sigma already scales with zoom). Without
 // this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
 // while its label stays tiny.
-const BASE_NODE_LABEL_SIZE = 12
-const BASE_EDGE_LABEL_SIZE = 5
+const BASE_NODE_LABEL_SIZE = 8
+const BASE_EDGE_LABEL_SIZE = 3
 // Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
 // oversized, while still capping growth when zoomed IN.
 const MIN_LABEL_ZOOM_SCALE = 0.5
-const MAX_LABEL_ZOOM_SCALE = 2.2
-// Edge labels can grow with zoom-in like node labels. Raise this to let
-// relationship text (DEFINES, IMPORTS…) get bigger as you zoom in; lower it to
-// cap the size sooner.
-const MAX_EDGE_LABEL_ZOOM_SCALE = 2.2
+const MAX_LABEL_ZOOM_SCALE = 2.25
+// Edge labels can grow with zoom-in like node labels. Raise MAX to let
+// relationship text (DEFINES, IMPORTS…) get bigger when zoomed in; lower it to
+// cap sooner. MIN is the floor when zoomed out (smaller = shrinks more).
+const MIN_EDGE_LABEL_ZOOM_SCALE = 1
+const MAX_EDGE_LABEL_ZOOM_SCALE = 4
 
 function clampLabelScale(ratio: number): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 1
@@ -45,7 +46,7 @@ function clampLabelScale(ratio: number): number {
 
 function clampEdgeLabelScale(ratio: number): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 1
-  return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_EDGE_LABEL_ZOOM_SCALE)
+  return Math.min(Math.max(1 / ratio, MIN_EDGE_LABEL_ZOOM_SCALE), MAX_EDGE_LABEL_ZOOM_SCALE)
 }
 
 function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
@@ -93,7 +94,7 @@ export function useSigma(options: UseSigmaOptions) {
       renderEdgeLabels: false,
       defaultEdgeType: 'line',
       zIndex: true,
-      labelRenderedSizeThreshold: 8,
+      labelRenderedSizeThreshold: 15,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
       labelSize: BASE_NODE_LABEL_SIZE,

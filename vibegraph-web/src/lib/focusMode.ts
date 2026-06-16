@@ -21,7 +21,7 @@ export interface FocusReducers {
 export type FocusLabelDensity = 'minimal' | 'nodes' | 'edges'
 
 const MINIMAL_LABEL_RATIO = 1.05
-const EDGE_LABEL_RATIO = 0.72
+const EDGE_LABEL_RATIO = 0.2
 
 export function resolveFocusLabelDensity(cameraRatio: number): FocusLabelDensity {
   if (!Number.isFinite(cameraRatio)) return 'nodes'

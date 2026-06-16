@@ -155,10 +155,22 @@ function applyFocusReducers(): void {
     return
   }
 
-  // 5: default focus-depth view.
-  setReducers(createFocusReducers(null, focusDepth.value, graph))
+  // 5: default focus-depth view (no node focused). Edge type labels still reveal
+  // by zoom: when zoomed in enough (edges density) we FORCE them for the whole
+  // graph (Sigma otherwise only labels edges between already-labelled nodes, so
+  // they'd flicker/vanish without a selection). The renderer hides any that don't
+  // fully fit their edge.
+  const baseReducers = createFocusReducers(null, focusDepth.value, graph)
+  const showEdgeLabels = labelDensity.value === 'edges'
+  setReducers({
+    nodeReducer: baseReducers.nodeReducer,
+    edgeReducer: (edge, attributes) => {
+      const out = baseReducers.edgeReducer ? baseReducers.edgeReducer(edge, attributes) : attributes
+      return showEdgeLabels ? { ...out, forceLabel: true } : out
+    },
+  })
   setGhostPartition?.(null)
-  setEdgeLabelsVisible?.(false)
+  setEdgeLabelsVisible?.(showEdgeLabels)
 }
 
 /** Focus the graph on a node (and optional single relation), revealing edge labels. */
