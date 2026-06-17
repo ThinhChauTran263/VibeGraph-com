@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
 import {
-  createFocusReducers,
   createSelectionFocusReducers,
   getDirectNeighbors,
-  getNeighborsWithinHops,
   ghostEdgeColor,
   ghostEdgeSize,
   ghostNodeColor,
   ghostNodeSize,
   NEIGHBOR_NODE_SIZE_MULTIPLIER,
-  normalizeFocusDepth,
   partitionFocusGraph,
   relatedEdgeLabelColor,
   resolveFocusLabelDensity,
@@ -30,16 +27,6 @@ function buildGraph(): Graph {
   return graph
 }
 
-describe('normalizeFocusDepth', () => {
-  it('allows only supported focus depths', () => {
-    expect(normalizeFocusDepth(-1)).toBe(-1)
-    expect(normalizeFocusDepth(0)).toBe(0)
-    expect(normalizeFocusDepth(5)).toBe(5)
-    expect(normalizeFocusDepth(999)).toBe(-1)
-    expect(normalizeFocusDepth(Number.POSITIVE_INFINITY)).toBe(-1)
-  })
-})
-
 describe('resolveFocusLabelDensity', () => {
   it('progressively reveals focus labels as the camera zooms in', () => {
     expect(resolveFocusLabelDensity(1.3)).toBe('minimal')
@@ -49,72 +36,6 @@ describe('resolveFocusLabelDensity', () => {
 
   it('falls back to node labels for invalid camera ratios', () => {
     expect(resolveFocusLabelDensity(Number.NaN)).toBe('nodes')
-  })
-})
-describe('getNeighborsWithinHops', () => {
-  it('returns the selected node and neighbors within the requested depth', () => {
-    const graph = buildGraph()
-
-    expect(getNeighborsWithinHops(graph, 'selected', 0)).toEqual(new Set(['selected']))
-    expect(getNeighborsWithinHops(graph, 'selected', 1)).toEqual(new Set(['selected', 'hop-1']))
-    expect(getNeighborsWithinHops(graph, 'selected', 2)).toEqual(
-      new Set(['selected', 'hop-1', 'hop-2']),
-    )
-  })
-
-  it('returns an empty set for missing selected nodes', () => {
-    expect(getNeighborsWithinHops(buildGraph(), 'missing', 2)).toEqual(new Set())
-  })
-
-  it('returns an empty set for unsupported depths', () => {
-    expect(getNeighborsWithinHops(buildGraph(), 'selected', 999)).toEqual(new Set())
-  })
-
-  it('caps traversal work on very large neighborhoods', () => {
-    const graph = new Graph({ type: 'directed', multi: true })
-    graph.addNode('root')
-    for (let index = 0; index < 2000; index += 1) {
-      const nodeId = `node-${index}`
-      graph.addNode(nodeId)
-      graph.addEdgeWithKey(`root->${nodeId}`, 'root', nodeId)
-    }
-
-    expect(getNeighborsWithinHops(graph, 'root', 1).size).toBeLessThanOrEqual(1500)
-  })
-})
-
-describe('createFocusReducers', () => {
-  it('does not change nodes or edges when focus mode is disabled', () => {
-    const graph = buildGraph()
-    const reducers = createFocusReducers('selected', -1, graph)
-
-    expect(reducers.nodeReducer?.('outside', { color: '#ffffff' })).toEqual({ color: '#ffffff' })
-    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-    })
-  })
-
-  it('highlights visible focus nodes and hides edges outside the focused neighborhood', () => {
-    const graph = buildGraph()
-    const reducers = createFocusReducers('selected', 1, graph)
-
-    expect(reducers.nodeReducer?.('selected', { color: '#ffffff', size: 8 })).toEqual({
-      color: '#ffffff',
-      size: 10,
-      highlighted: true,
-    })
-    expect(reducers.nodeReducer?.('outside', { color: '#ffffff', size: 8 })).toEqual({
-      color: '#313748',
-      size: 8,
-      label: '',
-    })
-    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-    })
-    expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-      hidden: true,
-    })
   })
 })
 

@@ -6,6 +6,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -42,5 +43,9 @@ public interface GraphRepository {
 
     List<NodeDto> searchNodes(String projectId, String query);
 
-    ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth);
+    default ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth) {
+        return getImpact(projectId, targetFullName, maxDepth, ImpactProfile.DEPENDENCY);
+    }
+
+    ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth, ImpactProfile profile);
 }

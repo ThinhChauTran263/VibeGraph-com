@@ -32,7 +32,6 @@ vi.mock('@/stores/filter', () => ({
     hiddenNodeTypes: hiddenNodeTypes.value,
     hiddenEdgeTypes: hiddenEdgeTypes.value,
     hasActiveFilters: computed(() => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0),
-    focusDepth: -1,
     searchQuery: '',
     toggleNodeType: (type: NodeType, available: readonly NodeType[] = []) => {
       hiddenNodeTypes.value = nextIsolate(hiddenNodeTypes.value, type, available)

@@ -4,6 +4,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.GraphService;
 import lombok.RequiredArgsConstructor;
@@ -38,13 +39,13 @@ public class GraphServiceImpl implements GraphService {
     }
 
     @Override
-    public ImpactAnalysisResponse getImpactAnalysis(String projectId, String nodeId, int depth) {
+    public ImpactAnalysisResponse getImpactAnalysis(String projectId, String nodeId, int depth, ImpactProfile profile) {
         validateIdentifier("projectId", projectId);
         validateIdentifier("nodeId", nodeId);
         if (!ALLOWED_IMPACT_DEPTHS.contains(depth)) {
             throw new IllegalArgumentException("depth must be one of 1, 2, 3, 5");
         }
-        return graphRepository.getImpact(projectId, nodeId, depth);
+        return graphRepository.getImpact(projectId, nodeId, depth, profile == null ? ImpactProfile.DEPENDENCY : profile);
     }
 
     @Override

@@ -10,7 +10,8 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 **Đã có (MVP — Sprint 1):**
 - Parse Java source code with JavaParser → `NodeData` / `EdgeData`
 - Build knowledge graph in Neo4j via `GraphRepository` (raw Neo4j Java Driver)
-- Force-directed graph visualization (Sigma.js) with filtering + focus mode
+- Force-directed graph visualization (Sigma.js) with filtering, search, and click-driven node detail/highlight
+- Impact Analysis with selectable profiles: dependency blast radius, structural relationships, and type/data-flow CPG links
 - REST API: register project (local path), run analysis, fetch full graph
 
 **Đang phát triển (Sprint 2–3):**

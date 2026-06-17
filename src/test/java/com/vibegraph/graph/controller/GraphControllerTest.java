@@ -23,6 +23,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 
 /**
@@ -224,11 +225,12 @@ class GraphControllerTest {
                         .build()))
                 .mayNeedTesting(List.of())
                 .build();
-        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 3)).thenReturn(response);
+        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 3, ImpactProfile.STRUCTURAL)).thenReturn(response);
 
         mockMvc.perform(get("/api/projects/p1/graph/impact")
                         .param("nodeId", "com.example.OrderService")
-                        .param("depth", "3"))
+                        .param("depth", "3")
+                        .param("profile", "structural"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.target.fullName").value("com.example.OrderService"))
@@ -236,13 +238,13 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.data.willBreak[0].fullName").value("com.example.OrderController"))
                 .andExpect(jsonPath("$.data.likelyAffected[0].fullName").value("com.example.ApiGateway"));
 
-        verify(graphService, times(1)).getImpactAnalysis("p1", "com.example.OrderService", 3);
+        verify(graphService, times(1)).getImpactAnalysis("p1", "com.example.OrderService", 3, ImpactProfile.STRUCTURAL);
     }
 
     @Test
     @DisplayName("GET impact rejects unsupported depth counts")
     void shouldRejectUnsupportedImpactDepths() throws Exception {
-        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 99))
+        when(graphService.getImpactAnalysis("p1", "com.example.OrderService", 99, ImpactProfile.DEPENDENCY))
                 .thenThrow(new IllegalArgumentException("depth must be one of 1, 2, 3, 5"));
 
         mockMvc.perform(get("/api/projects/p1/graph/impact")
@@ -254,9 +256,21 @@ class GraphControllerTest {
     }
 
     @Test
+    @DisplayName("GET impact rejects unsupported profiles")
+    void shouldRejectUnsupportedImpactProfiles() throws Exception {
+        mockMvc.perform(get("/api/projects/p1/graph/impact")
+                        .param("nodeId", "com.example.OrderService")
+                        .param("depth", "3")
+                        .param("profile", "everything"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     @DisplayName("GET impact returns 404 when target node is missing")
     void shouldReturnNotFoundForMissingImpactTarget() throws Exception {
-        when(graphService.getImpactAnalysis("p1", "missing.Node", 3))
+        when(graphService.getImpactAnalysis("p1", "missing.Node", 3, ImpactProfile.DEPENDENCY))
                 .thenThrow(new NodeNotFoundException("Node not found"));
 
         mockMvc.perform(get("/api/projects/p1/graph/impact")

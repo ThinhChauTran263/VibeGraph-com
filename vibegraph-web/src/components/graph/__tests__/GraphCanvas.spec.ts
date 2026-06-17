@@ -60,12 +60,6 @@ vi.mock('@/composables/useSigma', () => ({
   },
 }))
 
-vi.mock('@/composables/useFilters', () => ({
-  useFilters: () => ({
-    focusDepth: computed(() => -1),
-  }),
-}))
-
 // T60: GraphCanvas now wires the realtime consumer. Stub it so this test stays
 // focused on canvas/search behavior and avoids pulling in Pinia + a socket.
 vi.mock('@/composables/useGraphRealtime', () => ({
@@ -79,10 +73,6 @@ vi.mock('@/composables/useGraphRealtime', () => ({
 
 vi.mock('@/components/panels/FilterPanel.vue', () => ({
   default: { template: '<div data-test="filter-panel" />', props: ['graphData'] },
-}))
-
-vi.mock('@/components/panels/FocusDepthControl.vue', () => ({
-  default: { template: '<div data-test="focus-depth-control" />' },
 }))
 
 describe('GraphCanvas', () => {
