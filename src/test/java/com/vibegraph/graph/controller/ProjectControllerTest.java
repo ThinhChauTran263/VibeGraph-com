@@ -91,7 +91,7 @@ class ProjectControllerTest {
         ProjectResponse project = ProjectResponse.builder()
                 .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
         when(projectService.getProject("p1")).thenReturn(project);
-        when(analyzeService.analyzeProject("p1", "/tmp/p1"))
+        when(analyzeService.analyzeProject("p1", "p1", "/tmp/p1"))
                 .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
 
         mockMvc.perform(post("/api/projects/p1/analyze"))

@@ -39,7 +39,7 @@ public class ProjectController {
     @PostMapping("/{id}/analyze")
     public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
         ProjectResponse project = projectService.getProject(id);
-        AnalysisResult result = analyzeService.analyzeProject(id, project.getRootPath());
+        AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
 
         // Persist analysis stats through the interface contract — no impl downcast.
         projectService.updateProjectStats(id, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());

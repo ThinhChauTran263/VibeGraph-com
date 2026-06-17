@@ -26,7 +26,7 @@ public class AnalyzeServiceImpl implements AnalyzeService {
     private final GraphRepository graphRepository;
 
     @Override
-    public AnalysisResult analyzeProject(String projectId, String projectPath) {
+    public AnalysisResult analyzeProject(String projectId, String projectName, String projectPath) {
         Path root = Path.of(projectPath);
         log.info("Starting full analysis for project {} at {}", projectId, root);
 
@@ -55,7 +55,11 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // is left unchanged. NOT a copy of CALLS (reachability-filtered + deduped).
         allEdges.addAll(FlowAnalyzer.inferStepInFlow(allNodes, allEdges));
 
-        graphRepository.upsertProject(projectId, projectId, projectPath);
+        // Project node name = human-readable display name (repo/owner-repo for GitHub,
+        // user-provided name for archive). The stable graph id stays projectId. Fall back
+        // to projectId if no name was supplied so the node is never left without a label.
+        String displayName = (projectName != null && !projectName.isBlank()) ? projectName : projectId;
+        graphRepository.upsertProject(projectId, displayName, projectPath);
         graphRepository.upsertNodes(projectId, allNodes);
         // upsertEdges returns the number of edges actually persisted (including
         // any that required an External stub target). This is the truthful count

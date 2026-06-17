@@ -69,7 +69,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     public ProjectResponse importArchive(String name, MultipartFile file) {
         ImportContext ctx = prepare(name, file);
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.rootPath());
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
             projectService.updateProjectStats(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
@@ -143,7 +143,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      */
     private void analyzeInBackground(ImportContext ctx) {
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.rootPath());
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);
