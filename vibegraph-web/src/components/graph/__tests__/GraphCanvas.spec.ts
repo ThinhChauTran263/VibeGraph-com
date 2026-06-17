@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { computed, ref } from 'vue'
+import Graph from 'graphology'
 import GraphCanvas from '../GraphCanvas.vue'
 import type { GraphData, GraphNode } from '@/types/graph'
 
@@ -39,13 +40,24 @@ vi.mock('@/composables/useGraphData', () => ({
   }),
 }))
 
+// Stable spy + captured camera handler for the edge-label toggle test. A
+// non-null graphInstance is required: applyFocusReducers/focusOn early-return
+// when there is no graph, so setEdgeLabelsVisible would otherwise never be hit.
+const setEdgeLabelsVisible = vi.fn<(visible: boolean) => void>()
+const graphInstanceRef = ref<Graph | null>(new Graph({ type: 'directed', multi: true }))
+let capturedCameraRatioChange: ((ratio: number) => void) | undefined
+
 vi.mock('@/composables/useSigma', () => ({
-  useSigma: () => ({
-    init: vi.fn<() => void>(),
-    graphInstance: ref(null),
-    setReducers: vi.fn<() => void>(),
-    setEdgeLabelsVisible: vi.fn<() => void>(),
-  }),
+  useSigma: (config: { onCameraRatioChange?: (ratio: number) => void }) => {
+    capturedCameraRatioChange = config?.onCameraRatioChange
+    return {
+      init: vi.fn<() => void>(),
+      graphInstance: graphInstanceRef,
+      setReducers: vi.fn<() => void>(),
+      setEdgeLabelsVisible,
+      setGhostPartition: vi.fn<() => void>(),
+    }
+  },
 }))
 
 vi.mock('@/composables/useFilters', () => ({
@@ -146,5 +158,52 @@ describe('GraphCanvas', () => {
     expect(clearSelection).toHaveBeenCalledTimes(1)
     const nodeSelectedEvents = wrapper.emitted('nodeSelected')
     expect(nodeSelectedEvents?.[nodeSelectedEvents.length - 1]).toEqual([null])
+  })
+})
+
+/**
+ * Edge-label toggle. The "Edge labels" button flips `edgeLabelsEnabled`, and
+ * both focus paths (selection focus and the default no-selection view) gate edge
+ * label rendering on `edgeLabelsEnabled && labelDensity === 'edges'`. With no node
+ * selected the default path forwards that exact boolean to Sigma via
+ * `setEdgeLabelsVisible`, so we assert against it directly. Driving the captured
+ * `onCameraRatioChange` handler sets the zoom density deterministically (no real
+ * Sigma camera / timers), keeping the test non-flaky.
+ */
+describe('GraphCanvas edge label toggle', () => {
+  it('forces edge labels off when toggled, and only shows them at edges density', async () => {
+    // No selection -> applyFocusReducers takes the default path and pushes
+    // (edgeLabelsEnabled && labelDensity === 'edges') straight to Sigma.
+    selectedNode.value = null
+    nodes.value = []
+    loading.value = false
+    error.value = null
+
+    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    await flushPromises()
+    setEdgeLabelsVisible.mockClear()
+
+    expect(capturedCameraRatioChange).toBeTypeOf('function')
+
+    // Zoom in past the edge-label ratio (0.7) -> density 'edges'. Toggle defaults
+    // ON, so edge labels become visible.
+    capturedCameraRatioChange?.(0.5)
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
+
+    // Toggle OFF -> edge labels forced off even though we are still zoomed in.
+    const toggle = wrapper.get('.graph-edge-label-toggle')
+    await toggle.trigger('click')
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    expect(toggle.text()).toBe('Edge labels: Off')
+
+    // Toggle back ON -> visible again at edges density.
+    await toggle.trigger('click')
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
+
+    // AND-gate: zoom back out to 'nodes' density. Even with the toggle ON, edge
+    // labels stay off because the density half of the gate is false.
+    capturedCameraRatioChange?.(0.9)
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
   })
 })

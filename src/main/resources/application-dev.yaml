@@ -22,10 +22,14 @@ vibegraph:
     debounce-ms: ${VIBEGRAPH_WATCHER_DEBOUNCE_MS:500}
 
   cors:
+    # The Vite dev server origins are listed statically so they are ALWAYS allowed
+    # in dev, regardless of FRONTEND_URL. (FRONTEND_URL is an optional extra origin —
+    # e.g. a containerized frontend on :3000 — and must not be able to silently
+    # displace the local Vite origin, which previously caused 403 preflight failures.)
     allowed-origins:
-      - ${FRONTEND_URL:http://localhost:5173}
+      - http://localhost:5173
       - http://127.0.0.1:5173
-      - http://localhost:3000
+      - ${FRONTEND_URL:http://localhost:3000}
 
 logging:
   level:

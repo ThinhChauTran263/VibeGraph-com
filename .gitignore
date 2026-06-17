@@ -72,6 +72,7 @@ Thumbs.db
 .claude/settings.local.json
 .codegraph/
 .gitnexus/
+.vibegraph/
 .understand-anything/
 .vite/
 

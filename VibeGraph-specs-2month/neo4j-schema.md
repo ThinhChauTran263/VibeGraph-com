@@ -219,6 +219,17 @@ Endpoint HTTP được phát hiện từ các Spring annotation.
 (:Class|:Interface)-[:HAS_INNER]->(:Class|:Interface|:Enum)
 ```
 
+> **Phase 2 — containment thực tế parser phát ra (đối soát code):**
+> Hierarchy hiện được hiện thực bằng `CONTAINS` ở hai cấp:
+> - `(:Project)-[:CONTAINS]->(:Package)` — nối ở tầng `AnalyzeServiceImpl`
+>   (Project node có `fullName = projectId`).
+> - `(:Package)-[:CONTAINS]->(:File)` — phát ra ở parser theo `package` declaration.
+>   File không có package (default package) thì KHÔNG sinh Package node.
+> - `(:File)-[:DEFINES]->(:Class|:Interface|:Enum|:Record|:Method|:Field|...)` giữ nguyên.
+>
+> `OWNS` và `(:Package)-[:CONTAINS]->(:Class...)` trong sơ đồ lý thuyết ở trên
+> **chưa** được parser phát ra (canonical containment đi qua File như trên).
+
 ### 3.2 Kế thừa & Hiện thực
 
 ```cypher
@@ -227,6 +238,13 @@ Endpoint HTTP được phát hiện từ các Spring annotation.
 (:Interface)-[:EXTENDS]->(:Interface)
 (:Method)-[:OVERRIDES]->(:Method)        // method override (resolved tĩnh)
 ```
+
+> **OVERRIDES — best-effort, conservative (Phase 2):** chỉ phát ra khi method bị
+> override resolve được tới một method **trong project** (JavaParser-backed) ở
+> ancestor type, khớp tên + kiểu tham số. Nếu cây kế thừa không resolve được
+> (supertype external/unsolved) thì **không** phát ra edge nào — KHÔNG suy ra
+> OVERRIDES chỉ từ annotation `@Override`. Hệ quả: override các method từ thư viện
+> ngoài (vd `Object.toString`, JDK, Spring) hiện chưa được ghi nhận.
 
 ### 3.3 Phụ thuộc kiểu & import
 
@@ -255,6 +273,16 @@ Endpoint HTTP được phát hiện từ các Spring annotation.
 - `"interface"` (confidence=0.8): gọi qua interface ref, edge tới interface method
 - `"unresolved"` (confidence=0.3): Symbol Solver thất bại, đoán khớp tốt nhất theo tên
 
+```cypher
+// Khởi tạo đối tượng (new X(...)) — Phase 2
+(:Method|:Constructor)-[:INSTANTIATES {lineNumber: INTEGER}]->(:Class|:External)
+```
+
+> **INSTANTIATES — best-effort:** target lấy từ Symbol Solver khi resolve được
+> (qualified name), ngược lại fallback theo import/cùng package. Type ngoài project
+> trở thành node `External` lúc persist. Nguồn là method/constructor bao quanh biểu
+> thức `new`.
+
 ### 3.5 Edge đặc thù Spring
 
 ```cypher
@@ -264,14 +292,120 @@ Endpoint HTTP được phát hiện từ các Spring annotation.
   fieldName: STRING                        // tên field/param nhận inject
 }]->(:Class|:Interface)
 
-// Định tuyến HTTP
+// Định tuyến HTTP — chiều canonical: METHOD -> ROUTE
+// `(:Method)-[:HANDLES_ROUTE]->(:Route)`
+// Ý nghĩa: method (handler) XỬ LÝ route được biểu diễn bởi node endpoint.
+// Source = handler method, Target = endpoint node.
+// LƯU Ý: parser phát ra node endpoint với label `APIEndpoint` (xem
+// SpringAnnotationVisitor) còn schema/legend/frontend hiển thị là `Route`;
+// hai tên này CHỈ là một loại node endpoint, không phải hai node khác nhau.
+// Chiều `APIEndpoint -> Method` (route trỏ về method) là SAI — một số spec/audit
+// cũ ghi ngược; backend (`EdgeData.of("HANDLES_ROUTE", methodFqcn, routeId)`) đã
+// đúng canonical, KHÔNG đổi chiều backend.
 (:Method)-[:HANDLES_ROUTE]->(:Route)
 
 // Sử dụng annotation (mỗi lần annotation được dùng trên 1 element)
-(:Class|:Interface|:Method|:Field)-[:ANNOTATED_BY {
-  attributes: STRING                       // giá trị attribute được serialize dạng JSON
+// Chiều canonical: ELEMENT -> ANNOTATION (element được annotate trỏ tới node
+// annotation TYPE). Phase 2: phát ra cho Class/Interface/Enum/Record/DBModel,
+// Method, Constructor, Field. Một node Annotation cho mỗi annotation TYPE (FQN),
+// dedupe qua MERGE. Type ngoài project trở thành External rồi được enrich thành
+// Annotation vì AnnotationVisitor cũng phát node Annotation cho nó.
+// Resolve FQN best-effort: import → cùng package → java.lang cho built-in →
+// simple name. `attributes` HIỆN CHƯA được populate (chỉ lưu `simpleName` trên node).
+(:Class|:Interface|:Enum|:Record|:Method|:Constructor|:Field)-[:ANNOTATED_BY {
+  lineNumber: INTEGER
 }]->(:Annotation)
 ```
+
+### 3.6 Body-level CPG — READS / WRITES / CATCHES (Phase 3, opt-in)
+
+> **Bật/tắt:** mặc định TẮT qua `vibegraph.parser.deep-cpg-enabled` (env
+> `VIBEGRAPH_PARSER_DEEP_CPG`). Khi tắt, KHÔNG có node `LocalVariable` và KHÔNG có
+> edge READS/WRITES/CATCHES — graph y hệt Phase 2. Lý do: data-flow mức thân hàm
+> có thể làm bùng nổ số node/edge, nên để opt-in. Khi bật, frontend vẫn mặc định
+> ẩn các loại sâu này (node `LocalVariable` + READS/WRITES/CATCHES) để giữ graph dễ
+> đọc, chỉ hiện qua "Show all".
+
+```cypher
+// Node biến cục bộ / tham số (chỉ khi deep CPG bật)
+// id ổn định = "<methodId>#<varName>@<dòng>"; property kind = "local" | "parameter"
+(:LocalVariable {kind: STRING, declaredType: STRING})
+
+// Đọc giá trị: METHOD/CONSTRUCTOR -> Field | LocalVariable
+(:Method|:Constructor)-[:READS]->(:Field|:LocalVariable)
+
+// Ghi giá trị: METHOD/CONSTRUCTOR -> Field | LocalVariable
+(:Method|:Constructor)-[:WRITES]->(:Field|:LocalVariable)
+
+// Bắt exception: METHOD/CONSTRUCTOR -> kiểu exception (multi-catch => nhiều edge)
+(:Method|:Constructor)-[:CATCHES {lineNumber: INTEGER}]->(:Class|:External)
+```
+
+**Direction (canonical):** nguồn luôn là method/constructor bao quanh; target là
+biến/field được đọc-ghi hoặc kiểu exception được bắt.
+
+**Ngữ nghĩa & giới hạn (conservative, intra-procedural):**
+- READS phủ: đọc local/parameter; đọc field qua `field`, `this.field`, và field khai
+  báo trong class hiện tại (so khớp tên, không cần symbol solver). Khai báo đơn thuần
+  (không initializer) KHÔNG tính READS; initializer `int b = a + 1` => READS `a`,
+  WRITES `b`.
+- WRITES phủ: `=`, compound (`+=`, `-=`, …), `++`/`--`, `this.field = …`. Compound và
+  inc/dec tính CẢ READS lẫn WRITES trên target.
+- Mỗi method emit TỐI ĐA một READS và một WRITES cho mỗi target (dedupe) — giới hạn
+  số edge ≈ 2 × số biến/field tham chiếu.
+- CATCHES: mỗi loại trong multi-catch là một edge; type ngoài project => External stub.
+- **KHÔNG hỗ trợ (tránh edge mơ hồ):** mutation collection (`list.add(...)`), gọi
+  setter (`obj.setX(...)`), `obj.field`/`arr[i]` làm target (bỏ qua), data-flow
+  liên-thủ-tục (cross-method), và field kế thừa truy cập bare (chỉ `this.field` mới
+  chắc chắn). Lambda body quy về method bao quanh; thân method của anonymous class
+  KHÔNG bị gộp nhầm vào method ngoài.
+- Tham số được mô hình hoá như `LocalVariable {kind:"parameter"}` (không tạo node
+  `Parameter` riêng); không tạo node `Exception` riêng (dùng Class/External).
+
+> **STEP_IN_FLOW** (thứ tự thực thi) — xem §3.7 (đã hiện thực ở Phase 4 dưới dạng
+> luồng SUY DIỄN từ CALLS, KHÔNG phải copy CALLS).
+
+### 3.7 STEP_IN_FLOW — luồng thực thi suy diễn (Phase 4)
+
+```cypher
+// Bước luồng suy diễn: caller step -> callee next step
+(:Method|:Constructor)-[:STEP_IN_FLOW {
+  flowId: STRING,        // = entrypoint (handler method fullName)
+  entrypoint: STRING,    // route handler method bắt đầu flow
+  stepIndex: INTEGER,    // thứ tự bước trong flow (theo line của call)
+  sourceKind: STRING,    // "ROUTE_FLOW"
+  confidence: FLOAT,     // 0.9
+  lineNumber: INTEGER
+}]->(:Method|:Constructor)
+```
+
+**Ngữ nghĩa & khác biệt với CALLS:**
+- `CALLS` = quan hệ gọi method TĨNH (static). KHÔNG đổi semantics, KHÔNG bị ảnh hưởng.
+- `STEP_IN_FLOW` = view luồng nghiệp vụ/thực thi SUY DIỄN, bắt đầu từ route handler
+  (`HANDLES_ROUTE` source) đi theo các CALLS in-project. Đây là **tập con đã lọc +
+  dedupe**, KHÔNG phải bản sao của CALLS:
+  - Chỉ gồm bước **đến được (reachable)** từ một entrypoint route.
+  - Chỉ method/constructor **in-project** (call tới JDK/Spring/library vốn không nằm
+    trong CALLS nên đương nhiên bị loại).
+  - Tối đa MỘT edge cho mỗi cặp `(from,to)` (dedupe), khác với nhiều call-site.
+  - Do đó `count(STEP_IN_FLOW)` thường < `count(CALLS)`.
+- **Direction:** caller step → callee next step (Method/Constructor → Method/Constructor).
+- **Ordering/metadata:** call trong một method được sắp theo `lineNumber` (rồi tên
+  target) để xấp xỉ thứ tự nguồn; mỗi edge mang `flowId/entrypoint/stepIndex/
+  sourceKind/confidence/lineNumber`.
+- **Branches/loops/recursion:** mọi call in-project ở mọi nhánh đều được gồm vào
+  (sắp xếp tất định theo line); mỗi method thăm tối đa MỘT lần/flow → chặn vòng lặp
+  và đệ quy vô hạn.
+
+**Giới hạn (documented):**
+- Edge model MERGE theo `(from)-[type]->(to)` (không có khóa per-step), nên khi một
+  call tham gia nhiều flow chỉ còn MỘT edge; metadata phản ánh flow ĐẦU TIÊN chạm
+  tới (entrypoint xử lý theo thứ tự đã sort → tất định).
+- `EdgeDto` của graph API hiện chỉ expose `confidence` + `lineNumber`; các property
+  `flowId/entrypoint/stepIndex/sourceKind` được PERSIST trong Neo4j (truy vấn qua
+  Cypher/MCP) nhưng KHÔNG nằm trong payload `/graph`.
+- Entrypoint hiện chỉ là route handler (`HANDLES_ROUTE`). Public service method làm
+  entrypoint là mở rộng tương lai, chưa bật.
 
 ---
 
@@ -612,3 +746,139 @@ idempotent.
 2. **Kích thước batch**: với project 2000 file, batch MERGE bao nhiêu file/transaction để tránh tràn memory? → benchmark ở Sprint 2.
 3. **Giới hạn kích thước snippet**: `Method.snippet` có giới hạn (cap) không? Method 200 dòng vẫn lưu hết? → đề xuất giới hạn 500 ký tự hoặc 20 dòng.
 4. **Tần suất dọn dẹp stub**: chạy lúc nào (scheduled @Every 5min, hay sau mỗi lần DELETE file)? → đo mức tăng memory.
+
+---
+
+## 11. Graph Schema Roadmap (Architecture Graph → CPG-lite → CPG)
+
+> Lộ trình tiến hoá schema. **Task hiện tại chỉ là tài liệu** — KHÔNG implement
+> hàng loạt node/edge mới vào parser, KHÔNG đổi parser nếu không cần.
+
+### 11.1 Current status (đang đúng end-to-end)
+
+- Schema hiện tại **chính xác end-to-end cho Architecture Graph**: parser → Neo4j →
+  GraphService → frontend.
+- Backend **đã phát ra một số edge CPG-lite** (`TYPE_OF`, `PARAMETER_TYPE`,
+  `RETURNS`, `INJECTS`, `HAS_FIELD`, …). Ví dụ trên project thật `Lab7_Java6`:
+  `PARAMETER_TYPE = 66`, `RETURNS = 44`, `HAS_FIELD = 35`, `INJECTS = 7`,
+  `TYPE_OF = 15`.
+- `HANDLES_ROUTE` canonical là `(:Method)-[:HANDLES_ROUTE]->(:Route)` (xem §3.5).
+
+#### Edge types thực sự được parser phát ra (emitted)
+
+Nguồn: `EdgeData.of(...)` trong các visitor + `ParserServiceImpl` + `AnalyzeServiceImpl`:
+
+`CONTAINS` (Project→Package, Package→File), `DEFINES`, `HAS_METHOD`, `HAS_FIELD`,
+`HAS_INNER`, `EXTENDS`, `IMPLEMENTS`, `OVERRIDES`, `IMPORTS`, `TYPE_OF`, `RETURNS`,
+`PARAMETER_TYPE`, `THROWS`, `CALLS`, `INSTANTIATES`, `INJECTS`, `HANDLES_ROUTE`,
+`ANNOTATED_BY` (18 loại luôn bật). Khi `deep-cpg-enabled=true` bổ sung: `READS`,
+`WRITES`, `CATCHES`. Phase 4 bổ sung `STEP_IN_FLOW` (luôn bật, suy diễn từ luồng
+route → CALLS in-project; xem §3.7).
+
+Node types emitted: `Project` (tầng repository), `Package`, `File`, `Class`,
+`Interface`, `Enum`, `Record`, `DBModel`, `Method`, `Constructor`, `Field`,
+`Annotation`, `APIEndpoint` (+ `External` stub). Khi deep CPG bật bổ sung
+`LocalVariable` (local/parameter).
+
+#### Edge types chỉ tồn tại trong contract (CHƯA emit)
+
+`OWNS` — có trong `EdgeTypeEnum` / `GraphSchema` allow-list nhưng **không có visitor
+nào phát ra**. Là chỗ dành sẵn; frontend KHÔNG được fake/hiển thị count cho nó.
+
+#### Frontend exposure policy (Phase 1 — visible structural vs optional CPG-lite)
+
+Frontend giữ **toàn bộ** edge backend phát ra trong store (không drop), và phân
+loại HIỂN THỊ qua filter state thay vì bỏ dữ liệu:
+
+- **Visible structural (mặc định hiện):** `CONTAINS`, `DEFINES`, `HAS_METHOD`,
+  `HAS_INNER`, `EXTENDS`, `IMPLEMENTS`, `OVERRIDES`, `IMPORTS`, `CALLS`,
+  `HANDLES_ROUTE`.
+- **Optional CPG-lite (mặc định ẩn, mở qua "Show all"):** `HAS_FIELD`, `TYPE_OF`,
+  `RETURNS`, `PARAMETER_TYPE`, `THROWS`, `INSTANTIATES`, `INJECTS`, `ANNOTATED_BY`,
+  (deep CPG) `READS`, `WRITES`, `CATCHES`, và (Phase 4) `STEP_IN_FLOW`.
+- **Node mặc định ẩn:** `LocalVariable` (deep CPG) — hiện qua Node Types "Show all".
+
+Counts trong legend được tính từ graph thật (đầy đủ), nên một loại CPG-lite đang
+ẩn vẫn hiện count và luôn có thể bật lên — **không loại nào có count > 0 mà không
+thể reveal**. (Trước đây `sanitizeAllowedEdgeTypes` hard-drop CPG-lite ở ingestion
+nên không thể bật lại — Phase 1 đã thay bằng default-hidden filter.)
+
+- **Quan trọng:** edge type bị frontend ẩn KHÔNG có nghĩa là backend thiếu hỗ trợ.
+  Đừng coi "hidden ở frontend" là "missing ở backend".
+
+### 11.2 Phase A — Architecture Graph Java/Spring (nên làm sớm)
+
+Củng cố và chuẩn hoá graph kiến trúc hiện có.
+
+**Node types:** `Project`, `Package`, `File`, `External`, `Class`, `Interface`,
+`Enum`, `Record`, `Annotation`, `Method`, `Constructor`, `Field`, `APIEndpoint`,
+`DBModel`.
+
+> Ghi chú label: endpoint node hiện được parser tạo với label `APIEndpoint`, còn
+> schema/frontend hiển thị `Route` — cùng một loại node endpoint. Phase A nên
+> **chuẩn hoá tên** (chọn một, map nhất quán) thay vì thêm node mới.
+
+**Edge types:** `DEFINES`, `HAS_METHOD`, `HAS_FIELD`,
+`HAS_ANNOTATION`/`ANNOTATED_BY` (chuẩn hoá MỘT tên canonical), `EXTENDS`,
+`IMPLEMENTS`, `OVERRIDES`, `TYPE_OF`, `PARAMETER_TYPE`, `RETURNS`, `IMPORTS`,
+`CALLS`, `INSTANTIATES`, `INJECTS`, `THROWS`, `HANDLES_ROUTE`.
+
+**Phase A analysis goals:**
+- Class nào thuộc file/package nào.
+- Phân bố Controller / Service / Repository / Entity.
+- Quan hệ handler method ↔ endpoint (tức "method nào xử lý endpoint nào"; cạnh canonical là `Method -> APIEndpoint`, xem §3.5).
+- Method call graph.
+- Field / parameter / return types.
+- Quan hệ bean injection.
+- Inheritance / interface / override.
+
+### 11.3 Phase B — Spring architecture classification
+
+- Thêm phân loại layer/domain: `Controller`, `Service`, `Repository`, `DTO`,
+  `Config`.
+- **Ưu tiên dùng property trước** (vd `:Class {springLayer: "SERVICE"}`), chỉ tạo
+  node type riêng khi query/UI thực sự cần.
+
+### 11.4 Phase C — CPG / data-flow sâu hơn (chỉ làm sau, opt-in)
+
+**Node types:** `Variable`/`LocalVariable`, `Parameter` (nếu cần query chữ ký
+method), `Exception` (nếu cần phân tích exception riêng).
+
+**Edge types:** `READS`, `WRITES`, `CATCHES`, `STEP_IN_FLOW`.
+
+**⚠️ Warnings (bắt buộc tuân thủ):**
+- KHÔNG fake `STEP_IN_FLOW` từ `CALLS` thô — `STEP_IN_FLOW` phải đến từ một flow
+  analyzer chuyên dụng.
+- `READS` / `WRITES` cần phân tích biểu thức (expression-level) chính xác.
+- Local variable có thể làm graph phình to → dùng deep analysis/filter dạng
+  opt-in, không bật mặc định.
+
+### 11.5 Java version target
+
+Parser nên hướng tới hỗ trợ Java hiện đại: **Java 17**, **Java 21**, **Java 25
+LTS**, và **nhận biết (awareness) Java 26** nếu thư viện parser hỗ trợ.
+
+External facts (theo task, tính đến **2026-06-16**): JDK 26 là bản GA mới nhất và
+JDK 25 là bản LTS mới nhất. Nguồn:
+[Oracle Java Downloads](https://www.oracle.com/java/technologies/downloads/),
+[OpenJDK JDK 26](https://openjdk.org/projects/jdk/26/).
+*(Content was rephrased for compliance with licensing restrictions.)*
+
+### 11.6 Modern Java syntax — parser goals
+
+- `record`
+- `sealed class` / `permits`
+- `var`
+- switch expression
+- pattern matching `instanceof`
+- record patterns / deconstruction (nếu parser hỗ trợ)
+- text blocks
+- lambda / method reference
+- annotation trên type/use
+- nested / inner classes
+- generics phức tạp
+
+**Spring annotations cần nhận diện:** `@RestController`, `@GetMapping`,
+`@PostMapping`, `@RequestMapping`, `@Service`, `@Repository`, `@Component`,
+`@Configuration`, `@Bean`, `@Entity`, `@Table`, `@Autowired`, và constructor
+injection.

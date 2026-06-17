@@ -3,7 +3,6 @@
  */
 
 import type { NodeType, EdgeType } from '@/types/graph'
-
 // Node colors by type - matches NodeType from graph.ts
 export const NODE_COLORS: Record<NodeType, string> = {
   Project: '#6366F1',      // indigo
@@ -18,6 +17,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Constructor: '#06B6D4',  // cyan - constructor member
   Field: '#06B6D4',        // cyan
   Annotation: '#F97316',   // orange
+  LocalVariable: '#64748B', // slate-500 - body-level local/parameter (deep CPG)
   Route: '#10B981',        // emerald
   APIEndpoint: '#22C55E',  // green - HTTP endpoint
   External: '#94A3B8',     // slate-400 - library/JDK or unresolved stub
@@ -40,24 +40,77 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   PARAMETER_TYPE: '#84CC16', // lime
   THROWS: '#EF4444',       // red
   CALLS: '#DC2626',        // red-600
+  INSTANTIATES: '#FB7185', // rose-400 - object creation (new X())
   INJECTS: '#0D9488',      // teal-600
   HANDLES_ROUTE: '#059669', // emerald-600
   ANNOTATED_BY: '#F59E0B', // amber
+  READS: '#38BDF8',        // sky-400 - data-flow read (deep CPG)
+  WRITES: '#FB923C',       // orange-400 - data-flow write (deep CPG)
+  CATCHES: '#A78BFA',      // violet-400 - exception caught (deep CPG)
+  STEP_IN_FLOW: '#E879F9', // fuchsia-400 - inferred execution-flow step
 }
 
-// Edge types shown in the graph and the Edge Types legend. The backend extracts
-// many more low-level relationship types (PARAMETER_TYPE, RETURNS, HAS_FIELD,
-// TYPE_OF, INJECTS, ...) that add noise to the view. The UI is restricted to this
-// curated structural set; every other type is dropped at the data boundary (see
-// sanitizeAllowedEdgeTypes in graphFilters.ts).
-export const ALLOWED_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+// CPG-lite exposure policy (Phase 1).
+//
+// The backend parser emits both high-level STRUCTURAL relationships and deeper
+// CPG-lite (type/dependency) relationships. Rather than DROPPING the CPG-lite
+// edges at the data boundary (which made them impossible to ever reveal), we keep
+// every backend-emitted edge in the store and curate VISIBILITY through the
+// filter state:
+//   - STRUCTURAL_EDGE_TYPES are visible by default (readable architecture view).
+//   - CPG_LITE_EDGE_TYPES are hidden by default but fully revealable via the Edge
+//     Types "Show all" button / advanced filter.
+//
+// Only relationship types the parser actually emits are listed. OWNS exists in
+// the schema/contract enum but is NOT currently produced by any parser visitor,
+// so it is intentionally absent from both sets (it would never have a count > 0).
+// As of Phase 2, the parser additionally emits CONTAINS (Package hierarchy),
+// OVERRIDES, ANNOTATED_BY, and INSTANTIATES.
+
+// Default-VISIBLE structural relationships (architecture graph).
+export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'CONTAINS',
   'DEFINES',
   'HAS_METHOD',
-  'CALLS',
-  'IMPORTS',
-  'HANDLES_ROUTE',
-  'IMPLEMENTS',
+  'HAS_INNER',
   'EXTENDS',
+  'IMPLEMENTS',
+  'OVERRIDES',
+  'IMPORTS',
+  'CALLS',
+  'HANDLES_ROUTE',
+])
+
+// Default-HIDDEN CPG-lite relationships (type / parameter / return / throws /
+// field-ownership / injection / instantiation / annotation metadata). Emitted by
+// the backend, revealed via "Show all".
+export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'HAS_FIELD',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'INSTANTIATES',
+  'INJECTS',
+  'ANNOTATED_BY',
+  // Phase 3 deep CPG (body-level data-flow): default-hidden, revealed via "Show all".
+  'READS',
+  'WRITES',
+  'CATCHES',
+  // Phase 4 inferred execution flow: default-hidden, revealed via "Show all".
+  'STEP_IN_FLOW',
+])
+
+// Edge types hidden by default. The filter store initializes `hiddenEdgeTypes`
+// from this set so the default graph stays readable while every type with a
+// count > 0 remains revealable.
+export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TYPES
+
+// Node types hidden by default. `LocalVariable` (deep CPG) is only present when
+// the backend deep-cpg flag is enabled; it is hidden by default to keep the graph
+// readable and revealed via the Node Types "Show all" button.
+export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'LocalVariable',
 ])
 
 // Default node sizes

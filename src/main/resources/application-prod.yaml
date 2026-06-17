@@ -35,7 +35,9 @@ spring:
       server:
         name: VibeGraph
         version: 1.0.0
-        protocol: streamable
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
 
 vibegraph:
   projects:

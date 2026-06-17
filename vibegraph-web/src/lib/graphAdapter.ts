@@ -42,6 +42,12 @@ export interface SigmaEdgeAttributes {
  * individual relationship — only the on-canvas line is collapsed.
  */
 const EDGE_TYPE_PRIORITY: Partial<Record<EdgeType, number>> = {
+  // STEP_IN_FLOW shares (caller->callee) pairs with CALLS. It is hidden by default
+  // (filtered out before this adapter), so the default canvas shows CALLS. When the
+  // user reveals it via "Show all", the higher priority makes the pair render as the
+  // inferred flow step rather than the raw call.
+  STEP_IN_FLOW: 10,
+  CONTAINS: 9,
   EXTENDS: 8,
   IMPLEMENTS: 7,
   OVERRIDES: 6,

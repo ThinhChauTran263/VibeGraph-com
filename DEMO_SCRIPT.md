@@ -154,6 +154,36 @@ Talking point:
 
 > Layer pattern context turns existing code into practical generation rules for new code.
 
+### 9. Explore the Code Property Graph (optional, advanced)
+
+VibeGraph indexes more than the architecture graph. The default canvas shows only
+the readable **structural** layer; deeper relationships are hidden until requested.
+
+In the graph view's Filter panel:
+
+1. Note the default canvas shows structural edges only — `DEFINES`, `CONTAINS`,
+   `HAS_METHOD`, `HAS_INNER`, `EXTENDS`, `IMPLEMENTS`, `OVERRIDES`, `IMPORTS`,
+   `CALLS`, `HANDLES_ROUTE` — so it stays readable.
+2. Click **Edge types → Show all** to reveal the CPG-lite + deep layer:
+   - CPG-lite: `TYPE_OF`, `PARAMETER_TYPE`, `RETURNS`, `HAS_FIELD`, `INJECTS`,
+     `INSTANTIATES`, `THROWS`, `ANNOTATED_BY`.
+   - Deep CPG (only when enabled, see below): `READS`, `WRITES`, `CATCHES`.
+   - Inferred flow: `STEP_IN_FLOW`.
+3. Click **Node types → Show all** to reveal `LocalVariable` nodes (deep CPG).
+4. Select a method node and inspect the **Node Detail** panel: incoming/outgoing
+   relations now list CPG-lite and deep relations (e.g. a service method that
+   `READS`/`WRITES` a field, `CATCHES` an exception, or is a `STEP_IN_FLOW` step).
+
+Talking points:
+
+> `STEP_IN_FLOW` is an **inferred** execution-flow view from each route handler
+> through in-project calls — it is NOT a copy of `CALLS`. It is reachability-filtered
+> and de-duplicated, so its count is strictly smaller than `CALLS`.
+
+> Body-level data-flow (`LocalVariable` + `READS`/`WRITES`/`CATCHES`) is **opt-in**.
+> It is OFF by default (`VIBEGRAPH_PARSER_DEEP_CPG=false`) because local variables
+> can multiply graph size; enable it only when you need data-flow detail.
+
 ## Success checklist
 
 - [ ] A Java project is imported successfully.
@@ -171,6 +201,9 @@ Talking point:
 - Live Docker Compose and Testcontainers checks require Docker availability.
 - Production auth and rate-limit hardening should be reviewed before public deployment.
 - MCP output depends on completed analysis; use the correct `projectId` and rerun import/analysis if the graph is empty.
+- **Deep CPG is opt-in** (`VIBEGRAPH_PARSER_DEEP_CPG`, default `false`); with it off there are no `LocalVariable` nodes or `READS`/`WRITES`/`CATCHES` edges.
+- **CPG data-flow is conservative** and intentionally does NOT capture: collection mutation (`list.add(...)`), setter calls (`obj.setX(...)`), `obj.field`/`arr[i]` write targets, cross-method (inter-procedural) data-flow, and bare access to inherited fields (only `this.field` is certain).
+- **`STEP_IN_FLOW` metadata is first-flow-wins**: when one call participates in multiple route flows, the single persisted edge keeps the metadata of the first (sorted) entrypoint that reached it.
 
 ## Recovery notes
 
