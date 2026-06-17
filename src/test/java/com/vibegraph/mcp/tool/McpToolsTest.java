@@ -40,6 +40,28 @@ import com.vibegraph.mcp.service.impl.LayerPatternAnalyzerImpl;
 @DisplayName("MCP Tools")
 class McpToolsTest {
 
+    static final List<String> ALL_TOOL_NAMES = List.of(
+            "get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern",
+            "get_source_file", "get_method_source", "search_source", "find_references", "trace_endpoint");
+
+    /**
+     * Build the full tool-callback provider for registration assertions. The four original tools
+     * are wired with real analyzers; the Phase 6A source tools are wired with null collaborators
+     * because registration only reflects on the {@code @Tool} annotations (it never invokes them).
+     */
+    static ToolCallbackProvider fullProvider(GraphService graphService) {
+        return new McpServerConfig().mcpToolCallbackProvider(
+                new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService)),
+                new ClassContextTool(new ClassContextAnalyzerImpl(graphService)),
+                new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService)),
+                new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService)),
+                new SourceFileTool(null),
+                new MethodSourceTool(null),
+                new SearchSourceTool(null),
+                new FindReferencesTool(null),
+                new TraceEndpointTool(null));
+    }
+
     @Nested
     @DisplayName("ArchitectureTool")
     class ArchitectureToolTest {
@@ -104,16 +126,12 @@ class McpToolsTest {
         @Test
         @DisplayName("get_project_architecture is registered as a Spring AI tool callback")
         void getProjectArchitecture_registeredAsToolCallback() {
-            ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
-            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
-            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
+            ToolCallbackProvider provider = fullProvider(graphService);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .contains("get_project_architecture");
+                    .containsExactlyInAnyOrderElementsOf(ALL_TOOL_NAMES);
         }
 
         @Test
@@ -264,16 +282,12 @@ class McpToolsTest {
         @Test
         @DisplayName("get_class_context is registered as a Spring AI tool callback")
         void getClassContext_registeredAsToolCallback() {
-            ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
-            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
-            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
+            ToolCallbackProvider provider = fullProvider(graphService);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
+                    .containsExactlyInAnyOrderElementsOf(ALL_TOOL_NAMES);
         }
 
         private GraphDataResponse classGraph() {
@@ -452,16 +466,12 @@ class McpToolsTest {
         @Test
         @DisplayName("get_layer_pattern is registered as a Spring AI tool callback")
         void getLayerPattern_registeredAsToolCallback() {
-            ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
-            ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
-            ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
+            ToolCallbackProvider provider = fullProvider(graphService);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
+                    .containsExactlyInAnyOrderElementsOf(ALL_TOOL_NAMES);
         }
 
         private GraphDataResponse layerGraph() {
@@ -635,16 +645,12 @@ class McpToolsTest {
         @Test
         @DisplayName("get_impact_analysis is registered as a Spring AI tool callback")
         void getImpactAnalysis_registeredAsToolCallback() {
-            ArchitectureTool architectureTool = new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService));
-            ClassContextTool classContextTool = new ClassContextTool(new ClassContextAnalyzerImpl(graphService));
-            LayerPatternTool layerPatternTool = new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService));
-            ToolCallbackProvider provider = new McpServerConfig().mcpToolCallbackProvider(
-                    architectureTool, classContextTool, impactAnalysisTool, layerPatternTool);
+            ToolCallbackProvider provider = fullProvider(graphService);
 
             assertThat(provider.getToolCallbacks())
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
-                    .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
+                    .containsExactlyInAnyOrderElementsOf(ALL_TOOL_NAMES);
         }
 
         @Test

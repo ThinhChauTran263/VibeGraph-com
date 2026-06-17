@@ -227,8 +227,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | -------------------- | ------ | ------------------------------ |
 | Archive upload sync  | ✅ Done | E2E working                    |
 | Archive upload async | ✅ Done | Backend async accepted flow + status topic support |
-| WebSocket status     | ✅ Partial | STOMP configured; status broadcast done, graph full/incremental update TODO |
-| File watcher         | ❌ TODO  | FileWatcherService empty / Pending       |
+| WebSocket status/update | ✅ Partial | Status broadcast done; graph update topic + FE consumer done; DELETE `.java` FULL_UPDATE wired; CREATE/MODIFY incremental producer pending |
+| File watcher         | 🟡 Partial | Recursive watcher/debounce/lifecycle done; DELETE prune+broadcast tested; CREATE/MODIFY re-parse pending |
 | Diagram services     | ❌ 0%   | DiagramController empty        |
 | MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
@@ -561,7 +561,7 @@ Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
 > **Cập nhật:** 2026-06-05
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented, realtime graph/watch vẫn chưa hoàn tất
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented; realtime status/update channel + DELETE graph refresh đã có, CREATE/MODIFY incremental re-parse vẫn pending
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester
