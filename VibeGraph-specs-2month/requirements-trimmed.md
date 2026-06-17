@@ -84,16 +84,16 @@ Mã FR-06 được giữ chỗ có chủ đích. Tính năng Sequence Diagram đ
 
 ### FR-07: Cập nhật Realtime - Tối quan trọng
 
-Các file Java đã thay đổi sẽ cập nhật graph thông qua WebSocket/STOMP.
+Mục tiêu dài hạn: các file Java thay đổi sẽ cập nhật graph thông qua WebSocket/STOMP. Trạng thái hiện tại chỉ đảm bảo DELETE `.java` realtime full refresh; CREATE/MODIFY incremental re-parse vẫn pending.
 
 Tiêu chí chấp nhận:
 
 - WebSocket endpoint: `/ws/graph-updates`.
 - Topic: `/topic/projects/{projectId}/updates` và `/topic/projects/{projectId}/status`.
-- Mục tiêu từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây.
-- Frontend vá (patch) graph mà không cần tải lại toàn bộ trang.
+- Mục tiêu từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây cho CREATE/MODIFY sau khi incremental re-parse được wired. DELETE `.java` path hiện đã có test realtime dưới ngưỡng này.
+- Frontend subscribe `/topic/projects/{projectId}/updates` và xử lý `FULL_UPDATE`/`INCREMENTAL` payload mà không reload trang. Producer hiện dùng `FULL_UPDATE` cho DELETE `.java`; producer `INCREMENTAL` cho CREATE/MODIFY còn pending.
 
-> **Trạng thái code sau audit 2026-06-08:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`. `GraphUpdateController.broadcastStatus` đã publish `/topic/projects/{projectId}/status` và frontend `useWebSocket.ts` + `useArchiveImport.ts` đã dùng được cho progress/status import async. Pipeline realtime graph thật qua `/topic/projects/{projectId}/updates` vẫn chưa hoàn tất: `broadcastFullUpdate`/`broadcastIncremental`, file watcher và FE patch graph còn TODO.
+> **Trạng thái code sau audit mới nhất:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`; status topic `/topic/projects/{projectId}/status` đã dùng cho import/analyze progress; graph update topic `/topic/projects/{projectId}/updates` đã có `broadcastFullUpdate`/`broadcastIncremental`; frontend `useGraphRealtime.ts` đã subscribe và patch state. File watcher lifecycle đã wired sau import/analyze và khi delete project. DELETE `.java` prune graph + broadcast `FULL_UPDATE` đã có test; CREATE/MODIFY incremental re-parse vẫn pending vì `ParserService.parseFileWithCache` chưa implemented.
 
 ### FR-08: File Watcher phía Server - Tối quan trọng
 
@@ -107,7 +107,7 @@ Tiêu chí chấp nhận:
 - Các sự kiện create, modify và delete kích hoạt phân tích tăng dần.
 - Watcher chỉ theo dõi các thư mục dự án đã cấu hình; các đường dẫn được kiểm tra đối chiếu với root đã đăng ký.
 
-> **Trạng thái code sau audit 2026-05-30:** `WatcherProperties`, `FileWatcherService` và `DebouncedEventHandler` đã có file, nhưng implementation watch/debounce/incremental update còn TODO và test watcher vẫn disabled.
+> **Trạng thái code sau audit mới nhất:** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã implemented cho recursive watch/debounce/lifecycle. DELETE `.java` path đã prune graph và broadcast full update. CREATE/MODIFY chỉ emit event/log, chưa re-parse graph; đây là phần còn pending.
 
 ### FR-09: REST API - Tối quan trọng
 

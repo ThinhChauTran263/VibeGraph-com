@@ -112,7 +112,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 ### `src/main/java/com/vibegraph/graph/websocket/`
 
-- [~] `GraphUpdateController.java` (`broadcastStatus` đã publish `/topic/projects/{id}/status`; `broadcastFullUpdate`/`broadcastIncremental` cho graph updates còn TODO)
+- [x] `GraphUpdateController.java` (`broadcastStatus` publish `/topic/projects/{id}/status`; `broadcastFullUpdate` và `broadcastIncremental` publish `/topic/projects/{id}/updates`. Producer thực tế hiện dùng `FULL_UPDATE` cho DELETE `.java`; CREATE/MODIFY incremental producer còn pending)
 - [s] `WebSocketEventListener.java` (listener đã có; connect/disconnect handler còn `// TODO`)
 
 ### `src/main/java/com/vibegraph/graph/dto/`
@@ -160,10 +160,10 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/watcher/`
 
 - [x] `config/WatcherProperties.java`
-- [x] `service/FileWatcherService.java` + [s] `impl/FileWatcherServiceImpl.java` (`startWatching`/`stopWatching` còn `// TODO`)
-- [s] `service/DebouncedEventHandler.java` (class đã có; debounce logic còn `// TODO`)
+- [x] `service/FileWatcherService.java` + [x] `impl/FileWatcherServiceImpl.java` (`startWatching`/`stopWatching`/`isWatching` đã có; recursive WatchService + debounce; DELETE `.java` prune graph; CREATE/MODIFY emit event nhưng chưa re-parse)
+- [x] `service/DebouncedEventHandler.java` (debounce theo key, collapse burst events)
 
-> `FileWatcherServiceTest` đã có nhưng còn `@Disabled`.
+> Realtime hiện tại: status topic + graph update topic + FE consumer + watcher lifecycle + DELETE `.java` full refresh đã có test. CREATE/MODIFY incremental re-parse vẫn pending vì `ParserService.parseFileWithCache` chưa implemented.
 
 ### Resources
 
@@ -200,7 +200,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [~] `graph/controller/ImportControllerTest.java`
 - [~] `diagram/service/DiagramServiceTest.java`
 - [~] `mcp/tool/McpToolsTest.java`
-- [~] `watcher/service/FileWatcherServiceTest.java`
+- [x] `watcher/service/FileWatcherServiceTest.java` + watcher integration tests (DELETE realtime path covered; CREATE/MODIFY re-parse pending)
 - [~] `VibeGraphApplicationTests.java` (nạp context)
 
 Test fixture:
@@ -294,7 +294,7 @@ Test fixture:
 ## Hạng mục công việc tiếp theo
 
 Lát cắt dọc Sprint 1 đã hiện thực và xanh. Bề mặt Sprint 2-3 cho **diagram, MCP,
-watcher/realtime và nhiều panel frontend hiện mới ở mức scaffold/stub** (xem các dòng
+watcher/realtime không còn chỉ là scaffold: DELETE realtime path đã wired; CREATE/MODIFY incremental re-parse vẫn pending. Một số panel/frontend phụ có thể còn scaffold** (xem các dòng
 `[s]` ở trên) — nên phần việc còn lại gồm cả hiện thực, không chỉ kiểm chứng:
 
 1. Hoàn thiện các phần còn lại quanh import: GitHub import UI (`GitHubImportForm.vue`/`useGitHubImport.ts`) và hardening public-demo cho archive/GitHub flow.
