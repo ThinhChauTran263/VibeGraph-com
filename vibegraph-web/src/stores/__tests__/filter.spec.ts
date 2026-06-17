@@ -92,7 +92,6 @@ describe('useFilterStore — edge filter state semantics', () => {
     const sortedNodes = (set: ReadonlySet<NodeType>): NodeType[] => [...set].sort()
     expect(sortedNodes(store.hiddenNodeTypes)).toEqual(sortedNodes(defaultHiddenNodeTypes()))
     expect(sortedTypes(store.hiddenEdgeTypes)).toEqual(sortedTypes(defaultHiddenEdgeTypes()))
-    expect(store.focusDepth).toBe(-1)
     expect(store.searchQuery).toBe('')
     expect(store.hasActiveFilters).toBe(false)
   })

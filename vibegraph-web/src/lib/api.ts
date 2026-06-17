@@ -48,6 +48,10 @@ export interface ImpactAnalysisResponse {
 export const IMPACT_ALLOWED_DEPTHS = [1, 2, 3, 5] as const
 export type ImpactDepth = (typeof IMPACT_ALLOWED_DEPTHS)[number]
 
+/** Impact traversal profiles accepted by the backend. */
+export const IMPACT_PROFILES = ['dependency', 'structural', 'type-data-flow'] as const
+export type ImpactProfile = (typeof IMPACT_PROFILES)[number]
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -229,13 +233,13 @@ export const graphApi = {
 
   /**
    * Fetch the blast radius (impact analysis) for a node.
-   * GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...
+   * GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...&profile=...
    *
    * `depth` must be one of {@link IMPACT_ALLOWED_DEPTHS}; the backend rejects
    * other values with a 400. Query params are encoded via URLSearchParams.
    */
-  getImpact: (projectId: string, nodeId: string, depth: number) => {
-    const query = new URLSearchParams({ nodeId, depth: String(depth) })
+  getImpact: (projectId: string, nodeId: string, depth: number, profile: ImpactProfile = 'dependency') => {
+    const query = new URLSearchParams({ nodeId, depth: String(depth), profile })
     return api.get<ImpactAnalysisResponse>(
       `/api/projects/${projectId}/graph/impact?${query}`,
     )

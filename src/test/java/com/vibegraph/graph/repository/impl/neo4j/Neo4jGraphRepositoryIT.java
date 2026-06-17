@@ -27,6 +27,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -356,6 +357,64 @@ class Neo4jGraphRepositoryIT {
         assertThat(impact.getMayNeedTesting())
                 .extracting(NodeDto::getFullName)
                 .containsExactly("com.example.Maybe");
+    }
+
+    @Test
+    @DisplayName("getImpact includes depth four and five nodes in mayNeedTesting")
+    void shouldGroupDeepImpactNodesIntoMayNeedTesting() {
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Class", "Target", "com.example.Target", "src/Target.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Depth1", "com.example.Depth1", "src/Depth1.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Depth2", "com.example.Depth2", "src/Depth2.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Depth3", "com.example.Depth3", "src/Depth3.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Depth4", "com.example.Depth4", "src/Depth4.java", 1, 5, Map.of()),
+                NodeData.of("Class", "Depth5", "com.example.Depth5", "src/Depth5.java", 1, 5, Map.of())));
+        repository.upsertEdges(projectId, List.of(
+                EdgeData.of("CALLS", "com.example.Depth1", "com.example.Target", Map.of()),
+                EdgeData.of("CALLS", "com.example.Depth2", "com.example.Depth1", Map.of()),
+                EdgeData.of("CALLS", "com.example.Depth3", "com.example.Depth2", Map.of()),
+                EdgeData.of("CALLS", "com.example.Depth4", "com.example.Depth3", Map.of()),
+                EdgeData.of("CALLS", "com.example.Depth5", "com.example.Depth4", Map.of())));
+
+        ImpactAnalysisResponse impact = repository.getImpact(projectId, "com.example.Target", 5);
+
+        assertThat(impact.getTotalDependents()).isEqualTo(5);
+        assertThat(impact.getWillBreak())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Depth1");
+        assertThat(impact.getLikelyAffected())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Depth2");
+        assertThat(impact.getMayNeedTesting())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.Depth3", "com.example.Depth4", "com.example.Depth5");
+    }
+
+    @Test
+    @DisplayName("getImpact supports a structural profile for containment and route relationships")
+    void shouldReturnStructuralImpactProfile() {
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Package", "service", "com.example.service", "", 1, 1, Map.of()),
+                NodeData.of("File", "OrderController.java", "src/OrderController.java", "src/OrderController.java", 1, 80, Map.of()),
+                NodeData.of("Method", "getOrder", "com.example.OrderController#getOrder", "src/OrderController.java", 12, 20, Map.of()),
+                NodeData.of("APIEndpoint", "GET /orders/{id}", "GET /orders/{id}", "src/OrderController.java", 12, 12, Map.of())));
+        repository.upsertEdges(projectId, List.of(
+                EdgeData.of("CONTAINS", projectId, "com.example.service", Map.of()),
+                EdgeData.of("CONTAINS", "com.example.service", "src/OrderController.java", Map.of()),
+                EdgeData.of("DEFINES", "src/OrderController.java", "com.example.OrderController#getOrder", Map.of()),
+                EdgeData.of("HANDLES_ROUTE", "com.example.OrderController#getOrder", "GET /orders/{id}", Map.of())));
+
+        ImpactAnalysisResponse packageImpact = repository.getImpact(projectId, "com.example.service", 1, ImpactProfile.STRUCTURAL);
+        ImpactAnalysisResponse routeImpact = repository.getImpact(projectId, "GET /orders/{id}", 1, ImpactProfile.STRUCTURAL);
+
+        assertThat(packageImpact.getWillBreak())
+                .extracting(NodeDto::getFullName)
+                .containsExactly(projectId, "src/OrderController.java");
+        assertThat(routeImpact.getWillBreak())
+                .extracting(NodeDto::getFullName)
+                .containsExactly("com.example.OrderController#getOrder");
     }
 
     @Test

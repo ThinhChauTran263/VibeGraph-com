@@ -3,16 +3,6 @@ import { dimColor } from './color'
 import { EDGE_COLORS } from './constants'
 import type { EdgeType } from '@/types/graph'
 
-const ALLOWED_FOCUS_DEPTHS = new Set([-1, 0, 1, 2, 3, 5])
-const MAX_FOCUSED_NODES = 1500
-
-export function normalizeFocusDepth(depth: number): number {
-  if (!Number.isInteger(depth) || !ALLOWED_FOCUS_DEPTHS.has(depth)) return -1
-  return depth
-}
-
-export { getUndirectedNeighborsWithinHops as getNeighborsWithinHops }
-
 export interface FocusReducers {
   nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
   edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
@@ -49,80 +39,6 @@ export interface FocusPartition {
   backgroundEdges: Set<string>
 }
 
-export function getUndirectedNeighborsWithinHops(
-  graph: Graph,
-  nodeId: string,
-  hops: number,
-): Set<string> {
-  const normalizedHops = normalizeFocusDepth(hops)
-  if (normalizedHops < 0 || !graph.hasNode(nodeId)) return new Set<string>()
-
-  const visited = new Set<string>([nodeId])
-  let frontier = new Set<string>([nodeId])
-
-  for (let depth = 0; depth < normalizedHops && frontier.size > 0; depth += 1) {
-    const next = new Set<string>()
-    frontier.forEach((currentNode) => {
-      if (visited.size >= MAX_FOCUSED_NODES) return
-
-      graph.forEachNeighbor(currentNode, (neighbor) => {
-        if (visited.size >= MAX_FOCUSED_NODES) return
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor)
-          next.add(neighbor)
-        }
-      })
-    })
-    frontier = next
-  }
-
-  return visited
-}
-
-export function createFocusReducers(
-  selectedId: string | null,
-  depth: number,
-  graph: Graph,
-): FocusReducers {
-  const normalizedDepth = normalizeFocusDepth(depth)
-  if (!selectedId || normalizedDepth < 0 || !graph.hasNode(selectedId)) {
-    return {
-      nodeReducer: (_node, attributes) => attributes,
-      edgeReducer: (_edge, attributes) => attributes,
-    }
-  }
-
-  const focusedNodeIds = getUndirectedNeighborsWithinHops(graph, selectedId, normalizedDepth)
-
-  return {
-    nodeReducer: (node, attributes) => {
-      if (focusedNodeIds.has(node)) {
-        return {
-          ...attributes,
-          size: typeof attributes.size === 'number' ? attributes.size + 2 : attributes.size,
-          highlighted: node === selectedId,
-        }
-      }
-
-      return {
-        ...attributes,
-        color: dimColor(attributes.color, DIMMED_NODE_MIX),
-        label: '',
-      }
-    },
-    edgeReducer: (edge, attributes) => {
-      const source = graph.source(edge)
-      const target = graph.target(edge)
-
-      if (focusedNodeIds.has(source) && focusedNodeIds.has(target)) {
-        return attributes
-      }
-
-      return { ...attributes, hidden: true }
-    },
-  }
-}
-
 // LAYERING (the real fix). Sigma.js draws the entire node WebGL program ON TOP of
 // the entire edge program, so zIndex can only order node-vs-node and edge-vs-edge
 // — it can NEVER push a node behind an edge. A visible unrelated node therefore
@@ -144,8 +60,6 @@ export function createFocusReducers(
 // Flat near-black erased all type/relation hue; rgba alpha is unreliable in
 // Sigma's WebGL line program (accumulates into a bright white web). Color-mixing
 // yields an opaque, darkened, still hue-preserving color: faint amber stays amber.
-const DIMMED_NODE_MIX = 0.86 // 86% background + 14% original hue (depth-filter path)
-
 // Ghost-canvas (background layer) styling. Nodes stay at PROPORTIONAL size — the
 // user explicitly rejected shrinking them to tiny dots. The layer separation
 // (not the size) is what stops obstruction.
@@ -352,14 +266,13 @@ export function partitionFocusGraph(
 }
 
 /**
- * Click-driven neighborhood focus. Unlike createFocusReducers (depth control),
- * this keeps the selected node and its directly-connected neighbors readable and
+ * Click-driven neighborhood focus. This keeps the selected node and its directly-connected neighbors readable and
  * layered on top in the interactive (foreground) Sigma, and HIDES every unrelated
  * node and edge there. The hidden unrelated graph is redrawn on the ghost canvas
  * layer (ghostLayer.ts), which sits physically below the WebGL edges — so a
  * background node can never paint over a foreground edge during pan/zoom/drag.
- * Drives requirement: clicking a node focuses its cluster regardless of the
- * focus-depth filter.
+ * Drives requirement: clicking a node focuses its cluster without a separate
+ * hop-depth control.
  *
  * When `hovered` is provided, the focus narrows to a single relation (selected
  * node + one counterpart + the connecting edge stay bright, and only then is the

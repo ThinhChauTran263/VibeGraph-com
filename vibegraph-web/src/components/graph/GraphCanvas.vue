@@ -13,18 +13,15 @@ import { useGraphData } from '@/composables/useGraphData'
 import { useSigma } from '@/composables/useSigma'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
-import FocusDepthControl from '@/components/panels/FocusDepthControl.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
 import {
-  createFocusReducers,
   createSelectionFocusReducers,
   partitionFocusGraph,
   resolveFocusLabelDensity,
   type FocusLabelDensity,
   type HoveredRelation,
 } from '@/lib/focusMode'
-import { useFilters } from '@/composables/useFilters'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphNode } from '@/types/graph'
 
@@ -37,7 +34,6 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
-const { focusDepth } = useFilters()
 
 // Graph focus is resolved from three independent inputs with a deterministic
 // priority (see applyFocusReducers):
@@ -45,7 +41,7 @@ const { focusDepth } = useFilters()
 //   2. pinnedRelation    — a relation item in Node Detail was clicked (pinned/sticky)
 //   3. hoveredGraphNode  — a node on the graph is being hovered (temporary)
 //   4. selectedNode      — a node was clicked/searched (sticky)
-//   5. none              — default focus-depth view
+//   5. none              — default full graph view
 //
 // hoveredRelation/pinnedRelation are relative to the SELECTED node (the relation's
 // edge connects the selected node to a counterpart). A pinned relation survives the
@@ -132,8 +128,8 @@ const {
 /**
  * Apply visual reducers using the deterministic focus priority documented above.
  * A relation focus (hover preview, then pinned) wins over a hovered graph node,
- * which wins over the clicked/searched selection; with no focus we fall back to
- * the focus-depth filter control.
+ * which wins over the clicked/searched selection; with no focus we keep the
+ * default full graph view.
  *
  * Whenever a focus is active, unrelated nodes/edges are HIDDEN in the interactive
  * Sigma and the background partition is handed to the ghost canvas layer, which
@@ -164,18 +160,16 @@ function applyFocusReducers(): void {
     return
   }
 
-  // 5: default focus-depth view (no node focused). Edge type labels still reveal
+  // 5: default full graph view (no node focused). Edge type labels still reveal
   // by zoom: when zoomed in enough (edges density) we FORCE them for the whole
   // graph (Sigma otherwise only labels edges between already-labelled nodes, so
   // they'd flicker/vanish without a selection). The renderer hides any that don't
   // fully fit their edge.
-  const baseReducers = createFocusReducers(null, focusDepth.value, graph)
   const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers({
-    nodeReducer: baseReducers.nodeReducer,
-    edgeReducer: (edge, attributes) => {
-      const out = baseReducers.edgeReducer ? baseReducers.edgeReducer(edge, attributes) : attributes
-      return showEdgeLabels ? { ...out, forceLabel: true } : out
+    nodeReducer: (_node, attributes) => attributes,
+    edgeReducer: (_edge, attributes) => {
+      return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
     },
   })
   setGhostPartition?.(null)
@@ -248,7 +242,7 @@ watch(
   },
 )
 
-watch([selectedNode, focusDepth], () => {
+watch(selectedNode, () => {
   applyFocusReducers()
 })
 
@@ -273,7 +267,6 @@ watch(
     :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }"
   >
     <aside v-if="!loading && !error" class="graph-canvas__sidebar">
-      <FocusDepthControl />
       <FilterPanel :graph-data="graphData" />
     </aside>
 
@@ -384,9 +377,28 @@ watch(
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  overflow-y: auto;
+  /* The column is height-constrained to the graph viewport; each panel manages
+     its OWN scroll so a long Node Detail can never crush Impact Analysis. */
+  min-height: 0;
+  overflow: hidden;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.85);
+}
+
+/* Node Detail takes the flexible space and scrolls internally when it has many
+   relations. */
+.graph-canvas__detail :deep(.node-detail-panel) {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow-y: auto;
+}
+
+/* Impact Analysis keeps a stable, readable height and never collapses. Its
+   header/controls stay pinned; only its results body scrolls (see panel CSS). */
+.graph-canvas__detail :deep(.impact-panel) {
+  flex: 0 0 auto;
+  min-height: 15rem;
+  max-height: 38vh;
 }
 
 @media (max-width: 64rem) {

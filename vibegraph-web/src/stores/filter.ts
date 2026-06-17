@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { normalizeFocusDepth } from '@/lib/focusMode'
 import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes } from '@/lib/graphFilters'
 import type { NodeType, EdgeType } from '@/types/graph'
 
@@ -57,7 +56,6 @@ export const useFilterStore = defineStore('filter', () => {
   // CPG-lite edge types start HIDDEN so the default architecture graph stays
   // readable. They remain in the data and are revealed via "Show all".
   const hiddenEdgeTypes = ref<Set<EdgeType>>(defaultHiddenEdgeTypes())
-  const focusDepth = ref<number>(-1)
   const searchQuery = ref('')
 
   /** True when a hidden set deviates from its default-hidden baseline. */
@@ -94,15 +92,10 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenEdgeTypes.value = new Set()
   }
 
-  function setFocusDepth(depth: number): void {
-    focusDepth.value = normalizeFocusDepth(depth)
-  }
-
   function reset(): void {
     hiddenNodeTypes.value = defaultHiddenNodeTypes()
     // Reset returns to the readable DEFAULT (deep-CPG hidden), not "show all".
     hiddenEdgeTypes.value = defaultHiddenEdgeTypes()
-    focusDepth.value = -1
     searchQuery.value = ''
   }
 
@@ -110,13 +103,11 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenNodeTypes,
     hiddenEdgeTypes,
     hasActiveFilters,
-    focusDepth,
     searchQuery,
     toggleNodeType,
     toggleEdgeType,
     showAllNodeTypes,
     showAllEdgeTypes,
-    setFocusDepth,
     reset,
   }
 })

@@ -1,30 +1,28 @@
 package com.vibegraph.mcp.tool;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.jupiter.api.Disabled;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 
 import com.vibegraph.common.config.McpServerConfig;
-
 import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ArchitectureContextResponse;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
@@ -647,6 +645,50 @@ class McpToolsTest {
                     .extracting(ToolCallback::getToolDefinition)
                     .extracting(definition -> definition.name())
                     .containsExactly("get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern");
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis defaults to dependency profile and reports it")
+        void getImpactAnalysis_noProfile_usesDependencyDefault() {
+            when(graphService.getImpactAnalysis("p1", "com.app.service.UserService", 1)).thenReturn(impactResponse());
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "com.app.service.UserService", 1, null);
+
+            assertThat(result.getProfile()).isEqualTo("dependency");
+            assertThat(result.getNotes()).anyMatch(note -> note.contains("dependency"));
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis supports the structural profile via the 4-arg graph contract")
+        void getImpactAnalysis_structuralProfile_returnsStructuralImpact() {
+            when(graphService.getImpactAnalysis("p1", "com.app.controller", 2, ImpactProfile.STRUCTURAL))
+                    .thenReturn(impactResponse());
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "com.app.controller", 2, "structural");
+
+            assertThat(result.getProfile()).isEqualTo("structural");
+            assertThat(result.getSummary().getDirectDependents()).isEqualTo(2);
+            assertThat(result.getNotes()).anyMatch(note -> note.contains("structural"));
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis supports the type-data-flow profile via the 4-arg graph contract")
+        void getImpactAnalysis_typeDataFlowProfile_returnsTypeDataFlowImpact() {
+            when(graphService.getImpactAnalysis("p1", "com.app.entity.Category", 1, ImpactProfile.TYPE_DATA_FLOW))
+                    .thenReturn(impactResponse());
+
+            ImpactAnalysisContextResponse result = impactAnalysisTool.getImpactAnalysis("p1", "com.app.entity.Category", 1, "type-data-flow");
+
+            assertThat(result.getProfile()).isEqualTo("type-data-flow");
+            assertThat(result.getNotes()).anyMatch(note -> note.contains("type-data-flow"));
+        }
+
+        @Test
+        @DisplayName("get_impact_analysis rejects an unknown profile")
+        void getImpactAnalysis_invalidProfile_throws() {
+            assertThatThrownBy(() -> impactAnalysisTool.getImpactAnalysis("p1", "UserService", 1, "bad-profile"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("profile");
         }
 
         private ImpactAnalysisResponse impactResponse() {

@@ -4,6 +4,7 @@ import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,8 +30,10 @@ public class GraphController {
     public ResponseEntity<ApiResponse<ImpactAnalysisResponse>> getImpactAnalysis(
             @PathVariable String projectId,
             @RequestParam String nodeId,
-            @RequestParam(defaultValue = "3") int depth) {
-        return ResponseEntity.ok(ApiResponse.success(graphService.getImpactAnalysis(projectId, nodeId, depth)));
+            @RequestParam(defaultValue = "3") int depth,
+            @RequestParam(defaultValue = "dependency") String profile) {
+        ImpactProfile impactProfile = ImpactProfile.fromApiValue(profile);
+        return ResponseEntity.ok(ApiResponse.success(graphService.getImpactAnalysis(projectId, nodeId, depth, impactProfile)));
     }
 
     @GetMapping("/neighbors/{nodeId}")

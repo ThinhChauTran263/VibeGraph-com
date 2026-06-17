@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * SettingsView - Application settings.
- * Edge style toggle (curved/straight), focus depth default, theme...
+ * Edge style toggle (curved/straight), theme...
  */
 </script>
 

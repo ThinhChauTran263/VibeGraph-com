@@ -8,16 +8,26 @@
  */
 import { computed, watch } from 'vue'
 import { useImpactAnalysis } from '@/composables/useImpactAnalysis'
-import type { GraphNode } from '@/types/graph'
-import type { ImpactNode } from '@/lib/api'
+import type { GraphNode, NodeType } from '@/types/graph'
+import type { ImpactNode, ImpactProfile } from '@/lib/api'
 
 const props = defineProps<{
   projectId: string
   node: GraphNode | null
 }>()
 
-const { status, result, errorMessage, selectedDepth, isLoading, allowedDepths, loadImpact, reset } =
-  useImpactAnalysis()
+const {
+  status,
+  result,
+  errorMessage,
+  selectedDepth,
+  selectedProfile,
+  isLoading,
+  allowedDepths,
+  allowedProfiles,
+  loadImpact,
+  reset,
+} = useImpactAnalysis()
 
 // A new node selection invalidates any previous result.
 watch(
@@ -27,19 +37,88 @@ watch(
   },
 )
 
+// Changing the depth after a result is shown would otherwise leave a stale
+// result that no longer matches the selector. Invalidate it so the displayed
+// numbers never disagree with the chosen depth; the user re-runs Analyze.
+watch(selectedDepth, () => {
+  if (status.value === 'success' || status.value === 'error') {
+    reset()
+  }
+})
+
+watch(selectedProfile, () => {
+  if (status.value === 'success' || status.value === 'error') {
+    reset()
+  }
+})
+
+/**
+ * Node types that can actually be the TARGET of the dependency-impact traversal
+ * (CALLS | IMPORTS | EXTENDS | IMPLEMENTS | INJECTS). For any other type
+ * (Project, Package, File, APIEndpoint, Field, LocalVariable, Route) the result
+ * is structurally always empty, so the empty-state copy must say so instead of
+ * implying a deeper depth or a different selection would help.
+ */
+const DEPENDENCY_TARGET_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'Class',
+  'Interface',
+  'Enum',
+  'Record',
+  'DBModel',
+  'Annotation',
+  'Method',
+  'Constructor',
+  'External',
+])
+
+const targetSupported = computed(
+  () => !!props.node && DEPENDENCY_TARGET_TYPES.has(props.node.type),
+)
+
 const riskClass = computed(() => {
   const level = result.value?.riskLevel?.toUpperCase() ?? ''
   return `impact-panel__risk--${level.toLowerCase() || 'unknown'}`
 })
 
+const profileLabels: Record<ImpactProfile, string> = {
+  dependency: 'Dependency',
+  structural: 'Structural',
+  'type-data-flow': 'Type/Data-flow',
+}
+
+const profileHelp: Record<ImpactProfile, string> = {
+  dependency: 'Calls, imports, inheritance and injection dependents.',
+  structural: 'Containment, definitions, fields, methods and route handlers.',
+  'type-data-flow': 'Type links plus deep CPG reads, writes, catches and flow steps.',
+}
+
+const activeProfileHelp = computed(() => profileHelp[selectedProfile.value])
+
+const depthGroupLabels = computed(() => {
+  if (selectedProfile.value === 'dependency') {
+    return {
+      direct: 'Will break (d=1)',
+      likely: 'Likely affected (d=2)',
+      maybe: 'May need testing (d>=3)',
+    }
+  }
+  return {
+    direct: 'Direct related (d=1)',
+    likely: 'Indirect related (d=2)',
+    maybe: 'Further related (d>=3)',
+  }
+})
+
 const depthGroups = computed(() => {
   const data = result.value
   if (!data) return []
+  const labels = depthGroupLabels.value
   return [
-    { key: 'willBreak', label: 'Will break (d=1)', nodes: data.willBreak ?? [] },
-    { key: 'likelyAffected', label: 'Likely affected (d=2)', nodes: data.likelyAffected ?? [] },
-    { key: 'mayNeedTesting', label: 'May need testing (d≥3)', nodes: data.mayNeedTesting ?? [] },
-  ].filter((group) => group.nodes.length > 0)
+    { key: 'willBreak', label: labels.direct, nodes: data.willBreak ?? [] },
+    { key: 'likelyAffected', label: labels.likely, nodes: data.likelyAffected ?? [] },
+    { key: 'mayNeedTesting', label: labels.maybe, nodes: data.mayNeedTesting ?? [] },
+  ]
+    .filter((group) => group.nodes.length > 0)
 })
 
 const hasAffectedNodes = computed(() => depthGroups.value.length > 0)
@@ -50,7 +129,7 @@ function nodeKey(node: ImpactNode): string {
 
 function analyze(): void {
   if (!props.node) return
-  void loadImpact(props.projectId, props.node.id, selectedDepth.value)
+  void loadImpact(props.projectId, props.node.id, selectedDepth.value, selectedProfile.value)
 }
 </script>
 
@@ -72,73 +151,107 @@ function analyze(): void {
       </p>
 
       <form class="impact-panel__controls" @submit.prevent="analyze">
-        <label class="impact-panel__depth-label" for="impact-depth">Depth</label>
-        <select
-          id="impact-depth"
-          v-model.number="selectedDepth"
-          class="impact-panel__depth-select"
-          :disabled="isLoading"
-        >
-          <option v-for="depth in allowedDepths" :key="depth" :value="depth">{{ depth }}</option>
-        </select>
+        <label class="impact-panel__field" for="impact-profile">
+          <span>Profile</span>
+          <select
+            id="impact-profile"
+            v-model="selectedProfile"
+            class="impact-panel__select impact-panel__select--profile"
+            :disabled="isLoading"
+          >
+            <option v-for="profile in allowedProfiles" :key="profile" :value="profile">
+              {{ profileLabels[profile] }}
+            </option>
+          </select>
+        </label>
+        <label class="impact-panel__field" for="impact-depth">
+          <span>Depth</span>
+          <select
+            id="impact-depth"
+            v-model.number="selectedDepth"
+            class="impact-panel__select"
+            :disabled="isLoading"
+          >
+            <option v-for="depth in allowedDepths" :key="depth" :value="depth">{{ depth }}</option>
+          </select>
+        </label>
         <button class="impact-panel__analyze" type="submit" :disabled="isLoading">
           {{ isLoading ? 'Analyzing…' : 'Analyze' }}
         </button>
       </form>
+      <p class="impact-panel__profile-help">{{ activeProfileHelp }}</p>
 
-      <p v-if="isLoading" class="impact-panel__status" role="status">Loading impact…</p>
+      <div class="impact-panel__body">
+        <p v-if="isLoading" class="impact-panel__status" role="status">Loading impact…</p>
 
-      <p v-else-if="status === 'error'" class="impact-panel__error" role="alert">
-        {{ errorMessage }}
-      </p>
-
-      <template v-else-if="status === 'success' && result">
-        <div class="impact-panel__summary">
-          <span class="impact-panel__risk" :class="riskClass">{{ result.riskLevel }}</span>
-          <dl class="impact-panel__counts">
-            <div>
-              <dt>Direct</dt>
-              <dd>{{ result.directDependents }}</dd>
-            </div>
-            <div>
-              <dt>Total</dt>
-              <dd>{{ result.totalDependents }}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <section
-          v-for="group in depthGroups"
-          :key="group.key"
-          class="impact-panel__group"
-          :aria-labelledby="`impact-group-${group.key}`"
-        >
-          <h3 :id="`impact-group-${group.key}`">{{ group.label }} ({{ group.nodes.length }})</h3>
-          <ul class="impact-panel__nodes">
-            <li v-for="affected in group.nodes" :key="nodeKey(affected)">
-              <span class="impact-panel__node-name">{{ affected.name }}</span>
-              <span class="impact-panel__node-path">{{ affected.filePath }}</span>
-            </li>
-          </ul>
-        </section>
-
-        <p v-if="!hasAffectedNodes" class="impact-panel__empty-list">
-          No dependents found at this depth.
+        <p v-else-if="status === 'error'" class="impact-panel__error" role="alert">
+          {{ errorMessage }}
         </p>
-      </template>
 
-      <p v-else class="impact-panel__hint">
-        Choose a depth and run analysis to see what this node affects.
-      </p>
+        <template v-else-if="status === 'success' && result">
+          <div class="impact-panel__summary">
+            <span class="impact-panel__risk" :class="riskClass">{{ result.riskLevel }}</span>
+            <dl class="impact-panel__counts">
+              <div>
+                <dt>Direct</dt>
+                <dd>{{ result.directDependents }}</dd>
+              </div>
+              <div>
+                <dt>Total</dt>
+                <dd>{{ result.totalDependents }}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <section
+            v-for="group in depthGroups"
+            :key="group.key"
+            class="impact-panel__group"
+            :aria-labelledby="`impact-group-${group.key}`"
+          >
+            <h3 :id="`impact-group-${group.key}`">{{ group.label }} ({{ group.nodes.length }})</h3>
+            <ul class="impact-panel__nodes">
+              <li v-for="affected in group.nodes" :key="nodeKey(affected)">
+                <span class="impact-panel__node-name">{{ affected.name }}</span>
+                <span class="impact-panel__node-path">{{ affected.filePath }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <p v-if="selectedProfile === 'dependency' && !hasAffectedNodes && !targetSupported" class="impact-panel__empty-list">
+            Impact analysis measures the <strong>dependency blast radius</strong> — what
+            calls, imports, extends, implements or injects this node.
+            <strong>{{ node.type }}</strong> nodes are not targets of those relationships,
+            so an empty result here is expected (not a missing dependency). Select a
+            <strong>Class</strong>, <strong>Interface</strong>, or <strong>Method</strong>
+            to see dependents.
+          </p>
+          <p v-else-if="selectedProfile === 'dependency' && !hasAffectedNodes" class="impact-panel__empty-list">
+            Nothing depends on <strong>{{ node.name }}</strong> through call, import,
+            inheritance or injection edges within depth {{ selectedDepth }}. This is common
+            for entrypoints such as a controller or route handler that nothing else depends
+            on.
+          </p>
+          <p v-else-if="!hasAffectedNodes" class="impact-panel__empty-list">
+            No {{ profileLabels[selectedProfile].toLowerCase() }} relationships found for
+            <strong>{{ node.name }}</strong> within depth {{ selectedDepth }}.
+          </p>
+        </template>
+
+        <p v-else class="impact-panel__hint">
+          Choose a depth and run analysis to see what this node affects.
+        </p>
+      </div>
     </template>
   </aside>
 </template>
 
 <style scoped>
 .impact-panel {
-  width: min(24rem, calc(100% - 2rem));
-  max-height: calc(100% - 2rem);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
   border: 1px solid rgba(248, 113, 113, 0.28);
   border-radius: 1rem;
   padding: 1rem;
@@ -146,6 +259,14 @@ function analyze(): void {
   color: #e5e7eb;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
+}
+
+/* Header, target and controls stay pinned (flex: 0 0 auto by default); only this
+   body scrolls when the result list is long, so Analyze is always reachable. */
+.impact-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .impact-panel__header h2,
@@ -185,22 +306,25 @@ function analyze(): void {
 .impact-panel__controls {
   display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
 }
 
-.impact-panel__depth-label {
+.impact-panel__field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex: 0 1 7rem;
   color: #9ca3af;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
-.impact-panel__depth-select {
+.impact-panel__select {
   height: 2.25rem;
+  width: 100%;
   border: 1px solid #374151;
   border-radius: 0.5rem;
   background: rgba(31, 41, 55, 0.9);
@@ -209,9 +333,20 @@ function analyze(): void {
   cursor: pointer;
 }
 
+.impact-panel__select--profile {
+  min-width: 8.75rem;
+}
+
+.impact-panel__profile-help {
+  margin: 0.5rem 0 0;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .impact-panel__analyze {
   height: 2.25rem;
-  flex: 1;
+  flex: 1 1 6rem;
   border: none;
   border-radius: 0.5rem;
   background: #dc2626;

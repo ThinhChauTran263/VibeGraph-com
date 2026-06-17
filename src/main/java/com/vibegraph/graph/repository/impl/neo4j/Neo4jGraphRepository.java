@@ -20,6 +20,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -268,8 +269,9 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
-    public ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth) {
+    public ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth, ImpactProfile profile) {
         int boundedDepth = validateImpactDepth(maxDepth);
+        ImpactProfile boundedProfile = profile == null ? ImpactProfile.DEPENDENCY : profile;
         try (Session session = neo4jDriver.session()) {
             var targetResult = session.run(
                     "MATCH (target {projectId: $projectId, fullName: $targetFullName}) RETURN target",
@@ -280,11 +282,11 @@ public class Neo4jGraphRepository implements GraphRepository {
             }
 
             NodeDto target = mapNodeToDto(targetResult.single().get("target").asNode());
-            Map<Integer, List<NodeDto>> byDepth = getImpactNodesByDepth(session, projectId, targetFullName, boundedDepth);
-            Map<Integer, Integer> countsByDepth = getImpactCountsByDepth(session, projectId, targetFullName, boundedDepth);
+            Map<Integer, List<NodeDto>> byDepth = getImpactNodesByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
+            Map<Integer, Integer> countsByDepth = getImpactCountsByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
             List<NodeDto> willBreak = byDepth.getOrDefault(1, List.of());
             List<NodeDto> likelyAffected = byDepth.getOrDefault(2, List.of());
-            List<NodeDto> mayNeedTesting = byDepth.getOrDefault(3, List.of());
+            List<NodeDto> mayNeedTesting = impactNodesAtOrAfter(byDepth, 3);
             int directDependents = countsByDepth.getOrDefault(1, 0);
             int totalDependents = countsByDepth.values().stream().mapToInt(Integer::intValue).sum();
 
@@ -307,12 +309,21 @@ public class Neo4jGraphRepository implements GraphRepository {
         throw new IllegalArgumentException("depth must be one of 1, 2, 3, 5");
     }
 
+    private List<NodeDto> impactNodesAtOrAfter(Map<Integer, List<NodeDto>> byDepth, int minDepth) {
+        return byDepth.entrySet().stream()
+                .filter(entry -> entry.getKey() >= minDepth)
+                .flatMap(entry -> entry.getValue().stream())
+                .limit(MAX_IMPACT_NODES_PER_DEPTH)
+                .toList();
+    }
+
     private Map<Integer, List<NodeDto>> getImpactNodesByDepth(
             Session session,
             String projectId,
             String targetFullName,
-            int maxDepth) {
-        var result = session.run(impactTraversalCypher(maxDepth,
+            int maxDepth,
+            ImpactProfile profile) {
+        var result = session.run(impactTraversalCypher(maxDepth, profile,
                         "WITH dependent, min(length(path)) AS depth " +
                         "ORDER BY depth, dependent.fullName " +
                         "WITH depth, collect(dependent)[..$limit] AS dependents " +
@@ -336,8 +347,9 @@ public class Neo4jGraphRepository implements GraphRepository {
             Session session,
             String projectId,
             String targetFullName,
-            int maxDepth) {
-        var result = session.run(impactTraversalCypher(maxDepth,
+            int maxDepth,
+            ImpactProfile profile) {
+        var result = session.run(impactTraversalCypher(maxDepth, profile,
                         "WITH dependent, min(length(path)) AS depth " +
                         "RETURN depth, count(dependent) AS dependentCount ORDER BY depth"),
                 Map.of("projectId", projectId, "targetFullName", targetFullName));
@@ -350,14 +362,18 @@ public class Neo4jGraphRepository implements GraphRepository {
         return countsByDepth;
     }
 
-    private String impactTraversalCypher(int maxDepth, String projection) {
+    private String impactTraversalCypher(int maxDepth, ImpactProfile profile, String projection) {
+        String relationship = String.format("[:%s*1..%d]", profile.relationshipPattern(), maxDepth);
+        String pathPattern = profile.directedToTarget()
+                ? "(dependent)-" + relationship + "->(target {projectId: $projectId, fullName: $targetFullName}) "
+                : "(dependent)-" + relationship + "-(target {projectId: $projectId, fullName: $targetFullName}) ";
         return String.format(
-                "MATCH path = (dependent)-[:CALLS|IMPORTS|EXTENDS|IMPLEMENTS|INJECTS*1..%d]->" +
-                "(target {projectId: $projectId, fullName: $targetFullName}) " +
+                "MATCH path = %s" +
                 "WHERE dependent.projectId = $projectId " +
+                "AND dependent.fullName <> $targetFullName " +
                 "AND all(node IN nodes(path) WHERE node.projectId = $projectId) " +
                 "%s",
-                maxDepth,
+                pathPattern,
                 projection);
     }
 

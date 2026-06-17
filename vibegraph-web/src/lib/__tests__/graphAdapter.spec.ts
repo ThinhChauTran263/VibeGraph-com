@@ -207,6 +207,33 @@ describe('apiToGraphology', () => {
     expect(graph.getNodeAttribute('GET /api/users', 'color')).toBe(NODE_COLORS.APIEndpoint)
     expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(4)
   })
+
+  it('labels the Project node with its readable name while keying it by the stable id', () => {
+    // Regression guard: the root Project node's stable id is an opaque value
+    // (e.g. a numeric id), but the canvas label/title must show the readable
+    // project/repository name. The Sigma label is driven by node.name; the node
+    // key stays node.id so graph identity, edges, and stats are unaffected.
+    const data = baseData()
+    data.nodes = [
+      {
+        id: '44786872',
+        type: 'Project',
+        name: 'ThinhChauTran263/Lab7_Java6',
+        fullName: '44786872',
+        filePath: '',
+        lineNumber: 0,
+        properties: { id: '44786872' },
+      },
+    ]
+    data.edges = []
+
+    const graph = apiToGraphology(data)
+
+    expect(graph.hasNode('44786872')).toBe(true)
+    expect(graph.order).toBe(1)
+    expect(graph.getNodeAttribute('44786872', 'label')).toBe('ThinhChauTran263/Lab7_Java6')
+    expect(graph.getNodeAttribute('44786872', 'label')).not.toBe('44786872')
+  })
 })
 
 describe('graphAdapter supports every backend-emitted edge type', () => {
