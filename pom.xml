@@ -114,7 +114,7 @@
         <!-- Spring AI MCP Server - cung cấp context cho AI tools -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-mcp-server</artifactId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
             <version>1.1.6</version>
         </dependency>
 

@@ -34,7 +34,9 @@ spring:
       server:
         name: VibeGraph
         version: 1.0.0
-        protocol: streamable
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
 
 server:
   port: ${SERVER_PORT:8080}
@@ -81,6 +83,11 @@ vibegraph:
   parser:
     use-cache: true
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+    # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
+    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
+    # When enabled, the frontend still default-hides these deep types so the
+    # architecture graph stays readable (revealed via "Show all").
+    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
 
   # Bounded executor for future async analysis/import (bound by AnalysisExecutorProperties).
   # Not yet wired into the currently-synchronous upload/analyze flow.

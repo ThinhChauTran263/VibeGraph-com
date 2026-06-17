@@ -53,7 +53,7 @@ The production profile configures the Spring AI MCP server as:
 | --- | --- |
 | Server name | `VibeGraph` |
 | Version | `1.0.0` |
-| Protocol | `streamable` |
+| Protocol | `STREAMABLE` over Spring MVC at `/mcp` |
 
 ## Available tools
 
@@ -210,6 +210,20 @@ Example agent prompt:
 - Live Docker Compose and Testcontainers verification depends on Docker Desktop or another Docker daemon being available.
 - Production auth and rate-limit hardening remain deployment concerns unless explicitly enabled by the environment.
 - MCP responses are only useful after the target project has been imported and analyzed; empty graphs produce empty or warning-heavy results.
+- **CPG relations vs MCP DTOs:** the graph now carries CPG-lite and deep relations
+  (`TYPE_OF`, `PARAMETER_TYPE`, `RETURNS`, `HAS_FIELD`, `INJECTS`, `INSTANTIATES`,
+  `THROWS`, `ANNOTATED_BY`, `READS`, `WRITES`, `CATCHES`, `STEP_IN_FLOW`). The MCP
+  tools accept and traverse these without error, but their response DTOs are not yet
+  extended to surface per-relation CPG detail (e.g. `STEP_IN_FLOW` step ordering or
+  `READS`/`WRITES` targets). This is a known scope limitation, not a regression —
+  the existing tool contracts never promised these fields. `get_class_context`
+  incoming/outgoing relations and `get_impact_analysis` traversal include the new
+  edge types generically; `get_layer_pattern` `commonDependencies` is computed from a
+  fixed dependency edge subset (`CALLS`, `IMPORTS`, `EXTENDS`, `IMPLEMENTS`,
+  `INJECTS`, `HANDLES_ROUTE`) and ignores deep CPG edges by design.
+- **Deep CPG (`READS`/`WRITES`/`CATCHES` + `LocalVariable`) is opt-in** via
+  `VIBEGRAPH_PARSER_DEEP_CPG` (default `false`); with it off those relations are absent
+  from the graph and therefore from MCP results.
 
 ## Troubleshooting
 

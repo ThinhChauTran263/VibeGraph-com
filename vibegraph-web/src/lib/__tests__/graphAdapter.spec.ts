@@ -1,7 +1,38 @@
 import { describe, it, expect } from 'vitest'
 import { apiToGraphology } from '../graphAdapter'
-import { NODE_COLORS, EDGE_COLORS } from '../constants'
-import type { GraphData } from '@/types/graph'
+import { NODE_COLORS, EDGE_COLORS, STRUCTURAL_EDGE_TYPES, CPG_LITE_EDGE_TYPES } from '../constants'
+import type { EdgeType, GraphData } from '@/types/graph'
+
+/**
+ * Edge types the backend parser actually emits (EdgeData.of in the visitors +
+ * ParserServiceImpl). The frontend MUST support (color + render) every one of
+ * these. OWNS / CONTAINS / OVERRIDES / ANNOTATED_BY exist in the schema enum but
+ * are not currently emitted, so they are intentionally excluded here.
+ */
+const BACKEND_EMITTED_EDGE_TYPES: EdgeType[] = [
+  'CONTAINS',
+  'DEFINES',
+  'HAS_METHOD',
+  'HAS_FIELD',
+  'HAS_INNER',
+  'EXTENDS',
+  'IMPLEMENTS',
+  'OVERRIDES',
+  'IMPORTS',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'CALLS',
+  'INSTANTIATES',
+  'INJECTS',
+  'HANDLES_ROUTE',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'STEP_IN_FLOW',
+]
 
 function baseData(): GraphData {
   return {
@@ -175,5 +206,53 @@ describe('apiToGraphology', () => {
     expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(4)
     expect(graph.getNodeAttribute('GET /api/users', 'color')).toBe(NODE_COLORS.APIEndpoint)
     expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(4)
+  })
+})
+
+describe('graphAdapter supports every backend-emitted edge type', () => {
+  it('renders each emitted edge type with its own EDGE_COLORS color', () => {
+    // One distinct node pair per edge type so the pair-collapse logic does not
+    // merge them — each emitted type must produce a rendered, colored edge.
+    const nodes: GraphData['nodes'] = []
+    const edges: GraphData['edges'] = []
+    BACKEND_EMITTED_EDGE_TYPES.forEach((type, index) => {
+      const source = `n${index}a`
+      const target = `n${index}b`
+      nodes.push(
+        { id: source, type: 'Class', name: source, fullName: source, filePath: '', lineNumber: 1, properties: {} },
+        { id: target, type: 'Class', name: target, fullName: target, filePath: '', lineNumber: 1, properties: {} },
+      )
+      edges.push({ id: `${source}|${type}|${target}`, source, target, type })
+    })
+
+    const graph = apiToGraphology({
+      nodes,
+      edges,
+      nodeStats: {} as GraphData['nodeStats'],
+      edgeStats: {} as GraphData['edgeStats'],
+    })
+
+    expect(graph.size).toBe(BACKEND_EMITTED_EDGE_TYPES.length)
+    for (const type of BACKEND_EMITTED_EDGE_TYPES) {
+      const edgeId = graph.edges().find((id) => graph.getEdgeAttribute(id, 'edgeType') === type)
+      expect(edgeId).toBeDefined()
+      expect(graph.getEdgeAttribute(edgeId as string, 'color')).toBe(EDGE_COLORS[type])
+      expect(graph.getEdgeAttribute(edgeId as string, 'labelColor')).toBe(EDGE_COLORS[type])
+      // No emitted type may fall through to the generic gray fallback color.
+      expect(graph.getEdgeAttribute(edgeId as string, 'color')).not.toBe('#666666')
+    }
+  })
+
+  it('has a color for every supported (structural + CPG-lite) edge type', () => {
+    for (const type of [...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES]) {
+      expect(EDGE_COLORS[type]).toBeDefined()
+    }
+  })
+
+  it('covers every backend-emitted type across the structural and CPG-lite sets', () => {
+    const partitioned = new Set<EdgeType>([...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES])
+    for (const type of BACKEND_EMITTED_EDGE_TYPES) {
+      expect(partitioned.has(type)).toBe(true)
+    }
   })
 })

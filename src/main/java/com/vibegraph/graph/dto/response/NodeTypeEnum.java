@@ -21,6 +21,7 @@ public enum NodeTypeEnum {
     CONSTRUCTOR("Constructor"),
     FIELD("Field"),
     ANNOTATION("Annotation"),
+    LOCAL_VARIABLE("LocalVariable"),
     ROUTE("Route"),
     API_ENDPOINT("APIEndpoint"),
     EXTERNAL("External");

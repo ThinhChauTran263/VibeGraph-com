@@ -56,6 +56,15 @@ const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
 
+// User toggle for showing edge type labels at all. When off, edge labels never
+// render regardless of zoom/selection. Driven by the "Edge labels" button.
+const edgeLabelsEnabled = ref(true)
+
+function toggleEdgeLabels(): void {
+  edgeLabelsEnabled.value = !edgeLabelsEnabled.value
+  applyFocusReducers()
+}
+
 function resetRelationFocus(): void {
   hoveredRelation.value = null
   pinnedRelation.value = null
@@ -161,7 +170,7 @@ function applyFocusReducers(): void {
   // they'd flicker/vanish without a selection). The renderer hides any that don't
   // fully fit their edge.
   const baseReducers = createFocusReducers(null, focusDepth.value, graph)
-  const showEdgeLabels = labelDensity.value === 'edges'
+  const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers({
     nodeReducer: baseReducers.nodeReducer,
     edgeReducer: (edge, attributes) => {
@@ -180,7 +189,7 @@ function focusOn(nodeId: string, relation: HoveredRelation | null): void {
     createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
   )
   setGhostPartition?.(partitionFocusGraph(nodeId, graphInstance.value, relation))
-  setEdgeLabelsVisible?.(labelDensity.value === 'edges')
+  setEdgeLabelsVisible?.(edgeLabelsEnabled.value && labelDensity.value === 'edges')
 }
 
 async function load(projectId: string) {
@@ -270,6 +279,17 @@ watch(
 
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
+
+      <button
+        v-if="!loading && !error"
+        type="button"
+        class="graph-edge-label-toggle"
+        :class="{ 'graph-edge-label-toggle--off': !edgeLabelsEnabled }"
+        :aria-pressed="edgeLabelsEnabled"
+        @click="toggleEdgeLabels"
+      >
+        {{ edgeLabelsEnabled ? 'Edge labels: On' : 'Edge labels: Off' }}
+      </button>
 
       <div v-if="!loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
         <div class="graph-controls-help__title">Controls</div>
@@ -518,6 +538,39 @@ watch(
 .graph-controls-help__icon--primary {
   color: #34d399;
 }
+
+.graph-edge-label-toggle {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 6;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.28);
+  color: #bfdbfe;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-edge-label-toggle:hover,
+.graph-edge-label-toggle:focus-visible {
+  background: rgba(37, 99, 235, 0.42);
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
+.graph-edge-label-toggle--off {
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.78);
+  color: #94a3b8;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

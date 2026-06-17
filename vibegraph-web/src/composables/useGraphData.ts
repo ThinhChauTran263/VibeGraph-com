@@ -7,7 +7,6 @@ import { computed } from 'vue'
 import { useGraphStore } from '@/stores/graph'
 import { fetchFullGraph } from '@/lib/api'
 import { apiToGraphology } from '@/lib/graphAdapter'
-import { sanitizeAllowedEdgeTypes } from '@/lib/graphFilters'
 import { useFilters } from '@/composables/useFilters'
 import type Graph from 'graphology'
 import type { GraphData, GraphNode } from '@/types/graph'
@@ -35,7 +34,11 @@ export function useGraphData() {
     store.error = null
 
     try {
-      const data = sanitizeAllowedEdgeTypes(await fetchFullGraph(projectId))
+      // Keep the FULL backend graph (including CPG-lite edge types) in the store
+      // so the legend can show real counts and every emitted type stays
+      // revealable. Default visibility is curated by the filter state
+      // (CPG-lite edges hidden by default), not by dropping edges here.
+      const data = await fetchFullGraph(projectId)
       store.graphData = data
       return apiToGraphology(filters.applyFilters(data))
     } catch (err) {

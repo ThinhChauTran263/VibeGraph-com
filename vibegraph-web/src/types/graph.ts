@@ -21,6 +21,7 @@ export type NodeType =
   | 'Constructor'
   | 'Field'
   | 'Annotation'
+  | 'LocalVariable'
   | 'Route'
   | 'APIEndpoint'
   | 'External'
@@ -41,9 +42,14 @@ export type EdgeType =
   | 'PARAMETER_TYPE'
   | 'THROWS'
   | 'CALLS'
+  | 'INSTANTIATES'
   | 'INJECTS'
   | 'HANDLES_ROUTE'
   | 'ANNOTATED_BY'
+  | 'READS'
+  | 'WRITES'
+  | 'CATCHES'
+  | 'STEP_IN_FLOW'
 
 export interface GraphNode {
   id: string

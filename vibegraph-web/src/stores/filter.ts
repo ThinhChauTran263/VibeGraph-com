@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { normalizeFocusDepth } from '@/lib/focusMode'
+import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes } from '@/lib/graphFilters'
 import type { NodeType, EdgeType } from '@/types/graph'
 
 const cloneSet = <T>(values: Set<T>): Set<T> => new Set(values)
@@ -51,13 +52,30 @@ function nextIsolateHiddenSet<T>(hidden: Set<T>, type: T, available: readonly T[
 }
 
 export const useFilterStore = defineStore('filter', () => {
-  const hiddenNodeTypes = ref<Set<NodeType>>(new Set())
-  const hiddenEdgeTypes = ref<Set<EdgeType>>(new Set())
+  // LocalVariable (deep CPG) starts HIDDEN so the default graph stays readable.
+  const hiddenNodeTypes = ref<Set<NodeType>>(defaultHiddenNodeTypes())
+  // CPG-lite edge types start HIDDEN so the default architecture graph stays
+  // readable. They remain in the data and are revealed via "Show all".
+  const hiddenEdgeTypes = ref<Set<EdgeType>>(defaultHiddenEdgeTypes())
   const focusDepth = ref<number>(-1)
   const searchQuery = ref('')
 
+  /** True when a hidden set deviates from its default-hidden baseline. */
+  function deviatesFromDefault<T>(hidden: ReadonlySet<T>, defaults: ReadonlySet<T>): boolean {
+    if (hidden.size !== defaults.size) return true
+    for (const value of hidden) {
+      if (!defaults.has(value)) return true
+    }
+    return false
+  }
+
+  // "Active filters" means the user deviated from the defaults (node or edge
+  // visibility). The default-hidden deep-CPG types alone do NOT count as active
+  // (otherwise Reset would always appear enabled).
   const hasActiveFilters = computed(
-    () => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0,
+    () =>
+      deviatesFromDefault(hiddenNodeTypes.value, defaultHiddenNodeTypes()) ||
+      deviatesFromDefault(hiddenEdgeTypes.value, defaultHiddenEdgeTypes()),
   )
 
   function toggleNodeType(type: NodeType, available: readonly NodeType[] = []): void {
@@ -81,8 +99,9 @@ export const useFilterStore = defineStore('filter', () => {
   }
 
   function reset(): void {
-    hiddenNodeTypes.value = new Set()
-    hiddenEdgeTypes.value = new Set()
+    hiddenNodeTypes.value = defaultHiddenNodeTypes()
+    // Reset returns to the readable DEFAULT (deep-CPG hidden), not "show all".
+    hiddenEdgeTypes.value = defaultHiddenEdgeTypes()
     focusDepth.value = -1
     searchQuery.value = ''
   }
