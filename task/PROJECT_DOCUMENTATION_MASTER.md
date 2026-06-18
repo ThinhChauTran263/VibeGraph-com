@@ -1,4 +1,11 @@
 # VibeGraph - Master Project Documentation
+
+> **Current status note (2026-06-18):** This file is a historical planning snapshot.
+> For current MCP/server behavior, use `MCP_INTEGRATION.md`,
+> `docs/mcp-integration.md`, `VibeGraph-specs-2month/ai-memory.md`, and
+> `src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md`. The current MCP surface has
+> 15 registered tools, project metadata recovery from Neo4j after restart, and
+> guarded project-relative source access.
 *Tài liệu tổng hợp dự án - Cập nhật: 2026-06-11*
 
 > **Mục đích:** Tổng hợp toàn bộ documentation về implementation status, sprint planning, task distribution, và hướng dẫn quản lý dự án VibeGraph.
@@ -128,16 +135,16 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 **Priority:** HIGH (Sprint 2)
 
-#### MCP Module ❌ 10% SKELETON
+#### MCP Module - COMPLETE / SENIOR CONTEXT TOOLS
 
-| Component            | Status    | Note                      |
-| -------------------- | --------- | ------------------------- |
-| ArchitectureTool     | ❌ Skeleton | No @Tool method           |
-| ClassContextTool     | ❌ Skeleton | No @Tool method           |
-| ImpactAnalysisTool   | ❌ Skeleton | No @Tool method           |
-| LayerPatternTool     | ❌ Skeleton | No @Tool method           |
+| Component | Status | Note |
+| --- | --- | --- |
+| Core context tools | Done | Architecture, class context, impact analysis, and layer pattern tools registered via Spring AI. |
+| Source tools | Done | Source file, source search, method source, endpoint trace, and references are bounded and project-root guarded. |
+| Senior MCP tools | Done | Method CPG context, related tests, suggested test plan, code-change plan, failure explanation, and project conventions are registered. |
+| Restart recovery | Done | Project list/get/delete can recover persisted Project metadata from Neo4j when source root passes the allowed workspace/root guard. |
 
-**Priority:** MEDIUM (Sprint 3)
+**Current source of truth:** `MCP_INTEGRATION.md` and `src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md`.
 
 ### Frontend Modules
 
@@ -230,7 +237,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | WebSocket status/update | ✅ Partial | Status broadcast done; graph update topic + FE consumer done; DELETE `.java` FULL_UPDATE wired; CREATE/MODIFY incremental producer pending |
 | File watcher         | 🟡 Partial | Recursive watcher/debounce/lifecycle done; DELETE prune+broadcast tested; CREATE/MODIFY re-parse pending |
 | Diagram services     | ❌ 0%   | DiagramController empty        |
-| MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
+| MCP tools            | Done | 15 Spring AI MCP tools registered and documented; source access is bounded, path-safe, and recoverable after backend restart |
 | Frontend filters     | ❌ 20%  | UI scaffolds only              |
 | GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke tested (import-github 202 -> ANALYZED 47 files/310 nodes/1220 edges); backend DI bug in `GitHubPreFlightService` resolved |
 
@@ -255,7 +262,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 | Category              | Tasks   | Hours | Priority |
 | --------------------- | ------- | ----- | -------- |
-| MCP Tools             | T73-T77 | 26h   | High     |
+| MCP tools            | Done | 15 Spring AI MCP tools registered and documented; source access is bounded, path-safe, and recoverable after backend restart |
 | OpenAPI               | T78-T79 | 8h    | Medium   |
 | Parser Robustness     | T80-T83 | 21h   | High     |
 | Caching & Performance | T84-T88 | 29h   | High     |
