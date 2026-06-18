@@ -82,7 +82,7 @@ public class FailureExplainerImpl implements FailureExplainer {
                             .relativePath(frame.getRelativePath())
                             .lineNumber(pf.lineNumber)
                             .reason(rootCauses.isEmpty()
-                                    ? "Topmost in-project frame — most likely the throw site or nearest handler."
+                                    ? "Topmost in-project frame - most likely the throw site or nearest handler."
                                     : "Caller of the throw site; inspect arguments/state passed downstream.")
                             .build());
                 }

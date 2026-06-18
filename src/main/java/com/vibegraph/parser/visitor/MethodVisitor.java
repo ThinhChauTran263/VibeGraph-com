@@ -497,10 +497,17 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                         .filter(imp -> imp.getName().getIdentifier().equals(baseName))
                         .findFirst()
                         .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> context.findCompilationUnit()
-                        .flatMap(cu -> cu.getPackageDeclaration())
-                        .map(pkg -> pkg.getNameAsString() + "." + baseName)
-                        .orElse(baseName));
+                .orElseGet(() -> {
+                    // Implicitly-imported java.lang types must not be mis-qualified to the
+                    // current package (e.g. String -> com.app.String).
+                    if (JAVA_LANG_TYPES.contains(baseName)) {
+                        return "java.lang." + baseName;
+                    }
+                    return context.findCompilationUnit()
+                            .flatMap(cu -> cu.getPackageDeclaration())
+                            .map(pkg -> pkg.getNameAsString() + "." + baseName)
+                            .orElse(baseName);
+                });
     }
 
     private boolean isPrimitive(String type) {
@@ -509,6 +516,15 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
             default -> false;
         };
     }
+
+    /** Commonly-used implicitly-imported {@code java.lang} types, used to avoid mis-qualifying
+     * them to the current package when they appear unqualified and without an explicit import. */
+    private static final java.util.Set<String> JAVA_LANG_TYPES = java.util.Set.of(
+            "String", "Object", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
+            "Character", "Number", "CharSequence", "StringBuilder", "StringBuffer", "Math", "System",
+            "Thread", "Runnable", "Iterable", "Comparable", "Cloneable", "Class", "Enum", "Void",
+            "Throwable", "Exception", "RuntimeException", "Error", "IllegalArgumentException",
+            "IllegalStateException", "NullPointerException", "UnsupportedOperationException");
 
     private NodeData toNodeData(MethodDeclaration declaration) {
         List<String> paramTypes = declaration.getParameters().stream()

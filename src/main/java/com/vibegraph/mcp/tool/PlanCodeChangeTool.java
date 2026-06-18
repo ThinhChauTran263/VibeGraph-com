@@ -19,7 +19,7 @@ public class PlanCodeChangeTool {
 
     @Tool(name = "plan_code_change", description = "Senior-style reconnaissance before editing: from a change request, "
             + "identify candidate files and symbols (via source search + graph), impacted blast radius, a proposed edit "
-            + "sequence, a test plan, risks, open questions, and a confidence level. Conservative and evidence-backed — "
+            + "sequence, a test plan, risks, open questions, and a confidence level. Conservative and evidence-backed - "
             + "returns candidates/questions when ambiguous and never claims an exact patch without source evidence. "
             + "Does not modify code.")
     public CodeChangePlanResponse planCodeChange(

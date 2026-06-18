@@ -18,7 +18,7 @@ public class ExplainFailureTool {
     @Tool(name = "explain_failure_path", description = "Map a Java stack trace or test failure to in-project code: "
             + "parses frames, resolves them to classes/methods/source, lists the method's calls and whether it handles "
             + "a route, identifies likely root-cause locations, and proposes debugging steps. For a test name it finds "
-            + "the test and its production targets. External-only traces are reported as such — nothing is invented.")
+            + "the test and its production targets. External-only traces are reported as such - nothing is invented.")
     public FailureExplanationResponse explainFailurePath(
             @ToolParam(description = "Project identifier to inspect") String projectId,
             @ToolParam(required = false, description = "Java stack trace text") String stackTrace,
