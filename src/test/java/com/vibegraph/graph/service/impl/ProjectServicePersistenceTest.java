@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -75,6 +76,18 @@ class ProjectServicePersistenceTest {
         assertThatThrownBy(() -> service.getProject("evil"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("outside the allowed workspace");
+    }
+
+    @Test
+    @DisplayName("deletes a project recovered from persisted metadata after restart")
+    void deletesPersistedProjectAfterRestart() throws IOException {
+        Path source = Files.createDirectories(workspaceRoot.resolve("delete-me/source"));
+        when(graphRepository.findProject("delete-me"))
+                .thenReturn(new ProjectMetadata("delete-me", "Delete Me", source.toString()));
+
+        service.deleteProject("delete-me");
+
+        verify(graphRepository).deleteProject("delete-me");
     }
 
     @Test

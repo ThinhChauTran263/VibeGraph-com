@@ -71,6 +71,26 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
+    public List<ProjectMetadata> findAllProjects() {
+        try (Session session = neo4jDriver.session()) {
+            var result = session.run(
+                    "MATCH (p:Project) RETURN p.id AS id, p.name AS name, p.path AS path");
+            List<ProjectMetadata> projects = new ArrayList<>();
+            while (result.hasNext()) {
+                var record = result.next();
+                if (record.get("id").isNull()) {
+                    continue;
+                }
+                projects.add(new ProjectMetadata(
+                        record.get("id").asString(),
+                        record.get("name").isNull() ? null : record.get("name").asString(),
+                        record.get("path").isNull() ? null : record.get("path").asString()));
+            }
+            return projects;
+        }
+    }
+
+    @Override
     public void upsertNodes(String projectId, List<NodeData> nodes) {
         if (nodes == null || nodes.isEmpty()) return;
 
@@ -165,6 +185,16 @@ public class Neo4jGraphRepository implements GraphRepository {
             }
         }
         return persisted;
+    }
+
+    @Override
+    public void deleteProject(String projectId) {
+        try (Session session = neo4jDriver.session()) {
+            session.run(
+                    "MATCH (n {projectId: $projectId}) DETACH DELETE n",
+                    Map.of("projectId", projectId)
+            );
+        }
     }
 
     @Override

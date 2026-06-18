@@ -142,7 +142,33 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public List<ProjectResponse> listProjects() {
-        return List.copyOf(projects.values());
+        // In-memory entries are authoritative (freshest stats/status). After a restart the
+        // registry is empty, so also surface persisted Project nodes whose recorded source
+        // root still passes the allowed-workspace guard (disallowed/tampered roots are skipped).
+        Map<String, ProjectResponse> merged = new java.util.LinkedHashMap<>(projects);
+        if (graphRepository != null) {
+            try {
+                for (ProjectMetadata metadata : graphRepository.findAllProjects()) {
+                    if (metadata == null || metadata.id() == null || merged.containsKey(metadata.id())) {
+                        continue;
+                    }
+                    if (metadata.path() == null || metadata.path().isBlank()
+                            || !isPersistedRootAllowed(metadata.path())) {
+                        continue;
+                    }
+                    merged.put(metadata.id(), ProjectResponse.builder()
+                            .id(metadata.id())
+                            .name(metadata.name() != null ? metadata.name() : metadata.id())
+                            .rootPath(metadata.path())
+                            .status(ProjectStatus.ANALYZED.name())
+                            .progress(100)
+                            .build());
+                }
+            } catch (RuntimeException ex) {
+                log.warn("Could not load persisted projects for listing: {}", ex.getMessage());
+            }
+        }
+        return List.copyOf(merged.values());
     }
 
     @Override
@@ -228,8 +254,12 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public void deleteProject(String id) {
-        if (projects.remove(id) == null) {
+        ProjectResponse removed = projects.remove(id);
+        if (removed == null && loadPersisted(id) == null) {
             throw new ProjectNotFoundException("Project not found: " + id);
+        }
+        if (graphRepository != null) {
+            graphRepository.deleteProject(id);
         }
         if (fileWatcherService != null) {
             fileWatcherService.stopWatching(id);
