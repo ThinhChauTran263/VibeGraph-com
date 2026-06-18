@@ -94,7 +94,7 @@ public final class GraphView {
             return true;
         }
         String bareFull = stripParens(fullName);
-        return bareFull.endsWith("." + bareQuery) && bareQuery.equals(stripParens(node.getName()));
+        return bareFull.endsWith("." + bareQuery) || bareFull.equals(bareQuery);
     }
 
     /** All non-File nodes declared in the given file path. */

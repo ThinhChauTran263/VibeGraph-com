@@ -1,5 +1,11 @@
 package com.vibegraph.parser.visitor;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
@@ -8,12 +14,6 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * Extracts Field nodes and field-related edges (HAS_FIELD, TYPE_OF, INJECTS) from AST.
@@ -99,11 +99,25 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
                         .filter(imp -> imp.getName().getIdentifier().equals(baseName))
                         .findFirst()
                         .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> context.findCompilationUnit()
-                        .flatMap(cu -> cu.getPackageDeclaration())
-                        .map(pkg -> pkg.getNameAsString() + "." + baseName)
-                        .orElse(baseName));
+                .orElseGet(() -> {
+                    if (JAVA_LANG_TYPES.contains(baseName)) {
+                        return "java.lang." + baseName;
+                    }
+                    return context.findCompilationUnit()
+                            .flatMap(cu -> cu.getPackageDeclaration())
+                            .map(pkg -> pkg.getNameAsString() + "." + baseName)
+                            .orElse(baseName);
+                });
     }
+
+    /** Implicitly-imported {@code java.lang} types that must not be mis-qualified to the
+     * current package when unqualified and not explicitly imported. */
+    private static final java.util.Set<String> JAVA_LANG_TYPES = java.util.Set.of(
+            "String", "Object", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
+            "Character", "Number", "CharSequence", "StringBuilder", "StringBuffer", "Math", "System",
+            "Thread", "Runnable", "Iterable", "Comparable", "Cloneable", "Class", "Enum", "Void",
+            "Throwable", "Exception", "RuntimeException", "Error", "IllegalArgumentException",
+            "IllegalStateException", "NullPointerException", "UnsupportedOperationException");
 
     private boolean isPrimitive(String type) {
         String baseName = type.contains("<") ? type.substring(0, type.indexOf('<')) : type;

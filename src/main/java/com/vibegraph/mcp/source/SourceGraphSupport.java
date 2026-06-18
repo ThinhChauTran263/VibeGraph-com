@@ -55,4 +55,32 @@ public class SourceGraphSupport {
         Object value = node.getProperties().get(key);
         return value instanceof String text && !text.isBlank() ? text : null;
     }
+
+    /**
+     * Relativize an absolute file path (or any value that embeds one) so MCP responses never leak
+     * drive letters, OS usernames, or absolute server paths. The heuristic strips everything up to
+     * the first {@code /src/} or {@code /vibegraph-web/} segment; for other absolute paths it falls
+     * back to the trailing filename. Values that are not absolute (e.g. dotted fully-qualified
+     * names like {@code com.app.Foo}) are returned unchanged, so this is a safe no-op for
+     * non-{@code File} graph nodes.
+     */
+    public static String relativizePath(String value) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        String fp = value.replace('\\', '/');
+        int src = fp.indexOf("/src/");
+        if (src >= 0) {
+            return fp.substring(src + 1);
+        }
+        int web = fp.indexOf("/vibegraph-web/");
+        if (web >= 0) {
+            return fp.substring(web + 1);
+        }
+        boolean windowsAbsolute = fp.length() > 2 && Character.isLetter(fp.charAt(0)) && fp.charAt(1) == ':';
+        if (windowsAbsolute || fp.startsWith("/")) {
+            return fp.substring(fp.lastIndexOf('/') + 1);
+        }
+        return value;
+    }
 }

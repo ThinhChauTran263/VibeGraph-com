@@ -124,13 +124,13 @@ public class ReferenceAnalyzerImpl implements ReferenceAnalyzer {
 
     private NodeRef toNodeRef(NodeDto node, String fallbackId) {
         if (node == null) {
-            return NodeRef.builder().id(fallbackId).build();
+            return NodeRef.builder().id(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(fallbackId)).build();
         }
         return NodeRef.builder()
-                .id(node.getId())
+                .id(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getId()))
                 .type(node.getType())
                 .name(node.getName())
-                .fullName(node.getFullName())
+                .fullName(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getFullName()))
                 .build();
     }
 

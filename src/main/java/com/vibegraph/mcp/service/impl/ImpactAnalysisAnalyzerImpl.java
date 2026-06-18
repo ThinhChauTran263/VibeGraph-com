@@ -154,10 +154,10 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
 
     private ImpactAnalysisContextResponse.NodeImpact toNodeImpact(NodeDto node, String impactLevel, int depth) {
         return ImpactAnalysisContextResponse.NodeImpact.builder()
-                .id(node.getId())
+                .id(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getId()))
                 .type(node.getType())
                 .name(node.getName())
-                .fullName(node.getFullName())
+                .fullName(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getFullName()))
                 .impactLevel(impactLevel)
                 .depth(depth)
                 .lineNumber(node.getLineNumber())

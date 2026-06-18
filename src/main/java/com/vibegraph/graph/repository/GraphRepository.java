@@ -21,6 +21,20 @@ public interface GraphRepository {
 
     void upsertProject(String projectId, String name, String path);
 
+    /**
+     * Read back the persisted {@code Project} node metadata, or {@code null} if no
+     * project with this id exists in the graph. Lets callers recover a project's
+     * source root after the in-memory registry is lost (e.g. backend restart).
+     */
+    ProjectMetadata findProject(String projectId);
+
+    /**
+     * Return metadata for every persisted {@code Project} node. Used to repopulate the project
+     * list after the in-memory registry is lost (e.g. backend restart). Returns an empty list
+     * when none are persisted.
+     */
+    java.util.List<ProjectMetadata> findAllProjects();
+
     void upsertNodes(String projectId, List<NodeData> nodes);
 
     /**
@@ -32,6 +46,9 @@ public interface GraphRepository {
      *         should report instead of the raw input size.
      */
     int upsertEdges(String projectId, List<EdgeData> edges);
+
+    /** Delete every persisted graph node and relationship for a project id. */
+    void deleteProject(String projectId);
 
     void deleteFile(String projectId, String filePath);
 

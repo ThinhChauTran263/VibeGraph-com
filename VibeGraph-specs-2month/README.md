@@ -36,7 +36,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 - FR-07 cập nhật realtime
 - FR-08 file watcher phía server
 - FR-09 REST API
-- FR-10 MCP server với 4 tool
+- FR-10 MCP server voi 15 tools
 - FR-NEW nhập khẩu tarball từ GitHub
 - FR-NEW-2 upload project bằng ZIP/TAR archive (flow chính Sprint 2 thay cho nhập local path thủ công)
 

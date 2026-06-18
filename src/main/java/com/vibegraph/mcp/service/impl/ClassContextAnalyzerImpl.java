@@ -18,6 +18,7 @@ import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
 import com.vibegraph.mcp.service.ClassContextAnalyzer;
+import com.vibegraph.mcp.source.SourceGraphSupport;
 
 import lombok.RequiredArgsConstructor;
 
@@ -227,7 +228,7 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
             return null;
         }
         return ClassContextResponse.RelationInfo.builder()
-                .id(edge.getId())
+                .id(SourceGraphSupport.relativizePath(edge.getId()))
                 .type(edge.getType())
                 .source(toNodeRef(source))
                 .target(toNodeRef(target))
@@ -238,10 +239,10 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
 
     private ClassContextResponse.NodeRef toNodeRef(NodeDto node) {
         return ClassContextResponse.NodeRef.builder()
-                .id(node.getId())
+                .id(SourceGraphSupport.relativizePath(node.getId()))
                 .type(node.getType())
                 .name(node.getName())
-                .fullName(node.getFullName())
+                .fullName(SourceGraphSupport.relativizePath(node.getFullName()))
                 .build();
     }
 

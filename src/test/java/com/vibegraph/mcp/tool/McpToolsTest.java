@@ -42,11 +42,13 @@ class McpToolsTest {
 
     static final List<String> ALL_TOOL_NAMES = List.of(
             "get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern",
-            "get_source_file", "get_method_source", "search_source", "find_references", "trace_endpoint");
+            "get_source_file", "get_method_source", "search_source", "find_references", "trace_endpoint",
+            "get_method_cpg_context", "find_related_tests", "suggest_test_plan", "plan_code_change",
+            "explain_failure_path", "get_project_conventions");
 
     /**
      * Build the full tool-callback provider for registration assertions. The four original tools
-     * are wired with real analyzers; the Phase 6A source tools are wired with null collaborators
+     * are wired with real analyzers; the source/intelligence tools are wired with null collaborators
      * because registration only reflects on the {@code @Tool} annotations (it never invokes them).
      */
     static ToolCallbackProvider fullProvider(GraphService graphService) {
@@ -59,7 +61,13 @@ class McpToolsTest {
                 new MethodSourceTool(null),
                 new SearchSourceTool(null),
                 new FindReferencesTool(null),
-                new TraceEndpointTool(null));
+                new TraceEndpointTool(null),
+                new MethodCpgTool(null),
+                new FindRelatedTestsTool(null),
+                new SuggestTestPlanTool(null),
+                new PlanCodeChangeTool(null),
+                new ExplainFailureTool(null),
+                new ProjectConventionsTool(null));
     }
 
     @Nested

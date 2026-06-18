@@ -22,6 +22,7 @@ import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -49,6 +50,43 @@ public class Neo4jGraphRepository implements GraphRepository {
                     "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId",
                     Map.of("projectId", projectId, "name", name, "path", path)
             );
+        }
+    }
+
+    @Override
+    public ProjectMetadata findProject(String projectId) {
+        try (Session session = neo4jDriver.session()) {
+            var result = session.run(
+                    "MATCH (p:Project {id: $projectId}) RETURN p.id AS id, p.name AS name, p.path AS path",
+                    Map.of("projectId", projectId));
+            if (!result.hasNext()) {
+                return null;
+            }
+            var record = result.next();
+            return new ProjectMetadata(
+                    record.get("id").isNull() ? null : record.get("id").asString(),
+                    record.get("name").isNull() ? null : record.get("name").asString(),
+                    record.get("path").isNull() ? null : record.get("path").asString());
+        }
+    }
+
+    @Override
+    public List<ProjectMetadata> findAllProjects() {
+        try (Session session = neo4jDriver.session()) {
+            var result = session.run(
+                    "MATCH (p:Project) RETURN p.id AS id, p.name AS name, p.path AS path");
+            List<ProjectMetadata> projects = new ArrayList<>();
+            while (result.hasNext()) {
+                var record = result.next();
+                if (record.get("id").isNull()) {
+                    continue;
+                }
+                projects.add(new ProjectMetadata(
+                        record.get("id").asString(),
+                        record.get("name").isNull() ? null : record.get("name").asString(),
+                        record.get("path").isNull() ? null : record.get("path").asString()));
+            }
+            return projects;
         }
     }
 
@@ -147,6 +185,16 @@ public class Neo4jGraphRepository implements GraphRepository {
             }
         }
         return persisted;
+    }
+
+    @Override
+    public void deleteProject(String projectId) {
+        try (Session session = neo4jDriver.session()) {
+            session.run(
+                    "MATCH (n {projectId: $projectId}) DETACH DELETE n",
+                    Map.of("projectId", projectId)
+            );
+        }
     }
 
     @Override
