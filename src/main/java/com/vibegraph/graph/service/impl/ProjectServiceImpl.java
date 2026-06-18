@@ -19,6 +19,8 @@ import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.watcher.service.FileWatcherService;
 
@@ -35,6 +37,14 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Autowired
     private ArchiveImportProperties archiveImportProperties;
+
+    /**
+     * Optional: lets the service recover persisted project metadata (source root) after a
+     * backend restart, when the in-memory registry is empty but the Neo4j {@code Project}
+     * node still exists. Left null in plain unit tests that construct this service directly.
+     */
+    @Autowired(required = false)
+    private GraphRepository graphRepository;
 
     /**
      * Optional: present in the running app to stop the file watcher when a project is deleted.
@@ -138,10 +148,82 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public ProjectResponse getProject(String id) {
         ProjectResponse project = projects.get(id);
-        if (project == null) {
-            throw new ProjectNotFoundException("Project not found: " + id);
+        if (project != null) {
+            return project;
         }
-        return project;
+        ProjectResponse persisted = loadPersisted(id);
+        if (persisted != null) {
+            return persisted;
+        }
+        throw new ProjectNotFoundException("Project not found: " + id);
+    }
+
+    /**
+     * Recover a project from the persisted {@code Project} node when the in-memory registry
+     * has been cleared (e.g. backend restart). The recovered source root is validated to live
+     * under a configured base (archive workspace root, or the projects allowed-root when set)
+     * so a tampered persisted path cannot point the source tools at arbitrary files.
+     *
+     * @return a reconstructed response, or {@code null} if the project is not persisted
+     * @throws IllegalArgumentException if the persisted root escapes the allowed base
+     */
+    private ProjectResponse loadPersisted(String id) {
+        if (graphRepository == null) {
+            return null;
+        }
+        ProjectMetadata metadata;
+        try {
+            metadata = graphRepository.findProject(id);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+        if (metadata == null || metadata.path() == null || metadata.path().isBlank()) {
+            return null;
+        }
+        if (!isPersistedRootAllowed(metadata.path())) {
+            throw new IllegalArgumentException("Persisted project root is outside the allowed workspace");
+        }
+        log.info("Recovered project {} from persisted graph metadata", id);
+        return ProjectResponse.builder()
+                .id(metadata.id() != null ? metadata.id() : id)
+                .name(metadata.name() != null ? metadata.name() : id)
+                .rootPath(metadata.path())
+                .status(ProjectStatus.ANALYZED.name())
+                .progress(100)
+                .build();
+    }
+
+    private boolean isPersistedRootAllowed(String rawPath) {
+        Path candidate;
+        try {
+            candidate = Path.of(rawPath).toAbsolutePath().normalize();
+        } catch (InvalidPathException ex) {
+            return false;
+        }
+        // The archive workspace root is always configured (defaults under java.io.tmpdir) and
+        // is where GitHub/archive imports materialize sources — the common persisted case.
+        if (startsWithBase(candidate, archiveImportProperties.getWorkspaceRoot())) {
+            return true;
+        }
+        // Local createProject projects live under the optional allowed-root, when configured.
+        if (allowedRoot != null && !allowedRoot.isBlank()) {
+            try {
+                if (startsWithBase(candidate, Path.of(allowedRoot))) {
+                    return true;
+                }
+            } catch (InvalidPathException ignored) {
+                // fall through to reject
+            }
+        }
+        // Anything else (including a tampered persisted path) is refused.
+        return false;
+    }
+
+    private boolean startsWithBase(Path candidate, Path base) {
+        if (base == null) {
+            return false;
+        }
+        return candidate.startsWith(base.toAbsolutePath().normalize());
     }
 
     @Override
