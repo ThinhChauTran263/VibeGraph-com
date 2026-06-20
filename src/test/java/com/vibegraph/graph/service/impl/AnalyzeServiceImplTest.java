@@ -46,7 +46,7 @@ class AnalyzeServiceImplTest {
     @Test
     @DisplayName("upserts the Project node with the human-readable display name, not the id")
     void upsertsProjectWithReadableName() {
-        when(parserService.parseProject(any(Path.class))).thenReturn(List.of(ParseResult.builder().build()));
+        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(ParseResult.builder().build()));
 
         service.analyzeProject("44786872", "ThinhChauTran263/Lab7_Java6", "/tmp/repo");
 
@@ -60,7 +60,7 @@ class AnalyzeServiceImplTest {
     @Test
     @DisplayName("falls back to the projectId as name when no display name is supplied")
     void fallsBackToIdWhenNameBlank() {
-        when(parserService.parseProject(any(Path.class))).thenReturn(List.of(ParseResult.builder().build()));
+        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(ParseResult.builder().build()));
 
         service.analyzeProject("p1", "   ", "/tmp/p1");
 

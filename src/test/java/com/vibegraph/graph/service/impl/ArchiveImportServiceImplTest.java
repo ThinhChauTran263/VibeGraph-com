@@ -157,13 +157,14 @@ class ArchiveImportServiceImplTest {
         assertThat(result.getProgress()).isZero();
         verify(projectService).markAnalyzing("p1");
         verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZING, 0);
-        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
         assertThat(backgroundTasks).hasSize(1);
 
-        when(analyzeService.analyzeProject("p1", "demo", "rp")).thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
+        when(analyzeService.analyzeProject(eq("p1"), eq("demo"), eq("rp"), any()))
+                .thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
         backgroundTasks.get(0).run();
 
-        verify(analyzeService).analyzeProject("p1", "demo", "rp");
+        verify(analyzeService).analyzeProject(eq("p1"), eq("demo"), eq("rp"), any());
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZED, 100);
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
@@ -176,7 +177,8 @@ class ArchiveImportServiceImplTest {
         ProjectResponse created = ProjectResponse.builder().id("p1").name("demo").rootPath("rp").status("CREATED").build();
         when(projectService.createProjectFromWorkspace(eq("demo"), any(Path.class))).thenReturn(created);
         when(projectService.getProject("p1")).thenReturn(created);
-        when(analyzeService.analyzeProject("p1", "demo", "rp")).thenThrow(new IllegalStateException("neo4j down"));
+        when(analyzeService.analyzeProject(eq("p1"), eq("demo"), eq("rp"), any()))
+                .thenThrow(new IllegalStateException("neo4j down"));
 
         service.importArchiveAsync("demo", file);
         backgroundTasks.get(0).run();

@@ -21,6 +21,7 @@ import com.vibegraph.graph.importer.ArchiveExtractor;
 import com.vibegraph.graph.importer.ArchiveType;
 import com.vibegraph.graph.importer.ArchiveTypeDetector;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.ProjectService;
@@ -143,7 +144,12 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      */
     private void analyzeInBackground(ImportContext ctx) {
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
+            AnalysisProgressListener listener = (percent, phase) -> {
+                projectService.updateProgress(ctx.projectId(), percent);
+                graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
+            };
+            AnalyzeService.AnalysisResult result =
+                    analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);

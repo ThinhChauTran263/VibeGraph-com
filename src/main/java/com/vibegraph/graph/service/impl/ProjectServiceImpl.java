@@ -282,6 +282,14 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    public void updateProgress(String id, int progress) {
+        ProjectResponse existing = projects.get(id);
+        if (existing != null) {
+            existing.setProgress(Math.max(0, Math.min(100, progress)));
+        }
+    }
+
+    @Override
     public void markAnalyzed(String id, int totalFiles, int totalNodes, int totalEdges) {
         ProjectResponse existing = projects.get(id);
         if (existing != null) {
