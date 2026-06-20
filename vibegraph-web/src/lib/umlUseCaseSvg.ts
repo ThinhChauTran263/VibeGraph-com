@@ -87,7 +87,7 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   const colOf = (k: number) => k % cols
   const rowOf = (k: number) => Math.floor(k / cols)
 
-  const colW: number[] = new Array(cols).fill(UC_MIN_W)
+  const colW: number[] = Array.from({ length: cols }, () => UC_MIN_W)
   for (let k = 0; k < count; k++) {
     const c = colOf(k)
     const longest = wrapLabel(ordered[k]!.name, UC_MAX_CHARS, 2).reduce((m, ln) => Math.max(m, ln.length), 0)

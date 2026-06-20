@@ -7,7 +7,7 @@ describe('debounce', () => {
   afterEach(() => vi.useRealTimers())
 
   it('runs once after the wait with the latest args when called in a burst', () => {
-    const fn = vi.fn()
+    const fn = vi.fn<(...args: unknown[]) => void>()
     const d = debounce(fn, 200)
 
     d(1)
@@ -21,7 +21,7 @@ describe('debounce', () => {
   })
 
   it('cancel() prevents a pending invocation', () => {
-    const fn = vi.fn()
+    const fn = vi.fn<(...args: unknown[]) => void>()
     const d = debounce(fn, 200)
 
     d('x')
@@ -32,7 +32,7 @@ describe('debounce', () => {
   })
 
   it('restarts the timer on each call (trailing edge)', () => {
-    const fn = vi.fn()
+    const fn = vi.fn<(...args: unknown[]) => void>()
     const d = debounce(fn, 200)
 
     d('a')
@@ -47,7 +47,7 @@ describe('debounce', () => {
   })
 
   it('cancel() is safe when nothing is pending', () => {
-    const fn = vi.fn()
+    const fn = vi.fn<(...args: unknown[]) => void>()
     const d = debounce(fn, 100)
     expect(() => d.cancel()).not.toThrow()
   })
