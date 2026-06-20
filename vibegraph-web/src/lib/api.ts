@@ -24,6 +24,24 @@ export interface ImpactNode {
 /** Risk levels reported by the backend impact analysis. */
 export type ImpactRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
+/** One INCOMING/OUTGOING connection of a node. Mirrors `NodeDetailResponse.ConnectionDto`. */
+export interface NodeDetailConnection {
+  otherNode: ImpactNode
+  relationshipType: string
+  /** `INCOMING` or `OUTGOING`. */
+  direction: string
+}
+
+/**
+ * Node-with-neighbors detail. Mirrors the backend `NodeDetailResponse`. Used by the Node Detail
+ * panel and by lazy graph expansion (pull a node's neighbors on demand instead of the full graph).
+ */
+export interface NodeDetailResponse {
+  node: ImpactNode
+  incoming: NodeDetailConnection[]
+  outgoing: NodeDetailConnection[]
+}
+
 /**
  * Blast-radius analysis result.
  * Mirrors the backend `graph.dto.response.ImpactAnalysisResponse` record.
@@ -229,7 +247,9 @@ export const importApi = {
 export const graphApi = {
   getGraph: (projectId: string) => fetchFullGraph(projectId),
   getNeighbors: (projectId: string, nodeId: string, hops: number) =>
-    api.get(`/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`),
+    api.get<NodeDetailResponse>(
+      `/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`,
+    ),
 
   /**
    * Fetch the blast radius (impact analysis) for a node.
@@ -246,21 +266,75 @@ export const graphApi = {
   },
 }
 
-export interface UseCaseResponse {
-  projectId: string
-  mermaid: string
+export interface DiagramResponse {
+  diagramType: string
+  mermaidSyntax: string
+  plantUmlSyntax?: string | null
 }
 
-export interface DiagramResponse {
-  projectId: string
+/** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */
+export type UmlUseCaseMode = 'detailed' | 'grouped'
+
+/** Inferred business actor (e.g. `Admin`, `User`). Mirrors backend `UmlUseCaseResponse.Actor`. */
+export interface UmlActor {
+  id: string
+  name: string
+  source: string
+  confidence: number
+}
+
+/** Inferred business use case (verb phrase). Mirrors backend `UmlUseCaseResponse.UseCaseElement`. */
+export interface UmlUseCaseElement {
+  id: string
+  name: string
+  domain: string
+  /** `summary` (grouped) or `detail` (single CRUD action). */
+  level: string
+  source: string
+  /** Originating endpoint id (e.g. `POST /api/products`); null for summary use cases. */
+  sourceEndpoint?: string | null
+  confidence: number
+}
+
+/** Edge between elements: actor-to-usecase association or summary-to-detail include. */
+export interface UmlRelation {
+  from: string
+  to: string
+  /** `association` or `include`. */
+  type: string
+  label?: string | null
+  confidence: number
+}
+
+/**
+ * Business-level UML Use Case diagram. Mirrors the backend `UmlUseCaseResponse`.
+ * Holds inferred actors and verb-phrased use cases, plus a Mermaid fallback and
+ * a standard PlantUML source for proper UML render/copy.
+ */
+export interface UmlUseCaseResponse {
   diagramType: string
-  mermaid: string
+  style: string
+  mode: string
+  systemName: string
+  actors: UmlActor[]
+  useCases: UmlUseCaseElement[]
+  relations: UmlRelation[]
+  warnings: string[]
+  mermaidSyntax: string
+  plantUmlSyntax: string
 }
 
 // Diagram endpoints
 export const diagramApi = {
-  useCase: (projectId: string) =>
-    api.get<UseCaseResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase`),
+  /**
+   * Inferred business UML Use Case diagram (`style=uml&mode=detailed|grouped`).
+   */
+  umlUseCase: (projectId: string, mode: UmlUseCaseMode = 'detailed') => {
+    const query = new URLSearchParams({ style: 'uml', mode })
+    return api.get<UmlUseCaseResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase?${query}`,
+    )
+  },
   classDiagram: (projectId: string, pkg?: string) => {
     const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
     return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`)

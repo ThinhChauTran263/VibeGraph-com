@@ -1,32 +1,29 @@
 package com.vibegraph.diagram.service;
 
-import com.vibegraph.diagram.dto.response.UseCaseResponse;
+import com.vibegraph.diagram.dto.response.UmlUseCaseResponse;
 
 /**
  * Use Case diagram generator.
  *
- * <p>Derives a Mermaid {@code flowchart LR} use case diagram from the project's
- * knowledge graph:
- * <ul>
- *   <li><b>Actors</b> — {@code HTTP Client} for every detected HTTP route
- *       (Route nodes / {@code HANDLES_ROUTE} edges).</li>
- *   <li><b>Use cases</b> — the controller handler method behind each route.</li>
- * </ul>
+ * <p>Produces the inferred business-level <b>UML Use Case</b> diagram from the project's knowledge
+ * graph (read via {@code GraphService#getFullGraph}, no direct Neo4j access): inferred business
+ * actors (Guest/User/Admin) and goal-level use cases, a system boundary, plus a PlantUML source
+ * alongside a Mermaid fallback.
  *
- * <p>Job/listener actors (@Scheduled, @KafkaListener, @EventListener) are part
- * of the FR-04 vision but are <em>not</em> represented in the current graph
- * data model (the parser only emits Route nodes + HANDLES_ROUTE edges; method
- * annotations beyond request mappings are not captured). They are therefore
- * skipped gracefully until the parser exposes that data.
+ * <p>Job/listener actors (@Scheduled, @KafkaListener, @EventListener) are not yet represented in
+ * the graph data model (the parser emits only Route/APIEndpoint nodes + HANDLES_ROUTE edges) and
+ * are skipped gracefully.
  */
 public interface UseCaseDiagramService {
 
     /**
-     * Build the use case diagram for a project.
+     * Build the inferred business-level UML Use Case diagram for a project.
      *
      * @param projectId the project identifier
-     * @return actors, use cases, and a valid Mermaid {@code flowchart LR} string;
-     *         an empty-but-valid diagram when the project has no detected routes.
+     * @param mode      {@code "detailed"}/{@code "flat"} or {@code "summary"}/{@code "grouped"}
+     *                  (the canonical model is mode-independent; retained for API compatibility)
+     * @return inferred actors, business use cases, relations, warnings, and both Mermaid and
+     *         PlantUML renderings.
      */
-    UseCaseResponse generateUseCaseDiagram(String projectId);
+    UmlUseCaseResponse generateUmlUseCase(String projectId, String mode);
 }
