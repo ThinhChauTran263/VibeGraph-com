@@ -63,11 +63,12 @@ function fullModel(): UmlUseCaseModel {
 }
 
 describe('renderUmlUseCaseSvg', () => {
-  it('draws one ellipse per use case and one stick figure (circle) per actor', () => {
+  it('draws one ellipse per use case and a stick figure for each human actor', () => {
     const model = fullModel()
     const svg = renderUmlUseCaseSvg(model)
     expect((svg.match(/<ellipse/g) ?? []).length).toBe(model.useCases.length)
-    expect((svg.match(/<circle/g) ?? []).length).toBe(model.actors.length)
+    // 3 human actors get a stick-figure head circle; the 1 external system is a «system» box.
+    expect((svg.match(/<circle/g) ?? []).length).toBe(3)
   })
 
   it('declares both UML arrowhead markers', () => {
@@ -138,15 +139,29 @@ describe('renderUmlUseCaseSvg', () => {
     const bx = Number(boundary![1])
     const bRight = bx + Number(boundary![2])
 
-    // Each actor is a <g> with a <title> then a head <circle cx="...">.
-    const cxByTitle = new Map<string, number>()
-    const re = /<g><title>([^<]+)<\/title><circle cx="([\d.]+)"/g
+    // Human actors are a <g> with a <title> then a head <circle cx="...">.
+    const humanX = new Map<string, number>()
+    const human = /<g><title>([^<]+)<\/title><circle cx="([\d.]+)"/g
     let m: RegExpExecArray | null
-    while ((m = re.exec(svg)) !== null) cxByTitle.set(m[1]!, Number(m[2]))
+    while ((m = human.exec(svg)) !== null) humanX.set(m[1]!, Number(m[2]))
 
-    expect(cxByTitle.get('Carrier Tracking System')!).toBeGreaterThan(bRight)
-    expect(cxByTitle.get('Guest')!).toBeLessThan(bx)
-    expect(cxByTitle.get('Registered User')!).toBeLessThan(bx)
+    // The external system is a <g> with a <title> then a <rect x="..."> box of known width.
+    const sys = /<g><title>([^<]+)<\/title><rect x="([\d.]+)"/.exec(svg)
+    expect(sys).not.toBeNull()
+    const sysCx = Number(sys![2]) + 120 / 2 // SYS_ACTOR_W
+
+    expect(sys![1]).toBe('Carrier Tracking System')
+    expect(sysCx).toBeGreaterThan(bRight)
+    expect(humanX.get('Guest')!).toBeLessThan(bx)
+    expect(humanX.get('Registered User')!).toBeLessThan(bx)
+  })
+
+  it('draws external-system actors as a «system» box, humans as stick figures', () => {
+    const svg = renderUmlUseCaseSvg(fullModel())
+    // 3 human actors keep the stick-figure head circle; the external system has none.
+    expect((svg.match(/<circle/g) ?? []).length).toBe(3)
+    // The external system is rendered as a «system» stereotype box.
+    expect(svg).toContain('«system»')
   })
 
   it('renders a valid svg with the boundary even for an empty model', () => {

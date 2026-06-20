@@ -159,8 +159,10 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
     }
     for (const { a, y } of desired) {
       const top = y - ACTOR_BODY_MID
-      boxes.set(a.id, { cx: x, cy: y, w: ACTOR_W, h: ACTOR_H, ellipse: false })
-      actorParts.push(actorSvg(x, top, a.name))
+      const external = isExternalSystem(a.name)
+      const w = external ? SYS_ACTOR_W : ACTOR_W
+      boxes.set(a.id, { cx: x, cy: y, w, h: ACTOR_H, ellipse: false })
+      actorParts.push(actorSvg(x, top, a.name, external))
     }
   }
   placeColumn(left, PAD + ACTOR_W / 2)
@@ -274,6 +276,8 @@ const UC_MAX_CHARS = 28
 const UC_LINE_H = 16
 const ACTOR_MAX_CHARS = 18
 const ACTOR_LINE_H = 15
+const SYS_ACTOR_W = 120
+const SYS_ACTOR_H = 64
 
 const REL_ASSOCIATION = 'association'
 const REL_INCLUDE = 'include'
@@ -306,7 +310,8 @@ function ellipseWidth(label: string): number {
   return Math.max(UC_MIN_W, Math.ceil(label.length * CHAR_W) + UC_PAD_X * 2)
 }
 
-function actorSvg(x: number, yTop: number, name: string): string {
+function actorSvg(x: number, yTop: number, name: string, external = false): string {
+  if (external) return systemActorSvg(x, yTop, name)
   const headR = 11
   const cyHead = yTop + headR
   const bodyTop = cyHead + headR
@@ -333,6 +338,41 @@ function actorSvg(x: number, yTop: number, name: string): string {
     `<line x1="${x}" y1="${bodyBot}" x2="${x - 13}" y2="${legY}" ${stroke}/>` +
     `<line x1="${x}" y1="${bodyBot}" x2="${x + 13}" y2="${legY}" ${stroke}/>` +
     labelSvg +
+    `</g>`
+  )
+}
+
+/**
+ * External-system actor drawn as a UML {@code «system»} box instead of a stick figure. OMG UML 2.5
+ * allows any actor to use the stick figure, but non-human participants (partner APIs, carrier
+ * systems) are conventionally shown as a classifier rectangle with a {@code «system»} stereotype so
+ * a reader can tell machines from people at a glance. The box is centered on the same anchor the
+ * stick figure uses (its vertical center sits at {@code yTop + ACTOR_BODY_MID}).
+ */
+function systemActorSvg(x: number, yTop: number, name: string): string {
+  const lines = wrapLabel(name, ACTOR_MAX_CHARS, 2)
+  const boxW = SYS_ACTOR_W
+  const boxH = SYS_ACTOR_H
+  const cy = yTop + ACTOR_BODY_MID
+  const bx = x - boxW / 2
+  const by = cy - boxH / 2
+  const stroke = `stroke="black" stroke-width="1.5"`
+  const stereoY = by + 16
+  // Stereotype line, then the (possibly two-line) name centered below it.
+  const nameStartY = stereoY + 18 - (lines.length - 1) * (ACTOR_LINE_H / 2)
+  const nameSvg = lines
+    .map(
+      (ln, i) =>
+        `<text x="${x}" y="${nameStartY + i * ACTOR_LINE_H}" text-anchor="middle" font-size="13" ` +
+        `fill="black">${esc(ln)}</text>`,
+    )
+    .join('')
+  return (
+    `<g><title>${esc(name)}</title>` +
+    `<rect x="${round(bx)}" y="${round(by)}" width="${boxW}" height="${boxH}" fill="white" ${stroke}/>` +
+    `<text x="${x}" y="${round(stereoY)}" text-anchor="middle" font-size="11" font-style="italic" ` +
+    `fill="#333">«system»</text>` +
+    nameSvg +
     `</g>`
   )
 }
