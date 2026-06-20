@@ -119,7 +119,7 @@ The in-memory project registry is not the source of truth. On restart:
 
 ## Known limitations
 
-- Realtime DELETE handling is verified, but CREATE/MODIFY incremental re-parse is still pending and must not be presented as complete.
+- Realtime updates handle CREATE/MODIFY/DELETE via incremental re-parse of the changed file (broadcast as `INCREMENTAL`). True realtime applies to local-folder imports; GitHub/archive imports watch a server-side copy (snapshot).
 - Live Docker Compose and Testcontainers verification depends on Docker Desktop or another Docker daemon being available.
 - Production auth and rate-limit hardening remain deployment concerns unless explicitly enabled by the environment.
 - MCP responses are only useful after the target project has been imported and analyzed; empty graphs produce empty or warning-heavy results.

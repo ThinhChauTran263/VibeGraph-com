@@ -32,7 +32,7 @@ class ProjectConventionsServiceTest {
 
                 - STEP_IN_FLOW is inferred, not literal runtime tracing.
                 - Deep CPG (READS/WRITES/CATCHES) is opt-in and default off.
-                - CREATE/MODIFY realtime re-parse is pending; DELETE works.
+                - CREATE/MODIFY/DELETE realtime incremental re-parse is wired.
 
                 ## Testing Commands
 
