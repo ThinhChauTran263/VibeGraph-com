@@ -869,7 +869,7 @@ MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY count DESC;</co
         <p>Quyết định product ngày 2026-05-31: user sẽ chọn file <code>.zip</code>/<code>.tar</code>/<code>.tar.gz</code> của project Java từ file explorer, bấm Add, backend parse archive rồi mở graph. Flow này thay cho việc nhập local path thủ công.</p>
         <div class="callout warn">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <p><strong>Trạng thái hiện tại:</strong> endpoint <code>POST /api/projects/import-archive</code> chưa implement. Cho tới khi Sprint 2 hoàn tất task này, smoke test nội bộ vẫn phải dùng legacy local-path flow bên dưới để kiểm chứng parser/Neo4j/graph render.</p>
+          <p><strong>Trạng thái hiện tại:</strong> endpoint <code>POST /api/projects/import-archive</code> đã implement (sync <code>200</code>, async <code>202</code> qua <code>?async=true</code>, status qua <code>/topic/projects/{id}/status</code>). Ngoài ra còn có import GitHub URL và import local-folder (realtime).</p>
         </div>
         <div class="codeblock" data-lang="http">
           <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">target api</span><span class="grow"></span></div>
@@ -985,9 +985,9 @@ Compress-Archive -Path .\VibeGraph-com\src, .\VibeGraph-com\vibegraph-web, .\Vib
         <ul class="status-list">
           <li><span class="tag ok">Có</span><span class="txt">Local vertical slice: register project &rarr; analyze &rarr; Neo4j &rarr; GET graph &rarr; Sigma render.</span></li>
           <li><span class="tag warn">Một phần</span><span class="txt">Parser có Class/Method/Field/Route/CALLS resolved in-project, nhưng chưa đầy đủ schema target.</span></li>
-          <li><span class="tag todo">Chưa xong</span><span class="txt">GitHub import hiện có route/service contract, implementation còn not implemented.</span></li>
-          <li><span class="tag todo">Chưa xong</span><span class="txt">Watcher/realtime: endpoint STOMP có, broadcast/client/watch pipeline còn TODO.</span></li>
-          <li><span class="tag todo">Chưa xong</span><span class="txt">Diagram và MCP tools đang ở mức scaffold.</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">GitHub import (route + service) đã implemented end-to-end: parse URL, pre-flight, stream tarball, extract, analyze async; FE <span class="mono">GitHubImportForm</span> đã có.</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">Watcher/realtime: STOMP endpoint, broadcast producer, FE consumer và file watcher đã wired đầy đủ; thêm/sửa/xóa file <span class="mono">.java</span> cập nhật graph tại chỗ (import local-folder).</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">Diagram (Use Case + Class Mermaid) và MCP tools (15 tool Spring AI) đã implemented. Một số panel FE phụ (Explorer/Flows/Legend/CodeInspector) còn ở mức scaffold cho sprint sau.</span></li>
           <li><span class="tag warn">Cần làm</span><span class="txt">Public demo cần auth/rate-limit/path validation/actuator hardening trước khi expose.</span></li>
         </ul>
       </section>

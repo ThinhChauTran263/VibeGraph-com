@@ -24,7 +24,7 @@ that contain credentials.
 
 - STEP_IN_FLOW is inferred from the resolved CALLS graph and de-duplicated by relation key. It is NOT a literal copy of CALLS and may merge metadata. Do not present it as exact runtime tracing.
 - Deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges) is opt-in via `VIBEGRAPH_PARSER_DEEP_CPG=true`. With it off, method-level data-flow groups are legitimately empty (report this as a limitation, not a bug).
-- Realtime file watching wires the DELETE `.java` path end to end; CREATE/MODIFY currently only emit events/logs (incremental re-parse is not yet wired).
+- Realtime file watching wires CREATE/MODIFY/DELETE `.java` end to end: `FileChangeBroadcaster` re-parses only the changed file, computes a before/after delta, and broadcasts an `INCREMENTAL` update; the frontend patches the Sigma graph in place. True realtime applies to local-folder imports (edited in place); GitHub/archive imports watch a server-side copy (snapshot).
 - The in-memory project registry is recovered from the persisted `Project` node after a restart, but only when the recorded source root still exists on disk and lives under the allowed workspace/root.
 
 ## Testing Commands
@@ -46,7 +46,7 @@ that contain credentials.
 ## Realtime Status
 
 - DELETE `.java`: removes the file's nodes/edges from the graph in realtime.
-- CREATE/MODIFY `.java`: detected and logged; incremental re-parse pending.
+- CREATE/MODIFY `.java`: re-parsed incrementally (changed file only) and upserted, then broadcast as an `INCREMENTAL` delta. All change types update the graph in place (true realtime for local-folder imports).
 
 ## MCP Tool Limitations
 

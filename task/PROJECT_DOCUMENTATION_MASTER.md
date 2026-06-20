@@ -110,8 +110,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | GraphSchema              | 80  | ✅ Complete  | Whitelist validation, injection prevention |
 | getFullGraph()           | -   | ✅ Done      | Stable IDs using fullName             |
 | upsertNodes/Edges()      | -   | ✅ Done      | Production-ready                      |
-| getNeighborhood()        | -   | 🚧 Sprint 2  | Interface defined, impl pending       |
-| getImpact()              | -   | 🚧 Sprint 2  | Interface defined, impl pending       |
+| getNeighborhood()        | -   | 🚧 Sprint 2  | Interface defined, impl pending (throws UnsupportedOperationException) |
+| getImpact()              | -   | ✅ Done      | Implemented; bounded blast-radius traversal, depth whitelist 1/2/3/5, profiles dependency/structural/type-data-flow |
 
 **Code Quality:** Enterprise-grade, production-ready
 
@@ -129,9 +129,9 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 | Component                | Status    | Note                    |
 | ------------------------ | --------- | ----------------------- |
-| DiagramController        | ❌ TODO    | No endpoints            |
-| UseCaseDiagramService    | ❌ TODO    | Empty with TODO         |
-| ClassDiagramService      | ❌ TODO    | Empty with TODO         |
+| DiagramController        | ✅ Done    | usecase + class endpoints |
+| UseCaseDiagramService    | ✅ Done    | Mermaid flowchart from routes |
+| ClassDiagramService      | ✅ Done    | Mermaid classDiagram, package filter |
 
 **Priority:** HIGH (Sprint 2)
 
@@ -234,11 +234,11 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | -------------------- | ------ | ------------------------------ |
 | Archive upload sync  | ✅ Done | E2E working                    |
 | Archive upload async | ✅ Done | Backend async accepted flow + status topic support |
-| WebSocket status/update | ✅ Partial | Status broadcast done; graph update topic + FE consumer done; DELETE `.java` FULL_UPDATE wired; CREATE/MODIFY incremental producer pending |
-| File watcher         | 🟡 Partial | Recursive watcher/debounce/lifecycle done; DELETE prune+broadcast tested; CREATE/MODIFY re-parse pending |
-| Diagram services     | ❌ 0%   | DiagramController empty        |
+| WebSocket status/update | ✅ Done | Status broadcast done; graph update topic + FE consumer done; CREATE/MODIFY/DELETE broadcast `INCREMENTAL`; FE patch Sigma tại chỗ (không reset camera) |
+| File watcher         | ✅ Done | Recursive watcher/debounce/lifecycle done; CREATE/MODIFY/DELETE đều incremental qua FileChangeBroadcaster (re-parse file đổi → upsert/prune → broadcast delta) |
+| Diagram services     | ✅ Done | UseCase + Class Mermaid via DiagramController + services; FE DiagramPanel renders, package filter |
 | MCP tools            | Done | 15 Spring AI MCP tools registered and documented; source access is bounded, path-safe, and recoverable after backend restart |
-| Frontend filters     | ❌ 20%  | UI scaffolds only              |
+| Frontend filters     | ✅ Done | FilterPanel + useFilters + graphFilters wired; Sigma re-renders filtered graph |
 | GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke tested (import-github 202 -> ANALYZED 47 files/310 nodes/1220 edges); backend DI bug in `GitHubPreFlightService` resolved |
 
 ### Critical Path (Must Complete This Week):
@@ -568,7 +568,7 @@ Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
 > **Cập nhật:** 2026-06-05
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented; realtime status/update channel + DELETE graph refresh đã có, CREATE/MODIFY incremental re-parse vẫn pending
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented; realtime status/update channel hoàn tất — thêm/sửa/xóa file `.java` cập nhật graph tại chỗ qua incremental re-parse (import local-folder)
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester

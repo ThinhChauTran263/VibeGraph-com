@@ -12,9 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mockito;
 
-import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.impl.FileWatcherServiceImpl;
 
@@ -30,7 +28,6 @@ class FileWatcherServiceTest {
     @TempDir
     Path tempDir;
 
-    private GraphRepository graphRepository;
     private DebouncedEventHandler debouncer;
     private FileWatcherService watcher;
 
@@ -38,9 +35,8 @@ class FileWatcherServiceTest {
     void setUp() {
         WatcherProperties properties = new WatcherProperties();
         properties.setDebounceMs(60);
-        graphRepository = Mockito.mock(GraphRepository.class);
         debouncer = new DebouncedEventHandler(properties);
-        watcher = new FileWatcherServiceImpl(properties, graphRepository, debouncer);
+        watcher = new FileWatcherServiceImpl(properties, debouncer);
     }
 
     @AfterEach
@@ -101,7 +97,7 @@ class FileWatcherServiceTest {
             WatcherProperties disabled = new WatcherProperties();
             disabled.setEnabled(false);
             FileWatcherService disabledWatcher =
-                    new FileWatcherServiceImpl(disabled, graphRepository, debouncer);
+                    new FileWatcherServiceImpl(disabled, debouncer);
 
             disabledWatcher.startWatching("p1", tempDir.toString());
 

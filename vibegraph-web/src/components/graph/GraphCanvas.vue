@@ -8,11 +8,13 @@
  * - Click node, emit selected
  * - Loading + error states
  */
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphExpand } from '@/composables/useGraphExpand'
+import { useFilters } from '@/composables/useFilters'
 import { useSigma } from '@/composables/useSigma'
 import { debounce } from '@/lib/debounce'
+import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
@@ -25,7 +27,7 @@ import {
   type HoveredRelation,
 } from '@/lib/focusMode'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
-import type { GraphNode } from '@/types/graph'
+import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent } from '@/types/graph'
 
 const props = defineProps<{
   projectId: string
@@ -73,7 +75,9 @@ function resetRelationFocus(): void {
 
 // T60: subscribe to realtime graph updates for the active project and patch the
 // store in place. Resubscribes on project change and cleans up on unmount.
-useGraphRealtime(() => props.projectId)
+useGraphRealtime(() => props.projectId, { onPatched: onRealtimePatched })
+
+const filters = useFilters()
 
 const {
   graphData,
@@ -97,6 +101,7 @@ const {
   setReducers,
   setEdgeLabelsVisible,
   setGhostPartition,
+  refresh: refreshSigma,
 } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
@@ -252,6 +257,13 @@ onMounted(() => {
   }
 })
 
+// Under <KeepAlive> the component is cached (not unmounted) on tab switch, so the
+// graph is NOT reloaded. When it becomes visible again the canvas DOM was just
+// re-attached, so ask Sigma to re-measure and repaint to avoid a blank/stale canvas.
+onActivated(() => {
+  refreshSigma()
+})
+
 watch(
   () => props.projectId,
   (newId) => {
@@ -264,10 +276,111 @@ watch(selectedNode, () => {
   applyFocusReducers()
 })
 
+// When a realtime patch is applied directly to the live Sigma graph, the store also
+// changes → the filteredGraphData watcher below would otherwise trigger a full rebuild
+// (which resets camera/zoom). This flag tells that watcher to skip exactly one rebuild.
+let skipNextRebuild = false
+
+/**
+ * Mirror a realtime event on the live Sigma graph without rebuilding it, so adding a class C
+ * just inserts C (near its neighbours) and removing a file drops only its nodes — camera, zoom
+ * and existing node positions are preserved. FULL_UPDATE falls back to the normal rebuild.
+ */
+function onRealtimePatched(event: GraphUpdateEvent): void {
+  if (event.type !== 'INCREMENTAL') return
+  if (!graphInstance.value) return // no live graph yet → let the rebuild path handle it
+  try {
+    patchSigmaIncremental(event)
+    skipNextRebuild = true
+  } catch {
+    // Patch failed for any reason: let the debounced rebuild converge instead.
+    skipNextRebuild = false
+  }
+}
+
+function patchSigmaIncremental(event: GraphIncrementalEvent): void {
+  const graph = graphInstance.value
+  if (!graph) return
+  const hiddenNodes = filters.hiddenNodeTypes.value
+  const hiddenEdges = filters.hiddenEdgeTypes.value
+
+  // Removals first (dropNode also drops its incident edges).
+  for (const id of event.removed?.nodeIds ?? []) {
+    if (graph.hasNode(id)) graph.dropNode(id)
+  }
+  for (const id of event.removed?.edgeIds ?? []) {
+    if (graph.hasEdge(id)) graph.dropEdge(id)
+  }
+
+  const addedEdges = event.added?.edges ?? []
+  // Added/modified nodes.
+  for (const node of [...(event.added?.nodes ?? []), ...(event.modified?.nodes ?? [])]) {
+    if (hiddenNodes.has(node.type)) continue
+    if (graph.hasNode(node.id)) {
+      graph.mergeNodeAttributes(node.id, {
+        label: node.name,
+        size: getNodeSize(node.type),
+        color: getNodeColor(node.type),
+        nodeType: node.type,
+        fullName: node.fullName,
+        filePath: node.filePath,
+        lineNumber: node.lineNumber,
+      })
+      continue
+    }
+    const { x, y } = spawnPosition(node.id, addedEdges)
+    graph.addNode(node.id, {
+      label: node.name,
+      x,
+      y,
+      size: getNodeSize(node.type),
+      color: getNodeColor(node.type),
+      type: 'circle',
+      nodeType: node.type,
+      fullName: node.fullName,
+      filePath: node.filePath,
+      lineNumber: node.lineNumber,
+    })
+  }
+
+  // Added edges: respect hidden types, present endpoints, and the one-line-per-pair rule.
+  for (const edge of addedEdges) {
+    if (hiddenEdges.has(edge.type)) continue
+    if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
+    if (graph.hasEdge(edge.id)) continue
+    if (graph.hasEdge(edge.source, edge.target) || graph.hasEdge(edge.target, edge.source)) continue
+    graph.addEdgeWithKey(edge.id, edge.source, edge.target, getEdgeAttributes(edge))
+  }
+
+  refreshSigma()
+  applyFocusReducers()
+}
+
+/** Place a newly-added node next to an already-present neighbour (small jitter), else near origin. */
+function spawnPosition(nodeId: string, edges: { source: string; target: string }[]): { x: number; y: number } {
+  const graph = graphInstance.value
+  if (graph) {
+    for (const edge of edges) {
+      const other = edge.source === nodeId ? edge.target : edge.target === nodeId ? edge.source : null
+      if (other && graph.hasNode(other)) {
+        const ox = graph.getNodeAttribute(other, 'x') as number
+        const oy = graph.getNodeAttribute(other, 'y') as number
+        return { x: ox + (Math.random() * 40 - 20), y: oy + (Math.random() * 40 - 20) }
+      }
+    }
+  }
+  return { x: Math.random() * 200 - 100, y: Math.random() * 200 - 100 }
+}
+
 // Rebuilding + re-rendering the whole Sigma graph is expensive. Filter toggles can
 // fire several reactive changes in a burst, so we debounce the rebuild: the graph is
 // rebuilt once after the user stops toggling, never on every intermediate change.
 const rebuildGraph = debounce((data: typeof filteredGraphData.value) => {
+  // A realtime patch already applied this change in place — don't rebuild (would reset camera).
+  if (skipNextRebuild) {
+    skipNextRebuild = false
+    return
+  }
   if (!canvasRef.value || loading.value || error.value) return
   initSigma(buildGraph(data))
   applyFocusReducers()

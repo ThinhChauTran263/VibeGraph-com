@@ -9,63 +9,45 @@ import {
 } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
 
-const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
-const GENERIC_GITHUB_IMPORT_ERROR = 'Import failed. Verify the repository is public and try again.'
 const SERVER_UNREACHABLE_ERROR =
   'Cannot reach the server. Make sure the VibeGraph backend is running, then try again.'
+const GENERIC_LOCAL_IMPORT_ERROR = 'Import failed. Check the folder path and try again.'
 const SAFE_ERROR_PATTERNS = [
   /required/i,
-  /must match/i,
-  /public/i,
-  /private/i,
+  /directory/i,
+  /path/i,
+  /allowed/i,
   /not found/i,
-  /too large/i,
-  /rate limit/i,
-  /still analyzing/i,
   /taking longer than expected/i,
 ]
-const GITHUB_IMPORT_POLL_INTERVAL_MS = 1_000
-const GITHUB_IMPORT_MAX_POLLS = 180
+const POLL_INTERVAL_MS = 1_000
+const MAX_POLLS = 600
 
-export type GitHubImportStatus = 'idle' | 'importing' | 'success' | 'error'
+export type LocalImportStatus = 'idle' | 'importing' | 'success' | 'error'
 
-export interface UseGitHubImportOptions {
-  /**
-   * WebSocket transport for live progress. Defaults to a fresh `useWebSocket`.
-   * A test seam: unit tests inject a fake (or omit live updates entirely) so
-   * progress can be driven deterministically without a real socket.
-   */
+export interface UseLocalImportOptions {
+  /** Test seam: inject a WebSocket transport so progress can be driven deterministically. */
   ws?: UseWebSocketReturn
 }
 
-function getGitHubImportError(error: unknown): string {
-  // A failed fetch (backend down, DNS/CORS failure) rejects with a TypeError, not an
-  // ApiError. Don't blame the repository for what is actually a connectivity problem.
+function getLocalImportError(error: unknown): string {
   if (!(error instanceof ApiError)) {
     return SERVER_UNREACHABLE_ERROR
   }
-
-  // status 0 indicates a network-level failure surfaced as an ApiError.
   if (error.status === 0) {
     return SERVER_UNREACHABLE_ERROR
   }
-
   const message = error.message.trim()
   if (!message) {
-    return GENERIC_GITHUB_IMPORT_ERROR
+    return GENERIC_LOCAL_IMPORT_ERROR
   }
-
-  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message)) ? message : GENERIC_GITHUB_IMPORT_ERROR
+  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message)) ? message : GENERIC_LOCAL_IMPORT_ERROR
 }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 }
 
-/**
- * Builds a human-readable timeout message that includes how far the analysis
- * had progressed, so the user understands the import is advancing (not stuck).
- */
 function timeoutMessage(progress: number): string {
   const pct = Math.round(progress)
   const suffix = pct > 0 && pct < 100 ? ` (reached ${pct}%)` : ''
@@ -73,23 +55,19 @@ function timeoutMessage(progress: number): string {
 }
 
 async function waitForGraphData(project: Project, onProgress: (value: number) => void): Promise<void> {
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
     const graph = await fetchFullGraph(project.id)
     if (graph.nodes.length > 0 || graph.edges.length > 0) {
       onProgress(100)
       return
     }
-
-    // Backend reports ANALYZED but the graph is still being persisted; hold the
-    // bar near completion so it visibly reflects the finalizing phase.
     onProgress(98)
-    await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
+    await delay(POLL_INTERVAL_MS)
   }
-
   throw new ApiError(408, 'Import Timeout', timeoutMessage(98))
 }
 
-async function waitForGitHubAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
+async function waitForAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
   if (project.status !== 'ANALYZING') {
@@ -99,8 +77,8 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
 
   onProgress(lastProgress)
 
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
-    await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
+  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
+    await delay(POLL_INTERVAL_MS)
     const latestProject = await projectApi.get(project.id)
 
     if (typeof latestProject.progress === 'number') {
@@ -114,36 +92,22 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
     }
 
     if (latestProject.status === 'FAILED') {
-      throw new ApiError(400, 'Import Failed', 'Import failed. Verify the repository is public and try again.')
+      throw new ApiError(400, 'Import Failed', 'Analysis failed. Check the folder contents and try again.')
     }
   }
 
   throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
 }
 
-export function validateGitHubRepoUrl(url: string): string | null {
-  const trimmed = url.trim()
-  if (!trimmed) {
-    return 'GitHub repository URL is required.'
-  }
-
-  if (!GITHUB_REPO_URL_PATTERN.test(trimmed)) {
-    return 'URL must match https://github.com/{owner}/{repo}.'
-  }
-
-  return null
-}
-
-export function useGitHubImport(options: UseGitHubImportOptions = {}) {
-  const status = ref<GitHubImportStatus>('idle')
+export function useLocalImport(options: UseLocalImportOptions = {}) {
+  const status = ref<LocalImportStatus>('idle')
   const errorMessage = ref<string | null>(null)
   const importedProject = ref<Project | null>(null)
   const progress = ref(0)
 
   const isImporting = computed(() => status.value === 'importing')
 
-  // Progress only ever moves forward, so a slow/late backend poll can't make the
-  // bar jump backwards and look broken.
+  // Progress only ever moves forward so a late poll cannot rewind the bar.
   function setProgress(value: number): void {
     const clamped = Math.min(100, Math.max(0, value))
     if (clamped > progress.value) {
@@ -151,14 +115,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     }
   }
 
-  /**
-   * Opens a best-effort live progress channel for an analyzing project.
-   *
-   * Polling in `waitForGitHubAnalysis` still drives the terminal outcome; this
-   * WebSocket only pushes finer-grained `progress` updates between polls. A
-   * connection failure is therefore non-fatal — polling covers it. Returns a
-   * teardown function that unsubscribes and closes the socket.
-   */
+  /** Best-effort live progress over WebSocket; polling still drives the terminal outcome. */
   function startLiveProgress(projectId: string): () => void {
     const socket = options.ws ?? useWebSocket()
     let subscription: { unsubscribe: () => void } | null = null
@@ -179,7 +136,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
         )
       })
       .catch(() => {
-        // WebSocket unavailable: polling + watchdog still drive progress/outcome.
+        // WebSocket unavailable: polling covers it.
       })
 
     return () => {
@@ -192,12 +149,11 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     }
   }
 
-  async function importGithub(url: string): Promise<Project | null> {
-    const trimmedUrl = url.trim()
-    const validationError = validateGitHubRepoUrl(trimmedUrl)
-    if (validationError) {
+  async function importLocal(path: string, name?: string): Promise<Project | null> {
+    const trimmedPath = path.trim()
+    if (!trimmedPath) {
       status.value = 'error'
-      errorMessage.value = validationError
+      errorMessage.value = 'A folder path is required.'
       importedProject.value = null
       return null
     }
@@ -208,10 +164,10 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     progress.value = 0
 
     try {
-      const project = await importApi.importGithub(trimmedUrl)
+      const project = await importApi.importLocal(trimmedPath, name)
       const stopLive = project.status === 'ANALYZING' ? startLiveProgress(project.id) : null
       try {
-        const analyzedProject = await waitForGitHubAnalysis(project, setProgress)
+        const analyzedProject = await waitForAnalysis(project, setProgress)
         progress.value = 100
         status.value = 'success'
         importedProject.value = analyzedProject
@@ -221,7 +177,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
       }
     } catch (error: unknown) {
       status.value = 'error'
-      errorMessage.value = getGitHubImportError(error)
+      errorMessage.value = getLocalImportError(error)
       importedProject.value = null
       return null
     }
@@ -240,7 +196,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     importedProject,
     progress,
     isImporting,
-    importGithub,
+    importLocal,
     reset,
   }
 }

@@ -60,6 +60,23 @@ public class ClassDiagramServiceImpl implements ClassDiagramService {
 
         String filter = packageFilter == null ? "" : packageFilter.trim();
 
+        // Distinct packages across ALL classifiers (independent of the active filter), so the
+        // UI can present the filter as a pick-list instead of a guess-the-name text box.
+        Set<String> availablePackages = new TreeSet<>();
+        for (NodeDto node : nodes) {
+            if (node == null || node.getType() == null || !CLASSIFIER_TYPES.contains(node.getType())) {
+                continue;
+            }
+            String fullName = node.getFullName();
+            if (fullName == null || fullName.isBlank()) {
+                continue;
+            }
+            String pkg = packageOf(fullName);
+            if (!pkg.isBlank()) {
+                availablePackages.add(pkg);
+            }
+        }
+
         // Selected classifiers, deterministically ordered by fullName, capped.
         Map<String, NodeDto> selected = new TreeMap<>();
         for (NodeDto node : nodes) {
@@ -100,6 +117,7 @@ public class ClassDiagramServiceImpl implements ClassDiagramService {
         return DiagramResponse.builder()
                 .diagramType(DIAGRAM_TYPE)
                 .mermaidSyntax(syntax)
+                .availablePackages(new ArrayList<>(availablePackages))
                 .build();
     }
 

@@ -6,10 +6,11 @@ import java.util.function.Consumer;
  * File system watcher service.
  *
  * <p>Detects {@code .java} file create/modify/delete events under a project root and
- * dispatches debounced {@link FileChangeEvent}s. DELETE events are wired to graph
- * pruning ({@code GraphRepository.deleteFile}); CREATE/MODIFY events are emitted to
- * registered {@link #onFileChange(Consumer) handlers} (incremental re-parse wiring is
- * tracked separately — see module guide / Sprint 2).
+ * dispatches debounced {@link FileChangeEvent}s to registered
+ * {@link #onFileChange(Consumer) handlers} exactly once per debounce window. The watcher
+ * performs no graph mutation itself — turning a change into graph edits (pruning a deleted
+ * file's slice, re-parsing created/modified files) is the handler's responsibility (see
+ * {@code FileChangeBroadcaster}).
  *
  * <p>Implementations must be safe for concurrent use and must not leak threads or
  * native watch handles after {@link #stopWatching(String)}.

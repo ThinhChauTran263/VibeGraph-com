@@ -6,24 +6,31 @@
  * `applyGraphUpdate`. Resubscribes when the watched project changes and tears
  * the subscription/connection down on scope dispose (component unmount).
  *
- * PROVISIONAL: the backend producer (T36 broadcast + T25 file watcher) is not
- * implemented yet, so no events arrive at runtime. The consumer is fully
- * exercised by unit tests against a mocked WebSocket transport.
- *
  * Note: this owns a SEPARATE `useWebSocket` instance from the archive-import
  * status flow, so it does not affect that behavior.
+ *
+ * The backend producer (FileChangeBroadcaster, wired to the file watcher) is implemented
+ * and emits FULL_UPDATE/INCREMENTAL events on real source edits for locally-watched
+ * projects; the consumer is also exercised by unit tests against a mocked transport.
  */
 
 import { onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useGraphStore } from '@/stores/graph'
 import { useWebSocket, type TopicSubscription, type UseWebSocketReturn } from '@/composables/useWebSocket'
 import { applyGraphUpdate, parseGraphUpdateEvent } from '@/lib/graphPatch'
+import { bumpGraphVersion } from '@/lib/graphVersion'
+import type { GraphUpdateEvent } from '@/types/graph'
 
 export interface UseGraphRealtimeOptions {
   /** Test seam: inject a WebSocket instance instead of creating a real one. */
   ws?: UseWebSocketReturn
   /** Connect the transport automatically when a project is set. Default true. */
   autoConnect?: boolean
+  /**
+   * Invoked after the store has been patched with a validated event. Lets the canvas apply the
+   * same change in place to the live Sigma graph (no full rebuild → camera/zoom/layout preserved).
+   */
+  onPatched?: (event: GraphUpdateEvent) => void
 }
 
 export function useGraphRealtime(
@@ -56,6 +63,10 @@ export function useGraphRealtime(
       store.payloadMeta = event.graph.meta ?? null
     }
     store.graphData = applyGraphUpdate(store.graphData, event)
+    // A live graph change invalidates derived diagram caches.
+    bumpGraphVersion()
+    // Let the canvas mirror this change in place on the live Sigma graph.
+    options.onPatched?.(event)
   }
 
   function teardownSubscription(): void {

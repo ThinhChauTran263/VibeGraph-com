@@ -27,6 +27,7 @@ import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 import com.vibegraph.graph.websocket.GraphUpdateEvent;
+import com.vibegraph.parser.service.ParserService;
 import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.DebouncedEventHandler;
 import com.vibegraph.watcher.service.FileWatcherService;
@@ -67,7 +68,7 @@ class FileWatcherE2ETest {
     }
 
     @Test
-    @DisplayName("DELETE .java triggers watcher prune and FULL_UPDATE broadcast within 3 seconds")
+    @DisplayName("DELETE .java triggers a FULL_UPDATE broadcast within 3 seconds")
     void deleteJavaFileBroadcastsFullUpdateWithinThreeSeconds() throws Exception {
         Path sourceDir = Files.createDirectories(projectRoot.resolve("src"));
         Path sourceFile = sourceDir.resolve("Foo.java");
@@ -88,7 +89,6 @@ class FileWatcherE2ETest {
         Files.delete(sourceFile);
 
         awaitFullUpdate();
-        verify(graphRepository).deleteFile(PROJECT_ID, "src/Foo.java");
         verify(graphRepository).getFullGraph(PROJECT_ID);
     }
 
@@ -142,10 +142,9 @@ class FileWatcherE2ETest {
         @Bean
         FileWatcherService fileWatcherService(
                 WatcherProperties properties,
-                GraphRepository graphRepository,
                 DebouncedEventHandler debouncer
         ) {
-            return new FileWatcherServiceImpl(properties, graphRepository, debouncer);
+            return new FileWatcherServiceImpl(properties, debouncer);
         }
 
         @Bean
@@ -156,12 +155,18 @@ class FileWatcherE2ETest {
         }
 
         @Bean
+        ParserService parserService() {
+            return mock(ParserService.class);
+        }
+
+        @Bean
         FileChangeBroadcaster fileChangeBroadcaster(
                 FileWatcherService fileWatcherService,
                 GraphRepository graphRepository,
-                GraphUpdateController graphUpdateController
+                GraphUpdateController graphUpdateController,
+                ParserService parserService
         ) {
-            return new FileChangeBroadcaster(fileWatcherService, graphRepository, graphUpdateController);
+            return new FileChangeBroadcaster(fileWatcherService, graphRepository, graphUpdateController, parserService);
         }
     }
 }

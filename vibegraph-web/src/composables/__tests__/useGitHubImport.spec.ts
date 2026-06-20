@@ -264,4 +264,16 @@ describe('useGitHubImport', () => {
     expect(composable.status.value).toBe('error')
     expect(composable.errorMessage.value).toBe('Import failed. Verify the repository is public and try again.')
   })
+
+  it('reports a connectivity error (not a repo error) when the backend is unreachable', async () => {
+    // A failed fetch rejects with a TypeError, not an ApiError.
+    importGithubMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toMatch(/cannot reach the server/i)
+  })
 })
