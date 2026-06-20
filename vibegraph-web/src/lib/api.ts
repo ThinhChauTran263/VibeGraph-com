@@ -241,6 +241,41 @@ export const importApi = {
   importGithub(url: string): Promise<Project> {
     return api.post<Project>('/api/projects/import-github', { url })
   },
+
+  /**
+   * Import an existing directory on the backend host in place (no upload). The backend
+   * analyzes it and starts a file watcher so later edits stream realtime graph updates.
+   */
+  importLocal(path: string, name?: string): Promise<Project> {
+    return api.post<Project>('/api/projects/import-local', { path, name: name?.trim() || undefined })
+  },
+}
+
+/** A sub-directory entry returned by the server-side directory browser. */
+export interface DirectoryEntry {
+  name: string
+  path: string
+  /** Best-effort hint that the directory holds `.java` sources. */
+  containsJava: boolean
+}
+
+/** Result of browsing a directory on the backend host. */
+export interface DirectoryListing {
+  path: string
+  /** Parent directory path, or `null` at the allowed base (cannot navigate above it). */
+  parent: string | null
+  entries: DirectoryEntry[]
+}
+
+/**
+ * Server-side directory picker. Browsing is confined to a base directory on the backend
+ * (the configured allowed-root, else the host user's home), so it never exposes the whole disk.
+ */
+export const browseApi = {
+  browse(path?: string): Promise<DirectoryListing> {
+    const query = path ? `?${new URLSearchParams({ path })}` : ''
+    return api.get<DirectoryListing>(`/api/projects/browse${query}`)
+  },
 }
 
 // Graph endpoints
@@ -270,6 +305,8 @@ export interface DiagramResponse {
   diagramType: string
   mermaidSyntax: string
   plantUmlSyntax?: string | null
+  /** Distinct packages containing classifiers; used to drive the class-diagram package filter. */
+  availablePackages?: string[]
 }
 
 /** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */

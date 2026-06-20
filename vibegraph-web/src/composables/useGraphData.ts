@@ -9,6 +9,7 @@ import { fetchFullGraph } from '@/lib/api'
 import { apiToGraphology } from '@/lib/graphAdapter'
 import { capGraphData } from '@/lib/graphCap'
 import { useFilters } from '@/composables/useFilters'
+import { bumpGraphVersion } from '@/lib/graphVersion'
 import type Graph from 'graphology'
 import type { GraphData, GraphNode } from '@/types/graph'
 
@@ -43,6 +44,8 @@ export function useGraphData() {
       const data = await fetchFullGraph(projectId)
       store.graphData = data
       store.payloadMeta = data.meta ?? null
+      // Signal derived views (diagrams) that the graph changed, so their caches revalidate.
+      bumpGraphVersion()
       return buildGraph(filters.applyFilters(data))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load graph'

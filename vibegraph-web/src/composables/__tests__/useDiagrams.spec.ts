@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type DiagramResponse, type UmlUseCaseResponse } from '@/lib/api'
-import { useDiagrams } from '../useDiagrams'
+import { clearDiagramCache, useDiagrams } from '../useDiagrams'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -61,6 +61,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  clearDiagramCache()
   umlUseCaseMock.mockReset()
   classDiagramMock.mockReset()
 })

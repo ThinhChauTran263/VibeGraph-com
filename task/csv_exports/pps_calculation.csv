@@ -26,7 +26,7 @@ WebSocket realtime update,3,3,2,2,10,0.5,5,30,4.167
 File Watcher incremental,3,3,2,3,11,0.5,5.5,30,4.583
 Use Case Diagram (Mermaid),2,3,3,1,9,0.5,4.5,30,3.75
 Class Diagram (Mermaid),2,3,3,1,9,0.5,4.5,30,3.75
-MCP tools (4 tool),3,3,3,2,11,0.5,5.5,30,4.583
+MCP tools (15 tools),3,3,3,2,11,0.5,5.5,30,4.583
 Docker compose BE/FE/Neo4j,2,2,2,2,8,0.5,4,30,3.333
 GitHub Actions CI BE/FE,2,2,1,1,6,0.5,3,30,2.5
 Sprint 3,,,,,,,,,

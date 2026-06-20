@@ -100,12 +100,12 @@ export interface GraphMeta {
  * Realtime graph-update events delivered over the STOMP topic
  * `/topic/projects/{projectId}/updates`.
  *
- * CONTRACT (Sprint 2): kept in sync with the backend producer records
+ * CONTRACT: kept in sync with the backend producer records
  * `graph/websocket/{GraphUpdateEvent, GraphChangeSet, GraphRemoval}.java`
- * (T36). The broadcast producer is implemented; the automatic file-change
- * trigger (T25 file watcher) is still pending, so events are not yet emitted
- * on real source edits. The consumer validates payloads defensively at the
- * boundary regardless.
+ * (T36). Both the broadcast producer and the automatic file-change trigger
+ * (FileChangeBroadcaster wired to the file watcher) are implemented, so events
+ * are emitted on real source edits for locally-watched projects. The consumer
+ * validates payloads defensively at the boundary regardless.
  */
 export interface GraphFullUpdateEvent {
   type: 'FULL_UPDATE'

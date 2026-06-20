@@ -86,6 +86,15 @@ vi.mock('@/components/panels/FilterPanel.vue', () => ({
   default: { template: '<div data-test="filter-panel" />', props: ['graphData'] },
 }))
 
+// Filters are used for realtime in-place patching (hidden type sets). Stub so the test
+// avoids Pinia; default = nothing hidden.
+vi.mock('@/composables/useFilters', () => ({
+  useFilters: () => ({
+    hiddenNodeTypes: computed(() => new Set<string>()),
+    hiddenEdgeTypes: computed(() => new Set<string>()),
+  }),
+}))
+
 describe('GraphCanvas', () => {
   it('emits null when search selection is cleared', async () => {
     const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })

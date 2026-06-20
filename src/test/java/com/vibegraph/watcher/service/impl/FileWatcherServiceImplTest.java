@@ -11,13 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mockito;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.DebouncedEventHandler;
 import com.vibegraph.watcher.service.EventType;
@@ -27,7 +21,8 @@ import com.vibegraph.watcher.service.FileChangeEvent;
  * Deterministic tests for the {@link FileWatcherServiceImpl} event pipeline. Rather than
  * rely on OS-level WatchService delivery (slow / flaky on Windows), these drive the
  * package-private {@code enqueue} entry point directly against a registered temp-dir root,
- * which is exactly what the real poll loop calls.
+ * which is exactly what the real poll loop calls. The watcher only emits events to
+ * registered handlers (no graph mutation), so assertions observe the captured events.
  */
 @DisplayName("FileWatcherServiceImpl pipeline")
 class FileWatcherServiceImplTest {
@@ -38,7 +33,6 @@ class FileWatcherServiceImplTest {
     @TempDir
     Path tempDir;
 
-    private GraphRepository graphRepository;
     private DebouncedEventHandler debouncer;
     private FileWatcherServiceImpl watcher;
     private final List<FileChangeEvent> received = new CopyOnWriteArrayList<>();
@@ -47,9 +41,8 @@ class FileWatcherServiceImplTest {
     void setUp() {
         WatcherProperties properties = new WatcherProperties();
         properties.setDebounceMs(60);
-        graphRepository = Mockito.mock(GraphRepository.class);
         debouncer = new DebouncedEventHandler(properties);
-        watcher = new FileWatcherServiceImpl(properties, graphRepository, debouncer);
+        watcher = new FileWatcherServiceImpl(properties, debouncer);
         watcher.onFileChange(received::add);
         watcher.startWatching(PROJECT_ID, tempDir.toString());
     }
@@ -70,7 +63,6 @@ class FileWatcherServiceImplTest {
             watcher.enqueue(PROJECT_ID, tempDir.resolve("README.md"), EventType.MODIFY);
 
             sleepPastDebounce();
-            verifyNoInteractions(graphRepository);
             assertThat(received).isEmpty();
         }
 
@@ -82,7 +74,6 @@ class FileWatcherServiceImplTest {
             watcher.enqueue(PROJECT_ID, tempDir.resolve(".git").resolve("Hook.java"), EventType.MODIFY);
 
             sleepPastDebounce();
-            verifyNoInteractions(graphRepository);
             assertThat(received).isEmpty();
         }
 
@@ -94,7 +85,6 @@ class FileWatcherServiceImplTest {
             watcher.enqueue(PROJECT_ID, outside, EventType.DELETE);
 
             sleepPastDebounce();
-            verifyNoInteractions(graphRepository);
             assertThat(received).isEmpty();
         }
     }
@@ -104,28 +94,25 @@ class FileWatcherServiceImplTest {
     class Dispatch {
 
         @Test
-        @DisplayName("DELETE of a .java file prunes it from the graph with the relative path")
-        void deleteWiredToRepository() {
+        @DisplayName("DELETE of a .java file is emitted to handlers with the relative path")
+        void deleteEmittedToHandlers() {
             watcher.enqueue(PROJECT_ID,
                     tempDir.resolve("com").resolve("example").resolve("Foo.java"),
                     EventType.DELETE);
 
-            verify(graphRepository, timeout(VERIFY_TIMEOUT_MS))
-                    .deleteFile(PROJECT_ID, "com/example/Foo.java");
-            assertThat(received).hasSize(1);
+            assertEventuallyReceived(1);
             assertThat(received.get(0).type()).isEqualTo(EventType.DELETE);
             assertThat(received.get(0).relativePath()).isEqualTo("com/example/Foo.java");
         }
 
         @Test
-        @DisplayName("CREATE/MODIFY emit to handlers but do not call deleteFile")
-        void createModifyDoesNotDelete() {
+        @DisplayName("CREATE/MODIFY are emitted to handlers")
+        void createModifyEmittedToHandlers() {
             watcher.enqueue(PROJECT_ID, tempDir.resolve("New.java"), EventType.CREATE);
 
-            // Handler observes the event...
             assertEventuallyReceived(1);
-            // ...but additive changes never trigger graph pruning.
-            verify(graphRepository, never()).deleteFile(Mockito.anyString(), Mockito.anyString());
+            assertThat(received.get(0).type()).isEqualTo(EventType.CREATE);
+            assertThat(received.get(0).relativePath()).isEqualTo("New.java");
         }
     }
 
@@ -140,10 +127,9 @@ class FileWatcherServiceImplTest {
             watcher.enqueue(PROJECT_ID, tempDir.resolve("B.java"), EventType.DELETE);
             watcher.enqueue(PROJECT_ID, tempDir.resolve("C.java"), EventType.DELETE);
 
-            verify(graphRepository, timeout(VERIFY_TIMEOUT_MS)).deleteFile(PROJECT_ID, "A.java");
-            verify(graphRepository, timeout(VERIFY_TIMEOUT_MS)).deleteFile(PROJECT_ID, "B.java");
-            verify(graphRepository, timeout(VERIFY_TIMEOUT_MS)).deleteFile(PROJECT_ID, "C.java");
             assertEventuallyReceived(3);
+            assertThat(received).extracting(FileChangeEvent::relativePath)
+                    .containsExactlyInAnyOrder("A.java", "B.java", "C.java");
         }
 
         @Test
@@ -154,9 +140,10 @@ class FileWatcherServiceImplTest {
             watcher.enqueue(PROJECT_ID, tempDir.resolve("Same.java"), EventType.DELETE);
 
             // Only the last buffered event for the file survives the debounce window.
-            verify(graphRepository, timeout(VERIFY_TIMEOUT_MS)).deleteFile(PROJECT_ID, "Same.java");
+            assertEventuallyReceived(1);
             sleepPastDebounce();
             assertThat(received).hasSize(1);
+            assertThat(received.get(0).relativePath()).isEqualTo("Same.java");
             assertThat(received.get(0).type()).isEqualTo(EventType.DELETE);
         }
     }

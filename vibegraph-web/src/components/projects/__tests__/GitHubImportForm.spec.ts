@@ -89,7 +89,8 @@ describe('GitHubImportForm', () => {
     expect(wrapper.get('input[type="url"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[type="button"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Importing...')
+    // Button now mirrors progress: "Importing… N%" (ellipsis + percent).
+    expect(wrapper.text()).toContain('Importing…')
 
     pending.resolve(fakeProject())
     await flushPromises()

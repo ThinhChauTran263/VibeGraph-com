@@ -52,13 +52,13 @@ Tiêu chí chấp nhận:
 - Panel legend và các điều khiển graph hiển thị trong khung nhìn graph.
 - Layout ForceAtlas2 chạy mà không chặn luồng UI chính.
 
-> **Trạng thái code sau audit 2026-05-30:** `GraphView`, `GraphCanvas`, `useSigma`, `useGraphData`, `stores/graph`, adapter và màu/type contract đã có và build/type-check/test unit pass. Nhiều panel UI (`FilterPanel`, `ExplorerPanel`, `NodeDetailPanel`, `LegendPanel`, `GraphControls`, `SearchBar`) vẫn là scaffold/TODO; focus reducers và filter actions chưa hoàn tất. Vì vậy FR-03 mới đạt phần graph render nền tảng, chưa đạt toàn bộ UX acceptance.
+> **Trạng thái code (cập nhật 2026-06-21):** `GraphView`, `GraphCanvas`, `useSigma`, `useGraphData`, `stores/graph`, adapter và màu/type contract đã có và build/type-check/test unit pass. `FilterPanel`, `NodeDetailPanel`, `SearchBar`, `ImpactAnalysisPanel` đã hoàn thiện và wired vào `GraphCanvas`; focus/selection highlight + filter actions hoạt động. Một số panel phụ (`ExplorerPanel`, `FlowsPanel`, `LegendPanel`, `CodeInspector`, `GraphControls`) vẫn là scaffold cho sprint sau. FR-03 đạt graph render + search/filter/detail; các panel phụ còn lại là enhancement.
 
 ### FR-04: Use Case Diagram - Cao
 
 Tạo flowchart Mermaid từ các route của controller, các scheduled job và các message listener.
 
-> **Trạng thái:** MVP target — hiện mới ở mức *scaffold* (`DiagramController` + `UseCaseDiagramServiceImpl` còn `// TODO`); implementation đang tiến hành (Sprint 2).
+> **Trạng thái:** ✅ Done — `UseCaseDiagramServiceImpl` + `DiagramController` `GET /api/projects/{id}/diagrams/usecase` sinh Mermaid `flowchart LR`; FE `DiagramPanel` render. (Job/listener actors chưa render vì parser chưa emit @Scheduled/@KafkaListener/@EventListener.)
 
 Tiêu chí chấp nhận:
 
@@ -70,7 +70,7 @@ Tiêu chí chấp nhận:
 
 Tạo class diagram Mermaid từ dữ liệu class, interface, enum, field, method, kế thừa và injection đã phân tích.
 
-> **Trạng thái:** MVP target — hiện mới ở mức *scaffold* (`DiagramController` + `ClassDiagramServiceImpl` còn `// TODO`); implementation đang tiến hành (Sprint 2).
+> **Trạng thái:** ✅ Done — `ClassDiagramServiceImpl` + `DiagramController` `GET /api/projects/{id}/diagrams/class?package=...` sinh Mermaid `classDiagram`; FE `DiagramPanel` render với bộ lọc package.
 
 Tiêu chí chấp nhận:
 
@@ -84,16 +84,16 @@ Mã FR-06 được giữ chỗ có chủ đích. Tính năng Sequence Diagram đ
 
 ### FR-07: Cập nhật Realtime - Tối quan trọng
 
-Mục tiêu dài hạn: các file Java thay đổi sẽ cập nhật graph thông qua WebSocket/STOMP. Trạng thái hiện tại chỉ đảm bảo DELETE `.java` realtime full refresh; CREATE/MODIFY incremental re-parse vẫn pending.
+Các file Java thay đổi sẽ cập nhật graph thông qua WebSocket/STOMP. Realtime đã hoàn tất cho cả CREATE/MODIFY/DELETE bằng incremental re-parse (re-parse đúng file thay đổi, tính delta, broadcast `INCREMENTAL`). Realtime thật chỉ áp dụng cho project import bằng local-folder (đọc tại chỗ); GitHub/archive theo dõi bản copy trên server (snapshot).
 
 Tiêu chí chấp nhận:
 
 - WebSocket endpoint: `/ws/graph-updates`.
 - Topic: `/topic/projects/{projectId}/updates` và `/topic/projects/{projectId}/status`.
-- Mục tiêu từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây cho CREATE/MODIFY sau khi incremental re-parse được wired. DELETE `.java` path hiện đã có test realtime dưới ngưỡng này.
-- Frontend subscribe `/topic/projects/{projectId}/updates` và xử lý `FULL_UPDATE`/`INCREMENTAL` payload mà không reload trang. Producer hiện dùng `FULL_UPDATE` cho DELETE `.java`; producer `INCREMENTAL` cho CREATE/MODIFY còn pending.
+- Thời gian từ lúc lưu file đến lúc cập nhật graph: dưới 3 giây cho CREATE/MODIFY/DELETE (re-parse 1 file + debounce).
+- Frontend subscribe `/topic/projects/{projectId}/updates` và xử lý `FULL_UPDATE`/`INCREMENTAL` payload mà không reload trang. Producer broadcast `INCREMENTAL` (added/removed) cho mọi thay đổi file; FE patch graph tại chỗ trên Sigma (không reset camera/zoom).
 
-> **Trạng thái code sau audit mới nhất:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`; status topic `/topic/projects/{projectId}/status` đã dùng cho import/analyze progress; graph update topic `/topic/projects/{projectId}/updates` đã có `broadcastFullUpdate`/`broadcastIncremental`; frontend `useGraphRealtime.ts` đã subscribe và patch state. File watcher lifecycle đã wired sau import/analyze và khi delete project. DELETE `.java` prune graph + broadcast `FULL_UPDATE` đã có test; CREATE/MODIFY incremental re-parse vẫn pending vì `ParserService.parseFileWithCache` chưa implemented.
+> **Trạng thái code sau audit mới nhất:** backend đã cấu hình STOMP endpoint `/ws/graph-updates`; status topic `/topic/projects/{projectId}/status` dùng cho import/analyze progress; graph update topic `/topic/projects/{projectId}/updates` có `broadcastFullUpdate`/`broadcastIncremental`; frontend `useGraphRealtime.ts` subscribe + patch state, `GraphCanvas.vue` patch Sigma tại chỗ. File watcher lifecycle đã wired (start sau import/analyze, stop khi delete project, re-watch khi khởi động). CREATE/MODIFY/DELETE đều incremental qua `FileChangeBroadcaster` (re-parse file đổi bằng `parserService.parseFile` → upsert/prune → broadcast delta). Đã test tay end-to-end: thêm/xóa file → graph cập nhật tại chỗ.
 
 ### FR-08: File Watcher phía Server - Tối quan trọng
 
@@ -107,7 +107,7 @@ Tiêu chí chấp nhận:
 - Các sự kiện create, modify và delete kích hoạt phân tích tăng dần.
 - Watcher chỉ theo dõi các thư mục dự án đã cấu hình; các đường dẫn được kiểm tra đối chiếu với root đã đăng ký.
 
-> **Trạng thái code sau audit mới nhất:** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã implemented cho recursive watch/debounce/lifecycle. DELETE `.java` path đã prune graph và broadcast full update. CREATE/MODIFY chỉ emit event/log, chưa re-parse graph; đây là phần còn pending.
+> **Trạng thái code sau audit mới nhất:** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã implemented cho recursive watch/debounce/lifecycle. Watcher giờ là bộ phát sự kiện thuần (detect + debounce + emit cho handler); `FileChangeBroadcaster` xử lý mọi loại thay đổi: CREATE/MODIFY re-parse file đổi → upsert; DELETE prune; rồi broadcast delta `INCREMENTAL`. Cả create, modify và delete đều kích hoạt cập nhật tăng dần.
 
 ### FR-09: REST API - Tối quan trọng
 
@@ -123,11 +123,11 @@ Các endpoint MVP (cột *Trạng thái* phản ánh code thực tế, không ch
 | GET    | `/api/projects/{id}/graph`                           | Trả về toàn bộ graph                                                               | ✅ implemented                                                                                      |
 | POST   | `/api/projects/import-archive`                       | Upload file `.zip`/`.tar`/`.tar.gz` của project Java để backend parse và lưu graph | ✅ implemented — sync `200 OK`, async `202 Accepted` qua `?async=true`, status qua `/topic/projects/{id}/status` |
 | GET    | `/api/projects/{id}/graph/neighbors/{nodeId}?hops=N` | Trả về neighborhood N-hop                                                          | 🚧 scaffold — `Neo4jGraphRepository.getNeighborhood` ném `UnsupportedOperationException` (Sprint 2) |
-| GET    | `/api/projects/{id}/diagrams/usecase`                | Trả về Use Case Mermaid                                                            | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
-| GET    | `/api/projects/{id}/diagrams/class`                  | Trả về Class Mermaid                                                               | 🚧 scaffold — `DiagramController` còn `// TODO` (Sprint 2)                                          |
-| GET    | `/api/projects/{id}/impact/{nodeId}`                 | Trả về phạm vi ảnh hưởng (blast radius)                                            | 🚧 scaffold — `ImpactController`/`ImpactServiceImpl` + `getImpact` chưa impl (Sprint 2/3)           |
-| POST   | `/api/projects/import-github`                        | Import một repo GitHub công khai qua luồng tarball                                 | ✅ backend implemented — parse URL, pre-flight, download tarball, extract qua archive pipeline, analyze async; UI form vẫn planned |
-| WS     | `/ws/graph-updates`                                  | Đẩy graph/status theo thời gian thực                                               | 🟡 endpoint STOMP đã cấu hình; pipeline broadcast đang làm (Sprint 2)                               |
+| GET    | `/api/projects/{id}/diagrams/usecase`                | Trả về Use Case Mermaid                                                            | ✅ implemented — `DiagramController` + `UseCaseDiagramServiceImpl`; FE render                       |
+| GET    | `/api/projects/{id}/diagrams/class`                  | Trả về Class Mermaid                                                               | ✅ implemented — `DiagramController` + `ClassDiagramServiceImpl` (lọc package); FE render            |
+| GET    | `/api/projects/{id}/graph/impact?nodeId=...&depth=...`| Trả về phạm vi ảnh hưởng (blast radius)                                            | ✅ implemented — `GraphController` `/graph/impact` → `GraphServiceImpl.getImpactAnalysis` (`Neo4jGraphRepository.getImpact`). `ImpactController`/`ImpactServiceImpl` là scaffold rỗng chưa dùng |
+| POST   | `/api/projects/import-github`                        | Import một repo GitHub công khai qua luồng tarball                                 | ✅ implemented — parse URL, pre-flight, download tarball, extract qua archive pipeline, analyze async; FE `GitHubImportForm` đã có |
+| WS     | `/ws/graph-updates`                                  | Đẩy graph/status theo thời gian thực                                               | ✅ implemented — STOMP endpoint + broadcast `FULL_UPDATE`/`INCREMENTAL`; FE consumer patch graph tại chỗ |
 
 > Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án local path → analyze → full graph) đã chạy thật. Từ quyết định product ngày 2026-05-31, UX chính của Sprint 2 chuyển sang **upload ZIP/TAR archive**; local-path registration giữ lại như dev/internal fallback. Các dòng `🚧 scaffold`/`🆕 target` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`) và `task-breakdown-8week.md` (Sprint 2/3).
 > `GET /graph/neighbors`, `GET /diagrams/*` và `GET /impact/*` là endpoint mục tiêu của API contract; tại thời điểm audit chưa có route controller hoạt động cho các dòng đó dù frontend client đã có hàm gọi tương ứng.

@@ -30,8 +30,10 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
       </button>
     </nav>
 
-    <GraphCanvas v-if="activeView === 'graph'" :project-id="projectId" />
-    <DiagramPanel v-else :project-id="projectId" />
+    <KeepAlive>
+      <GraphCanvas v-if="activeView === 'graph'" :project-id="projectId" />
+      <DiagramPanel v-else :project-id="projectId" />
+    </KeepAlive>
   </main>
 </template>
 

@@ -123,7 +123,7 @@ function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
 /**
  * Build Sigma edge attributes from a GraphEdge.
  */
-function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
+export function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
   const color = getEdgeColor(edge.type)
   return {
     label: edge.type,
@@ -151,7 +151,7 @@ export function getEdgeColor(edgeType: EdgeType): string {
 /**
  * Return node size based on type. Structural nodes are larger.
  */
-function getNodeSize(nodeType: NodeType): number {
+export function getNodeSize(nodeType: NodeType): number {
   switch (nodeType) {
     case 'File':
       return 6.5

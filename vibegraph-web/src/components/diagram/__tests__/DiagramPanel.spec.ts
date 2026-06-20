@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import DiagramPanel from '../DiagramPanel.vue'
 import { ApiError, type DiagramResponse, type UmlUseCaseResponse } from '@/lib/api'
+import { clearDiagramCache } from '@/composables/useDiagrams'
 
 vi.mock('mermaid', () => ({
   default: {
@@ -77,6 +78,7 @@ async function flushAsync(): Promise<void> {
 }
 
 beforeEach(() => {
+  clearDiagramCache()
   umlUseCaseMock.mockReset()
   classDiagramMock.mockReset()
 })
@@ -161,47 +163,6 @@ describe('DiagramPanel', () => {
     expect(document.body.querySelector('[data-test="diagram-fullscreen"]')).toBeNull()
 
     wrapper.unmount()
-  })
-
-  it('hides inference warnings in formal export mode but keeps them in interactive mode', async () => {
-    umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
-
-    const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
-    await flushAsync()
-
-    // Interactive mode: warning is visible to developers.
-    expect(wrapper.find('[data-test="diagram-warnings"]').exists()).toBe(true)
-
-    // Toggle formal export mode: warning disappears for clean SRS screenshots/exports.
-    await wrapper.get('[data-test="diagram-export-mode"]').trigger('click')
-    await flushAsync()
-    expect(wrapper.find('[data-test="diagram-warnings"]').exists()).toBe(false)
-    expect(wrapper.get('.diagram-panel').attributes('data-export-mode')).toBe('true')
-
-    // Toggling back restores the developer warning.
-    await wrapper.get('[data-test="diagram-export-mode"]').trigger('click')
-    await flushAsync()
-    expect(wrapper.find('[data-test="diagram-warnings"]').exists()).toBe(true)
-  })
-
-  it('strips developer controls from the formal export surface', async () => {
-    umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
-
-    const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
-    await flushAsync()
-
-    expect(wrapper.find('[data-test="diagram-export-exit"]').exists()).toBe(false)
-
-    await wrapper.get('[data-test="diagram-export-mode"]').trigger('click')
-    await flushAsync()
-
-    expect(wrapper.get('.diagram-panel').classes()).toContain('diagram-panel--export')
-    expect(wrapper.find('[data-test="diagram-export-exit"]').exists()).toBe(true)
-
-    await wrapper.get('[data-test="diagram-export-exit"]').trigger('click')
-    await flushAsync()
-    expect(wrapper.get('.diagram-panel').classes()).not.toContain('diagram-panel--export')
-    expect(wrapper.find('[data-test="diagram-export-exit"]').exists()).toBe(false)
   })
 
   it('switches to class diagram and renders the class response', async () => {

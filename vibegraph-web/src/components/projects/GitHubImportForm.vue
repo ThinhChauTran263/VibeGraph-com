@@ -16,6 +16,10 @@ const progressPct = computed(() => Math.round(progress.value))
 const progressLabel = computed(() =>
   progressPct.value >= 98 ? 'Finalizing graph…' : `Analyzing repository… ${progressPct.value}%`,
 )
+// Button caption mirrors progress so the percentage is visible on the button too.
+const submitLabel = computed(() =>
+  progressPct.value >= 98 ? 'Finalizing…' : `Importing… ${progressPct.value}%`,
+)
 
 async function onSubmit(): Promise<void> {
   if (!canSubmit.value) return
@@ -61,7 +65,7 @@ function clearForm(): void {
         <button type="submit" class="github-import__btn github-import__btn--primary" :disabled="!canSubmit">
           <span v-if="isImporting" class="github-import__submit-spinner">
             <Spinner size="sm" aria-hidden="true" />
-            <span>Importing...</span>
+            <span>{{ submitLabel }}</span>
           </span>
           <span v-else>Import GitHub repo</span>
         </button>

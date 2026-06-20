@@ -66,9 +66,20 @@ const canSubmit = computed(
 )
 
 const submitLabel = computed(() => {
-  if (isAnalyzing.value) return `Analyzing... ${progress.value}%`
-  if (status.value === 'uploading') return 'Uploading...'
+  if (isAnalyzing.value) {
+    return progress.value >= 98 ? 'Finalizing…' : `Importing… ${progress.value}%`
+  }
+  if (status.value === 'uploading') return 'Uploading…'
   return 'Upload archive'
+})
+
+// Progress-bar caption. While the file is still uploading the byte progress
+// isn't known, so show "Uploading…"; once the server is analyzing show a
+// determinate percentage, and "Finalizing graph…" as it nears completion —
+// matching the GitHub/local import wording.
+const progressLabel = computed(() => {
+  if (!isAnalyzing.value) return 'Uploading…'
+  return progress.value >= 98 ? 'Finalizing graph…' : `Analyzing… ${progress.value}%`
 })
 
 function onFileChange(event: Event): void {
@@ -169,22 +180,21 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-if="isAnalyzing"
+        v-if="isBusy"
         class="archive-import__progress"
-        role="status"
-        aria-live="polite"
+        role="progressbar"
+        :aria-valuenow="progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="progressLabel"
       >
-        <div class="archive-import__progress-track">
-          <div
-            class="archive-import__progress-bar"
-            role="progressbar"
-            :aria-valuenow="progress"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :style="{ width: progress + '%' }"
-          />
+        <div class="archive-import__progress-head">
+          <span class="archive-import__progress-label">{{ progressLabel }}</span>
+          <span class="archive-import__progress-value">{{ progress }}%</span>
         </div>
-        <span class="archive-import__progress-label">Analyzing... {{ progress }}%</span>
+        <div class="archive-import__progress-track">
+          <div class="archive-import__progress-fill" :style="{ width: progress + '%' }"></div>
+        </div>
       </div>
 
       <div class="archive-import__actions">
@@ -341,27 +351,43 @@ onBeforeUnmount(() => {
 .archive-import__progress {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.4rem;
+}
+
+.archive-import__progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: #cbd5e1;
+}
+
+.archive-import__progress-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #e5e7eb;
 }
 
 .archive-import__progress-track {
-  width: 100%;
-  height: 6px;
+  position: relative;
+  height: 8px;
   border-radius: 999px;
-  background: #1f2937;
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
   overflow: hidden;
 }
 
-.archive-import__progress-bar {
+.archive-import__progress-fill {
   height: 100%;
-  background: #2563eb;
-  border-radius: 999px;
-  transition: width 200ms ease;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.archive-import__progress-label {
-  font-size: 0.8125rem;
-  color: #9ca3af;
+@media (prefers-reduced-motion: reduce) {
+  .archive-import__progress-fill {
+    transition: none;
+  }
 }
 
 .archive-import__actions {

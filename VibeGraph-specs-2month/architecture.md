@@ -91,7 +91,7 @@ vibegraph/
 │       │   ├── websocket/
 │       │   └── dto/
 │       ├── diagram/                 # Use Case + Class generators
-│       ├── mcp/                     # 4 MCP tools
+│       ├── mcp/                     # 15 MCP tools (Spring AI)
 │       ├── watcher/                 # File watcher service
 │       └── import/                  # GitHub tarball stream service (mới)
 │

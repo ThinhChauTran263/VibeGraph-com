@@ -327,6 +327,17 @@ export function useSigma(options: UseSigmaOptions) {
     camera.animatedReset({ duration: 300 })
   }
 
+  /**
+   * Re-measure the container and repaint. Needed after the canvas DOM is
+   * detached/re-attached (e.g. a {@code <KeepAlive>} tab switch), otherwise the
+   * WebGL surface can stay blank or keep a stale size.
+   */
+  function refresh(): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    sigma.refresh()
+  }
+
   // Cleanup on component unmount
   onUnmounted(() => {
     dispose()
@@ -338,6 +349,7 @@ export function useSigma(options: UseSigmaOptions) {
     draggedNode,
     init,
     dispose,
+    refresh,
     zoomToFit,
     startLayout: () => {
       if (graphInstance.value) startLayout(graphInstance.value)
