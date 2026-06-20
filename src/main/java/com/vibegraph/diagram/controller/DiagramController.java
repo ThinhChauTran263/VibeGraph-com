@@ -7,10 +7,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Locale;
+
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.exception.ProjectNotAnalyzedException;
 import com.vibegraph.diagram.dto.response.DiagramResponse;
-import com.vibegraph.diagram.dto.response.UseCaseResponse;
 import com.vibegraph.diagram.service.ClassDiagramService;
 import com.vibegraph.diagram.service.UseCaseDiagramService;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -24,13 +25,15 @@ import lombok.RequiredArgsConstructor;
  *
  * <p>Endpoints:
  * <ul>
- *   <li>{@code GET /api/projects/{projectId}/diagrams/usecase}</li>
+ *   <li>{@code GET /api/projects/{projectId}/diagrams/usecase?style=uml&mode=flat|grouped} —
+ *       inferred business UML use case diagram</li>
  *   <li>{@code GET /api/projects/{projectId}/diagrams/class?package=...}</li>
  * </ul>
  *
- * <p>Both endpoints first validate that the project exists and is fully analyzed,
+ * <p>All endpoints first validate that the project exists and is fully analyzed,
  * so callers get a clear {@code PROJECT_NOT_FOUND} (404) or
- * {@code PROJECT_NOT_ANALYZED} (409) instead of a misleading empty diagram.
+ * {@code PROJECT_NOT_ANALYZED} (409) instead of a misleading empty diagram. Invalid
+ * {@code style}/{@code mode} values yield {@code BAD_REQUEST} (400).
  *
  * <p>Note: Sequence diagram deferred (FR-06 post-2-month scope).
  */
@@ -39,14 +42,24 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DiagramController {
 
+    private static final String STYLE_UML = "uml";
+
     private final UseCaseDiagramService useCaseDiagramService;
     private final ClassDiagramService classDiagramService;
     private final ProjectService projectService;
 
     @GetMapping("/usecase")
-    public ResponseEntity<ApiResponse<UseCaseResponse>> getUseCaseDiagram(@PathVariable String projectId) {
+    public ResponseEntity<ApiResponse<Object>> getUseCaseDiagram(
+            @PathVariable String projectId,
+            @RequestParam(name = "style", required = false, defaultValue = STYLE_UML) String style,
+            @RequestParam(name = "mode", required = false) String mode) {
         requireAnalyzed(projectId);
-        return ResponseEntity.ok(ApiResponse.success(useCaseDiagramService.generateUseCaseDiagram(projectId)));
+        String normalizedStyle = style == null ? STYLE_UML : style.trim().toLowerCase(Locale.ROOT);
+        if (!STYLE_UML.equals(normalizedStyle)) {
+            throw new IllegalArgumentException(
+                    "Invalid style '" + style + "'. Supported styles: uml.");
+        }
+        return ResponseEntity.ok(ApiResponse.success(useCaseDiagramService.generateUmlUseCase(projectId, mode)));
     }
 
     @GetMapping("/class")

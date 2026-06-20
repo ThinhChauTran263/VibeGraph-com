@@ -76,6 +76,24 @@ export interface GraphData {
   edges: GraphEdge[]
   nodeStats: Record<NodeType, number>
   edgeStats: Record<EdgeType, number>
+  /**
+   * Server-side payload guardrail metadata (HTTP graph endpoint only). Present when the
+   * backend capped the payload; absent on internal/websocket snapshots. Mirrors the backend
+   * `GraphDataResponse.Meta`.
+   */
+  meta?: GraphMeta
+}
+
+/** Truncation metadata describing how the returned payload relates to the full backend graph. */
+export interface GraphMeta {
+  truncated: boolean
+  totalNodes: number
+  totalEdges: number
+  returnedNodes: number
+  returnedEdges: number
+  nodeLimit: number
+  edgeLimit: number
+  reason?: string | null
 }
 
 /**

@@ -36,7 +36,18 @@ vi.mock('@/composables/useGraphData', () => ({
     selectNode,
     clearSelection,
     selectedNode: computed(() => selectedNode.value),
+    renderInfo: computed(() => null),
     nodes: computed(() => nodes.value),
+  }),
+}))
+
+// Lazy-expand composable: stub so the component test does not pull in Pinia or the API.
+vi.mock('@/composables/useGraphExpand', () => ({
+  useGraphExpand: () => ({
+    expanding: ref(false),
+    lastError: ref(null),
+    expandNode: vi.fn<() => Promise<number>>(() => Promise.resolve(0)),
+    reset: vi.fn<() => void>(),
   }),
 }))
 

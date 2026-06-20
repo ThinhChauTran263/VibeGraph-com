@@ -9,6 +9,13 @@ services:
       NEO4J_AUTH: ${NEO4J_USERNAME:?Set NEO4J_USERNAME in .env}/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      # Bound Neo4j JVM + page cache so a heavy analyze run can't exhaust host RAM
+      # and freeze the whole machine. Tune up if you have headroom.
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_SIZE:-1G}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_SIZE:-1G}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-512M}
+    # Hard container memory ceiling (heap + pagecache + JVM overhead + headroom).
+    mem_limit: ${NEO4J_MEM_LIMIT:-2g}
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs

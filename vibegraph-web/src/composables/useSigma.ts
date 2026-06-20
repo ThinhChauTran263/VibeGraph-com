@@ -16,6 +16,7 @@ import type { FocusPartition } from '@/lib/focusMode'
 export interface UseSigmaOptions {
   container: Ref<HTMLDivElement | null>
   onNodeClick?: (nodeId: string) => void
+  onNodeDoubleClick?: (nodeId: string) => void
   onStageClick?: () => void
   onNodeHover?: (nodeId: string) => void
   onNodeLeave?: () => void
@@ -58,7 +59,7 @@ function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
 }
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
+  const { container, onNodeClick, onNodeDoubleClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
     options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
@@ -94,6 +95,10 @@ export function useSigma(options: UseSigmaOptions) {
       renderEdgeLabels: false,
       defaultEdgeType: 'line',
       zIndex: true,
+      // Performance on large graphs: skip drawing edges and labels during camera
+      // pan/zoom so interaction stays at 60fps; they snap back when movement stops.
+      hideEdgesOnMove: true,
+      hideLabelsOnMove: true,
       labelRenderedSizeThreshold: 15,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
@@ -140,6 +145,15 @@ export function useSigma(options: UseSigmaOptions) {
     if (onStageClick) {
       sigma.on('clickStage', () => {
         onStageClick()
+      })
+    }
+
+    // Double-click a node to lazily expand its neighborhood. We swallow Sigma's default
+    // double-click zoom so the gesture means "expand", not "zoom in".
+    if (onNodeDoubleClick) {
+      sigma.on('doubleClickNode', ({ node, event }) => {
+        event.preventSigmaDefault()
+        onNodeDoubleClick(node)
       })
     }
 

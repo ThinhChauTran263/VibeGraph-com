@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -25,6 +26,7 @@ import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 /**
  * Web-layer tests for GraphController using standalone MockMvc — no Neo4j and no
@@ -42,7 +44,8 @@ class GraphControllerTest {
     @BeforeEach
     void setUp() {
         graphService = Mockito.mock(GraphService.class);
-        GraphController controller = new GraphController(graphService);
+        GraphController controller = new GraphController(
+                graphService, new GraphPayloadGuard(), new GraphPayloadProperties());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -75,9 +78,33 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.data.nodes[0].type").value("Class"))
                 .andExpect(jsonPath("$.data.nodes[0].fullName").value("com.example.UserService"))
                 .andExpect(jsonPath("$.data.edges[0].type").value("CALLS"))
-                .andExpect(jsonPath("$.data.nodeStats.Class").value(1));
+                .andExpect(jsonPath("$.data.nodeStats.Class").value(1))
+                // Guardrail metadata is attached even when the graph fits under the limits.
+                .andExpect(jsonPath("$.data.meta.truncated").value(false))
+                .andExpect(jsonPath("$.data.meta.totalNodes").value(1))
+                .andExpect(jsonPath("$.data.meta.returnedNodes").value(1));
 
         verify(graphService, times(1)).getFullGraph("p1");
+    }
+
+    @Test
+    @DisplayName("GET graph caps the payload and reports truncation when an explicit small limit is requested")
+    void shouldCapPayloadWhenRequested() throws Exception {
+        List<NodeDto> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            nodes.add(NodeDto.builder().id("c" + i).type("Class").name("C" + i).fullName("C" + i).build());
+        }
+        when(graphService.getFullGraph("big")).thenReturn(GraphDataResponse.builder()
+                .nodes(nodes).edges(List.of()).nodeStats(Map.of("Class", 10)).edgeStats(Map.of()).build());
+
+        mockMvc.perform(get("/api/projects/big/graph").param("nodeLimit", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.nodes.length()").value(3))
+                .andExpect(jsonPath("$.data.meta.truncated").value(true))
+                .andExpect(jsonPath("$.data.meta.totalNodes").value(10))
+                .andExpect(jsonPath("$.data.meta.returnedNodes").value(3))
+                .andExpect(jsonPath("$.data.meta.reason").value("GRAPH_TOO_LARGE"));
     }
 
     @Test

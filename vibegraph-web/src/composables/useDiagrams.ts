@@ -1,9 +1,17 @@
 import { computed, readonly, ref } from 'vue'
-import { ApiError, diagramApi, type DiagramResponse, type UseCaseResponse } from '@/lib/api'
+import {
+  ApiError,
+  diagramApi,
+  type DiagramResponse,
+  type UmlUseCaseMode,
+  type UmlUseCaseResponse,
+} from '@/lib/api'
 
-export type DiagramKind = 'usecase' | 'class'
+export type DiagramKind = 'uml' | 'class'
 export type DiagramStatus = 'idle' | 'loading' | 'success' | 'error'
-export type LoadedDiagram = (UseCaseResponse | DiagramResponse) & { kind: DiagramKind }
+export type LoadedDiagram =
+  | (UmlUseCaseResponse & { kind: 'uml' })
+  | (DiagramResponse & { kind: 'class' })
 
 function mapDiagramError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -26,10 +34,10 @@ export function useDiagrams() {
   const isLoading = computed(() => status.value === 'loading')
   let requestSeq = 0
 
-  async function runLatest<T extends UseCaseResponse | DiagramResponse>(
+  async function runLatest<T extends LoadedDiagram>(
     projectId: string,
-    kind: DiagramKind,
-    loader: (trimmedProjectId: string) => Promise<T>,
+    kind: T['kind'],
+    loader: (trimmedProjectId: string) => Promise<Omit<T, 'kind'>>,
   ): Promise<LoadedDiagram | null> {
     const trimmedProjectId = projectId?.trim() ?? ''
     if (!trimmedProjectId) {
@@ -46,7 +54,7 @@ export function useDiagrams() {
     try {
       const data = await loader(trimmedProjectId)
       if (seq !== requestSeq) return null
-      const loaded = { ...data, kind }
+      const loaded = { ...data, kind } as T
       diagram.value = loaded
       status.value = 'success'
       return loaded
@@ -59,13 +67,18 @@ export function useDiagrams() {
     }
   }
 
-  function loadUseCaseDiagram(projectId: string): Promise<LoadedDiagram | null> {
-    return runLatest(projectId, 'usecase', (trimmedProjectId) => diagramApi.useCase(trimmedProjectId))
+  function loadUmlUseCaseDiagram(
+    projectId: string,
+    mode: UmlUseCaseMode = 'detailed',
+  ): Promise<LoadedDiagram | null> {
+    return runLatest<UmlUseCaseResponse & { kind: 'uml' }>(projectId, 'uml', (trimmedProjectId) =>
+      diagramApi.umlUseCase(trimmedProjectId, mode),
+    )
   }
 
   function loadClassDiagram(projectId: string, packageFilter?: string): Promise<LoadedDiagram | null> {
     const trimmedPackage = packageFilter?.trim() || undefined
-    return runLatest(projectId, 'class', (trimmedProjectId) =>
+    return runLatest<DiagramResponse & { kind: 'class' }>(projectId, 'class', (trimmedProjectId) =>
       diagramApi.classDiagram(trimmedProjectId, trimmedPackage),
     )
   }
@@ -82,7 +95,7 @@ export function useDiagrams() {
     diagram: readonly(diagram),
     errorMessage: readonly(errorMessage),
     isLoading,
-    loadUseCaseDiagram,
+    loadUmlUseCaseDiagram,
     loadClassDiagram,
     reset,
   }

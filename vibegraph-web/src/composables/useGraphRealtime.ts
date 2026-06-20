@@ -50,6 +50,11 @@ export function useGraphRealtime(
     }
     // Stale guard: ignore events whose projectId is not the one we watch now.
     if (event.projectId !== currentProjectId) return
+    if (event.type === 'FULL_UPDATE') {
+      // The payload is capped at the WebSocket boundary; carry its truncation meta into the
+      // shared payloadMeta flow so the Safe Mode banner / renderInfo stay truthful.
+      store.payloadMeta = event.graph.meta ?? null
+    }
     store.graphData = applyGraphUpdate(store.graphData, event)
   }
 
