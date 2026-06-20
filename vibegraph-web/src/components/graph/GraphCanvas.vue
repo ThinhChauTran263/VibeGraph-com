@@ -8,9 +8,11 @@
  * - Click node, emit selected
  * - Loading + error states
  */
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
+import { useGraphExpand } from '@/composables/useGraphExpand'
 import { useSigma } from '@/composables/useSigma'
+import { debounce } from '@/lib/debounce'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
@@ -34,6 +36,9 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+
+// Monotonic counter to discard stale async graph loads (see load()).
+let loadSeq = 0
 
 // Graph focus is resolved from three independent inputs with a deterministic
 // priority (see applyFocusReducers):
@@ -80,8 +85,11 @@ const {
   selectNode,
   clearSelection,
   selectedNode,
+  renderInfo,
   nodes,
 } = useGraphData()
+
+const { expandNode, reset: resetExpand } = useGraphExpand()
 
 const {
   init: initSigma,
@@ -100,6 +108,11 @@ const {
     hoveredGraphNode.value = null
     selectNode(node)
     emit('nodeSelected', nodeId)
+  },
+  onNodeDoubleClick: (nodeId: string) => {
+    // Lazy expand: pull this node's 1-hop neighborhood from the backend and merge it in.
+    // The graphData change drives the debounced rebuild, so the new nodes render automatically.
+    void expandNode(props.projectId, nodeId, 1)
   },
   onStageClick: () => {
     if (!selectedNode.value) return
@@ -187,7 +200,11 @@ function focusOn(nodeId: string, relation: HoveredRelation | null): void {
 }
 
 async function load(projectId: string) {
+  // Stale-load guard: if the project changes (or another load starts) while this
+  // fetch is in flight, a late-resolving response must NOT init an outdated graph.
+  const seq = ++loadSeq
   const graph = await loadGraph(projectId)
+  if (seq !== loadSeq) return
   if (graph && canvasRef.value) {
     initSigma(graph)
     applyFocusReducers()
@@ -238,6 +255,7 @@ onMounted(() => {
 watch(
   () => props.projectId,
   (newId) => {
+    resetExpand()
     if (newId) load(newId)
   },
 )
@@ -246,19 +264,33 @@ watch(selectedNode, () => {
   applyFocusReducers()
 })
 
+// Rebuilding + re-rendering the whole Sigma graph is expensive. Filter toggles can
+// fire several reactive changes in a burst, so we debounce the rebuild: the graph is
+// rebuilt once after the user stops toggling, never on every intermediate change.
+const rebuildGraph = debounce((data: typeof filteredGraphData.value) => {
+  if (!canvasRef.value || loading.value || error.value) return
+  initSigma(buildGraph(data))
+  applyFocusReducers()
+}, 200)
+
 watch(
   filteredGraphData,
   (graphData) => {
+    // Selection consistency is cheap and must stay synchronous so a stale selected
+    // node is cleared immediately even before the debounced rebuild runs.
     if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
       clearSelection()
     }
 
     if (!canvasRef.value || loading.value || error.value) return
-    initSigma(buildGraph(graphData))
-    applyFocusReducers()
+    rebuildGraph(graphData)
   },
   { deep: true },
 )
+
+onUnmounted(() => {
+  rebuildGraph.cancel()
+})
 </script>
 
 <template>
@@ -272,6 +304,22 @@ watch(
 
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
+
+      <div
+        v-if="!loading && !error && renderInfo?.truncated"
+        class="graph-safe-mode-notice"
+        role="status"
+      >
+        <span class="graph-safe-mode-notice__dot" aria-hidden="true" />
+        <span>
+          Safe Mode — showing
+          <strong>{{ renderInfo.renderedNodes.toLocaleString() }}</strong> /
+          <strong>{{ renderInfo.totalNodes.toLocaleString() }}</strong> nodes and
+          <strong>{{ renderInfo.renderedEdges.toLocaleString() }}</strong> /
+          <strong>{{ renderInfo.totalEdges.toLocaleString() }}</strong> relationships. Use search
+          or filters to narrow the view.
+        </span>
+      </div>
 
       <button
         v-if="!loading && !error"
@@ -587,5 +635,43 @@ watch(
   to {
     transform: rotate(360deg);
   }
+}
+
+</style>
+
+<style scoped>
+.graph-safe-mode-notice {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(90%, 40rem);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 999px;
+  background: rgba(120, 53, 15, 0.82);
+  color: #fde68a;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+.graph-safe-mode-notice strong {
+  color: #fef3c7;
+  font-weight: 700;
+}
+
+.graph-safe-mode-notice__dot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25);
 }
 </style>

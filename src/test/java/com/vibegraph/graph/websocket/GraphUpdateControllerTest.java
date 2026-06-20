@@ -3,23 +3,25 @@ package com.vibegraph.graph.websocket;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("GraphUpdateController")
@@ -28,8 +30,14 @@ class GraphUpdateControllerTest {
     @Mock
     SimpMessagingTemplate messagingTemplate;
 
-    @InjectMocks
-    GraphUpdateController controller;
+    private GraphUpdateController controller;
+    private GraphPayloadProperties payloadProperties;
+
+    @BeforeEach
+    void setUp() {
+        payloadProperties = new GraphPayloadProperties();
+        controller = new GraphUpdateController(messagingTemplate, new GraphPayloadGuard(), payloadProperties);
+    }
 
     @Test
     @DisplayName("broadcastStatus publishes the payload to the project status topic")
@@ -84,10 +92,36 @@ class GraphUpdateControllerTest {
         GraphUpdateEvent event = captor.getValue();
         assertThat(event.type()).isEqualTo("FULL_UPDATE");
         assertThat(event.projectId()).isEqualTo("p1");
-        assertThat(event.graph()).isSameAs(graph);
+        // The graph is wrapped by the payload guard (carries meta); under limits it is not truncated.
+        assertThat(event.graph().getNodes()).extracting(NodeDto::getId).containsExactly("n1");
+        assertThat(event.graph().getMeta()).isNotNull();
+        assertThat(event.graph().getMeta().isTruncated()).isFalse();
         assertThat(event.added()).isNull();
         assertThat(event.modified()).isNull();
         assertThat(event.removed()).isNull();
+    }
+
+    @Test
+    @DisplayName("broadcastFullUpdate caps an oversized graph and includes truncation metadata")
+    void broadcastFullUpdateCapsOversizedGraph() {
+        // Shrink the limit so a small fixture trips the cap deterministically.
+        payloadProperties.setNodeLimit(2);
+        java.util.List<NodeDto> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            nodes.add(NodeDto.builder().id("c" + i).type("Class").name("C" + i).build());
+        }
+        GraphDataResponse graph = GraphDataResponse.builder().nodes(nodes).edges(List.of()).build();
+
+        controller.broadcastFullUpdate("p1", graph);
+
+        ArgumentCaptor<GraphUpdateEvent> captor = ArgumentCaptor.forClass(GraphUpdateEvent.class);
+        verify(messagingTemplate).convertAndSend(eq("/topic/projects/p1/updates"), captor.capture());
+        GraphUpdateEvent event = captor.getValue();
+        assertThat(event.graph().getNodes()).hasSize(2);
+        assertThat(event.graph().getMeta().isTruncated()).isTrue();
+        assertThat(event.graph().getMeta().getTotalNodes()).isEqualTo(6);
+        assertThat(event.graph().getMeta().getReturnedNodes()).isEqualTo(2);
+        assertThat(event.graph().getMeta().getReason()).isEqualTo("GRAPH_TOO_LARGE");
     }
 
     @Test

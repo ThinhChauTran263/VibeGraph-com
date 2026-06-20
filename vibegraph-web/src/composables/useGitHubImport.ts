@@ -14,7 +14,7 @@ const SAFE_ERROR_PATTERNS = [
   /still analyzing/i,
 ]
 const GITHUB_IMPORT_POLL_INTERVAL_MS = 1_000
-const GITHUB_IMPORT_MAX_POLLS = 60
+const GITHUB_IMPORT_MAX_POLLS = 180
 
 export type GitHubImportStatus = 'idle' | 'importing' | 'success' | 'error'
 

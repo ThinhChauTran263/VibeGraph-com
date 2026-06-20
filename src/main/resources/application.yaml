@@ -80,6 +80,15 @@ vibegraph:
       - http://127.0.0.1:5173
       - http://localhost:3000
 
+  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph). Caps what the
+  # browser receives by default so a huge project cannot freeze the tab during transfer
+  # /JSON.parse. Internal Java consumers still read the full graph directly.
+  graph:
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:1500}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:4000}
+    max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
+    max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
+
   parser:
     use-cache: true
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}

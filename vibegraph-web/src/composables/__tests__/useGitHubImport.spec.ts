@@ -131,6 +131,40 @@ describe('useGitHubImport', () => {
     }
   })
 
+  it('keeps waiting when GitHub analysis takes longer than one minute', async () => {
+    vi.useFakeTimers()
+    const analyzingProject = fakeProject({ id: 'gh-slow', name: 'spx-tracking', status: 'ANALYZING' })
+    const analyzedProject = fakeProject({
+      id: 'gh-slow',
+      name: 'spx-tracking',
+      status: 'ANALYZED',
+      progress: 100,
+      totalFiles: 39,
+      totalNodes: 578,
+      totalEdges: 1852,
+    })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockImplementation(async () => (
+      getProjectMock.mock.calls.length >= 65 ? analyzedProject : analyzingProject
+    ))
+    fetchFullGraphMock.mockResolvedValueOnce(fakeGraph())
+    const composable = useGitHubImport()
+
+    try {
+      const resultPromise = composable.importGithub('https://github.com/owner/spx-tracking')
+      await vi.advanceTimersByTimeAsync(65_000)
+      const result = await resultPromise
+
+      expect(getProjectMock).toHaveBeenCalledTimes(65)
+      expect(fetchFullGraphMock).toHaveBeenCalledWith('gh-slow')
+      expect(result).toEqual(analyzedProject)
+      expect(composable.status.value).toBe('success')
+      expect(composable.errorMessage.value).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('maps safe API errors to user-visible error state', async () => {
     importGithubMock.mockRejectedValueOnce(new ApiError(400, 'Bad Request', 'Repository is private.'))
     const composable = useGitHubImport()

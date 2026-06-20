@@ -6,8 +6,10 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
 
+import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,22 +33,33 @@ public class GraphUpdateController {
     private static final String UPDATES_TOPIC_TEMPLATE = "/topic/projects/%s/updates";
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final GraphPayloadGuard payloadGuard;
+    private final GraphPayloadProperties payloadProperties;
 
     /**
      * Broadcast a full-graph replacement to {@code /topic/projects/{projectId}/updates}.
      * No-op (with a warning) when {@code projectId} is blank.
      *
+     * <p>The payload is capped here at the browser-facing WebSocket boundary using the same
+     * {@link GraphPayloadGuard} + limits as the HTTP API, so a {@code FULL_UPDATE} can never push
+     * an unbounded graph to subscribed browsers (which would re-introduce the transfer/parse
+     * freeze the HTTP cap prevents). Internal Java consumers are unaffected — they read the full
+     * graph directly via {@code GraphService}/{@code GraphRepository}, never through this method.
+     *
      * @param projectId the project whose graph changed
-     * @param graph     the complete current graph snapshot
+     * @param graph     the complete current graph snapshot (capped before broadcast)
      */
     public void broadcastFullUpdate(String projectId, GraphDataResponse graph) {
         if (!StringUtils.hasText(projectId)) {
             log.warn("Skipping full graph update broadcast: blank projectId");
             return;
         }
-        GraphUpdateEvent event = GraphUpdateEvent.fullUpdate(projectId, graph);
+        GraphDataResponse capped = payloadGuard.cap(graph,
+                payloadProperties.getNodeLimit(), payloadProperties.getEdgeLimit());
+        GraphUpdateEvent event = GraphUpdateEvent.fullUpdate(projectId, capped);
         messagingTemplate.convertAndSend(updatesTopic(projectId), event);
-        log.debug("Full graph update broadcast: project={}", projectId);
+        log.debug("Full graph update broadcast: project={} truncated={}",
+                projectId, capped.getMeta() != null && capped.getMeta().isTruncated());
     }
 
     /**
