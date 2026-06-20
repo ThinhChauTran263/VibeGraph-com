@@ -118,6 +118,7 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
 
   // --- node boxes (id -> center+size) for edge endpoints --------------------------------------
   const boxes = new Map<string, Box>()
+  const ucMeta = new Map<string, { col: number; row: number }>()
   const ucParts: string[] = []
   for (let k = 0; k < count; k++) {
     const uc = ordered[k]!
@@ -127,6 +128,7 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
     const cx = colX[c]! + w / 2
     const cy = by0 + BOUNDARY_TITLE_H + BOUNDARY_PAD + UC_H / 2 + r * (UC_H + UC_GAP_Y)
     boxes.set(uc.id, { cx, cy, w, h: UC_H, ellipse: true })
+    ucMeta.set(uc.id, { col: c, row: r })
     ucParts.push(useCaseSvg(cx, cy, w, uc.name))
   }
 
@@ -157,8 +159,10 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
     }
     for (const { a, y } of desired) {
       const top = y - ACTOR_BODY_MID
-      boxes.set(a.id, { cx: x, cy: y, w: ACTOR_W, h: ACTOR_H, ellipse: false })
-      actorParts.push(actorSvg(x, top, a.name))
+      const external = isExternalSystem(a.name)
+      const w = external ? SYS_ACTOR_W : ACTOR_W
+      boxes.set(a.id, { cx: x, cy: y, w, h: ACTOR_H, ellipse: false })
+      actorParts.push(actorSvg(x, top, a.name, external))
     }
   }
   placeColumn(left, PAD + ACTOR_W / 2)
@@ -166,8 +170,57 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   placeColumn(right, rightX)
 
   // --- edges (painted before nodes so nodes cover the line ends) ------------------------------
+  // Actor->use-case associations are routed ORTHOGONALLY through clear lanes (a vertical corridor
+  // just inside the boundary edge, and the gap between columns / above a row) so a line never runs
+  // straight through another ellipse. A straight diagonal that grazes an in-between ellipse reads
+  // as an illegal use-case<->use-case association; orthogonal routing removes that ambiguity.
+  // include/extend (uc->uc) and generalization (actor->actor) stay straight — they are short and
+  // never cross a node.
+  const LANE = 18
+  const leftCorridorX = bx0 + 16
+  const rightCorridorX = boundaryRight - 16
+  const midGapX = cols > 1 ? colX[1]! - UC_COL_GAP / 2 : 0
+  const rowGapY = (row: number) =>
+    by0 + BOUNDARY_TITLE_H + BOUNDARY_PAD + row * (UC_H + UC_GAP_Y) - UC_GAP_Y / 2
+
+  const associationPath = (actor: Box, target: Box, tcol: number, trow: number): string => {
+    const fromLeft = actor.cx < bx0
+    const pts: Array<[number, number]> = []
+    if (fromLeft) {
+      const corridor = leftCorridorX
+      pts.push([actor.cx + LANE, actor.cy], [corridor, actor.cy])
+      if (tcol === 0) {
+        pts.push([corridor, target.cy], [target.cx - target.w / 2, target.cy])
+      } else {
+        const gy = rowGapY(trow)
+        pts.push([corridor, gy], [midGapX, gy], [midGapX, target.cy], [target.cx - target.w / 2, target.cy])
+      }
+    } else {
+      const corridor = rightCorridorX
+      pts.push([actor.cx - LANE, actor.cy], [corridor, actor.cy])
+      if (tcol === cols - 1) {
+        pts.push([corridor, target.cy], [target.cx + target.w / 2, target.cy])
+      } else {
+        const gy = rowGapY(trow)
+        pts.push([corridor, gy], [midGapX, gy], [midGapX, target.cy], [target.cx + target.w / 2, target.cy])
+      }
+    }
+    const d = pts.map(([x, y]) => `${round(x)},${round(y)}`).join(' ')
+    return `<polyline points="${d}" fill="none" stroke="black" stroke-width="1.3"/>`
+  }
+
   const edgeParts: string[] = []
   for (const r of relations) {
+    if (r.type === REL_ASSOCIATION) {
+      const from = boxes.get(r.from)
+      const to = boxes.get(r.to)
+      const meta = ucMeta.get(r.to)
+      // Orthogonal routing only when an actor (rect) connects to a use case (ellipse) we placed.
+      if (from && to && meta && !from.ellipse && to.ellipse) {
+        edgeParts.push(associationPath(from, to, meta.col, meta.row))
+        continue
+      }
+    }
     const part = edgeSvg(r, boxes)
     if (part) edgeParts.push(part)
   }
@@ -223,6 +276,8 @@ const UC_MAX_CHARS = 28
 const UC_LINE_H = 16
 const ACTOR_MAX_CHARS = 18
 const ACTOR_LINE_H = 15
+const SYS_ACTOR_W = 120
+const SYS_ACTOR_H = 64
 
 const REL_ASSOCIATION = 'association'
 const REL_INCLUDE = 'include'
@@ -255,7 +310,8 @@ function ellipseWidth(label: string): number {
   return Math.max(UC_MIN_W, Math.ceil(label.length * CHAR_W) + UC_PAD_X * 2)
 }
 
-function actorSvg(x: number, yTop: number, name: string): string {
+function actorSvg(x: number, yTop: number, name: string, external = false): string {
+  if (external) return systemActorSvg(x, yTop, name)
   const headR = 11
   const cyHead = yTop + headR
   const bodyTop = cyHead + headR
@@ -282,6 +338,41 @@ function actorSvg(x: number, yTop: number, name: string): string {
     `<line x1="${x}" y1="${bodyBot}" x2="${x - 13}" y2="${legY}" ${stroke}/>` +
     `<line x1="${x}" y1="${bodyBot}" x2="${x + 13}" y2="${legY}" ${stroke}/>` +
     labelSvg +
+    `</g>`
+  )
+}
+
+/**
+ * External-system actor drawn as a UML {@code «system»} box instead of a stick figure. OMG UML 2.5
+ * allows any actor to use the stick figure, but non-human participants (partner APIs, carrier
+ * systems) are conventionally shown as a classifier rectangle with a {@code «system»} stereotype so
+ * a reader can tell machines from people at a glance. The box is centered on the same anchor the
+ * stick figure uses (its vertical center sits at {@code yTop + ACTOR_BODY_MID}).
+ */
+function systemActorSvg(x: number, yTop: number, name: string): string {
+  const lines = wrapLabel(name, ACTOR_MAX_CHARS, 2)
+  const boxW = SYS_ACTOR_W
+  const boxH = SYS_ACTOR_H
+  const cy = yTop + ACTOR_BODY_MID
+  const bx = x - boxW / 2
+  const by = cy - boxH / 2
+  const stroke = `stroke="black" stroke-width="1.5"`
+  const stereoY = by + 16
+  // Stereotype line, then the (possibly two-line) name centered below it.
+  const nameStartY = stereoY + 18 - (lines.length - 1) * (ACTOR_LINE_H / 2)
+  const nameSvg = lines
+    .map(
+      (ln, i) =>
+        `<text x="${x}" y="${nameStartY + i * ACTOR_LINE_H}" text-anchor="middle" font-size="13" ` +
+        `fill="black">${esc(ln)}</text>`,
+    )
+    .join('')
+  return (
+    `<g><title>${esc(name)}</title>` +
+    `<rect x="${round(bx)}" y="${round(by)}" width="${boxW}" height="${boxH}" fill="white" ${stroke}/>` +
+    `<text x="${x}" y="${round(stereoY)}" text-anchor="middle" font-size="11" font-style="italic" ` +
+    `fill="#333">«system»</text>` +
+    nameSvg +
     `</g>`
   )
 }

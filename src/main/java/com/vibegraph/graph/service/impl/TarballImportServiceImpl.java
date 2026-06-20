@@ -22,6 +22,7 @@ import com.vibegraph.graph.importer.github.GitHubPreFlightService;
 import com.vibegraph.graph.importer.github.GitHubRepositoryRef;
 import com.vibegraph.graph.importer.github.GitHubTarballClient;
 import com.vibegraph.graph.importer.github.GitHubUrlParser;
+import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.service.TarballImportService;
@@ -118,7 +119,12 @@ public class TarballImportServiceImpl implements TarballImportService {
 
     private void analyzeInBackground(ImportContext ctx) {
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.repository(), ctx.rootPath());
+            AnalysisProgressListener listener = (percent, phase) -> {
+                projectService.updateProgress(ctx.projectId(), percent);
+                graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
+            };
+            AnalyzeService.AnalysisResult result =
+                    analyzeService.analyzeProject(ctx.projectId(), ctx.repository(), ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100,

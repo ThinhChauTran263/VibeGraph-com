@@ -9,9 +9,13 @@ const emit = defineEmits<{
 }>()
 
 const repoUrl = ref('')
-const { status, errorMessage, importedProject, isImporting, importGithub, reset } = useGitHubImport()
+const { status, errorMessage, importedProject, progress, isImporting, importGithub, reset } = useGitHubImport()
 
 const canSubmit = computed(() => repoUrl.value.trim().length > 0 && !isImporting.value)
+const progressPct = computed(() => Math.round(progress.value))
+const progressLabel = computed(() =>
+  progressPct.value >= 98 ? 'Finalizing graph…' : `Analyzing repository… ${progressPct.value}%`,
+)
 
 async function onSubmit(): Promise<void> {
   if (!canSubmit.value) return
@@ -64,6 +68,24 @@ function clearForm(): void {
         <button type="button" class="github-import__btn github-import__btn--ghost" :disabled="isImporting" @click="clearForm">
           Reset
         </button>
+      </div>
+
+      <div
+        v-if="isImporting"
+        class="github-import__progress"
+        role="progressbar"
+        :aria-valuenow="progressPct"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="progressLabel"
+      >
+        <div class="github-import__progress-head">
+          <span class="github-import__progress-label">{{ progressLabel }}</span>
+          <span class="github-import__progress-value">{{ progressPct }}%</span>
+        </div>
+        <div class="github-import__progress-track">
+          <div class="github-import__progress-fill" :style="{ width: `${progressPct}%` }"></div>
+        </div>
       </div>
 
       <p v-if="status === 'error' && errorMessage" class="github-import__error" role="alert">
@@ -200,6 +222,48 @@ function clearForm(): void {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.github-import__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.github-import__progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: #cbd5e1;
+}
+
+.github-import__progress-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.github-import__progress-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  overflow: hidden;
+}
+
+.github-import__progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .github-import__progress-fill {
+    transition: none;
+  }
 }
 
 .github-import__error {

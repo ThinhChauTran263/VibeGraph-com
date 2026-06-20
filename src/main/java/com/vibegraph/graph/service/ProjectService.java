@@ -39,6 +39,13 @@ public interface ProjectService {
     /** Transition a project to ANALYZING (analysis started). No-op if the project is unknown. */
     void markAnalyzing(String id);
 
+    /**
+     * Update only the in-flight analysis progress (0..100) of an ANALYZING project,
+     * without changing its status or stats. No-op if the project is unknown. Lets the
+     * polling fallback observe intermediate progress, not just 0 -> 100.
+     */
+    void updateProgress(String id, int progress);
+
     /** Transition a project to ANALYZED with final stats + lastAnalyzedAt. No-op if unknown. */
     void markAnalyzed(String id, int totalFiles, int totalNodes, int totalEdges);
 

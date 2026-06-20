@@ -22,6 +22,7 @@ import com.vibegraph.common.util.FileUtils;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
+import com.vibegraph.parser.service.ParseProgressListener;
 import com.vibegraph.parser.service.ParserService;
 import com.vibegraph.parser.visitor.AnnotationVisitor;
 import com.vibegraph.parser.visitor.ClassVisitor;
@@ -215,18 +216,22 @@ public class ParserServiceImpl implements ParserService {
     }
 
     @Override
-    public List<ParseResult> parseProject(Path projectRoot) {
+    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener) {
         List<ParseResult> results = new ArrayList<>();
+        ParseProgressListener listener = progressListener != null ? progressListener : ParseProgressListener.NOOP;
 
         try {
             List<Path> javaFiles = FileUtils.scanJavaFiles(projectRoot);
-            log.info("Found {} .java files in project: {}", javaFiles.size(), projectRoot);
+            int totalFiles = javaFiles.size();
+            log.info("Found {} .java files in project: {}", totalFiles, projectRoot);
+            listener.onFileParsed(0, totalFiles);
 
             // Build a single project-wide parser whose type solver indexes all source roots.
             // This lets MethodCallExpr.resolve() resolve cross-package, cross-class calls
             // (CALLS edges) instead of only same-directory ones.
             JavaParser parser = createProjectParser(projectRoot, javaFiles);
 
+            int parsed = 0;
             for (Path javaFile : javaFiles) {
                 try {
                     ParseResult result = parseFileInternal(javaFile, parser);
@@ -238,6 +243,8 @@ public class ParserServiceImpl implements ParserService {
                             .warnings(List.of("Unexpected error: " + e.getMessage()))
                             .build());
                 }
+                parsed++;
+                listener.onFileParsed(parsed, totalFiles);
             }
         } catch (IOException e) {
             log.error("Failed to scan project directory: {}", projectRoot, e);
