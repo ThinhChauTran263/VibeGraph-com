@@ -71,6 +71,13 @@ const submitLabel = computed(() => {
   return 'Upload archive'
 })
 
+// Progress-bar caption: during upload the byte progress isn't known, so show a
+// determinate "Analyzing... N%" once the server starts analyzing, and a simple
+// "Uploading..." label while the file is still in flight.
+const progressLabel = computed(() =>
+  isAnalyzing.value ? `Analyzing... ${progress.value}%` : 'Uploading...',
+)
+
 function onFileChange(event: Event): void {
   const target = event.target as HTMLInputElement
   const file = target.files && target.files.length > 0 ? target.files[0] : null
@@ -169,7 +176,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-if="isAnalyzing"
+        v-if="isBusy"
         class="archive-import__progress"
         role="status"
         aria-live="polite"
@@ -184,7 +191,7 @@ onBeforeUnmount(() => {
             :style="{ width: progress + '%' }"
           />
         </div>
-        <span class="archive-import__progress-label">Analyzing... {{ progress }}%</span>
+        <span class="archive-import__progress-label">{{ progressLabel }}</span>
       </div>
 
       <div class="archive-import__actions">

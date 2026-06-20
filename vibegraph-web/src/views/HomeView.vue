@@ -10,6 +10,7 @@
 
 import { useRouter } from 'vue-router'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
+import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 import { useProjectStore } from '@/stores/project'
 import type { Project } from '@/lib/api'
@@ -32,7 +33,8 @@ function onImported(project: Project): void {
     </header>
 
     <section class="home__import-grid" aria-label="Project import options">
-      <AddProjectArchive @imported="onImported" />
+      <AddProjectLocal @imported="onImported" />
+      <AddProjectArchive :async="true" @imported="onImported" />
       <GitHubImportForm @imported="onImported" />
     </section>
   </main>
