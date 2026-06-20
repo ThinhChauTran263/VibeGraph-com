@@ -164,7 +164,8 @@ describe('renderUmlUseCaseSvg', () => {
       useCases: [uc('U1', 'Do thing')],
       relations: [rel('A1', 'U1', 'association'), rel('A1', 'GHOST', 'association')],
     })
-    // Only the valid association line is drawn (no throw, no phantom edge).
-    expect((svg.match(/<line /g) ?? []).length).toBeGreaterThanOrEqual(1)
+    // Exactly one association edge is drawn (actor->use case is an orthogonal polyline); the
+    // dangling A1->GHOST relation is skipped without throwing or drawing a phantom edge.
+    expect((svg.match(/<polyline /g) ?? []).length).toBe(1)
   })
 })
