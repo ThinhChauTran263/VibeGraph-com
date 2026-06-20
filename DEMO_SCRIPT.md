@@ -197,7 +197,7 @@ Talking points:
 
 ## Known limitations to mention during demo
 
-- Realtime DELETE handling is verified, but CREATE/MODIFY incremental re-parse is still pending.
+- Realtime updates handle CREATE/MODIFY/DELETE via incremental re-parse of the changed file. True realtime applies to local-folder imports (edited in place); GitHub/archive imports watch a server-side copy (snapshot).
 - Live Docker Compose and Testcontainers checks require Docker availability.
 - Production auth and rate-limit hardening should be reviewed before public deployment.
 - MCP output depends on completed analysis; use the correct `projectId` and rerun import/analysis if the graph is empty.

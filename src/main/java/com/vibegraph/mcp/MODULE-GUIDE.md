@@ -109,8 +109,9 @@ Full backend unit suite:
 
 ## Known Limitations
 
-- CREATE/MODIFY realtime incremental re-parse is pending; DELETE `.java` graph
-  pruning is wired.
+- Realtime incremental re-parse is wired for CREATE/MODIFY/DELETE `.java`
+  (FileChangeBroadcaster broadcasts an `INCREMENTAL` delta); true realtime
+  applies to local-folder imports.
 - Production auth/rate limiting are deployment concerns.
 - Test and change-plan tools use graph evidence plus heuristics; agents should
   verify before editing.

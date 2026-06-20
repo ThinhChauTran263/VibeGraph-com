@@ -16,8 +16,8 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 
 **Đang phát triển (Sprint 2–3):**
 - Project archive upload (`.zip`/`.tar`/`.tar.gz`) — flow chính mới thay cho việc nhập local path thủ công (`POST /api/projects/import-archive`)
-- GitHub public-repo import (tarball stream — backend path in place, UI pending)
-- Realtime import/status updates and DELETE-file graph refresh via server-side File Watcher + WebSocket/STOMP; CREATE/MODIFY incremental re-parse is pending
+- GitHub public-repo import (tarball stream — backend + UI form)
+- Local-folder import with true realtime: edit a `.java` file in your IDE and the graph updates in place (add/modify/delete) via server-side File Watcher + WebSocket/STOMP incremental re-parse. (GitHub/archive imports watch a server-side copy = snapshot.)
 - UML diagrams: Use Case & Class (Mermaid)
 - MCP Server tools for AI tools (Cursor, Kiro, Claude Code)
 
