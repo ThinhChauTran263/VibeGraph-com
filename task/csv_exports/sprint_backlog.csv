@@ -1,4 +1,4 @@
-﻿Import Archive (Backend),,,,,,,,,
+Import Archive (Backend),,,,,,,,,
 T01,Create ImportArchive request/response DTO,Tạo DTO request/response cho import archive,RB01,PB01,1,Done,3,Khoa,✅ `N/A (multipart direct)` + Response
 T02,Design ArchiveImportService interface,Thiết kế interface ArchiveImportService,RB01,PB01,1,Done,2,Khoa,✅ `src/main/java/com/vibegraph/graph/service/ArchiveImportService.java`
 T03,Implement ArchiveTypeDetector,Nhận diện loại archive zip/tar/tar.gz,RB02,PB01,1,Done,4,Vinh,✅ `src/main/java/com/vibegraph/graph/importer/ArchiveTypeDetector.java`
@@ -20,14 +20,14 @@ T16,Complete ImportVisitor,Sinh IMPORTS edge từ import statement,RB07,PB03,1,D
 T17,Complete SpringAnnotationVisitor,Phát hiện annotation và layer Spring,RB08,PB03,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/parser/visitor/SpringAnnotationVisitor.java` (180 LOC)
 T18,Emit structural edges,Sinh HAS_METHOD/HAS_FIELD/EXTENDS/IMPLEMENTS,RB07,PB03,1,Done,5,Danh,✅ `src/main/java/com/vibegraph/parser/visitor/ClassVisitor.java` (edges in same file)
 T19,Wire JavaSymbolSolver for CALLS,Resolve CALLS edge bằng Symbol Solver,RB09,PB03,2,Done,6,Danh,✅ `src/main/java/com/vibegraph/parser/service/impl/ParserServiceImpl.java` (380 LOC)
-T20,Unit test visitors,Bật và pass test các visitor,RB06,PB03,1,New,4,Thịnh,`src/test/java/com/vibegraph/parser/visitor/*VisitorTest.java`
+T20,Unit test visitors,Bật và pass test các visitor,RB06,PB03,1,Done,4,Thịnh,"✅ AnnotationVisitorTest, ClassVisitorTest, FieldVisitorTest, ImportVisitorTest, MethodVisitorTest, SpringAnnotationVisitorTest passed via command: .\mvnw.cmd test -Dtest=..."
 Neo4j Storage (Backend),,,,,,,,,
 T21,Configure Neo4j Java Driver raw,Cấu hình Neo4jConfig dùng driver thuần,RB10,PB04,1,Done,4,Danh,✅ Spring Boot auto-config via `src/main/resources/application.yaml` + Neo4j driver dependency
 T22,Write Cypher schema migration,"Viết V1__init_schema.cypher (constraint, index)",RB11,PB04,1,Done,4,Danh,✅ `src/main/java/com/vibegraph/common/config/Neo4jMigrationRunner.java` (runs migrations on startup)
 T23,Implement upsertProject/Nodes/Edges,Upsert bằng UNWIND + MERGE tham số hóa,RB10,PB04,1,Done,6,Khoa,✅ `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java` (450 LOC)
 T24,Implement getFullGraph,Truy vấn full graph cho UI,RB12,PB04,1,Done,5,Khoa,✅ `src/main/java/com/vibegraph/graph/repository/impl/neo4j/Neo4jGraphRepository.java`
 T25,Implement deleteFile (incremental),Xóa/ghi đè node-edge theo file thay đổi,RB10,PB04,2,Done,4,Thịnh,"✅ `Neo4jGraphRepository.deleteFile(projectId, filePath)` deletes file-scoped nodes/edges and prunes orphan `External` stubs while preserving shared stubs; unit RED/GREEN added; Neo4j IT coverage added but skips without Docker"
-T26,ArchUnit test storage boundary,Đảm bảo service không import Neo4j API,RB10,PB04,1,New,3,Thịnh,`src/test/java/com/vibegraph/architecture/StorageAbstractionTest.java`
+T26,ArchUnit test storage boundary,Đảm bảo service không import Neo4j API,RB10,PB04,1,Done,3,Thịnh,✅ StorageAbstractionTest passed via command: .\mvnw.cmd test -Dtest=StorageAbstractionTest
 REST API (Backend),,,,,,,,,
 T27,Implement ProjectController,CRUD project + ApiResponse,RB12,PB05,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/controller/ProjectController.java` (80 LOC)
 T28,Implement AnalyzeService/Controller,Trigger parse và lưu graph,RB06,PB05,1,Done,4,Khoa,✅ `src/main/java/com/vibegraph/graph/service/impl/AnalyzeServiceImpl.java` (60 LOC)
@@ -36,7 +36,7 @@ T30,Implement GlobalExceptionHandler,Map lỗi sang ApiResponse có kiểu,RB12,
 T31,Implement Node Detail API,GET neighbors/{nodeId} có giới hạn hop,RB18,PB07,2,Done,5,Vinh,"✅ `GraphController` + `GraphServiceImpl` + `GraphRepository` + `Neo4jGraphRepository`; path/query endpoints, hop whitelist 0/1/2/3/5, 50 cap/direction, project-isolated traversal, 404/400 handling; `GraphControllerTest`, `GraphServiceTest`, `Neo4jGraphRepositoryIT` pass"
 T32,Implement ImpactRepository.getImpact,Cypher duyệt blast radius có LIMIT,RB19,PB08,2,Done,6,Khoa,"✅ `Neo4jGraphRepository#getImpact`; reverse dependency traversal over CALLS/IMPORTS/EXTENDS/IMPLEMENTS/INJECTS only, depth whitelist 1/2/3/5, 50 sample cap/depth, true direct/total counts, project isolation"
 T33,Implement Impact Analysis API,GET /impact/{nodeId},RB19,PB08,2,Done,4,Khoa,"✅ `GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...`; `ImpactAnalysisResponse`, service validation, 404 `NODE_NOT_FOUND`, 400 invalid params; controller/service/Neo4j tests pass"
-T34,Integration test REST API,Test project/analyze/graph end-to-end,RB12,PB05,1,New,4,Thịnh,`Empty placeholder: src/test/java/com/vibegraph/graph/integration/ProjectApiIT.java` + `Empty placeholder: src/test/java/com/vibegraph/graph/integration/GraphApiIT.java`
+T34,Integration test REST API,Test project/analyze/graph end-to-end,RB12,PB05,1,Done,4,Thịnh,"✅ ProjectApiIT and GraphApiIT là web-layer integration-style tests dùng MockMvcBuilders.standaloneSetup (service mock, không Neo4j thật, không phải end-to-end DB); chạy ở phase integration-test qua Failsafe trong .\mvnw.cmd verify"
 WebSocket Realtime (Backend),,,,,,,,,
 T35,Configure STOMP + AsyncConfig,Cấu hình /ws/graph-updates và executor async,RB20,PB09,2,Done,4,Vinh,✅ `src/main/java/com/vibegraph/common/config/WebSocketConfig.java` (60 LOC) + `src/main/java/com/vibegraph/common/config/AsyncConfig.java` (40 LOC)
 T36,Implement GraphUpdateController broadcast,Broadcast graph update topic (FULL_UPDATE/INCREMENTAL),RB20,PB09,2,Done,5,Vinh,"✅ `GraphUpdateController.broadcastFullUpdate(projectId, graph)` + `broadcastIncremental(projectId, added, modified, removed)` publish to `/topic/projects/{id}/updates`; DTO records `GraphUpdateEvent`/`GraphChangeSet`/`GraphRemoval` (NON_NULL, FE-T60 compatible); blank-projectId no-op; payload from caller (no DB query). 7 controller tests pass; FileWatcher (T37) done; live file-change E2E (T38/T70) done"
