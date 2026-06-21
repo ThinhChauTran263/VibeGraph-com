@@ -19,9 +19,11 @@ public class AsyncConfig {
 
     /**
      * Bounded pool for CPU-bound analysis/parsing using platform threads (not virtual, to
-     * avoid CPU oversubscription). When core threads, the queue, and maxPoolSize are all
-     * saturated, {@link ThreadPoolExecutor.CallerRunsPolicy} applies backpressure by running
-     * the task on the submitting thread - tasks are never dropped.
+     * avoid CPU oversubscription). When core threads, the bounded queue, and maxPoolSize are all
+     * saturated, {@link ThreadPoolExecutor.AbortPolicy} rejects the task with a
+     * {@code RejectedExecutionException} rather than running it on the submitting (Tomcat) thread.
+     * The import services catch that, mark the project FAILED, and return 503 — this preserves the
+     * non-blocking 202 contract instead of tying up the servlet thread for a full analysis.
      */
     @Bean("analysisExecutor")
     public ThreadPoolTaskExecutor analysisExecutor(AnalysisExecutorProperties props) {
@@ -30,7 +32,7 @@ public class AsyncConfig {
         executor.setMaxPoolSize(props.getMaxPoolSize());
         executor.setQueueCapacity(props.getQueueCapacity());
         executor.setThreadNamePrefix(props.getThreadNamePrefix());
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.initialize();
         return executor;
     }

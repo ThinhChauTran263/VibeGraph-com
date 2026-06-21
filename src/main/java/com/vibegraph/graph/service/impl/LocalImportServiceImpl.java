@@ -2,21 +2,21 @@ package com.vibegraph.graph.service.impl;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.LocalImportRequest;
@@ -79,8 +79,16 @@ public class LocalImportServiceImpl implements LocalImportService {
         graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
         // Analyze off the request thread so the client gets an immediate ANALYZING response and a
         // streamed progress bar (mirrors the archive/GitHub async flow).
-        analysisExecutor.execute(() ->
-                analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+        try {
+            analysisExecutor.execute(() ->
+                    analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+        } catch (RejectedExecutionException ex) {
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            String reason = "Server is busy analyzing other projects. Please retry shortly.";
+            projectService.markFailed(created.getId(), reason);
+            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
+            throw new ServiceBusyException(reason);
+        }
         return projectService.getProject(created.getId());
     }
 
@@ -106,21 +114,21 @@ public class LocalImportServiceImpl implements LocalImportService {
 
     @Override
     public DirectoryListing browse(String path) {
-        Path base = configuredBase(); // null when no allowed-root is set → unconfined browsing
+        Path base = configuredBase();
+        // Fail closed: without a configured allowed-root, the browser is disabled rather than
+        // exposing the entire host filesystem (drive roots and every directory beneath them).
+        if (base == null) {
+            throw new IllegalStateException(
+                    "Directory browsing is disabled: no allowed root is configured. "
+                            + "Set vibegraph.projects.allowed-root (VIBEGRAPH_PROJECTS_ALLOWED_ROOT) to enable it.");
+        }
         String trimmed = path == null ? "" : path.trim();
 
-        // Top level with no boundary configured: offer the filesystem roots (drives) to start from.
-        if (base == null && trimmed.isEmpty()) {
-            return rootsListing();
-        }
-
-        // When trimmed is empty here, base is guaranteed non-null: the unconfined-and-empty
-        // case already returned the roots listing above.
-        Path target = trimmed.isEmpty() ? Objects.requireNonNull(base) : realDirectory(trimmed);
+        Path target = trimmed.isEmpty() ? base : realDirectory(trimmed);
         if (!Files.isDirectory(target)) {
             throw new IllegalArgumentException("path must be an existing directory");
         }
-        if (base != null && !target.startsWith(base)) {
+        if (!target.startsWith(base)) {
             throw new IllegalArgumentException("path is outside the allowed base directory");
         }
 
@@ -159,17 +167,6 @@ public class LocalImportServiceImpl implements LocalImportService {
         }
     }
 
-    /** Listing of filesystem roots (e.g. {@code C:\}, {@code D:\}) shown when browsing is unconfined. */
-    private DirectoryListing rootsListing() {
-        List<DirectoryListing.Entry> entries = new ArrayList<>();
-        for (Path root : FileSystems.getDefault().getRootDirectories()) {
-            if (Files.isDirectory(root)) {
-                entries.add(new DirectoryListing.Entry(root.toString(), root.toString(), false));
-            }
-        }
-        // Empty path is the "roots" sentinel; no parent (this is the top).
-        return new DirectoryListing("", null, entries);
-    }
 
     /**
      * Parent path for the Up control:

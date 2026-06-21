@@ -45,6 +45,10 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  # Optional shared secret. When set, the X-API-Key header is required on the filesystem-touching
+  # endpoints (import-local/import-archive/import-github, browse). Blank disables the gate (dev/test).
+  api-key: ${VIBEGRAPH_API_KEY:}
+
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
@@ -92,6 +96,12 @@ vibegraph:
   parser:
     use-cache: true
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+
+  # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
+  # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.
+  analyze:
+    max-nodes: ${VIBEGRAPH_ANALYZE_MAX_NODES:200000}
+    max-edges: ${VIBEGRAPH_ANALYZE_MAX_EDGES:600000}
     # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
     # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
     # When enabled, the frontend still default-hides these deep types so the

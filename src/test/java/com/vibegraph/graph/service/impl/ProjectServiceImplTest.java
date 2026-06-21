@@ -6,6 +6,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,6 +28,13 @@ class ProjectServiceImplTest {
     Path tempDir;
 
     private final ProjectServiceImpl service = new ProjectServiceImpl();
+
+    @BeforeEach
+    void setUp() {
+        // Local import now fails closed without an allowed-root, so confine it to the temp dir;
+        // every project these tests create lives under tempDir.
+        ReflectionTestUtils.setField(service, "allowedRoot", tempDir.toString());
+    }
 
     @Test
     @DisplayName("createProject stores the canonical existing directory path")

@@ -104,6 +104,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(ServiceBusyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleServiceBusy(ServiceBusyException ex) {
+        // The analysis executor is saturated; the project was marked FAILED before this was thrown.
+        // 503 tells the client to retry later instead of blocking the request thread on analysis.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("SERVICE_BUSY")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(ArchiveImportException.class)
     public ResponseEntity<ApiResponse<Void>> handleArchiveImport(ArchiveImportException ex) {
         // User-correctable archive-upload failure (unsupported type, oversize, unsafe entry,

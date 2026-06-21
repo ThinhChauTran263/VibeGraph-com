@@ -133,26 +133,20 @@ class LocalImportServiceImplTest {
     }
 
     @Test
-    @DisplayName("unconfined browse (no allowed-root) lists filesystem roots at the top")
-    void browseUnconfinedListsRoots() {
-        // allowedRoot left blank → unconfined
-        DirectoryListing roots = service.browse(null);
-
-        assertThat(roots.path()).isEmpty();
-        assertThat(roots.parent()).isNull();
-        assertThat(roots.entries()).isNotEmpty();
+    @DisplayName("browse is disabled (fails closed) when no allowed-root is configured")
+    void browseFailsClosedWithoutAllowedRoot() {
+        // allowedRoot left blank → browsing must be refused, not expose the host filesystem.
+        assertThatThrownBy(() -> service.browse(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no allowed root");
     }
 
     @Test
-    @DisplayName("unconfined browse allows any directory and exposes its real parent")
-    void browseUnconfinedAllowsAnyDirectory(@TempDir Path anywhere) throws Exception {
-        Files.createDirectories(anywhere.resolve("child"));
-
-        DirectoryListing listing = service.browse(anywhere.toString());
-
-        assertThat(listing.path()).isEqualTo(anywhere.toRealPath().toString());
-        assertThat(listing.parent()).isEqualTo(anywhere.toRealPath().getParent().toString());
-        assertThat(listing.entries()).extracting(DirectoryListing.Entry::name).contains("child");
+    @DisplayName("browse of any directory is refused when no allowed-root is configured")
+    void browseFailsClosedForAnyDirectory(@TempDir Path anywhere) {
+        assertThatThrownBy(() -> service.browse(anywhere.toString()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no allowed root");
     }
 
     private static DirectoryListing.Entry entry(DirectoryListing listing, String name) {

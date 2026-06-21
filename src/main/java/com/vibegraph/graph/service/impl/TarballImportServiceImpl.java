@@ -6,11 +6,13 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.vibegraph.common.exception.GithubImportException;
+import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -81,6 +83,13 @@ public class TarballImportServiceImpl implements TarballImportService {
                     "GitHub repository imported; analysis started");
             analysisExecutor.execute(() -> analyzeInBackground(ctx));
             return projectService.getProject(ctx.projectId());
+        } catch (RejectedExecutionException ex) {
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            String reason = "Server is busy analyzing other projects. Please retry shortly.";
+            projectService.markFailed(ctx.projectId(), reason);
+            graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
+            cleanup(ctx.workspace(), ctx.projectId());
+            throw new ServiceBusyException(reason);
         } catch (RuntimeException e) {
             cleanup(ctx.workspace(), ctx.projectId());
             throw e;

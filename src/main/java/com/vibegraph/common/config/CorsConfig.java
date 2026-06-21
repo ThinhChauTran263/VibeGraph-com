@@ -20,7 +20,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * time. Failing fast here surfaces a misconfiguration immediately.
  */
 @Configuration
-@EnableConfigurationProperties(CorsProperties.class)
+@EnableConfigurationProperties({CorsProperties.class, ApiKeyProperties.class})
 public class CorsConfig implements WebMvcConfigurer {
 
     private final List<String> allowedOrigins;
