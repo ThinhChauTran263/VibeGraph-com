@@ -8,23 +8,31 @@ Module chứa các thành phần dùng chung cho toàn bộ dự án: configurat
 ```
 common/
 ├── config/
-│   ├── Neo4jMigrationRunner.java — Áp dụng V1__init_schema.cypher lúc startup (raw Driver)
-│   ├── WebSocketConfig.java      — STOMP WebSocket setup (/ws/graph-updates)
-│   ├── CorsConfig.java           — CORS policy (allow Vue dev server localhost:5173)
-│   ├── McpServerConfig.java      — MCP Server bean registration
-│   └── AsyncConfig.java          — Virtual threads executor (Java 21)
+│   ├── Neo4jMigrationRunner.java     — Áp dụng V1__init_schema.cypher lúc startup (raw Driver)
+│   ├── WebSocketConfig.java          — STOMP WebSocket setup (/ws/graph-updates), origins từ CorsProperties
+│   ├── CorsConfig.java               — CORS policy (origins từ CorsProperties), enable ApiKeyProperties
+│   ├── CorsProperties.java           — vibegraph.cors.allowed-origins
+│   ├── McpServerConfig.java          — MCP Server bean registration
+│   ├── AsyncConfig.java              — Bounded analysisExecutor (AbortPolicy) cho import async
+│   ├── AnalysisExecutorProperties.java — core/max pool size, queue capacity của analysisExecutor
+│   ├── ApiKeyProperties.java         — vibegraph.api-key (shared secret; blank = tắt)
+│   └── ApiKeyFilter.java             — Yêu cầu X-API-Key trên endpoint filesystem khi key được set
 ├── dto/
 │   ├── request/
-│   │   └── PaginationRequest.java — page, size, sort params
+│   │   └── PaginationRequest.java    — page, size, sort params
 │   └── response/
-│       ├── ApiResponse.java       — Wrapper {success, data, error, timestamp}
-│       └── ErrorResponse.java     — Error detail {code, message, details}
+│       ├── ApiResponse.java          — Wrapper {success, data, error}
+│       └── ErrorResponse.java        — Error detail {code, message, details}
 ├── exception/
-│   ├── GlobalExceptionHandler.java — @ControllerAdvice, xử lý tất cả exceptions
-│   ├── ProjectNotFoundException.java
-│   ├── ParseException.java
-│   ├── NodeNotFoundException.java
-│   └── GithubImportException.java  — GitHub tarball import errors
+│   ├── GlobalExceptionHandler.java   — @RestControllerAdvice, map exceptions → ApiResponse
+│   ├── ProjectNotFoundException.java     (→ 404)
+│   ├── NodeNotFoundException.java         (→ 404)
+│   ├── ProjectNotAnalyzedException.java   (→ 409)
+│   ├── GithubImportException.java         (→ 422)
+│   ├── ArchiveImportException.java        (→ 400)
+│   ├── FeatureNotImplementedException.java(→ 501)
+│   ├── ServiceBusyException.java          (→ 503, executor bão hòa)
+│   └── ParseException.java
 └── util/
     ├── FileUtils.java            — File I/O helpers (scan directory, filter .java)
     ├── HashUtils.java            — SHA-256 checksum cho incremental cache
@@ -49,8 +57,8 @@ common/
 
 ### DTOs
 - [ ] `PaginationRequest`: fields `page` (default 0), `size` (default 20), `sort` (optional)
-- [ ] `ApiResponse<T>`: generic wrapper `{success: boolean, data: T, error: String, timestamp: Instant}`
-- [ ] `ErrorResponse`: `{code: String, message: String, details: Map<String, Object>}`
+- [x] `ApiResponse<T>`: generic wrapper `{success: boolean, data: T, error: ErrorResponse}`
+- [x] `ErrorResponse`: `{code: String, message: String, details: String}`
 
 ### Persistence (lưu ý kiến trúc)
 - Module này KHÔNG chứa entity Neo4j — không dùng `@Node` / Spring Data Neo4j OGM và không có `BaseNode`.

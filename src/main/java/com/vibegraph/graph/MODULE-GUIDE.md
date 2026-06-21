@@ -9,9 +9,10 @@ Module quản lý knowledge graph trong Neo4j: lưu trữ nodes/edges, cung cấ
 graph/
 ├── controller/
 │   ├── ProjectController.java    — POST /api/projects, GET /api/projects
-│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/neighbors
-│   ├── ImportController.java     — POST /api/projects/import-github (MỚI)
-│   └── ImpactController.java     — GET /api/projects/{id}/impact/{nodeId}
+│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/neighbors, /graph/impact
+│   ├── ImportController.java     — POST /api/projects/import-archive, /import-github
+│   ├── LocalProjectController.java — POST /api/projects/import-local, GET /api/projects/browse
+│   └── ImpactController.java     — (scaffold, chưa có endpoint)
 ├── service/
 │   ├── ProjectService.java       — Interface: project CRUD
 │   ├── GraphService.java         — Interface: graph query operations
@@ -50,8 +51,8 @@ graph/
 
 ## Trạng thái hiện thực (đối soát code thực tế)
 
-- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph); `AnalyzeServiceImpl`; `GraphServiceImpl`.
-- 🚧 Scaffold / in-progress (Sprint 2/3): `getNeighborhood` + `getImpact` (ném `UnsupportedOperationException`); `ImpactController` + `ImpactServiceImpl` và `DiagramController` (`// TODO`); `TarballImportServiceImpl` (ném "not implemented yet"). Các endpoint neighbors / impact / diagrams chưa nối.
+- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph + neighbors + impact); `LocalProjectController` (import-local/browse, fail-closed); `ImportController` (import-archive + import-github); `ArchiveImportServiceImpl`, `TarballImportServiceImpl`, `AnalyzeServiceImpl`, `GraphServiceImpl`.
+- 🚧 Scaffold / in-progress: `getNeighborhood` (ném `UnsupportedOperationException`); dedicated `ImpactController` + `ImpactServiceImpl` (`// TODO`) — impact khả dụng qua `GET /api/projects/{id}/graph/impact` trên `GraphController`, controller riêng chưa nối.
 
 > Các checkbox `[ ]` ở dưới là đặc tả mục tiêu MVP, không phải trạng thái đã xong.
 

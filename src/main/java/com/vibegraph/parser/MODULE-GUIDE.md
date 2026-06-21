@@ -8,9 +8,11 @@ Parser engine sử dụng JavaParser để đọc Java source code, extract AST 
 ```
 parser/
 ├── service/
-│   ├── ParserService.java              — Interface: orchestrate parsing pipeline
+│   ├── ParserService.java              — Interface: orchestrate parsing pipeline (+ ParseProgressListener overload)
+│   ├── ParseProgressListener.java      — Per-file progress callback (filesParsed/total)
 │   ├── SymbolResolverService.java      — Interface: resolve types, method calls
 │   ├── CallGraphBuilderService.java    — Interface: build CALLS edges
+│   ├── CacheService.java               — Parse-result cache (checksum-keyed)
 │   └── impl/
 │       ├── ParserServiceImpl.java      — Main parser orchestrator
 │       ├── SymbolResolverServiceImpl.java — JavaParser Symbol Solver wrapper
@@ -19,10 +21,18 @@ parser/
 │   ├── ClassVisitor.java               — Extract Class/Interface/Enum nodes
 │   ├── MethodVisitor.java              — Extract Method nodes (params, return type)
 │   ├── FieldVisitor.java               — Extract Field nodes (type, visibility)
+│   ├── AnnotationVisitor.java          — Extract annotation metadata
 │   ├── SpringAnnotationVisitor.java    — Detect @Controller, @Service, @Repository, @RequestMapping
 │   └── ImportVisitor.java              — Extract IMPORTS edges
+├── flow/
+│   └── FlowAnalyzer.java               — Infer STEP_IN_FLOW edges from route handlers + CALLS graph
 ├── node/
-│   └── ParseResult.java               — Internal result model (nodes + edges extracted)
+│   ├── NodeData.java                   — Extracted node model
+│   ├── EdgeData.java                   — Extracted edge model
+│   └── ParseResult.java               — Internal result model (nodes + edges + warnings)
+├── util/
+│   └── TypeNames.java                  — Type-name normalization helpers
+├── Signatures.java                     — Method/field signature formatting
 └── dto/
     ├── request/
     │   └── ParseFileRequest.java       — {filePath, projectId}
