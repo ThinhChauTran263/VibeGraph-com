@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import {
   ApiError,
-  fetchFullGraph,
   importApi,
   projectApi,
   type Project,
@@ -72,23 +71,6 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForGraphData(project: Project, onProgress: (value: number) => void): Promise<void> {
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
-    const graph = await fetchFullGraph(project.id)
-    if (graph.nodes.length > 0 || graph.edges.length > 0) {
-      onProgress(100)
-      return
-    }
-
-    // Backend reports ANALYZED but the graph is still being persisted; hold the
-    // bar near completion so it visibly reflects the finalizing phase.
-    onProgress(98)
-    await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
-  }
-
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(98))
-}
-
 async function waitForGitHubAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
@@ -109,7 +91,9 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
     }
 
     if (latestProject.status === 'ANALYZED') {
-      await waitForGraphData(latestProject, onProgress)
+      // ANALYZED is terminal success. Do NOT additionally wait for nodes/edges > 0 — a valid repo
+      // that parses to an empty graph would otherwise loop to a false timeout.
+      onProgress(100)
       return latestProject
     }
 

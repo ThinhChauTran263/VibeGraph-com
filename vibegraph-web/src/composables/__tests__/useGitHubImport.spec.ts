@@ -154,7 +154,6 @@ describe('useGitHubImport', () => {
     })
     importGithubMock.mockResolvedValueOnce(analyzingProject)
     getProjectMock.mockResolvedValueOnce(analyzedProject)
-    fetchFullGraphMock.mockResolvedValueOnce(fakeGraph())
     const { ws } = makeFakeWs({ connectRejects: true })
     const composable = useGitHubImport({ ws })
 
@@ -164,7 +163,8 @@ describe('useGitHubImport', () => {
       const result = await resultPromise
 
       expect(getProjectMock).toHaveBeenCalledWith('gh-3')
-      expect(fetchFullGraphMock).toHaveBeenCalledWith('gh-3')
+      // ANALYZED is terminal success; the import no longer waits on a full-graph fetch.
+      expect(fetchFullGraphMock).not.toHaveBeenCalled()
       expect(result).toEqual(analyzedProject)
       expect(composable.status.value).toBe('success')
       expect(composable.importedProject.value).toEqual(analyzedProject)
@@ -224,7 +224,6 @@ describe('useGitHubImport', () => {
     getProjectMock.mockImplementation(async () => (
       getProjectMock.mock.calls.length >= 65 ? analyzedProject : analyzingProject
     ))
-    fetchFullGraphMock.mockResolvedValueOnce(fakeGraph())
     const { ws } = makeFakeWs({ connectRejects: true })
     const composable = useGitHubImport({ ws })
 
@@ -234,7 +233,8 @@ describe('useGitHubImport', () => {
       const result = await resultPromise
 
       expect(getProjectMock).toHaveBeenCalledTimes(65)
-      expect(fetchFullGraphMock).toHaveBeenCalledWith('gh-slow')
+      // ANALYZED is terminal success; no full-graph fetch is required.
+      expect(fetchFullGraphMock).not.toHaveBeenCalled()
       expect(result).toEqual(analyzedProject)
       expect(composable.status.value).toBe('success')
       expect(composable.errorMessage.value).toBeNull()

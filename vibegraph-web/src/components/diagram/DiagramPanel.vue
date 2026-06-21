@@ -23,6 +23,7 @@ const isFullscreen = ref(false)
 const isPanning = ref(false)
 const mainCanvas = ref<HTMLElement | null>(null)
 const fullscreenCanvas = ref<HTMLElement | null>(null)
+const fullscreenDialog = ref<HTMLElement | null>(null)
 const { status, diagram, errorMessage, isLoading, isStale, loadUmlUseCaseDiagram, loadClassDiagram, reset } =
   useDiagrams()
 let renderSeq = 0
@@ -273,6 +274,9 @@ function downloadSvg(): void {
 
 function openFullscreen(): void {
   isFullscreen.value = true
+  // Move focus into the dialog so it receives the Esc keydown (a bare <div> is not focusable by
+  // default) and keyboard users are not stranded behind the modal.
+  void nextTick(() => fullscreenDialog.value?.focus())
 }
 
 function closeFullscreen(): void {
@@ -496,11 +500,13 @@ onActivated(() => {
     <Teleport to="body">
       <div
         v-if="isFullscreen && hasDiagramContent"
+        ref="fullscreenDialog"
         class="diagram-panel__fullscreen"
         data-test="diagram-fullscreen"
         role="dialog"
         aria-modal="true"
         aria-label="Fullscreen diagram viewer"
+        tabindex="-1"
         @keydown.esc="closeFullscreen"
       >
         <header class="diagram-panel__fullscreen-header">

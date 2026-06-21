@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import {
   ApiError,
-  fetchFullGraph,
   importApi,
   projectApi,
   type Project,
@@ -54,19 +53,6 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForGraphData(project: Project, onProgress: (value: number) => void): Promise<void> {
-  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
-    const graph = await fetchFullGraph(project.id)
-    if (graph.nodes.length > 0 || graph.edges.length > 0) {
-      onProgress(100)
-      return
-    }
-    onProgress(98)
-    await delay(POLL_INTERVAL_MS)
-  }
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(98))
-}
-
 async function waitForAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
@@ -87,7 +73,10 @@ async function waitForAnalysis(project: Project, onProgress: (value: number) => 
     }
 
     if (latestProject.status === 'ANALYZED') {
-      await waitForGraphData(latestProject, onProgress)
+      // ANALYZED is terminal success. Do NOT additionally wait for nodes/edges > 0 — a valid
+      // project that parses to an empty graph (no parseable sources) would otherwise loop to a
+      // false "taking longer than expected" timeout.
+      onProgress(100)
       return latestProject
     }
 
