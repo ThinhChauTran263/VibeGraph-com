@@ -129,7 +129,7 @@ Các endpoint MVP (cột *Trạng thái* phản ánh code thực tế, không ch
 | POST   | `/api/projects/import-github`                        | Import một repo GitHub công khai qua luồng tarball                                 | ✅ implemented — parse URL, pre-flight, download tarball, extract qua archive pipeline, analyze async; FE `GitHubImportForm` đã có |
 | WS     | `/ws/graph-updates`                                  | Đẩy graph/status theo thời gian thực                                               | ✅ implemented — STOMP endpoint + broadcast `FULL_UPDATE`/`INCREMENTAL`; FE consumer patch graph tại chỗ |
 
-> Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án local path → analyze → full graph) đã chạy thật. Từ quyết định product ngày 2026-05-31, UX chính của Sprint 2 chuyển sang **upload ZIP/TAR archive**; local-path registration giữ lại như dev/internal fallback. Các dòng `🚧 scaffold`/`🆕 target` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`) và `task-breakdown-8week.md` (Sprint 2/3).
+> Lưu ý: lát cắt dọc Sprint 1 (đăng ký dự án local path → analyze → full graph) đã chạy thật. Từ quyết định product ngày 2026-05-31, UX chính của Sprint 2 chuyển sang **upload ZIP/TAR archive**; local-path registration giữ lại như dev/internal fallback. Các dòng `🚧 scaffold`/`🆕 target` vẫn thuộc phạm vi MVP nhưng đang ở mức khung — xem `file-checklist.md` (`[s]`).
 > `GET /graph/neighbors`, `GET /diagrams/*` và `GET /impact/*` là endpoint mục tiêu của API contract; tại thời điểm audit chưa có route controller hoạt động cho các dòng đó dù frontend client đã có hàm gọi tương ứng.
 
 Tiêu chí chấp nhận:

@@ -5,21 +5,20 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 ## Features
 
 > Trạng thái phản ánh kế hoạch 8 tuần trong `VibeGraph-specs-2month/`
-> (chi tiết: `task-breakdown-8week.md`, `file-checklist.md`).
+> (chi tiết: `file-checklist.md`, `requirements-trimmed.md`).
 
-**Đã có (MVP — Sprint 1):**
+**Đã có (đã ship):**
 - Parse Java source code with JavaParser → `NodeData` / `EdgeData`
 - Build knowledge graph in Neo4j via `GraphRepository` (raw Neo4j Java Driver)
 - Force-directed graph visualization (Sigma.js) with filtering, search, and click-driven node detail/highlight
-- Impact Analysis with selectable profiles: dependency blast radius, structural relationships, and type/data-flow CPG links
-- REST API: register project (local path), run analysis, fetch full graph
+- Project import qua 3 luồng: **local folder** (`POST /api/projects/import-local`), **archive** `.zip`/`.tar`/`.tar.gz` (`POST /api/projects/import-archive`), và **GitHub public repo** (`POST /api/projects/import-github`), có thanh tiến độ realtime
+- Local-folder import với realtime thật: sửa file `.java` trong IDE và graph cập nhật tại chỗ (add/modify/delete) qua server-side File Watcher + WebSocket/STOMP. (GitHub/archive import theo dõi bản copy server-side = snapshot.)
+- UML diagrams: **Use Case** (SVG UML 2.5 chuẩn) & **Class** (Mermaid), API Map
+- MCP Server tools cho AI tools (Cursor, Kiro, Claude Code)
+- REST API: register project, run analysis, fetch full graph
 
-**Đang phát triển (Sprint 2–3):**
-- Project archive upload (`.zip`/`.tar`/`.tar.gz`) — flow chính mới thay cho việc nhập local path thủ công (`POST /api/projects/import-archive`)
-- GitHub public-repo import (tarball stream — backend + UI form)
-- Local-folder import with true realtime: edit a `.java` file in your IDE and the graph updates in place (add/modify/delete) via server-side File Watcher + WebSocket/STOMP incremental re-parse. (GitHub/archive imports watch a server-side copy = snapshot.)
-- UML diagrams: Use Case & Class (Mermaid)
-- MCP Server tools for AI tools (Cursor, Kiro, Claude Code)
+**Đang phát triển:**
+- Impact Analysis: blast radius khả dụng qua `GET /api/projects/{id}/graph/impact`; controller/endpoint chuyên biệt và neighborhood query vẫn là scaffold (xem `graph/MODULE-GUIDE.md`)
 
 **Hoãn sau MVP (post-MVP):**
 - Sequence diagram
@@ -72,7 +71,7 @@ Open: http://localhost:5173
 See `VibeGraph-specs-2month/` for detailed documentation:
 - `requirements-trimmed.md` — Functional requirements (MVP scope)
 - `architecture.md` — System design
-- `task-breakdown-8week.md` — Sprint tasks
+- `file-checklist.md` — Sprint tasks và trạng thái theo file
 - `file-checklist.md` — File creation checklist
 - `deployment-plan.md` — Docker / domain / SSL / CI notes
 - `presentation.html` — Customer-facing overview (generated)

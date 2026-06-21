@@ -272,7 +272,7 @@ try {
 1. [ ] `VibeGraph-specs-2month/README.md` (10 phút) — nguồn chân lý thực thi MVP
 2. [ ] `VibeGraph-specs-2month/requirements-trimmed.md` (20 phút) — FR + acceptance
 3. [ ] `VibeGraph-specs-2month/architecture.md` (30 phút) — system design + Neo4j schema
-4. [ ] `VibeGraph-specs-2month/task-breakdown-8week.md` (10 phút) — task theo Sprint
+4. [ ] `VibeGraph-specs-2month/file-checklist.md` (10 phút) — task/trạng thái theo file
 5. [ ] `TEAM-WORKFLOW.md` (file này, 15 phút)
 
 ### Đọc MODULE-GUIDE module mình phụ trách
@@ -354,6 +354,6 @@ Bộ tài liệu dài hạn cũ `VibeGraph-specs/` đã bị gỡ khỏi repo (x
 - `CONTEXT-PROMPT.md` — bỏ; overview nằm trong `VibeGraph-specs-2month/README.md`
 - `requirements.md` → `VibeGraph-specs-2month/requirements-trimmed.md`
 - `architecture.md` → `VibeGraph-specs-2month/architecture.md`
-- `task-breakdown.md` → `VibeGraph-specs-2month/task-breakdown-8week.md`
+- `task-breakdown.md` → `VibeGraph-specs-2month/file-checklist.md`
 
-**Nguồn chân lý hiện tại:** thư mục `VibeGraph-specs-2month/` — `README.md`, `architecture.md`, `requirements-trimmed.md`, `task-breakdown-8week.md`, `file-checklist.md`, `deployment-plan.md`.
+**Nguồn chân lý hiện tại:** thư mục `VibeGraph-specs-2month/` — `README.md`, `architecture.md`, `requirements-trimmed.md`, `file-checklist.md`, `neo4j-schema.md`, `deployment-plan.md`.
