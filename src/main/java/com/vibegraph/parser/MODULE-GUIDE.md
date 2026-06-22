@@ -10,13 +10,9 @@ parser/
 ├── service/
 │   ├── ParserService.java              — Interface: orchestrate parsing pipeline (+ ParseProgressListener overload)
 │   ├── ParseProgressListener.java      — Per-file progress callback (filesParsed/total)
-│   ├── SymbolResolverService.java      — Interface: resolve types, method calls
-│   ├── CallGraphBuilderService.java    — Interface: build CALLS edges
 │   ├── CacheService.java               — Parse-result cache (checksum-keyed)
 │   └── impl/
-│       ├── ParserServiceImpl.java      — Main parser orchestrator
-│       ├── SymbolResolverServiceImpl.java — JavaParser Symbol Solver wrapper
-│       └── CallGraphBuilderServiceImpl.java — Trace method invocations
+│       └── ParserServiceImpl.java      — Main parser orchestrator (resolve + call graph inline)
 ├── visitor/
 │   ├── ClassVisitor.java               — Extract Class/Interface/Enum nodes
 │   ├── MethodVisitor.java              — Extract Method nodes (params, return type)
@@ -77,19 +73,12 @@ parser/
   - @Scheduled, @KafkaListener → enrich method metadata
 - [ ] `ImportVisitor`: Extract IMPORTS edges (Class A imports Class B)
 
-### SymbolResolverService
-- [ ] Configure JavaParser Symbol Solver với project source paths
-- [ ] Resolve method call targets (>90% accuracy)
-- [ ] Resolve type references (field types, return types, parameter types)
-- [ ] Handle unresolved symbols gracefully (mark confidence = 0.5)
-
-### CallGraphBuilderService
-- [ ] Build CALLS edges từ method invocations
-- [ ] Handle: direct calls, constructor calls, static method calls
-- [ ] Handle: method references (Class::method)
-- [ ] Handle: chained calls (a.b().c())
-- [ ] Edge properties: {lineNumber, confidence (0.0-1.0)}
-- [ ] Skip lambda internal calls nếu không resolve được
+### Symbol resolution & call graph (trong ParserServiceImpl)
+Việc resolve type/method-call và dựng CALLS edges được làm **trực tiếp trong** `ParserServiceImpl`
+(qua JavaParser Symbol Solver) thay vì tách thành service riêng. Phạm vi:
+- [x] Resolve method call targets + type references (field/return/param types) trong khả năng Symbol Solver
+- [x] CALLS edges từ method invocation; symbol chưa resolve → gắn confidence thấp / External stub
+- [x] STEP_IN_FLOW (call chain từ route handler) do `flow/FlowAnalyzer` suy luận
 
 ### Relationship Extraction
 - [ ] EXTENDS: Class A extends Class B

@@ -253,12 +253,6 @@ public class ParserServiceImpl implements ParserService {
         return results;
     }
 
-    @Override
-    public ParseResult parseFileWithCache(Path filePath, String projectId) {
-        // Cache-based incremental parsing deferred to Sprint 2
-        throw new UnsupportedOperationException("Not implemented yet - deferred to Sprint 2");
-    }
-
     private JavaParser createParser(Path sourceRoot) {
         CombinedTypeSolver typeSolver = new CombinedTypeSolver();
         typeSolver.add(new ReflectionTypeSolver());
