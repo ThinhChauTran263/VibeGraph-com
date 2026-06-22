@@ -40,6 +40,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import com.vibegraph.VibeGraphApplication;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateEvent;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -72,16 +73,19 @@ class RealtimeUpdateIT {
 
     private final GraphRepository graphRepository;
     private final FileWatcherService fileWatcherService;
+    private final FileChangeBroadcaster fileChangeBroadcaster;
     private final DebouncedEventHandler debouncer;
 
     @Autowired
     RealtimeUpdateIT(
             GraphRepository graphRepository,
             FileWatcherService fileWatcherService,
+            FileChangeBroadcaster fileChangeBroadcaster,
             DebouncedEventHandler debouncer
     ) {
         this.graphRepository = graphRepository;
         this.fileWatcherService = fileWatcherService;
+        this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.debouncer = debouncer;
     }
 
@@ -110,7 +114,7 @@ class RealtimeUpdateIT {
 
     @AfterEach
     void tearDown() {
-        fileWatcherService.stopWatching(projectId);
+        fileChangeBroadcaster.unwatch(projectId);
         debouncer.shutdown();
     }
 
@@ -128,7 +132,12 @@ class RealtimeUpdateIT {
         try {
             session = connect(stompClient);
             CompletableFuture<GraphUpdateEvent> update = subscribe(session, projectId);
-            fileWatcherService.startWatching(projectId, projectRoot.toString());
+            // Use watchProject (not fileWatcherService.startWatching directly): it registers the
+            // project root with the broadcaster, which is what lets onFileChange resolve the stored
+            // absolute filePath and actually prune the deleted node. Calling startWatching alone
+            // leaves projectRoots empty, so the broadcaster falls back to a full snapshot without
+            // deleting anything — the node would survive and this assertion would fail.
+            fileChangeBroadcaster.watchProject(projectId, projectRoot.toString());
 
             Files.delete(deletedFile);
 
