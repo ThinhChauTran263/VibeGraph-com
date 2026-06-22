@@ -31,8 +31,8 @@ class ProjectServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Local import now fails closed without an allowed-root, so confine it to the temp dir;
-        // every project these tests create lives under tempDir.
+        // Confine import to the temp dir so these tests stay deterministic (and exercise the
+        // confined path); every project they create lives under tempDir.
         ReflectionTestUtils.setField(service, "allowedRoot", tempDir.toString());
     }
 

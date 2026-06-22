@@ -133,20 +133,34 @@ class LocalImportServiceImplTest {
     }
 
     @Test
-    @DisplayName("browse is disabled (fails closed) when no allowed-root is configured")
-    void browseFailsClosedWithoutAllowedRoot() {
-        // allowedRoot left blank → browsing must be refused, not expose the host filesystem.
-        assertThatThrownBy(() -> service.browse(null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no allowed root");
+    @DisplayName("browse with a blank path lists the filesystem roots when unconfined")
+    void browseListsRootsWhenUnconfined() {
+        // allowedRoot left blank → "This PC" view: every drive/root, with no parent above it.
+        DirectoryListing listing = service.browse(null);
+
+        assertThat(listing.parent()).isNull();
+        assertThat(listing.path()).isEmpty();
+        assertThat(listing.entries()).isNotEmpty();
+        // Every entry is an actual filesystem root (e.g. "C:\" on Windows, "/" on Unix).
+        java.util.Set<String> roots = new java.util.HashSet<>();
+        java.nio.file.FileSystems.getDefault().getRootDirectories()
+                .forEach(r -> roots.add(r.toString()));
+        assertThat(listing.entries()).allSatisfy(e -> assertThat(roots).contains(e.path()));
     }
 
     @Test
-    @DisplayName("browse of any directory is refused when no allowed-root is configured")
-    void browseFailsClosedForAnyDirectory(@TempDir Path anywhere) {
-        assertThatThrownBy(() -> service.browse(anywhere.toString()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no allowed root");
+    @DisplayName("browse of any accessible directory is allowed when unconfined")
+    void browseAllowsAnyDirectoryWhenUnconfined(@TempDir Path anywhere) throws Exception {
+        // allowedRoot left blank → a developer can navigate to a project on any drive.
+        Files.createDirectories(anywhere.resolve("my-app/src"));
+        Files.writeString(anywhere.resolve("my-app/pom.xml"), "<project/>\n");
+
+        DirectoryListing listing = service.browse(anywhere.toString());
+
+        assertThat(listing.path()).isEqualTo(anywhere.toRealPath().toString());
+        assertThat(listing.parent()).isEqualTo(anywhere.toRealPath().getParent().toString());
+        assertThat(listing.entries()).extracting(DirectoryListing.Entry::name).contains("my-app");
+        assertThat(entry(listing, "my-app").containsJava()).isTrue();
     }
 
     private static DirectoryListing.Entry entry(DirectoryListing listing, String name) {

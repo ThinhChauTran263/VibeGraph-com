@@ -46,10 +46,6 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
-  # Optional shared secret. When set, the X-API-Key header is required on the filesystem-touching
-  # endpoints (import-local/import-archive/import-github, browse). Blank disables the gate (dev/test).
-  api-key: ${VIBEGRAPH_API_KEY:}
-
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}

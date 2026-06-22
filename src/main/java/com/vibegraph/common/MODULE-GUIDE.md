@@ -10,13 +10,11 @@ common/
 ├── config/
 │   ├── Neo4jMigrationRunner.java     — Áp dụng V1__init_schema.cypher lúc startup (raw Driver)
 │   ├── WebSocketConfig.java          — STOMP WebSocket setup (/ws/graph-updates), origins từ CorsProperties
-│   ├── CorsConfig.java               — CORS policy (origins từ CorsProperties), enable ApiKeyProperties
+│   ├── CorsConfig.java               — CORS policy (origins từ CorsProperties)
 │   ├── CorsProperties.java           — vibegraph.cors.allowed-origins
 │   ├── McpServerConfig.java          — MCP Server bean registration
 │   ├── AsyncConfig.java              — Bounded analysisExecutor (AbortPolicy) cho import async
-│   ├── AnalysisExecutorProperties.java — core/max pool size, queue capacity của analysisExecutor
-│   ├── ApiKeyProperties.java         — vibegraph.api-key (shared secret; blank = tắt)
-│   └── ApiKeyFilter.java             — Yêu cầu X-API-Key trên endpoint filesystem khi key được set
+│   └── AnalysisExecutorProperties.java — core/max pool size, queue capacity của analysisExecutor
 ├── dto/
 │   ├── request/
 │   │   └── PaginationRequest.java    — page, size, sort params

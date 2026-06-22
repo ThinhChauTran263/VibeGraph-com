@@ -80,15 +80,11 @@ public class ProjectServiceImpl implements ProjectService {
                 throw new IllegalArgumentException("rootPath must be an existing directory");
             }
             Path allowedRootPath = resolveAllowedRoot();
-            // Fail closed: with no allowed-root configured, local-path import is disabled rather
-            // than allowing analysis (and a file watch) of any absolute directory on the host.
-            if (allowedRootPath == null) {
-                throw new IllegalArgumentException(
-                        "Local-path import is disabled: no allowed root is configured. "
-                                + "Set vibegraph.projects.allowed-root (VIBEGRAPH_PROJECTS_ALLOWED_ROOT) "
-                                + "to a directory that contains the projects you want to analyze.");
-            }
-            if (!rootPath.startsWith(allowedRootPath)) {
+            // Unconfined when no allowed-root is configured (local-dev default): any existing
+            // directory on the host may be imported, so a team member can pick a project on any
+            // drive without hardcoding a per-machine root. Set vibegraph.projects.allowed-root to
+            // confine imports for shared/deployed instances.
+            if (allowedRootPath != null && !rootPath.startsWith(allowedRootPath)) {
                 throw new IllegalArgumentException("rootPath must be inside the configured allowed root");
             }
             return rootPath;

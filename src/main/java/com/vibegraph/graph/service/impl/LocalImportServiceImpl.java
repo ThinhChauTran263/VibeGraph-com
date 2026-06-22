@@ -2,6 +2,7 @@ package com.vibegraph.graph.service.impl;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -114,21 +115,21 @@ public class LocalImportServiceImpl implements LocalImportService {
 
     @Override
     public DirectoryListing browse(String path) {
-        Path base = configuredBase();
-        // Fail closed: without a configured allowed-root, the browser is disabled rather than
-        // exposing the entire host filesystem (drive roots and every directory beneath them).
-        if (base == null) {
-            throw new IllegalStateException(
-                    "Directory browsing is disabled: no allowed root is configured. "
-                            + "Set vibegraph.projects.allowed-root (VIBEGRAPH_PROJECTS_ALLOWED_ROOT) to enable it.");
-        }
+        Path base = configuredBase(); // null = unconfined (no allowed-root): browse the whole host
         String trimmed = path == null ? "" : path.trim();
 
+        // Unconfined + top-level view → list the filesystem roots ("This PC": drive letters on
+        // Windows, "/" on Unix) so a developer can reach projects on any drive without a fixed
+        // root. Each team member's disk layout differs, so a hardcoded allowed-root would not fit.
+        if (base == null && trimmed.isEmpty()) {
+            return listRoots();
+        }
+
         Path target = trimmed.isEmpty() ? base : realDirectory(trimmed);
-        if (!Files.isDirectory(target)) {
+        if (target == null || !Files.isDirectory(target)) {
             throw new IllegalArgumentException("path must be an existing directory");
         }
-        if (!target.startsWith(base)) {
+        if (base != null && !target.startsWith(base)) {
             throw new IllegalArgumentException("path is outside the allowed base directory");
         }
 
@@ -165,6 +166,31 @@ public class LocalImportServiceImpl implements LocalImportService {
         } catch (IOException | InvalidPathException e) {
             throw new IllegalArgumentException("path is not an accessible directory", e);
         }
+    }
+
+    /**
+     * Top-level "This PC" view for unconfined browsing: the filesystem roots — drive letters on
+     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are not accessible
+     * (empty removable/optical media) are skipped so one bad drive can't break the whole listing.
+     * The parent is {@code null} because there is nothing above "This PC".
+     */
+    private DirectoryListing listRoots() {
+        List<DirectoryListing.Entry> entries = new ArrayList<>();
+        for (Path root : FileSystems.getDefault().getRootDirectories()) {
+            try {
+                if (!Files.isDirectory(root)) {
+                    continue;
+                }
+            } catch (RuntimeException e) {
+                continue;
+            }
+            String label = fileName(root);
+            if (label.isEmpty()) {
+                label = root.toString(); // "C:\" / "/"
+            }
+            entries.add(new DirectoryListing.Entry(label, root.toString(), false));
+        }
+        return new DirectoryListing("", null, entries);
     }
 
 
