@@ -24,7 +24,13 @@ const SAFE_ERROR_PATTERNS = [
   /taking longer than expected/i,
 ]
 const GITHUB_IMPORT_POLL_INTERVAL_MS = 1_000
-const GITHUB_IMPORT_MAX_POLLS = 180
+// A large repo can analyze for many minutes, so there is no fixed poll cap. Instead we only give
+// up when the backend stops making progress (a genuine stall) for this long. A project that keeps
+// inching forward — even slowly — never trips this and analyzes to completion. Set generously so a
+// heavy final phase that sits at 9x% for several minutes is not mistaken for a stuck backend.
+const GITHUB_IMPORT_STALL_TIMEOUT_MS = 300_000
+// Absolute safety ceiling so a pathological backend can't poll forever.
+const GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS = 60 * 60_000
 
 export type GitHubImportStatus = 'idle' | 'importing' | 'success' | 'error'
 
@@ -81,11 +87,19 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
 
   onProgress(lastProgress)
 
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
+  const startTime = Date.now()
+  let lastAdvanceTime = startTime
+
+  // No fixed iteration cap: keep polling as long as the backend keeps advancing. This is what lets
+  // a big repo finish (and auto-open its graph) instead of falsely erroring out at ~94%.
+  for (;;) {
     await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
     const latestProject = await projectApi.get(project.id)
 
     if (typeof latestProject.progress === 'number') {
+      if (latestProject.progress > lastProgress) {
+        lastAdvanceTime = Date.now()
+      }
       lastProgress = latestProject.progress
       onProgress(latestProject.progress)
     }
@@ -100,9 +114,17 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
     if (latestProject.status === 'FAILED') {
       throw new ApiError(400, 'Import Failed', 'Import failed. Verify the repository is public and try again.')
     }
-  }
 
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    // Only surface a timeout when the analysis is genuinely stuck (no progress for a long while)
+    // or the absolute ceiling is reached — never just because a fixed timer elapsed.
+    const now = Date.now()
+    if (
+      now - lastAdvanceTime >= GITHUB_IMPORT_STALL_TIMEOUT_MS ||
+      now - startTime >= GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS
+    ) {
+      throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    }
+  }
 }
 
 export function validateGitHubRepoUrl(url: string): string | null {
