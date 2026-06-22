@@ -272,11 +272,6 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
-    public GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops) {
-        throw new UnsupportedOperationException("Not implemented yet — Sprint 2");
-    }
-
-    @Override
     public NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops) {
         try (Session session = neo4jDriver.session()) {
             var nodeResult = session.run(
