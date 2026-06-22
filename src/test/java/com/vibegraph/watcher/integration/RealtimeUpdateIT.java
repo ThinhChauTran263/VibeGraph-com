@@ -152,10 +152,17 @@ class RealtimeUpdateIT {
     }
 
     private void seedGraph(String projectId, Path root) {
+        // The broadcaster prunes by the ABSOLUTE filePath it resolves at watch time
+        // (root.resolve(relative).normalize()), so seed the nodes with that same absolute path —
+        // a relative "src/Changed.java" would never match the DELETE's Cypher and the node would
+        // (incorrectly) survive the delete.
+        Path base = root.toAbsolutePath().normalize();
+        String changedPath = base.resolve("src/Changed.java").toString();
+        String otherPath = base.resolve("src/Other.java").toString();
         graphRepository.upsertProject(projectId, projectId, root.toString());
         graphRepository.upsertNodes(projectId, List.of(
-                NodeData.of("Class", "Changed", "com.example.Changed", "src/Changed.java", 1, 1, java.util.Map.of()),
-                NodeData.of("Class", "Other", "com.example.Other", "src/Other.java", 1, 1, java.util.Map.of())));
+                NodeData.of("Class", "Changed", "com.example.Changed", changedPath, 1, 1, java.util.Map.of()),
+                NodeData.of("Class", "Other", "com.example.Other", otherPath, 1, 1, java.util.Map.of())));
         graphRepository.upsertEdges(projectId, List.of(
                 EdgeData.of("CALLS", "com.example.Changed", "lib.Orphan.call()", java.util.Map.of()),
                 EdgeData.of("CALLS", "com.example.Other", "lib.Shared.call()", java.util.Map.of())));
