@@ -1,6 +1,7 @@
 spring:
   config:
-    import: file:.env[.properties]
+    # optional: so the app/tests start without a .env file (CI and Docker provide env vars directly).
+    import: optional:file:.env[.properties]
 
   application:
     name: VibeGraph
