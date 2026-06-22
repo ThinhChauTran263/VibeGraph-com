@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import {
   ApiError,
-  fetchFullGraph,
   importApi,
   projectApi,
   type Project,
@@ -21,7 +20,12 @@ const SAFE_ERROR_PATTERNS = [
   /taking longer than expected/i,
 ]
 const POLL_INTERVAL_MS = 1_000
-const MAX_POLLS = 600
+// No fixed iteration cap: keep polling while the backend keeps advancing so a large project can
+// analyze to completion. Only give up on a genuine stall (no progress for this long)… Set
+// generously so a heavy final phase that sits at 9x% for several minutes is not mistaken for stuck.
+const STALL_TIMEOUT_MS = 300_000
+// …or when the absolute safety ceiling is reached.
+const ABSOLUTE_TIMEOUT_MS = 60 * 60_000
 
 export type LocalImportStatus = 'idle' | 'importing' | 'success' | 'error'
 
@@ -54,19 +58,6 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForGraphData(project: Project, onProgress: (value: number) => void): Promise<void> {
-  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
-    const graph = await fetchFullGraph(project.id)
-    if (graph.nodes.length > 0 || graph.edges.length > 0) {
-      onProgress(100)
-      return
-    }
-    onProgress(98)
-    await delay(POLL_INTERVAL_MS)
-  }
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(98))
-}
-
 async function waitForAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
@@ -77,26 +68,39 @@ async function waitForAnalysis(project: Project, onProgress: (value: number) => 
 
   onProgress(lastProgress)
 
-  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
+  const startTime = Date.now()
+  let lastAdvanceTime = startTime
+
+  for (;;) {
     await delay(POLL_INTERVAL_MS)
     const latestProject = await projectApi.get(project.id)
 
     if (typeof latestProject.progress === 'number') {
+      if (latestProject.progress > lastProgress) {
+        lastAdvanceTime = Date.now()
+      }
       lastProgress = latestProject.progress
       onProgress(latestProject.progress)
     }
 
     if (latestProject.status === 'ANALYZED') {
-      await waitForGraphData(latestProject, onProgress)
+      // ANALYZED is terminal success. Do NOT additionally wait for nodes/edges > 0 — a valid
+      // project that parses to an empty graph (no parseable sources) would otherwise loop to a
+      // false "taking longer than expected" timeout.
+      onProgress(100)
       return latestProject
     }
 
     if (latestProject.status === 'FAILED') {
       throw new ApiError(400, 'Import Failed', 'Analysis failed. Check the folder contents and try again.')
     }
-  }
 
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    // Only surface a timeout on a genuine stall or the absolute ceiling — never on a fixed timer.
+    const now = Date.now()
+    if (now - lastAdvanceTime >= STALL_TIMEOUT_MS || now - startTime >= ABSOLUTE_TIMEOUT_MS) {
+      throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    }
+  }
 }
 
 export function useLocalImport(options: UseLocalImportOptions = {}) {

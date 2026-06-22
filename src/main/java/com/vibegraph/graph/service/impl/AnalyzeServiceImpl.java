@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
@@ -25,6 +26,7 @@ public class AnalyzeServiceImpl implements AnalyzeService {
 
     private final ParserService parserService;
     private final GraphRepository graphRepository;
+    private final AnalyzeLimitProperties analyzeLimits;
 
     /** Overall % at which the parse phase begins (after the project workspace is ready). */
     private static final int PARSE_START_PCT = 5;
@@ -60,6 +62,16 @@ public class AnalyzeServiceImpl implements AnalyzeService {
             allNodes.addAll(result.getNodes());
             allEdges.addAll(result.getEdges());
             totalWarnings += result.getWarnings().size();
+        }
+
+        // Fail fast before the memory-heavy flow inference + upsert: a project that produced more
+        // nodes/edges than the configured ceiling is rejected with a clear message instead of
+        // risking an OutOfMemoryError that would take the whole server down.
+        if (allNodes.size() > analyzeLimits.getMaxNodes() || allEdges.size() > analyzeLimits.getMaxEdges()) {
+            throw new IllegalStateException(String.format(
+                    "Project is too large to analyze: %d nodes / %d edges exceeds the limit of %d / %d. "
+                            + "Increase VIBEGRAPH_ANALYZE_MAX_NODES / VIBEGRAPH_ANALYZE_MAX_EDGES if the host has the heap.",
+                    allNodes.size(), allEdges.size(), analyzeLimits.getMaxNodes(), analyzeLimits.getMaxEdges()));
         }
 
         // Project -> Package containment. The parser emits Package nodes and

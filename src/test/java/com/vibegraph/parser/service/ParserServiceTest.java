@@ -289,20 +289,4 @@ class ParserServiceTest {
                     .as("edges must not be empty").isNotEmpty();
         }
     }
-
-    @Nested
-    @DisplayName("parseFileWithCache")
-    class ParseIncremental {
-
-        @Test
-        @DisplayName("should throw UnsupportedOperationException - deferred to Sprint 2")
-        void incrementalDeferred() throws IOException {
-            Path javaFile = tempDir.resolve("Service.java");
-            Files.writeString(javaFile, "public class Service {}");
-
-            org.assertj.core.api.Assertions.assertThatThrownBy(
-                            () -> parserService.parseFileWithCache(javaFile, "p1"))
-                    .isInstanceOf(UnsupportedOperationException.class);
-        }
-    }
 }

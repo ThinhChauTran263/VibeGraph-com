@@ -80,6 +80,10 @@ public class ProjectServiceImpl implements ProjectService {
                 throw new IllegalArgumentException("rootPath must be an existing directory");
             }
             Path allowedRootPath = resolveAllowedRoot();
+            // Unconfined when no allowed-root is configured (local-dev default): any existing
+            // directory on the host may be imported, so a team member can pick a project on any
+            // drive without hardcoding a per-machine root. Set vibegraph.projects.allowed-root to
+            // confine imports for shared/deployed instances.
             if (allowedRootPath != null && !rootPath.startsWith(allowedRootPath)) {
                 throw new IllegalArgumentException("rootPath must be inside the configured allowed root");
             }
@@ -274,39 +278,41 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public void markAnalyzing(String id) {
-        ProjectResponse existing = projects.get(id);
-        if (existing != null) {
-            existing.setStatus(ProjectStatus.ANALYZING.name());
-            existing.setProgress(0);
-        }
+        // Replace the map value with an immutable copy (atomic via computeIfPresent) instead of
+        // mutating shared fields in place, so a polling request thread always observes a consistent
+        // snapshot — the background analysis thread and request threads share this object.
+        projects.computeIfPresent(id, (key, existing) -> existing.toBuilder()
+                .status(ProjectStatus.ANALYZING.name())
+                .progress(0)
+                .build());
     }
 
     @Override
     public void updateProgress(String id, int progress) {
-        ProjectResponse existing = projects.get(id);
-        if (existing != null) {
-            existing.setProgress(Math.max(0, Math.min(100, progress)));
-        }
+        int clamped = Math.max(0, Math.min(100, progress));
+        projects.computeIfPresent(id, (key, existing) -> existing.toBuilder()
+                .progress(clamped)
+                .build());
     }
 
     @Override
     public void markAnalyzed(String id, int totalFiles, int totalNodes, int totalEdges) {
-        ProjectResponse existing = projects.get(id);
-        if (existing != null) {
-            existing.setStatus(ProjectStatus.ANALYZED.name());
-            existing.setTotalFiles(totalFiles);
-            existing.setTotalNodes(totalNodes);
-            existing.setTotalEdges(totalEdges);
-            existing.setLastAnalyzedAt(Instant.now());
-            existing.setProgress(100);
-        }
+        projects.computeIfPresent(id, (key, existing) -> existing.toBuilder()
+                .status(ProjectStatus.ANALYZED.name())
+                .totalFiles(totalFiles)
+                .totalNodes(totalNodes)
+                .totalEdges(totalEdges)
+                .lastAnalyzedAt(Instant.now())
+                .progress(100)
+                .build());
     }
 
     @Override
     public void markFailed(String id, String reason) {
-        ProjectResponse existing = projects.get(id);
-        if (existing != null) {
-            existing.setStatus(ProjectStatus.FAILED.name());
+        ProjectResponse updated = projects.computeIfPresent(id, (key, existing) -> existing.toBuilder()
+                .status(ProjectStatus.FAILED.name())
+                .build());
+        if (updated != null) {
             log.warn("Project {} analysis failed: {}", id, reason);
         }
     }

@@ -37,12 +37,4 @@ public interface ParserService {
      * @return aggregated list of ParseResult (one per file)
      */
     List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener);
-
-    /**
-     * Parse a file, using SHA-256 checksum cache to skip unchanged files.
-     * @param filePath absolute path to the .java file
-     * @param projectId tenant identifier for cache scoping
-     * @return ParseResult (from cache if checksum matches, else fresh parse)
-     */
-    ParseResult parseFileWithCache(Path filePath, String projectId);
 }

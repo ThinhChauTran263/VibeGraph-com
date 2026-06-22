@@ -13,7 +13,7 @@ Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, uploa
 
 Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
 
-> **Trạng thái sau audit 2026-05-30 và quyết định product 2026-05-31:** Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. Từ Sprint 2, UX chính chuyển sang `upload ZIP/TAR archive -> parse -> Neo4j -> graph`; local path giữ lại như dev/internal fallback. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
+> **Trạng thái sau audit 2026-05-30 và quyết định product 2026-05-31:** Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. Từ Sprint 2, UX chính chuyển sang `upload ZIP/TAR archive -> parse -> Neo4j -> graph`; local path giữ lại như dev/internal fallback. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` để biết trạng thái từng file.
 
 ## Quyết định kiến trúc hiện tại
 
@@ -73,7 +73,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 | `README.md` | Chuẩn nền tảng thực thi này |
 | `requirements-trimmed.md` | Yêu cầu chức năng và phi chức năng của MVP |
 | `architecture.md` | Các quyết định về kiến trúc và luồng dữ liệu |
-| `task-breakdown-8week.md` | Thứ tự triển khai và các mốc kiểm tra theo sprint |
+| `neo4j-schema.md` | Lược đồ node/edge và Cypher của graph |
 | `file-checklist.md` | Các tệp hiện có và checklist hoàn thành MVP |
 | `deployment-plan.md` | Ghi chú triển khai Docker, domain, SSL, CI/CD |
 | `presentation.html` | Bản trình bày phi kỹ thuật được sinh ra, không phải nguồn chân lý triển khai |

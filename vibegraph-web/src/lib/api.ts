@@ -203,6 +203,7 @@ export const projectApi = {
   list: () => api.get<Project[]>('/api/projects'),
   get: (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (data: unknown) => api.post<Project>('/api/projects', data),
+  remove: (id: string) => api.delete(`/api/projects/${encodeURIComponent(id)}`),
 }
 
 /**

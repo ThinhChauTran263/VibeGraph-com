@@ -9,21 +9,19 @@ Module quản lý knowledge graph trong Neo4j: lưu trữ nodes/edges, cung cấ
 graph/
 ├── controller/
 │   ├── ProjectController.java    — POST /api/projects, GET /api/projects
-│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/neighbors
-│   ├── ImportController.java     — POST /api/projects/import-github (MỚI)
-│   └── ImpactController.java     — GET /api/projects/{id}/impact/{nodeId}
+│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/neighbors, /graph/impact
+│   ├── ImportController.java     — POST /api/projects/import-archive, /import-github
+│   └── LocalProjectController.java — POST /api/projects/import-local, GET /api/projects/browse
 ├── service/
 │   ├── ProjectService.java       — Interface: project CRUD
-│   ├── GraphService.java         — Interface: graph query operations
+│   ├── GraphService.java         — Interface: graph query operations (incl. impact analysis)
 │   ├── AnalyzeService.java       — Interface: trigger analysis pipeline
-│   ├── ImpactService.java        — Interface: blast radius analysis
-│   ├── TarballImportService.java — Interface: GitHub tarball stream (MỚI)
+│   ├── TarballImportService.java — Interface: GitHub tarball stream
 │   └── impl/
 │       ├── ProjectServiceImpl.java
 │       ├── GraphServiceImpl.java
 │       ├── AnalyzeServiceImpl.java
-│       ├── ImpactServiceImpl.java
-│       └── TarballImportServiceImpl.java (MỚI)
+│       └── TarballImportServiceImpl.java
 ├── repository/
 │   ├── GraphRepository.java        — INTERFACE (storage abstraction)
 │   └── impl/
@@ -31,8 +29,7 @@ graph/
 │           ├── Neo4jGraphRepository.java — raw Neo4j Java Driver impl of GraphRepository
 │           └── GraphSchema.java          — allow-list label/edge-type + validate Cypher key
 ├── websocket/
-│   ├── GraphUpdateController.java  — @MessageMapping for STOMP
-│   └── WebSocketEventListener.java — Connection/disconnect events
+│   └── GraphUpdateController.java  — @MessageMapping for STOMP
 └── dto/
     ├── request/
     │   ├── CreateProjectRequest.java  — {name, path, description}
@@ -50,8 +47,8 @@ graph/
 
 ## Trạng thái hiện thực (đối soát code thực tế)
 
-- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph); `AnalyzeServiceImpl`; `GraphServiceImpl`.
-- 🚧 Scaffold / in-progress (Sprint 2/3): `getNeighborhood` + `getImpact` (ném `UnsupportedOperationException`); `ImpactController` + `ImpactServiceImpl` và `DiagramController` (`// TODO`); `TarballImportServiceImpl` (ném "not implemented yet"). Các endpoint neighbors / impact / diagrams chưa nối.
+- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph + neighbors + impact); `LocalProjectController` (import-local/browse, fail-closed); `ImportController` (import-archive + import-github); `ArchiveImportServiceImpl`, `TarballImportServiceImpl`, `AnalyzeServiceImpl`, `GraphServiceImpl`.
+- ✅ Impact analysis khả dụng qua `GET /api/projects/{id}/graph/impact` trên `GraphController` (delegate `GraphService.getImpactAnalysis`). Không có controller/service Impact riêng — đã gộp vào GraphController/GraphService.
 
 > Các checkbox `[ ]` ở dưới là đặc tả mục tiêu MVP, không phải trạng thái đã xong.
 
@@ -79,10 +76,10 @@ graph/
 - [ ] `GET /api/projects/{id}/nodes/{nodeId}`: Node detail với INCOMING + OUTGOING connections
 - [ ] `GET /api/projects/{id}/search?q=...`: Full-text search nodes by name
 
-### ImpactController
-- [ ] `GET /api/projects/{id}/impact/{nodeId}`: Blast radius analysis
-- [ ] Return: affected nodes grouped by depth (d=1 WILL BREAK, d=2 LIKELY AFFECTED, d=3 MAY NEED TESTING)
-- [ ] Include risk level: LOW/MEDIUM/HIGH/CRITICAL
+### Impact analysis (trên GraphController/GraphService)
+- [x] `GET /api/projects/{id}/graph/impact?nodeId=...&depth=...&profile=...`: Blast radius analysis
+- [x] Return: affected nodes grouped by depth (d=1 WILL BREAK, d=2 LIKELY AFFECTED, d=3 MAY NEED TESTING)
+- [x] Include risk level: LOW/MEDIUM/HIGH/CRITICAL
 
 ### Services
 - [ ] `AnalyzeService.analyzeProject(projectId)`: Orchestrate full analysis pipeline
@@ -97,7 +94,7 @@ graph/
   4. Push incremental update via WebSocket
 - [ ] `GraphService.getGraph(projectId, filter)`: Query graph với optional filters
 - [ ] `GraphService.getNeighbors(nodeId, hops)`: BFS traversal N hops
-- [ ] `ImpactService.analyzeImpact(nodeId)`: Trace upstream dependencies
+- [x] `GraphService.getImpactAnalysis(projectId, nodeId, depth, profile)`: Trace upstream dependencies (blast radius)
 - [ ] `TarballImportService.importFromGithub(request)` (MỚI):
   1. Pre-flight check (GET https://api.github.com/repos/{owner}/{repo})
      - Validate: public, size < 100MB, default_branch

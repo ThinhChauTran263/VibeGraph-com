@@ -9,14 +9,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.LocalImportRequest;
@@ -79,8 +80,16 @@ public class LocalImportServiceImpl implements LocalImportService {
         graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
         // Analyze off the request thread so the client gets an immediate ANALYZING response and a
         // streamed progress bar (mirrors the archive/GitHub async flow).
-        analysisExecutor.execute(() ->
-                analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+        try {
+            analysisExecutor.execute(() ->
+                    analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+        } catch (RejectedExecutionException ex) {
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            String reason = "Server is busy analyzing other projects. Please retry shortly.";
+            projectService.markFailed(created.getId(), reason);
+            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
+            throw new ServiceBusyException(reason);
+        }
         return projectService.getProject(created.getId());
     }
 
@@ -106,18 +115,18 @@ public class LocalImportServiceImpl implements LocalImportService {
 
     @Override
     public DirectoryListing browse(String path) {
-        Path base = configuredBase(); // null when no allowed-root is set → unconfined browsing
+        Path base = configuredBase(); // null = unconfined (no allowed-root): browse the whole host
         String trimmed = path == null ? "" : path.trim();
 
-        // Top level with no boundary configured: offer the filesystem roots (drives) to start from.
+        // Unconfined + top-level view → list the filesystem roots ("This PC": drive letters on
+        // Windows, "/" on Unix) so a developer can reach projects on any drive without a fixed
+        // root. Each team member's disk layout differs, so a hardcoded allowed-root would not fit.
         if (base == null && trimmed.isEmpty()) {
-            return rootsListing();
+            return listRoots();
         }
 
-        // When trimmed is empty here, base is guaranteed non-null: the unconfined-and-empty
-        // case already returned the roots listing above.
-        Path target = trimmed.isEmpty() ? Objects.requireNonNull(base) : realDirectory(trimmed);
-        if (!Files.isDirectory(target)) {
+        Path target = trimmed.isEmpty() ? base : realDirectory(trimmed);
+        if (target == null || !Files.isDirectory(target)) {
             throw new IllegalArgumentException("path must be an existing directory");
         }
         if (base != null && !target.startsWith(base)) {
@@ -159,17 +168,31 @@ public class LocalImportServiceImpl implements LocalImportService {
         }
     }
 
-    /** Listing of filesystem roots (e.g. {@code C:\}, {@code D:\}) shown when browsing is unconfined. */
-    private DirectoryListing rootsListing() {
+    /**
+     * Top-level "This PC" view for unconfined browsing: the filesystem roots — drive letters on
+     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are not accessible
+     * (empty removable/optical media) are skipped so one bad drive can't break the whole listing.
+     * The parent is {@code null} because there is nothing above "This PC".
+     */
+    private DirectoryListing listRoots() {
         List<DirectoryListing.Entry> entries = new ArrayList<>();
         for (Path root : FileSystems.getDefault().getRootDirectories()) {
-            if (Files.isDirectory(root)) {
-                entries.add(new DirectoryListing.Entry(root.toString(), root.toString(), false));
+            try {
+                if (!Files.isDirectory(root)) {
+                    continue;
+                }
+            } catch (RuntimeException e) {
+                continue;
             }
+            String label = fileName(root);
+            if (label.isEmpty()) {
+                label = root.toString(); // "C:\" / "/"
+            }
+            entries.add(new DirectoryListing.Entry(label, root.toString(), false));
         }
-        // Empty path is the "roots" sentinel; no parent (this is the top).
         return new DirectoryListing("", null, entries);
     }
+
 
     /**
      * Parent path for the Up control:

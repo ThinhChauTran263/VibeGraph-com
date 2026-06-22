@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import {
   ApiError,
-  fetchFullGraph,
   importApi,
   projectApi,
   type Project,
@@ -25,7 +24,13 @@ const SAFE_ERROR_PATTERNS = [
   /taking longer than expected/i,
 ]
 const GITHUB_IMPORT_POLL_INTERVAL_MS = 1_000
-const GITHUB_IMPORT_MAX_POLLS = 180
+// A large repo can analyze for many minutes, so there is no fixed poll cap. Instead we only give
+// up when the backend stops making progress (a genuine stall) for this long. A project that keeps
+// inching forward — even slowly — never trips this and analyzes to completion. Set generously so a
+// heavy final phase that sits at 9x% for several minutes is not mistaken for a stuck backend.
+const GITHUB_IMPORT_STALL_TIMEOUT_MS = 300_000
+// Absolute safety ceiling so a pathological backend can't poll forever.
+const GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS = 60 * 60_000
 
 export type GitHubImportStatus = 'idle' | 'importing' | 'success' | 'error'
 
@@ -72,23 +77,6 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForGraphData(project: Project, onProgress: (value: number) => void): Promise<void> {
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
-    const graph = await fetchFullGraph(project.id)
-    if (graph.nodes.length > 0 || graph.edges.length > 0) {
-      onProgress(100)
-      return
-    }
-
-    // Backend reports ANALYZED but the graph is still being persisted; hold the
-    // bar near completion so it visibly reflects the finalizing phase.
-    onProgress(98)
-    await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
-  }
-
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(98))
-}
-
 async function waitForGitHubAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
@@ -99,26 +87,44 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
 
   onProgress(lastProgress)
 
-  for (let attempt = 0; attempt < GITHUB_IMPORT_MAX_POLLS; attempt += 1) {
+  const startTime = Date.now()
+  let lastAdvanceTime = startTime
+
+  // No fixed iteration cap: keep polling as long as the backend keeps advancing. This is what lets
+  // a big repo finish (and auto-open its graph) instead of falsely erroring out at ~94%.
+  for (;;) {
     await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
     const latestProject = await projectApi.get(project.id)
 
     if (typeof latestProject.progress === 'number') {
+      if (latestProject.progress > lastProgress) {
+        lastAdvanceTime = Date.now()
+      }
       lastProgress = latestProject.progress
       onProgress(latestProject.progress)
     }
 
     if (latestProject.status === 'ANALYZED') {
-      await waitForGraphData(latestProject, onProgress)
+      // ANALYZED is terminal success. Do NOT additionally wait for nodes/edges > 0 — a valid repo
+      // that parses to an empty graph would otherwise loop to a false timeout.
+      onProgress(100)
       return latestProject
     }
 
     if (latestProject.status === 'FAILED') {
       throw new ApiError(400, 'Import Failed', 'Import failed. Verify the repository is public and try again.')
     }
-  }
 
-  throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    // Only surface a timeout when the analysis is genuinely stuck (no progress for a long while)
+    // or the absolute ceiling is reached — never just because a fixed timer elapsed.
+    const now = Date.now()
+    if (
+      now - lastAdvanceTime >= GITHUB_IMPORT_STALL_TIMEOUT_MS ||
+      now - startTime >= GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS
+    ) {
+      throw new ApiError(408, 'Import Timeout', timeoutMessage(lastProgress))
+    }
+  }
 }
 
 export function validateGitHubRepoUrl(url: string): string | null {

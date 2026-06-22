@@ -54,8 +54,6 @@ public interface GraphRepository {
 
     GraphDataResponse getFullGraph(String projectId);
 
-    GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops);
-
     NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops);
 
     List<NodeDto> searchNodes(String projectId, String query);

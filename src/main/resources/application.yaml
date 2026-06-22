@@ -1,6 +1,7 @@
 spring:
   config:
-    import: file:.env[.properties]
+    # optional: so the app/tests start without a .env file (CI and Docker provide env vars directly).
+    import: optional:file:.env[.properties]
 
   application:
     name: VibeGraph
@@ -92,6 +93,12 @@ vibegraph:
   parser:
     use-cache: true
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+
+  # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
+  # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.
+  analyze:
+    max-nodes: ${VIBEGRAPH_ANALYZE_MAX_NODES:200000}
+    max-edges: ${VIBEGRAPH_ANALYZE_MAX_EDGES:600000}
     # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
     # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
     # When enabled, the frontend still default-hides these deep types so the

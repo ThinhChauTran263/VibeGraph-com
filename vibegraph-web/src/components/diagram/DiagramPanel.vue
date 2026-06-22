@@ -23,6 +23,7 @@ const isFullscreen = ref(false)
 const isPanning = ref(false)
 const mainCanvas = ref<HTMLElement | null>(null)
 const fullscreenCanvas = ref<HTMLElement | null>(null)
+const fullscreenDialog = ref<HTMLElement | null>(null)
 const { status, diagram, errorMessage, isLoading, isStale, loadUmlUseCaseDiagram, loadClassDiagram, reset } =
   useDiagrams()
 let renderSeq = 0
@@ -63,7 +64,16 @@ const warnings = computed<string[]>(() => {
   return 'warnings' in current && Array.isArray(current.warnings) ? current.warnings : []
 })
 
-mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' })
+// htmlLabels:false makes Mermaid emit native SVG <text> instead of <foreignObject> HTML labels.
+// foreignObject taints a <canvas> when rasterized, which would break the PNG export below — plain
+// SVG text rasterizes cleanly. securityLevel 'strict' is kept for sanitization.
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'strict',
+  htmlLabels: false,
+  flowchart: { htmlLabels: false },
+  class: { htmlLabels: false },
+})
 
 async function refresh(force = false): Promise<void> {
   clearRenderedDiagram()
@@ -248,31 +258,75 @@ function fitToWidth(canvas: HTMLElement | null): void {
   })
 }
 
+/** Natural pixel size of the diagram from its viewBox (preferred) or width/height attributes. */
+function svgPixelSize(svg: string): { width: number; height: number } {
+  const el = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+  const viewBox = el.getAttribute('viewBox')
+  if (viewBox) {
+    const parts = viewBox.split(/[\s,]+/).map(Number)
+    const w = parts[2]
+    const h = parts[3]
+    if (w !== undefined && h !== undefined && w > 0 && h > 0) return { width: w, height: h }
+  }
+  const width = Number.parseFloat(el.getAttribute('width') ?? '')
+  const height = Number.parseFloat(el.getAttribute('height') ?? '')
+  if (width > 0 && height > 0) return { width, height }
+  return { width: 1200, height: 800 }
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Failed to rasterize the diagram SVG'))
+    image.src = src
+  })
+}
+
 /**
- * Download the rendered diagram as a standalone SVG file. SVG is vector, so it
- * opens in any browser/editor and zooms losslessly — the reliable way to read a
- * very large class diagram that is cramped on screen.
+ * Download the diagram as a PNG by rasterizing the rendered SVG onto a canvas. Uses the SVG's
+ * natural viewBox size (independent of the on-screen zoom) and a 2x scale for a crisp image, on a
+ * white background since Mermaid's default theme draws dark strokes/text with no fill of its own.
  */
-function downloadSvg(): void {
+async function downloadPng(): Promise<void> {
   const source = renderedSvg.value
   if (!source) return
 
   const withNamespace = source.includes('xmlns=')
     ? source
     : source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+
+  const { width, height } = svgPixelSize(withNamespace)
+  const scale = 2
   const blob = new Blob([withNamespace], { type: 'image/svg+xml;charset=utf-8' })
   const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `${activeKind.value}-diagram.svg`
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
+  try {
+    const image = await loadImage(url)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(width * scale))
+    canvas.height = Math.max(1, Math.round(height * scale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const anchor = document.createElement('a')
+    anchor.href = canvas.toDataURL('image/png')
+    anchor.download = `${activeKind.value}-diagram.png`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 function openFullscreen(): void {
   isFullscreen.value = true
+  // Move focus into the dialog so it receives the Esc keydown (a bare <div> is not focusable by
+  // default) and keyboard users are not stranded behind the modal.
+  void nextTick(() => fullscreenDialog.value?.focus())
 }
 
 function closeFullscreen(): void {
@@ -454,11 +508,11 @@ onActivated(() => {
         </button>
         <button
           class="diagram-panel__tool diagram-panel__tool--wide"
-          data-test="diagram-download-svg"
+          data-test="diagram-download-png"
           type="button"
-          @click="downloadSvg"
+          @click="downloadPng"
         >
-          Download SVG
+          Download PNG
         </button>
         <button
           class="diagram-panel__tool diagram-panel__tool--wide"
@@ -496,11 +550,13 @@ onActivated(() => {
     <Teleport to="body">
       <div
         v-if="isFullscreen && hasDiagramContent"
+        ref="fullscreenDialog"
         class="diagram-panel__fullscreen"
         data-test="diagram-fullscreen"
         role="dialog"
         aria-modal="true"
         aria-label="Fullscreen diagram viewer"
+        tabindex="-1"
         @keydown.esc="closeFullscreen"
       >
         <header class="diagram-panel__fullscreen-header">
@@ -524,9 +580,9 @@ onActivated(() => {
             <button
               class="diagram-panel__tool diagram-panel__tool--wide"
               type="button"
-              @click="downloadSvg"
+              @click="downloadPng"
             >
-              Download SVG
+              Download PNG
             </button>
             <button
               class="diagram-panel__tool diagram-panel__tool--wide"

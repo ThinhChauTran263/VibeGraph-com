@@ -59,6 +59,13 @@ services:
       - ./projects:/projects:ro
       # Writable workspace for uploaded archives (archive upload flow)
       - upload-workspaces:/uploads
+    healthcheck:
+      # Spring Boot Actuator liveness — busybox wget ships in the JRE-alpine image.
+      test: ["CMD", "wget", "-O", "/dev/null", "-q", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   frontend:
     build:
@@ -72,7 +79,15 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Nginx serves the SPA on port 80 inside the container.
+      test: ["CMD", "wget", "-O", "/dev/null", "-q", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     environment:
       VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in .env}
       VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL in .env}

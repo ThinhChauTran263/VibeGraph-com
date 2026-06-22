@@ -133,26 +133,34 @@ class LocalImportServiceImplTest {
     }
 
     @Test
-    @DisplayName("unconfined browse (no allowed-root) lists filesystem roots at the top")
-    void browseUnconfinedListsRoots() {
-        // allowedRoot left blank → unconfined
-        DirectoryListing roots = service.browse(null);
+    @DisplayName("browse with a blank path lists the filesystem roots when unconfined")
+    void browseListsRootsWhenUnconfined() {
+        // allowedRoot left blank → "This PC" view: every drive/root, with no parent above it.
+        DirectoryListing listing = service.browse(null);
 
-        assertThat(roots.path()).isEmpty();
-        assertThat(roots.parent()).isNull();
-        assertThat(roots.entries()).isNotEmpty();
+        assertThat(listing.parent()).isNull();
+        assertThat(listing.path()).isEmpty();
+        assertThat(listing.entries()).isNotEmpty();
+        // Every entry is an actual filesystem root (e.g. "C:\" on Windows, "/" on Unix).
+        java.util.Set<String> roots = new java.util.HashSet<>();
+        java.nio.file.FileSystems.getDefault().getRootDirectories()
+                .forEach(r -> roots.add(r.toString()));
+        assertThat(listing.entries()).allSatisfy(e -> assertThat(roots).contains(e.path()));
     }
 
     @Test
-    @DisplayName("unconfined browse allows any directory and exposes its real parent")
-    void browseUnconfinedAllowsAnyDirectory(@TempDir Path anywhere) throws Exception {
-        Files.createDirectories(anywhere.resolve("child"));
+    @DisplayName("browse of any accessible directory is allowed when unconfined")
+    void browseAllowsAnyDirectoryWhenUnconfined(@TempDir Path anywhere) throws Exception {
+        // allowedRoot left blank → a developer can navigate to a project on any drive.
+        Files.createDirectories(anywhere.resolve("my-app/src"));
+        Files.writeString(anywhere.resolve("my-app/pom.xml"), "<project/>\n");
 
         DirectoryListing listing = service.browse(anywhere.toString());
 
         assertThat(listing.path()).isEqualTo(anywhere.toRealPath().toString());
         assertThat(listing.parent()).isEqualTo(anywhere.toRealPath().getParent().toString());
-        assertThat(listing.entries()).extracting(DirectoryListing.Entry::name).contains("child");
+        assertThat(listing.entries()).extracting(DirectoryListing.Entry::name).contains("my-app");
+        assertThat(entry(listing, "my-app").containsJava()).isTrue();
     }
 
     private static DirectoryListing.Entry entry(DirectoryListing listing, String name) {
