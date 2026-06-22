@@ -9,6 +9,21 @@ import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
+import {
+  SIGMA_BASE_NODE_LABEL_SIZE,
+  SIGMA_BASE_EDGE_LABEL_SIZE,
+  SIGMA_MIN_LABEL_ZOOM_SCALE,
+  SIGMA_MAX_LABEL_ZOOM_SCALE,
+  SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE,
+  SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE,
+  SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+  FA2_GRAVITY,
+  FA2_SCALING_RATIO,
+  FA2_BARNES_HUT_MIN_NODES,
+  FA2_SLOW_DOWN,
+  LAYOUT_AUTO_STOP_MS,
+  ZOOM_FIT_DURATION_MS,
+} from '@/lib/runtimeConfig'
 import { drawDefaultNodeLabel, drawHighlightNodeHover, drawEdgeTypeLabel } from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
 import type { FocusPartition } from '@/lib/focusMode'
@@ -28,17 +43,17 @@ export interface UseSigmaOptions {
 // out, matching the node sizes (which Sigma already scales with zoom). Without
 // this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
 // while its label stays tiny.
-const BASE_NODE_LABEL_SIZE = 8
-const BASE_EDGE_LABEL_SIZE = 3
+const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
+const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
 // Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
 // oversized, while still capping growth when zoomed IN.
-const MIN_LABEL_ZOOM_SCALE = 0.5
-const MAX_LABEL_ZOOM_SCALE = 2.25
+const MIN_LABEL_ZOOM_SCALE = SIGMA_MIN_LABEL_ZOOM_SCALE
+const MAX_LABEL_ZOOM_SCALE = SIGMA_MAX_LABEL_ZOOM_SCALE
 // Edge labels can grow with zoom-in like node labels. Raise MAX to let
 // relationship text (DEFINES, IMPORTS…) get bigger when zoomed in; lower it to
 // cap sooner. MIN is the floor when zoomed out (smaller = shrinks more).
-const MIN_EDGE_LABEL_ZOOM_SCALE = 1
-const MAX_EDGE_LABEL_ZOOM_SCALE = 4
+const MIN_EDGE_LABEL_ZOOM_SCALE = SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE
+const MAX_EDGE_LABEL_ZOOM_SCALE = SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE
 
 function clampLabelScale(ratio: number): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 1
@@ -99,7 +114,7 @@ export function useSigma(options: UseSigmaOptions) {
       // pan/zoom so interaction stays at 60fps; they snap back when movement stops.
       hideEdgesOnMove: true,
       hideLabelsOnMove: true,
-      labelRenderedSizeThreshold: 15,
+      labelRenderedSizeThreshold: SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
       labelSize: BASE_NODE_LABEL_SIZE,
@@ -242,10 +257,10 @@ export function useSigma(options: UseSigmaOptions) {
 
     const fa2 = new FA2Layout(graph, {
       settings: {
-        gravity: 1,
-        scalingRatio: 10,
-        barnesHutOptimize: graph.order > 500,
-        slowDown: 5,
+        gravity: FA2_GRAVITY,
+        scalingRatio: FA2_SCALING_RATIO,
+        barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
+        slowDown: FA2_SLOW_DOWN,
       },
     })
 
@@ -256,7 +271,7 @@ export function useSigma(options: UseSigmaOptions) {
       if (layout.value === fa2) {
         stopLayout()
       }
-    }, 5000)
+    }, LAYOUT_AUTO_STOP_MS)
   }
 
   /**
@@ -324,7 +339,7 @@ export function useSigma(options: UseSigmaOptions) {
     const sigma = sigmaInstance.value
     if (!sigma) return
     const camera = sigma.getCamera()
-    camera.animatedReset({ duration: 300 })
+    camera.animatedReset({ duration: ZOOM_FIT_DURATION_MS })
   }
 
   /**

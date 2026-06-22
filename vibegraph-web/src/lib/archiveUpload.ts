@@ -9,8 +9,10 @@
  * leaves the browser. The backend MUST still re-validate.
  */
 
-/** Maximum archive size in bytes (100 MB). */
-export const ARCHIVE_MAX_SIZE_BYTES = 100 * 1024 * 1024
+import { ARCHIVE_MAX_SIZE_BYTES } from '@/lib/runtimeConfig'
+
+/** Maximum archive size in bytes. Sourced from `VITE_ARCHIVE_MAX_SIZE_MB` (runtimeConfig). */
+export { ARCHIVE_MAX_SIZE_BYTES }
 
 /** Supported archive file extensions, lower-case, with leading dot. */
 export const ARCHIVE_ALLOWED_EXTENSIONS = ['.zip', '.tar.gz', '.tgz', '.tar'] as const

@@ -14,6 +14,7 @@ import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 import { useProjectStore } from '@/stores/project'
 import { projectApi, type Project } from '@/lib/api'
+import { PROJECTS_AUTO_REFRESH_INTERVAL_MS } from '@/lib/runtimeConfig'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -29,7 +30,7 @@ const hasProjects = computed(() => projects.value.length > 0)
 // While the user sits on this page, silently re-fetch the list so a project still ANALYZING on the
 // backend (e.g. an import whose in-page progress poll dropped) appears — and flips to ANALYZED —
 // without anyone pressing Refresh/F5. The list call is cheap and the tab is gated on visibility.
-const AUTO_REFRESH_INTERVAL_MS = 5_000
+const AUTO_REFRESH_INTERVAL_MS = PROJECTS_AUTO_REFRESH_INTERVAL_MS
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadProjects(): Promise<void> {

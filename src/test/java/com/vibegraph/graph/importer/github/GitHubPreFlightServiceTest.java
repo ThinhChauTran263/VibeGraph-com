@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.importer.config.GitHubImportProperties;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("GitHubPreFlightService")
@@ -68,7 +69,7 @@ class GitHubPreFlightServiceTest {
         @DisplayName("the @Autowired constructor is the production constructor")
         void autowiredConstructorIsTheProductionOne() throws NoSuchMethodException {
             Constructor<GitHubPreFlightService> ctor = GitHubPreFlightService.class.getDeclaredConstructor(
-                    ArchiveImportProperties.class);
+                    ArchiveImportProperties.class, GitHubImportProperties.class);
 
             assertThat(ctor.isAnnotationPresent(Autowired.class)).isTrue();
         }

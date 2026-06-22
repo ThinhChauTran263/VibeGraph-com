@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { getEdgeColor, getNodeColor } from '@/lib/graphAdapter'
+import { NODE_DETAIL_MAX_PROPERTIES, NODE_DETAIL_MAX_CONNECTIONS } from '@/lib/runtimeConfig'
 import type { GraphEdge, GraphNode } from '@/types/graph'
 
 interface NodeConnection {
@@ -14,8 +15,8 @@ export interface RelationHoverPayload {
   counterpartNodeId: string
 }
 
-const MAX_VISIBLE_PROPERTIES = 12
-const MAX_VISIBLE_CONNECTIONS = 50
+const MAX_VISIBLE_PROPERTIES = NODE_DETAIL_MAX_PROPERTIES
+const MAX_VISIBLE_CONNECTIONS = NODE_DETAIL_MAX_CONNECTIONS
 const SENSITIVE_PROPERTY_KEY_PATTERN = /(secret|token|password|credential|auth|api[_-]?key|private[_-]?key)/i
 
 const { selectedNode, filteredGraphData, clearSelection } = useGraphData()

@@ -50,6 +50,10 @@ vibegraph:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
 
+  # Path to the AI memory / conventions file surfaced by the MCP conventions tool.
+  ai-memory:
+    path: ${VIBEGRAPH_AI_MEMORY_PATH:VibeGraph-specs-2month/ai-memory.md}
+
   # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
   import:
     archive:
@@ -62,6 +66,11 @@ vibegraph:
         - .git
         - .idea
         - node_modules
+    # GitHub import HTTP timeouts (bound by GitHubImportProperties).
+    github:
+      connect-timeout: ${VIBEGRAPH_GITHUB_CONNECT_TIMEOUT:10s}
+      preflight-request-timeout: ${VIBEGRAPH_GITHUB_PREFLIGHT_TIMEOUT:20s}
+      tarball-request-timeout: ${VIBEGRAPH_GITHUB_TARBALL_TIMEOUT:60s}
 
   watcher:
     enabled: ${VIBEGRAPH_WATCHER_ENABLED:true}
@@ -91,28 +100,30 @@ vibegraph:
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 
   parser:
-    use-cache: true
+    use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+    # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
+    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
+    # When enabled, the frontend still default-hides these deep types so the
+    # architecture graph stays readable (revealed via "Show all").
+    # NOTE: key MUST stay under `parser` — ParserServiceImpl reads
+    # ${vibegraph.parser.deep-cpg-enabled}.
+    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
 
   # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
   # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.
   analyze:
     max-nodes: ${VIBEGRAPH_ANALYZE_MAX_NODES:200000}
     max-edges: ${VIBEGRAPH_ANALYZE_MAX_EDGES:600000}
-    # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
-    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
-    # When enabled, the frontend still default-hides these deep types so the
-    # architecture graph stays readable (revealed via "Show all").
-    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
 
   # Bounded executor for future async analysis/import (bound by AnalysisExecutorProperties).
   # Not yet wired into the currently-synchronous upload/analyze flow.
   analysis:
     executor:
-      core-pool-size: 2
-      max-pool-size: 4
-      queue-capacity: 50
-      thread-name-prefix: "analysis-"
+      core-pool-size: ${VIBEGRAPH_ANALYSIS_CORE_POOL_SIZE:2}
+      max-pool-size: ${VIBEGRAPH_ANALYSIS_MAX_POOL_SIZE:4}
+      queue-capacity: ${VIBEGRAPH_ANALYSIS_QUEUE_CAPACITY:50}
+      thread-name-prefix: ${VIBEGRAPH_ANALYSIS_THREAD_PREFIX:analysis-}
 
 logging:
   level:

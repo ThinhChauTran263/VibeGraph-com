@@ -7,6 +7,11 @@ import {
   type ProjectStatusEvent,
 } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
+import {
+  IMPORT_POLL_INTERVAL_MS,
+  IMPORT_STALL_TIMEOUT_MS,
+  IMPORT_ABSOLUTE_TIMEOUT_MS,
+} from '@/lib/runtimeConfig'
 
 const SERVER_UNREACHABLE_ERROR =
   'Cannot reach the server. Make sure the VibeGraph backend is running, then try again.'
@@ -19,13 +24,13 @@ const SAFE_ERROR_PATTERNS = [
   /not found/i,
   /taking longer than expected/i,
 ]
-const POLL_INTERVAL_MS = 1_000
+const POLL_INTERVAL_MS = IMPORT_POLL_INTERVAL_MS
 // No fixed iteration cap: keep polling while the backend keeps advancing so a large project can
 // analyze to completion. Only give up on a genuine stall (no progress for this long)… Set
 // generously so a heavy final phase that sits at 9x% for several minutes is not mistaken for stuck.
-const STALL_TIMEOUT_MS = 300_000
+const STALL_TIMEOUT_MS = IMPORT_STALL_TIMEOUT_MS
 // …or when the absolute safety ceiling is reached.
-const ABSOLUTE_TIMEOUT_MS = 60 * 60_000
+const ABSOLUTE_TIMEOUT_MS = IMPORT_ABSOLUTE_TIMEOUT_MS
 
 export type LocalImportStatus = 'idle' | 'importing' | 'success' | 'error'
 

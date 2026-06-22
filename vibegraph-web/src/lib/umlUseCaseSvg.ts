@@ -1,4 +1,5 @@
 import type { UmlActor, UmlRelation, UmlUseCaseElement } from '@/lib/api'
+import { UML_USECASE_MAX_CHARS, UML_ACTOR_MAX_CHARS } from '@/lib/runtimeConfig'
 
 /**
  * Minimal model the renderer needs. {@code UmlUseCaseResponse & { kind: 'uml' }} is structurally
@@ -272,9 +273,9 @@ const BOUNDARY_PAD = 44
 const BOUNDARY_TITLE_H = 34
 const MIN_BOUNDARY_W = 220
 const CHAR_W = 7.3
-const UC_MAX_CHARS = 28
+const UC_MAX_CHARS = UML_USECASE_MAX_CHARS
 const UC_LINE_H = 16
-const ACTOR_MAX_CHARS = 18
+const ACTOR_MAX_CHARS = UML_ACTOR_MAX_CHARS
 const ACTOR_LINE_H = 15
 const SYS_ACTOR_W = 120
 const SYS_ACTOR_H = 64

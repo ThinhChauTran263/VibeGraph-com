@@ -3,6 +3,13 @@
  */
 
 import type { NodeType, EdgeType } from '@/types/graph'
+import {
+  NODE_SIZE_DEFAULT,
+  NODE_SIZE_MIN,
+  NODE_SIZE_MAX,
+  FOCUS_OPACITY_ACTIVE,
+  FOCUS_OPACITY_DIMMED,
+} from '@/lib/runtimeConfig'
 // Node colors by type - matches NodeType from graph.ts
 export const NODE_COLORS: Record<NodeType, string> = {
   Project: '#6366F1',      // indigo
@@ -113,17 +120,17 @@ export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType
   'LocalVariable',
 ])
 
-// Default node sizes
+// Default node sizes (sourced from env via runtimeConfig)
 export const NODE_SIZES = {
-  default: 5,
-  min: 3,
-  max: 20,
+  default: NODE_SIZE_DEFAULT,
+  min: NODE_SIZE_MIN,
+  max: NODE_SIZE_MAX,
 }
 
-// Focus mode opacity
+// Focus mode opacity (sourced from env via runtimeConfig)
 export const FOCUS_OPACITY = {
-  active: 1.0,
-  dimmed: 0.1,
+  active: FOCUS_OPACITY_ACTIVE,
+  dimmed: FOCUS_OPACITY_DIMMED,
 }
 
 // Label color for a hovered / clicked / focused node. The default Sigma hover
