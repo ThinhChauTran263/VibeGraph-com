@@ -82,6 +82,8 @@ export function useSigma(options: UseSigmaOptions) {
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
   const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
+  // Cleanup for the manual right/middle-button canvas panning listeners.
+  const panCleanup = shallowRef<null | (() => void)>(null)
 
   // Node currently being dragged (null when idle). While set, the camera pan is
   // disabled and the layout worker is stopped so the node stays where dropped.
@@ -174,6 +176,13 @@ export function useSigma(options: UseSigmaOptions) {
 
     registerDragHandlers(sigma, graph)
 
+    // Right/middle-button drag panning (Sigma natively pans only with the left
+    // button). Suppress the context menu so a right-drag pans instead of opening
+    // the browser menu.
+    if (container.value) {
+      panCleanup.value = registerCanvasPanning(sigma, container.value)
+    }
+
     const camera = sigma.getCamera()
     let lastRatio = camera.getState().ratio
     applyZoomResponsiveLabelSize(sigma, lastRatio)
@@ -222,6 +231,13 @@ export function useSigma(options: UseSigmaOptions) {
     const mouseCaptor = sigma.getMouseCaptor()
 
     mouseCaptor.on('mousemovebody', (event) => {
+      // Disable Sigma's native LEFT-drag stage panning entirely — panning is
+      // right/middle-button only (see registerCanvasPanning), matching the
+      // on-canvas Controls hint. Sigma checks `sigmaDefaultPrevented` before its
+      // pan block, so this blocks stage panning while leaving click-selection and
+      // hover intact. Node dragging is still handled below.
+      event.preventSigmaDefault()
+
       const node = draggedNode.value
       if (!node) return
 
@@ -233,8 +249,7 @@ export function useSigma(options: UseSigmaOptions) {
       graph.setNodeAttribute(node, 'x', pos.x)
       graph.setNodeAttribute(node, 'y', pos.y)
 
-      // Prevent Sigma's default camera move while a node is being dragged.
-      event.preventSigmaDefault()
+      // Prevent the browser's default while a node is being dragged.
       event.original.preventDefault()
       event.original.stopPropagation()
     })
@@ -247,6 +262,70 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     mouseCaptor.on('mouseup', releaseDrag)
+  }
+
+  /**
+   * Manual canvas panning with the RIGHT or MIDDLE mouse button.
+   *
+   * Sigma's built-in pan only responds to the left button; the on-canvas Controls
+   * hint promises "Right / Mid → Pan", so we implement it here. We reuse Sigma's
+   * own conversion ({@code viewportToFramedGraph}) to shift the camera by the same
+   * framed-graph delta its left-drag panning uses, and suppress the context menu
+   * so a right-drag pans instead of opening the browser menu.
+   *
+   * Returns a disposer that removes every listener.
+   */
+  function registerCanvasPanning(sigma: Sigma, el: HTMLDivElement): () => void {
+    let panning = false
+    let lastX = 0
+    let lastY = 0
+
+    const localPos = (event: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    }
+
+    const onContextMenu = (event: MouseEvent) => event.preventDefault()
+
+    const onDown = (event: MouseEvent) => {
+      if (event.button !== 1 && event.button !== 2) return
+      panning = true
+      const point = localPos(event)
+      lastX = point.x
+      lastY = point.y
+      el.style.cursor = 'grabbing'
+      event.preventDefault()
+    }
+
+    const onMove = (event: MouseEvent) => {
+      if (!panning) return
+      const point = localPos(event)
+      const last = sigma.viewportToFramedGraph({ x: lastX, y: lastY })
+      const curr = sigma.viewportToFramedGraph({ x: point.x, y: point.y })
+      const camera = sigma.getCamera()
+      const state = camera.getState()
+      camera.setState({ x: state.x + (last.x - curr.x), y: state.y + (last.y - curr.y) })
+      lastX = point.x
+      lastY = point.y
+    }
+
+    const onUp = () => {
+      if (!panning) return
+      panning = false
+      el.style.cursor = ''
+    }
+
+    el.addEventListener('contextmenu', onContextMenu)
+    el.addEventListener('mousedown', onDown)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+
+    return () => {
+      el.removeEventListener('contextmenu', onContextMenu)
+      el.removeEventListener('mousedown', onDown)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
   }
 
   /**
@@ -294,6 +373,10 @@ export function useSigma(options: UseSigmaOptions) {
    */
   function dispose() {
     stopLayout()
+    if (panCleanup.value) {
+      panCleanup.value()
+      panCleanup.value = null
+    }
     if (ghostLayer.value) {
       ghostLayer.value.destroy()
       ghostLayer.value = null
@@ -343,6 +426,21 @@ export function useSigma(options: UseSigmaOptions) {
   }
 
   /**
+   * Animate the camera to center a node in the viewport (used when a Data Flow
+   * step is selected). No-op when the node is absent from the live graph.
+   */
+  function focusNode(nodeId: string): void {
+    const sigma = sigmaInstance.value
+    if (!sigma || !graphInstance.value?.hasNode(nodeId)) return
+    const display = sigma.getNodeDisplayData(nodeId)
+    if (!display) return
+    sigma.getCamera().animate(
+      { x: display.x, y: display.y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
+      { duration: ZOOM_FIT_DURATION_MS },
+    )
+  }
+
+  /**
    * Re-measure the container and repaint. Needed after the canvas DOM is
    * detached/re-attached (e.g. a {@code <KeepAlive>} tab switch), otherwise the
    * WebGL surface can stay blank or keep a stale size.
@@ -366,6 +464,7 @@ export function useSigma(options: UseSigmaOptions) {
     dispose,
     refresh,
     zoomToFit,
+    focusNode,
     startLayout: () => {
       if (graphInstance.value) startLayout(graphInstance.value)
     },

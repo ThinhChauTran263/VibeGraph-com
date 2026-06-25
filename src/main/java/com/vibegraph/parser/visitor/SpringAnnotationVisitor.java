@@ -3,8 +3,11 @@ package com.vibegraph.parser.visitor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
@@ -21,10 +24,20 @@ import com.vibegraph.parser.node.NodeData;
 
 /**
  * Detects Spring Boot annotations and produces APIEndpoint nodes + HANDLES_ROUTE / INJECTS edges.
+ *
+ * <p>Where present, Spring Security authorization annotations
+ * ({@code @PreAuthorize}, {@code @Secured}, {@code @RolesAllowed}) are mined for the required role
+ * and attached to the APIEndpoint node as a {@code requiredRole} property, so the use case engine can
+ * assign the correct actor (Admin vs User) instead of guessing from the URL path. Method-level
+ * annotations win over the class-level default.
  */
 public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
 
     private static final Set<String> INJECT_ANNOTATIONS = Set.of("Autowired", "Inject", "Value", "Resource");
+    private static final Set<String> SECURITY_ANNOTATIONS = Set.of("PreAuthorize", "Secured", "RolesAllowed");
+    // Captures the role token from hasRole('ADMIN'), hasAuthority('ROLE_ADMIN'), "ROLE_ADMIN",
+    // @RolesAllowed("ADMIN"), etc. The ROLE_ prefix is optional and stripped by the caller.
+    private static final Pattern ROLE_TOKEN = Pattern.compile("(?:ROLE_)?([A-Z][A-Z0-9_]+)");
 
     private final List<NodeData> extractedNodes = new ArrayList<>();
     private final List<EdgeData> extractedEdges = new ArrayList<>();
@@ -33,9 +46,15 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
     public void visit(ClassOrInterfaceDeclaration n, Object arg) {
         String classFqcn = n.getFullyQualifiedName().orElse(n.getNameAsString());
         String classPrefix = extractRequestMappingPath(n);
+        String classRole = extractRole(n.getAnnotations());
+        // A plain @Controller renders server-side views (templates/redirects); a @RestController
+        // always returns response bodies. GET view routes are presentation, not REST business
+        // endpoints, so the use case engine can drop them instead of minting "View Page" goals.
+        boolean restController = hasAnnotationNamed(n, "RestController");
+        boolean classRendersView = hasAnnotationNamed(n, "Controller") && !restController;
 
         for (MethodDeclaration method : n.getMethods()) {
-            processMethodAnnotations(method, classFqcn, classPrefix);
+            processMethodAnnotations(method, classFqcn, classPrefix, classRole, classRendersView);
         }
 
         boolean lombokConstructorInjection = hasLombokConstructorInjection(n);
@@ -54,13 +73,18 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
         return extractedEdges;
     }
 
-    private void processMethodAnnotations(MethodDeclaration method, String classFqcn, String classPrefix) {
+    private void processMethodAnnotations(MethodDeclaration method, String classFqcn, String classPrefix,
+            String classRole, boolean classRendersView) {
         String methodFqcn = Signatures.method(
                 classFqcn,
                 method.getNameAsString(),
                 method.getParameters().stream()
                         .map(p -> p.getType().asString())
                         .toList());
+
+        // Method-level security overrides the class-level default; fall back to the class role.
+        String methodRole = extractRole(method.getAnnotations());
+        String requiredRole = methodRole != null ? methodRole : classRole;
 
         for (AnnotationExpr annotation : method.getAnnotations()) {
             String name = annotation.getName().getIdentifier();
@@ -76,6 +100,15 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
                     // Using "path" here left routePath null on every APIEndpoint node,
                     // which silently disabled the uniqueness constraint.
                     routeProps.put("routePath", path);
+                    if (requiredRole != null) {
+                        routeProps.put("requiredRole", requiredRole);
+                    }
+                    // Mark server-side view (page) routes so the use case engine can treat a GET page
+                    // as presentation, not a business goal. Mutating view routes (e.g. a form POST
+                    // returning a redirect) are kept — they perform a real business action.
+                    if (classRendersView && rendersView(method)) {
+                        routeProps.put("view", true);
+                    }
 
                     extractedNodes.add(NodeData.of(
                             "APIEndpoint", routeId, routeId, "",
@@ -128,6 +161,30 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
         return n.getAnnotations().stream()
                 .map(a -> a.getName().getIdentifier())
                 .anyMatch(name -> name.equals("RequiredArgsConstructor") || name.equals("AllArgsConstructor"));
+    }
+
+    private boolean hasAnnotationNamed(ClassOrInterfaceDeclaration n, String simpleName) {
+        return n.getAnnotations().stream()
+                .anyMatch(a -> a.getName().getIdentifier().equals(simpleName));
+    }
+
+    /**
+     * True when a handler renders a server-side view (returns a template/redirect name) rather than a
+     * response body. A method annotated {@code @ResponseBody} returns data, not a view, even on a
+     * plain {@code @Controller}.
+     */
+    private boolean rendersView(MethodDeclaration method) {
+        boolean responseBody = method.getAnnotations().stream()
+                .anyMatch(a -> a.getName().getIdentifier().equals("ResponseBody"));
+        if (responseBody) {
+            return false;
+        }
+        String ret = method.getType().asString();
+        String base = ret.contains("<") ? ret.substring(0, ret.indexOf('<')) : ret;
+        return switch (base) {
+            case "String", "ModelAndView", "View", "RedirectView", "CharSequence" -> true;
+            default -> false;
+        };
     }
 
     private String resolveTypeName(String typeName, ClassOrInterfaceDeclaration context) {
@@ -184,6 +241,70 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
                     .orElse("");
         }
         return "";
+    }
+
+    /**
+     * Extract the required role from any Spring Security authorization annotation in the set
+     * ({@code @PreAuthorize}, {@code @Secured}, {@code @RolesAllowed}). Returns the role token with
+     * any {@code ROLE_} prefix stripped and upper-cased (e.g. {@code "ADMIN"}), or {@code null} when
+     * no such annotation is present or no role token can be read. When several roles are mentioned,
+     * an {@code ADMIN}-like token is preferred so the endpoint maps to the most privileged actor.
+     */
+    private String extractRole(List<AnnotationExpr> annotations) {
+        for (AnnotationExpr annotation : annotations) {
+            if (!SECURITY_ANNOTATIONS.contains(annotation.getName().getIdentifier())) {
+                continue;
+            }
+            String expr = annotationStringValue(annotation);
+            if (expr == null || expr.isBlank()) {
+                continue;
+            }
+            String role = pickRole(expr);
+            if (role != null) {
+                return role;
+            }
+        }
+        return null;
+    }
+
+    /** Read the single string-ish argument of a security annotation (the SpEL or role literal). */
+    private String annotationStringValue(AnnotationExpr annotation) {
+        if (annotation instanceof SingleMemberAnnotationExpr single) {
+            if (single.getMemberValue() instanceof StringLiteralExpr literal) {
+                return literal.asString();
+            }
+            return single.getMemberValue().toString();
+        }
+        if (annotation instanceof NormalAnnotationExpr normal) {
+            return normal.getPairs().stream()
+                    .map(MemberValuePair::getValue)
+                    .filter(StringLiteralExpr.class::isInstance)
+                    .map(StringLiteralExpr.class::cast)
+                    .map(StringLiteralExpr::asString)
+                    .findFirst()
+                    .orElse(null);
+        }
+        return null;
+    }
+
+    /** Pick the most privileged role token from a security expression, preferring ADMIN. */
+    private String pickRole(String expr) {
+        Matcher m = ROLE_TOKEN.matcher(expr);
+        String first = null;
+        while (m.find()) {
+            String token = m.group(1).toUpperCase(Locale.ROOT);
+            // Ignore SpEL keywords that the all-caps regex can otherwise catch.
+            if (token.equals("T") || token.equals("AND") || token.equals("OR") || token.equals("ROLE")) {
+                continue;
+            }
+            if (token.contains("ADMIN")) {
+                return token;
+            }
+            if (first == null) {
+                first = token;
+            }
+        }
+        return first;
     }
 
     private String combinePaths(String prefix, String path) {

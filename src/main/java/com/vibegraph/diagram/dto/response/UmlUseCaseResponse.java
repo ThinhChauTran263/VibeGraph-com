@@ -46,6 +46,33 @@ public class UmlUseCaseResponse {
     private String plantUmlSyntax;
 
     /**
+     * Per-view projections of the SAME canonical model (R4): one view per actor (everything that
+     * actor can reach) and one per business domain. Pure filtering/projection — never a re-inference —
+     * so a view can never disagree with the full diagram. Null/empty for non-UML styles.
+     */
+    private List<UseCaseView> views;
+
+    /**
+     * A projected sub-diagram: a faithful induced sub-graph of the canonical model, scoped to one
+     * actor or one domain, with its own Mermaid/PlantUML rendering.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UseCaseView {
+        /** {@code "actor"} or {@code "domain"}. */
+        private String viewType;
+        /** The actor name or domain this view is scoped to. */
+        private String title;
+        private List<Actor> actors;
+        private List<UseCaseElement> useCases;
+        private List<Relation> relations;
+        private String mermaidSyntax;
+        private String plantUmlSyntax;
+    }
+
+    /**
      * Business actor (e.g. {@code Admin}, {@code User}).
      */
     @Data

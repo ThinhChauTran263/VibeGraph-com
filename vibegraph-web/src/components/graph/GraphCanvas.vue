@@ -17,6 +17,9 @@ import { debounce } from '@/lib/debounce'
 import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
+import ExplorerPanel from '@/components/panels/ExplorerPanel.vue'
+import FlowsPanel from '@/components/panels/FlowsPanel.vue'
+import DataFlowDetailPanel from '@/components/panels/DataFlowDetailPanel.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
 import {
@@ -26,6 +29,8 @@ import {
   type FocusLabelDensity,
   type HoveredRelation,
 } from '@/lib/focusMode'
+import { createFlowFocusReducers, partitionFlowGraph } from '@/lib/flowFocus'
+import type { FlowListItem } from '@/lib/dataFlow'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent } from '@/types/graph'
 
@@ -38,6 +43,41 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+
+// Left sidebar tab: file Explorer (browse source), Graph filters, or Data Flows.
+const activeSidebarTab = ref<'explorer' | 'filters' | 'flows'>('explorer')
+
+// Active Data Flow highlight (set of node ids + connecting edge ids). When set,
+// the canvas spotlights the whole traced chain instead of a single node.
+const activeFlow = ref<{ nodeIds: Set<string>; edgeIds: Set<string>; primaryNodeId: string } | null>(null)
+// The selected flow shown in the right-hand DataFlowDetailPanel.
+const activeFlowDetail = ref<FlowListItem | null>(null)
+
+// User-resizable left sidebar width (px). Bound to a CSS custom property so the
+// responsive media query can still collapse the layout on narrow screens.
+const wrapperRef = ref<HTMLElement | null>(null)
+const sidebarWidth = ref(288)
+let resizing = false
+
+function onResizeStart(event: PointerEvent): void {
+  resizing = true
+  ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', onResizeMove)
+  window.addEventListener('pointerup', onResizeEnd)
+  event.preventDefault()
+}
+
+function onResizeMove(event: PointerEvent): void {
+  if (!resizing || !wrapperRef.value) return
+  const left = wrapperRef.value.getBoundingClientRect().left
+  sidebarWidth.value = Math.min(Math.max(event.clientX - left, 220), 640)
+}
+
+function onResizeEnd(): void {
+  resizing = false
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd)
+}
 
 // Monotonic counter to discard stale async graph loads (see load()).
 let loadSeq = 0
@@ -102,6 +142,7 @@ const {
   setEdgeLabelsVisible,
   setGhostPartition,
   refresh: refreshSigma,
+  focusNode,
 } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
@@ -111,6 +152,8 @@ const {
     // newly selected node is what stays focused after the click settles.
     resetRelationFocus()
     hoveredGraphNode.value = null
+    activeFlow.value = null
+    activeFlowDetail.value = null
     selectNode(node)
     emit('nodeSelected', nodeId)
   },
@@ -127,7 +170,7 @@ const {
     emit('nodeSelected', null)
   },
   onNodeHover: (nodeId: string) => {
-    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value) return
+    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value) return
     hoveredGraphNode.value = nodeId
     applyFocusReducers()
   },
@@ -172,6 +215,12 @@ function applyFocusReducers(): void {
     return
   }
 
+  // 3.5: an active Data Flow highlights the whole traced chain.
+  if (activeFlow.value) {
+    applyFlowFocus()
+    return
+  }
+
   // 4: clicked/searched selection focus.
   if (selectedNode.value) {
     focusOn(selectedNode.value.id, null)
@@ -204,6 +253,47 @@ function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   setEdgeLabelsVisible?.(edgeLabelsEnabled.value && labelDensity.value === 'edges')
 }
 
+/** Spotlight the whole active Data Flow chain on the graph. */
+function applyFlowFocus(): void {
+  if (!graphInstance.value || !activeFlow.value) return
+  const { nodeIds, edgeIds, primaryNodeId } = activeFlow.value
+  setReducers(createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId))
+  setGhostPartition?.(partitionFlowGraph(nodeIds, edgeIds, graphInstance.value))
+  setEdgeLabelsVisible?.(true)
+}
+
+// A Data Flow was selected in the Flows panel: highlight the chain, open the
+// detail panel, and exit any single-node selection.
+function onFlowSelect(item: FlowListItem): void {
+  resetRelationFocus()
+  hoveredGraphNode.value = null
+  clearSelection()
+  emit('nodeSelected', null)
+  activeFlowDetail.value = item
+  activeFlow.value = {
+    nodeIds: new Set(item.flow.steps.map((step) => step.nodeId)),
+    edgeIds: new Set(item.flow.edgeIds),
+    primaryNodeId: item.flow.steps[0]?.nodeId ?? '',
+  }
+  applyFlowFocus()
+}
+
+// A flow step row was activated: keep the chain highlighted but center the node.
+function onFlowStep(nodeId: string): void {
+  if (activeFlow.value) {
+    activeFlow.value = { ...activeFlow.value, primaryNodeId: nodeId }
+    applyFlowFocus()
+  }
+  focusNode(nodeId)
+}
+
+// The flow was cleared: restore the default graph view.
+function onFlowClear(): void {
+  activeFlow.value = null
+  activeFlowDetail.value = null
+  applyFocusReducers()
+}
+
 async function load(projectId: string) {
   // Stale-load guard: if the project changes (or another load starts) while this
   // fetch is in flight, a late-resolving response must NOT init an outdated graph.
@@ -217,6 +307,19 @@ async function load(projectId: string) {
 }
 
 function onSearchSelect(node: GraphNode): void {
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+}
+
+// Clicking a file in the Explorer focuses its representative node. The Explorer
+// is built from the FULL graph (so the whole source tree shows even when filters
+// hide types), so resolve against graphData rather than the filtered `nodes`.
+function onExplorerSelect(nodeId: string): void {
+  const node = graphData.value.nodes.find((candidate) => candidate.id === nodeId) ?? null
+  if (!node) return
+  resetRelationFocus()
+  hoveredGraphNode.value = null
   selectNode(node)
   emit('nodeSelected', node.id)
   applyFocusReducers()
@@ -403,17 +506,77 @@ watch(
 
 onUnmounted(() => {
   rebuildGraph.cancel()
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd)
 })
 </script>
 
 <template>
   <div
+    ref="wrapperRef"
     class="graph-canvas-wrapper"
-    :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }"
+    :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && (selectedNode || activeFlowDetail) }"
+    :style="{ '--sidebar-width': sidebarWidth + 'px' }"
   >
     <aside v-if="!loading && !error" class="graph-canvas__sidebar">
-      <FilterPanel :graph-data="graphData" />
+      <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'explorer'"
+          @click="activeSidebarTab = 'explorer'"
+        >
+          Explorer
+        </button>
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'filters'"
+          @click="activeSidebarTab = 'filters'"
+        >
+          Filters
+        </button>
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'flows'"
+          @click="activeSidebarTab = 'flows'"
+        >
+          Flows
+        </button>
+      </div>
+
+      <ExplorerPanel
+        v-show="activeSidebarTab === 'explorer'"
+        :nodes="graphData.nodes"
+        :selected-node-id="selectedNode?.id ?? null"
+        @select="onExplorerSelect"
+      />
+      <FilterPanel v-show="activeSidebarTab === 'filters'" :graph-data="graphData" />
+      <FlowsPanel
+        v-show="activeSidebarTab === 'flows'"
+        :graph-data="graphData"
+        :selected-flow-id="activeFlowDetail?.id ?? null"
+        @select="onFlowSelect"
+      />
     </aside>
+
+    <div
+      v-if="!loading && !error"
+      class="graph-canvas__resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      title="Drag to resize"
+      :style="{ left: sidebarWidth + 'px' }"
+      @pointerdown="onResizeStart"
+    />
 
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
@@ -481,7 +644,16 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <aside v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+    <aside v-if="!loading && !error && activeFlowDetail" class="graph-canvas__detail">
+      <DataFlowDetailPanel
+        :item="activeFlowDetail"
+        :selected-node-id="activeFlow?.primaryNodeId ?? null"
+        @focus-step="onFlowStep"
+        @close="onFlowClear"
+      />
+    </aside>
+
+    <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
       <NodeDetailPanel
         :pinned-edge-id="pinnedRelation?.edgeId ?? null"
         @close="onDetailClose"
@@ -496,7 +668,8 @@ onUnmounted(() => {
 <style scoped>
 .graph-canvas-wrapper {
   display: grid;
-  grid-template-columns: 18rem 1fr;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr;
+  position: relative;
   width: 100%;
   /* Fill the remaining height of the 100vh flex column in GraphView instead of
      forcing 100% (which resolves to the full viewport and overflows past it by
@@ -507,7 +680,36 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--detail-open {
-  grid-template-columns: 18rem 1fr 23rem;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr 23rem;
+}
+
+/* Draggable divider on the right edge of the sidebar. */
+.graph-canvas__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.5rem;
+  transform: translateX(-50%);
+  z-index: 8;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.graph-canvas__resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  transition: background 150ms ease, width 150ms ease;
+}
+
+.graph-canvas__resizer:hover::after,
+.graph-canvas__resizer:active::after {
+  width: 3px;
+  background: rgba(96, 165, 250, 0.8);
 }
 
 .graph-canvas__sidebar {
@@ -518,6 +720,46 @@ onUnmounted(() => {
   overflow-y: auto;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.85);
+}
+
+.graph-canvas__sidebar-tabs {
+  display: flex;
+  gap: 0.375rem;
+  flex: 0 0 auto;
+}
+
+.graph-canvas__sidebar-tab {
+  flex: 1;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-tab:hover,
+.graph-canvas__sidebar-tab:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  outline: none;
+}
+
+.graph-canvas__sidebar-tab--active {
+  border-color: rgba(96, 165, 250, 0.82);
+  background: rgba(37, 99, 235, 0.32);
+  color: #bfdbfe;
+}
+
+/* The Explorer and Flows panels own the remaining height and scroll internally. */
+.graph-canvas__sidebar > .explorer-panel,
+.graph-canvas__sidebar > .flows-panel {
+  flex: 1 1 auto;
 }
 
 .graph-canvas__stage {
@@ -562,6 +804,12 @@ onUnmounted(() => {
   max-height: 38vh;
 }
 
+/* Data Flow detail fills the right column and scrolls internally. */
+.graph-canvas__detail :deep(.dfd) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 @media (max-width: 64rem) {
   .graph-canvas-wrapper,
   .graph-canvas-wrapper--detail-open {
@@ -575,6 +823,10 @@ onUnmounted(() => {
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.16);
     max-height: 14rem;
+  }
+
+  .graph-canvas__resizer {
+    display: none;
   }
 
   .graph-canvas-wrapper--detail-open {

@@ -97,7 +97,7 @@ describe('DiagramPanel', () => {
     expect(umlUseCaseMock).toHaveBeenCalledWith('p1', 'detailed')
     // API Map has been removed; only UML and Class tabs remain.
     expect(wrapper.find('[data-test="diagram-tab-api-map"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="diagram-tab-uml"]').text()).toBe('UML Use Case')
+    expect(wrapper.get('[data-test="diagram-tab-uml"]').text()).toBe('As-Built Use Case')
     expect(wrapper.get('[data-test="diagram-tab-class"]').text()).toBe('Class')
     expect(wrapper.html()).toContain('<svg')
     expect(wrapper.html()).toContain('Manage products')
@@ -126,6 +126,73 @@ describe('DiagramPanel', () => {
     expect(wrapper.find('[data-test="diagram-uml-mode-grouped"]').exists()).toBe(false)
     expect(umlUseCaseMock).toHaveBeenCalledTimes(1)
     expect(umlUseCaseMock).toHaveBeenCalledWith('p1', 'detailed')
+  })
+
+  it('offers per-actor/per-domain views and switches the rendered projection client-side', async () => {
+    umlUseCaseMock.mockResolvedValueOnce(
+      umlUseCaseResponse({
+        views: [
+          {
+            viewType: 'actor',
+            title: 'Administrator',
+            actors: [{ id: 'A_Admin', name: 'Admin', source: 'path:/admin', confidence: 0.9 }],
+            useCases: [
+              {
+                id: 'UC_ManageProduct',
+                name: 'Manage products',
+                domain: 'Product',
+                level: 'summary',
+                source: 'group',
+                sourceEndpoint: null,
+                confidence: 0.8,
+              },
+            ],
+            relations: [
+              { from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 },
+            ],
+            mermaidSyntax: '',
+            plantUmlSyntax: '',
+          },
+          {
+            viewType: 'domain',
+            title: 'Order',
+            actors: [{ id: 'A_User', name: 'Registered User', source: 'path', confidence: 0.7 }],
+            useCases: [
+              {
+                id: 'UC_TrackShipments',
+                name: 'TrackShipments',
+                domain: 'Order',
+                level: 'summary',
+                source: 'group',
+                sourceEndpoint: null,
+                confidence: 0.8,
+              },
+            ],
+            relations: [
+              { from: 'A_User', to: 'UC_TrackShipments', type: 'association', label: null, confidence: 0.8 },
+            ],
+            mermaidSyntax: '',
+            plantUmlSyntax: '',
+          },
+        ],
+      }),
+    )
+
+    const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
+    await flushAsync()
+
+    const select = wrapper.get('[data-test="diagram-view-select"]')
+    // Full diagram + the two projections, no extra network call for views.
+    expect(select.findAll('option')).toHaveLength(3)
+    expect(umlUseCaseMock).toHaveBeenCalledTimes(1)
+    // Default is the full diagram.
+    expect(wrapper.html()).toContain('Manage products')
+
+    // Switching to the Order domain view redraws only that projection's goal — client-side, no refetch.
+    await select.setValue('1')
+    await flushAsync()
+    expect(wrapper.html()).toContain('TrackShipments')
+    expect(umlUseCaseMock).toHaveBeenCalledTimes(1)
   })
 
   it('zooms the rendered diagram without reloading it', async () => {

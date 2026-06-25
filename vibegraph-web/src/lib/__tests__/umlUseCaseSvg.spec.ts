@@ -179,8 +179,51 @@ describe('renderUmlUseCaseSvg', () => {
       useCases: [uc('U1', 'Do thing')],
       relations: [rel('A1', 'U1', 'association'), rel('A1', 'GHOST', 'association')],
     })
-    // Exactly one association edge is drawn (actor->use case is an orthogonal polyline); the
-    // dangling A1->GHOST relation is skipped without throwing or drawing a phantom edge.
-    expect((svg.match(/<polyline /g) ?? []).length).toBe(1)
+    // Exactly one association edge is drawn (a straight actor->use case line); the dangling
+    // A1->GHOST relation is skipped without throwing or drawing a phantom edge. Edge lines use
+    // stroke-width 1.3 (stick-figure body lines use 1.5), so match the edge stroke specifically.
+    expect((svg.match(/<line [^>]*stroke-width="1.3"/g) ?? []).length).toBe(1)
+  })
+
+  it('draws each association as a straight line directly from actor to use case', () => {
+    // Regression guard for both the "đường ziczac" bus and the orthogonal "plumbing" routing: with a
+    // single use-case column, every association is one straight <line> (not a multi-segment polyline
+    // sharing a corridor), so it can never be misread as use-case-to-use-case flow.
+    const actors = [actor('A1', 'User')]
+    const useCases = Array.from({ length: 5 }, (_, i) => uc(`U${i}`, `Goal ${i}`))
+    const relations = useCases.map((u) => rel('A1', u.id, 'association'))
+    const svg = renderUmlUseCaseSvg({ systemName: 'S', actors, useCases, relations })
+
+    // Five associations -> five straight edge lines (stroke-width 1.3), zero orthogonal polylines.
+    const edgeLines = svg.match(/<line [^>]*stroke-width="1.3"[^>]*\/>/g) ?? []
+    expect(edgeLines.length).toBe(5)
+    expect((svg.match(/<polyline /g) ?? []).length).toBe(0)
+    // Every line starts at the single actor (shared x1) and fans out to each ellipse — a clean fan
+    // from one point, not a vertical bus threading through the nodes.
+    const lineStartXs = edgeLines.map((m) => /x1="([^"]+)"/.exec(m)![1])
+    expect(new Set(lineStartXs).size).toBe(1)
+  })
+
+  it('draws low-confidence inferred use cases and edges faintly', () => {
+    // An inferred shared-service include carries low confidence; the renderer marks both the
+    // ellipse and its association line as dashed/translucent so a reader can tell guessed from
+    // certain elements.
+    const svg = renderUmlUseCaseSvg({
+      systemName: 'S',
+      actors: [actor('A1', 'User'), actor('A2', 'Admin')],
+      useCases: [
+        uc('U1', 'Manage Orders'),
+        uc('U2', 'Manage Products'),
+        { ...uc('UC_Validate', 'Validate Input'), confidence: 0.5 },
+      ],
+      relations: [
+        rel('A1', 'U1', 'association'),
+        rel('A2', 'U2', 'association'),
+        { ...rel('U1', 'UC_Validate', 'include'), confidence: 0.5 },
+        { ...rel('U2', 'UC_Validate', 'include'), confidence: 0.5 },
+      ],
+    })
+    // The inferred use case ellipse is dashed + translucent.
+    expect(svg).toMatch(/<ellipse[^>]*stroke-dasharray="5 4" opacity="0.7"[^>]*><title>Validate Input/)
   })
 })

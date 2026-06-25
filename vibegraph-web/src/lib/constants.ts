@@ -22,11 +22,11 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Record: '#D97706',       // orange-brown - Java record
   Method: '#3B82F6',       // blue
   Constructor: '#06B6D4',  // cyan - constructor member
-  Field: '#06B6D4',        // cyan
+  Field: '#0EA5E9',        // sky - field member (distinct from Constructor cyan)
   Annotation: '#F97316',   // orange
   LocalVariable: '#64748B', // slate-500 - body-level local/parameter (deep CPG)
   Route: '#10B981',        // emerald
-  APIEndpoint: '#22C55E',  // green - HTTP endpoint
+  APIEndpoint: '#F472B6',  // pink - HTTP endpoint (distinct from Interface green)
   External: '#94A3B8',     // slate-400 - library/JDK or unresolved stub
 }
 

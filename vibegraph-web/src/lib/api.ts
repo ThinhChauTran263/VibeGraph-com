@@ -345,6 +345,22 @@ export interface UmlRelation {
 }
 
 /**
+ * A per-actor or per-domain projection of the same canonical UML model (R4). Pure projection of
+ * the full diagram, so a view can never disagree with it. Mirrors backend `UseCaseView`.
+ */
+export interface UmlUseCaseView {
+  /** `actor` or `domain`. */
+  viewType: string
+  /** The actor name or domain this view is scoped to. */
+  title: string
+  actors: UmlActor[]
+  useCases: UmlUseCaseElement[]
+  relations: UmlRelation[]
+  mermaidSyntax?: string | null
+  plantUmlSyntax?: string | null
+}
+
+/**
  * Business-level UML Use Case diagram. Mirrors the backend `UmlUseCaseResponse`.
  * Holds inferred actors and verb-phrased use cases, plus a Mermaid fallback and
  * a standard PlantUML source for proper UML render/copy.
@@ -360,6 +376,8 @@ export interface UmlUseCaseResponse {
   warnings: string[]
   mermaidSyntax: string
   plantUmlSyntax: string
+  /** Per-actor and per-domain projections of the same model; optional/empty for non-UML styles. */
+  views?: UmlUseCaseView[]
 }
 
 // Diagram endpoints
