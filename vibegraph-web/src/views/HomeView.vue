@@ -9,9 +9,8 @@
 
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
-import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
-import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
+import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
+import BrandMark from '@/components/ui/BrandMark.vue'
 import { useProjectStore } from '@/stores/project'
 import { projectApi, type Project } from '@/lib/api'
 import { PROJECTS_AUTO_REFRESH_INTERVAL_MS } from '@/lib/runtimeConfig'
@@ -133,21 +132,33 @@ onUnmounted(stopAutoRefresh)
 </script>
 
 <template>
-  <main class="home">
-    <header class="home__header">
-      <h1>VibeGraph Projects</h1>
-      <p class="home__subtitle">Import a Java project archive to start exploring its graph.</p>
-    </header>
+  <div class="dash">
+    <nav class="dash-nav" aria-label="Dashboard">
+      <RouterLink class="dash-nav__brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
+        <BrandMark :size="28" />
+      </RouterLink>
+      <RouterLink class="dash-nav__back" :to="{ name: 'home' }">
+        <span aria-hidden="true">←</span> Home
+      </RouterLink>
+    </nav>
 
-    <section class="home__import-grid" aria-label="Project import options">
-      <AddProjectLocal @imported="onImported" />
-      <AddProjectArchive :async="true" @imported="onImported" />
-      <GitHubImportForm @imported="onImported" />
+    <main class="home">
+      <header class="home__header">
+        <span class="home__eyebrow">Dashboard</span>
+        <h1>Your projects</h1>
+        <p class="home__subtitle">
+          Import a Java project from a local folder, an archive, or GitHub to start exploring its
+          graph.
+        </p>
+      </header>
+
+    <section class="home__import" aria-label="Project import options">
+      <ImportProjectPanel @imported="onImported" />
     </section>
 
     <section class="home__projects" aria-label="Imported projects">
       <div class="home__projects-head">
-        <h2>Your projects</h2>
+        <h2>Imported projects</h2>
         <div class="home__projects-actions">
           <button
             class="home__refresh"
@@ -200,48 +211,103 @@ onUnmounted(stopAutoRefresh)
         </li>
       </ul>
     </section>
-  </main>
+    </main>
+  </div>
 </template>
 
 <style scoped>
-.home {
+.dash {
   min-height: 100vh;
-  padding: 2.5rem 2rem;
-  background: #0b0b0b;
-  color: #e5e7eb;
+  background: radial-gradient(100% 60% at 100% 0%, rgba(34, 197, 94, 0.06), transparent 55%),
+    radial-gradient(80% 50% at 0% 0%, rgba(59, 130, 246, 0.08), transparent 55%), var(--vg-bg);
+  color: var(--vg-text);
+}
+
+.dash-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-4);
+  padding: 0.85rem clamp(1rem, 0.5rem + 2vw, 2.5rem);
+  background: rgba(7, 11, 22, 0.72);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--vg-border);
+}
+
+.dash-nav__brand {
+  display: inline-flex;
+  border-radius: var(--vg-radius-sm);
+}
+
+.dash-nav__back {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--vg-radius-pill);
+  border: 1px solid var(--vg-border-strong);
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  font-weight: 500;
+  transition: color var(--vg-dur-fast), border-color var(--vg-dur-fast),
+    background-color var(--vg-dur-fast);
+}
+.dash-nav__back:hover {
+  color: var(--vg-text);
+  border-color: var(--vg-blue-bright);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.home {
+  max-width: var(--vg-maxw);
+  margin: 0 auto;
+  padding: clamp(2rem, 1.5rem + 2vw, 3rem) clamp(1rem, 0.5rem + 2vw, 2.5rem) 4rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: var(--vg-space-12);
 }
 
 .home__header {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
+}
+
+.home__eyebrow {
+  font-family: var(--vg-font-display);
+  font-size: var(--vg-text-sm);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vg-blue-bright);
 }
 
 .home__header h1 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: var(--vg-text-2xl);
+  font-weight: 700;
 }
 
 .home__subtitle {
   margin: 0;
-  color: #9ca3af;
+  max-width: 42rem;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-lg);
 }
 
-.home__import-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
-  gap: 1.5rem;
-  align-items: start;
+.home__import {
+  max-width: 52rem;
+  width: 100%;
+  margin-inline: auto;
 }
 
 .home__projects {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--vg-space-4);
 }
 
 .home__projects-head {
@@ -252,7 +318,7 @@ onUnmounted(stopAutoRefresh)
 
 .home__projects-head h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: var(--vg-text-xl);
   font-weight: 600;
 }
 
@@ -263,12 +329,18 @@ onUnmounted(stopAutoRefresh)
 
 .home__refresh {
   font: inherit;
-  padding: 0.35rem 0.85rem;
-  border-radius: 6px;
-  border: 1px solid #2a2a2a;
-  background: transparent;
+  padding: 0.4rem 0.95rem;
+  border-radius: var(--vg-radius-pill);
+  border: 1px solid var(--vg-border-strong);
+  background: rgba(148, 163, 184, 0.06);
   color: inherit;
   cursor: pointer;
+  transition: border-color var(--vg-dur-fast), background-color var(--vg-dur-fast);
+}
+
+.home__refresh:hover:not(:disabled) {
+  border-color: var(--vg-blue-bright);
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .home__refresh:disabled {
@@ -278,16 +350,17 @@ onUnmounted(stopAutoRefresh)
 
 .home__clear-all {
   font: inherit;
-  padding: 0.35rem 0.85rem;
-  border-radius: 6px;
-  border: 1px solid #7f1d1d;
+  padding: 0.4rem 0.95rem;
+  border-radius: var(--vg-radius-pill);
+  border: 1px solid rgba(239, 68, 68, 0.5);
   background: transparent;
   color: #f87171;
   cursor: pointer;
+  transition: background-color var(--vg-dur-fast);
 }
 
 .home__clear-all:hover:not(:disabled) {
-  background: rgba(127, 29, 29, 0.2);
+  background: rgba(127, 29, 29, 0.25);
 }
 
 .home__clear-all:disabled {
@@ -298,13 +371,17 @@ onUnmounted(stopAutoRefresh)
 .home__projects-error {
   margin: 0;
   color: #f87171;
-  font-size: 0.875rem;
+  font-size: var(--vg-text-sm);
 }
 
 .home__projects-empty {
   margin: 0;
-  color: #9ca3af;
-  font-size: 0.875rem;
+  padding: var(--vg-space-8);
+  text-align: center;
+  border: 1px dashed var(--vg-border-strong);
+  border-radius: var(--vg-radius-lg);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
 }
 
 .home__projects-list {
@@ -330,42 +407,49 @@ onUnmounted(stopAutoRefresh)
   gap: 1rem;
   font: inherit;
   text-align: left;
-  padding: 0.65rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #2a2a2a;
-  background: #141414;
+  padding: 0.8rem 1.1rem;
+  border-radius: var(--vg-radius);
+  border: 1px solid var(--vg-border);
+  background: var(--vg-grad-surface);
   color: inherit;
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease;
+  transition: border-color var(--vg-dur-fast) ease, transform var(--vg-dur-fast) ease,
+    box-shadow var(--vg-dur) ease;
 }
 
 .home__project-open:hover {
-  border-color: #2563eb;
-  background: #18181b;
+  border-color: var(--vg-blue-bright);
+  box-shadow: var(--vg-shadow);
 }
 
 .home__project-name {
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .home__project-meta {
-  font-size: 0.75rem;
-  color: #9ca3af;
+  font-family: var(--vg-font-display);
+  font-size: var(--vg-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--vg-radius-pill);
+  border: 1px solid var(--vg-border-strong);
+  color: var(--vg-green-bright);
 }
 
 .home__project-delete {
   font: inherit;
-  width: 2.5rem;
-  border-radius: 6px;
-  border: 1px solid #2a2a2a;
+  width: 2.75rem;
+  border-radius: var(--vg-radius);
+  border: 1px solid var(--vg-border);
   background: transparent;
-  color: #9ca3af;
+  color: var(--vg-text-dim);
   cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease;
+  transition: border-color var(--vg-dur-fast) ease, color var(--vg-dur-fast) ease;
 }
 
 .home__project-delete:hover:not(:disabled) {
-  border-color: #7f1d1d;
+  border-color: rgba(239, 68, 68, 0.6);
   color: #f87171;
 }
 

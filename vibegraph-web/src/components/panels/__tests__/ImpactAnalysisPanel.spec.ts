@@ -233,6 +233,11 @@ describe('ImpactAnalysisPanel', () => {
       props: { projectId: 'p1', node: fakeNode({ id: 'poly.pkg', name: 'pkg', type: 'Package' }) },
     })
 
+    // Non-target types now default to the Structural profile; explicitly switch
+    // back to Dependency to exercise the dependency empty-state explanation.
+    await wrapper.get('#impact-profile').setValue('dependency')
+    await nextTick()
+
     await wrapper.get('form').trigger('submit.prevent')
     await nextTick()
     await nextTick()
@@ -240,6 +245,24 @@ describe('ImpactAnalysisPanel', () => {
     const text = wrapper.text()
     expect(text).toContain('not targets of those relationships')
     expect(text).not.toContain('Try a deeper depth')
+  })
+
+  it('defaults to the Structural profile for structural-only node types', async () => {
+    const fileWrapper = mount(ImpactAnalysisPanel, {
+      props: {
+        projectId: 'p1',
+        node: fakeNode({ id: 'poly.File.java', name: 'File.java', type: 'File' }),
+      },
+    })
+    await nextTick()
+    expect((fileWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe('structural')
+
+    // Dependency-target types keep the dependency blast radius as the default.
+    const classWrapper = mount(ImpactAnalysisPanel, {
+      props: { projectId: 'p1', node: fakeNode({ type: 'Class' }) },
+    })
+    await nextTick()
+    expect((classWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe('dependency')
   })
 
   it('frames an empty result on a supported type as a likely entrypoint', async () => {

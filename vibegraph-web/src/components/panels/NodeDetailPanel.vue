@@ -53,6 +53,23 @@ function onRelationSelect(connection: NodeConnection): void {
 
 const nodeById = computed(() => new Map(filteredGraphData.value.nodes.map((node) => [node.id, node])))
 
+// File nodes carry their path as BOTH fullName and filePath, which would render the
+// same path twice in the meta block. Only show fullName when it adds information
+// (i.e. differs from the file path, e.g. a class's qualified name).
+const showFullName = computed(() => {
+  const node = selectedNode.value
+  return !!node && !!node.fullName && node.fullName !== node.filePath
+})
+
+// Location line: the file path, with a line number only when it is meaningful
+// (code symbols). File nodes point at line 1 of themselves, so the ":1" is noise.
+const locationLabel = computed(() => {
+  const node = selectedNode.value
+  if (!node?.filePath) return ''
+  const hasLine = node.type !== 'File' && typeof node.lineNumber === 'number' && node.lineNumber > 0
+  return hasLine ? `${node.filePath}:${node.lineNumber}` : node.filePath
+})
+
 const propertyEntries = computed(() => {
   if (!selectedNode.value) return []
   return Object.entries(selectedNode.value.properties)
@@ -100,8 +117,8 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 
       <div class="node-detail-panel__meta">
         <span class="node-detail-panel__badge">{{ selectedNode.type }}</span>
-        <span>{{ selectedNode.fullName }}</span>
-        <span>{{ selectedNode.filePath }}:{{ selectedNode.lineNumber }}</span>
+        <span v-if="showFullName">{{ selectedNode.fullName }}</span>
+        <span v-if="locationLabel">{{ locationLabel }}</span>
       </div>
 
       <section v-if="propertyEntries.length > 0" class="node-detail-panel__section" aria-labelledby="node-properties-heading">

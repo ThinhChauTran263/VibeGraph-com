@@ -54,6 +54,21 @@ export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { m
 export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 5, { min: 1 })
 export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 3, { min: 1 })
 export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 20, { min: 1 })
+
+// Per-tier node radii (Sigma units). Sizes follow the containment hierarchy:
+// the wider a node's structural scope (and the rarer it is), the larger it renders;
+// the deeper / more numerous it is, the smaller — so dense member nodes don't drown
+// out the architecture. Floats are allowed (e.g. 4.5) for fine-grained tuning.
+//   Project > Package > File > Type decl > Member/Endpoint > Detail/metadata
+export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 10, { min: 1 })
+export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 7, { min: 1 })
+export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 6, { min: 1 })
+/** Type declarations: Class / Interface / Enum / Record / DBModel. */
+export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 5, { min: 1 })
+/** Behavioral members: Method / Constructor. */
+export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 4, { min: 1 })
+/** HTTP entry points: Route / APIEndpoint (kept prominent despite shallow scope). */
+export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 4, { min: 1 })
 /** Focus-mode opacities for the active vs dimmed nodes (0–1). */
 export const FOCUS_OPACITY_ACTIVE = envFloat('VITE_FOCUS_OPACITY_ACTIVE', 1.0, { min: 0, max: 1 })
 export const FOCUS_OPACITY_DIMMED = envFloat('VITE_FOCUS_OPACITY_DIMMED', 0.1, { min: 0, max: 1 })
@@ -95,11 +110,13 @@ export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LAB
 export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt('VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD', 15, { min: 0 })
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
-export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 1, { min: 0 })
-export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 10, { min: 0 })
+export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.2, { min: 0 })
+export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 100, { min: 0 })
 /** Enable Barnes-Hut optimization once node count exceeds this. */
 export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
+/** Synchronous ForceAtlas2 iterations run once before first paint (no live animation). */
+export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 400, { min: 1 })
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 5000, { min: 0 })
 /** Zoom-to-fit camera animation duration. */

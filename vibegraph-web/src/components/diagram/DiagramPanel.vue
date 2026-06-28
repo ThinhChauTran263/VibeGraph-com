@@ -542,7 +542,10 @@ onActivated(() => {
       </li>
     </ul>
 
-    <p v-if="isLoading" class="diagram-panel__status" role="status">Loading diagram…</p>
+    <div v-if="isLoading" class="diagram-panel__loading" role="status">
+      <div class="diagram-panel__spinner" aria-hidden="true"></div>
+      <p>Loading diagram…</p>
+    </div>
 
     <p v-else-if="status === 'error'" class="diagram-panel__error" role="alert">
       {{ errorMessage }}
@@ -848,6 +851,45 @@ onActivated(() => {
   font-size: 0.875rem;
 }
 
+/* Centered loading feedback so the spinner + label sit in the middle of the
+   diagram area instead of clinging to the top-left. */
+.diagram-panel__loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 14rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+.diagram-panel__loading p {
+  margin: 0;
+}
+
+.diagram-panel__spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: diagram-spin 0.8s linear infinite;
+}
+
+@keyframes diagram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagram-panel__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 .diagram-panel__error {
   padding: 0.75rem;
   border: 1px solid rgba(239, 68, 68, 0.5);
@@ -936,29 +978,51 @@ onActivated(() => {
 .diagram-panel__views-label {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--color-text-secondary, #4b5563);
+  color: #9fb0c7;
 }
 
 .diagram-panel__views-select {
   flex: 0 1 auto;
   max-width: 22rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
   font-size: 0.8125rem;
-  border: 1px solid var(--color-border, #d1d5db);
-  border-radius: 4px;
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #111827);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 0.5rem;
+  background: rgba(7, 11, 22, 0.6);
+  color: #e8edf6;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.diagram-panel__views-select:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.diagram-panel__views-select:focus-visible {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.diagram-panel__views-select option {
+  background: #0f172a;
+  color: #e8edf6;
 }
 
 .diagram-panel__caption {
   margin: 0 0 0.75rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.6rem 0.85rem;
   font-size: 0.8125rem;
   line-height: 1.45;
-  color: var(--color-text-secondary, #4b5563);
-  background: var(--color-surface-muted, #f3f4f6);
-  border-left: 3px solid var(--color-accent, #6366f1);
-  border-radius: 4px;
+  color: #9fb0c7;
+  background: rgba(7, 11, 22, 0.5);
+  border-left: 3px solid var(--vg-blue-bright, #60a5fa);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.diagram-panel__caption strong {
+  color: #e8edf6;
 }
 
 .diagram-panel__warnings {

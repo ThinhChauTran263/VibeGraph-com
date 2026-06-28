@@ -59,6 +59,15 @@ const wrapperRef = ref<HTMLElement | null>(null)
 const sidebarWidth = ref(288)
 let resizing = false
 
+// Collapsed state for the left sidebar. When collapsed the panel column shrinks
+// to zero and a floating chevron lets the user reopen it, freeing the full width
+// for the graph canvas.
+const sidebarCollapsed = ref(false)
+
+function toggleSidebar(): void {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
 function onResizeStart(event: PointerEvent): void {
   resizing = true
   ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
@@ -129,7 +138,6 @@ const {
   selectNode,
   clearSelection,
   selectedNode,
-  renderInfo,
   nodes,
 } = useGraphData()
 
@@ -142,6 +150,7 @@ const {
   setEdgeLabelsVisible,
   setGhostPartition,
   refresh: refreshSigma,
+  zoomToFit,
   focusNode,
 } = useSigma({
   container: canvasRef,
@@ -303,6 +312,11 @@ async function load(projectId: string) {
   if (graph && canvasRef.value) {
     initSigma(graph)
     applyFocusReducers()
+    // Frame the whole graph once the canvas has its final box (next frame), so a
+    // first-paint mis-measure can't leave the graph offset to one edge.
+    requestAnimationFrame(() => {
+      if (seq === loadSeq) zoomToFit()
+    })
   }
 }
 
@@ -515,11 +529,16 @@ onUnmounted(() => {
   <div
     ref="wrapperRef"
     class="graph-canvas-wrapper"
-    :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && (selectedNode || activeFlowDetail) }"
-    :style="{ '--sidebar-width': sidebarWidth + 'px' }"
+    :class="{
+      'graph-canvas-wrapper--detail-open': !loading && !error && (selectedNode || activeFlowDetail),
+      'graph-canvas-wrapper--collapsed': !loading && !error && sidebarCollapsed,
+      'graph-canvas-wrapper--loading': loading || error,
+    }"
+    :style="{ '--sidebar-width': (sidebarCollapsed ? 0 : sidebarWidth) + 'px' }"
   >
-    <aside v-if="!loading && !error" class="graph-canvas__sidebar">
-      <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
+    <aside v-show="!loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
+      <div class="graph-canvas__sidebar-topbar">
+        <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
         <button
           class="graph-canvas__sidebar-tab"
           :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
@@ -550,6 +569,16 @@ onUnmounted(() => {
         >
           Flows
         </button>
+        </div>
+        <button
+          class="graph-canvas__sidebar-collapse"
+          type="button"
+          title="Collapse panel"
+          aria-label="Collapse sidebar panel"
+          @click="toggleSidebar"
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
       </div>
 
       <ExplorerPanel
@@ -568,7 +597,7 @@ onUnmounted(() => {
     </aside>
 
     <div
-      v-if="!loading && !error"
+      v-if="!loading && !error && !sidebarCollapsed"
       class="graph-canvas__resizer"
       role="separator"
       aria-orientation="vertical"
@@ -581,27 +610,25 @@ onUnmounted(() => {
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
 
-      <div
-        v-if="!loading && !error && renderInfo?.truncated"
-        class="graph-safe-mode-notice"
-        role="status"
+      <button
+        v-if="!loading && !error && sidebarCollapsed"
+        type="button"
+        class="graph-canvas__sidebar-expand"
+        title="Expand panel"
+        aria-label="Expand sidebar panel"
+        @click="toggleSidebar"
       >
-        <span class="graph-safe-mode-notice__dot" aria-hidden="true" />
-        <span>
-          Safe Mode — showing
-          <strong>{{ renderInfo.renderedNodes.toLocaleString() }}</strong> /
-          <strong>{{ renderInfo.totalNodes.toLocaleString() }}</strong> nodes and
-          <strong>{{ renderInfo.renderedEdges.toLocaleString() }}</strong> /
-          <strong>{{ renderInfo.totalEdges.toLocaleString() }}</strong> relationships. Use search
-          or filters to narrow the view.
-        </span>
-      </div>
+        <span aria-hidden="true">›</span>
+      </button>
 
       <button
         v-if="!loading && !error"
         type="button"
         class="graph-edge-label-toggle"
-        :class="{ 'graph-edge-label-toggle--off': !edgeLabelsEnabled }"
+        :class="{
+          'graph-edge-label-toggle--off': !edgeLabelsEnabled,
+          'graph-edge-label-toggle--shifted': sidebarCollapsed,
+        }"
         :aria-pressed="edgeLabelsEnabled"
         @click="toggleEdgeLabels"
       >
@@ -683,6 +710,25 @@ onUnmounted(() => {
   grid-template-columns: var(--sidebar-width, 18rem) 1fr 23rem;
 }
 
+/* When the sidebar is collapsed it is removed from the grid flow (display:none),
+   so the stage would auto-place into the now-0px first track and shrink to
+   nothing. Drop the empty sidebar track entirely so the stage fills the row. */
+.graph-canvas-wrapper--collapsed {
+  grid-template-columns: 1fr;
+}
+
+.graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 1fr 23rem;
+}
+
+/* While loading or in an error state the sidebar/detail are hidden, but the grid
+   would otherwise keep their reserved columns and push the centered overlay off to
+   one side. Collapse to a single full-width column so the spinner is truly centered. */
+.graph-canvas-wrapper--loading,
+.graph-canvas-wrapper--loading.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 1fr;
+}
+
 /* Draggable divider on the right edge of the sidebar. */
 .graph-canvas__resizer {
   position: absolute;
@@ -722,10 +768,79 @@ onUnmounted(() => {
   background: rgba(15, 23, 42, 0.85);
 }
 
+.graph-canvas__sidebar-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: 0 0 auto;
+}
+
 .graph-canvas__sidebar-tabs {
   display: flex;
   gap: 0.375rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.graph-canvas__sidebar-collapse {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-collapse:hover,
+.graph-canvas__sidebar-collapse:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(37, 99, 235, 0.22);
+  color: #f8fafc;
+  outline: none;
+}
+
+/* Floating chevron to reopen the sidebar after it has been collapsed. */
+.graph-canvas__sidebar-expand {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-expand:hover,
+.graph-canvas__sidebar-expand:focus-visible {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(37, 99, 235, 0.3);
+  color: #f8fafc;
+  outline: none;
 }
 
 .graph-canvas__sidebar-tab {
@@ -780,28 +895,26 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  /* The column is height-constrained to the graph viewport; each panel manages
-     its OWN scroll so a long Node Detail can never crush Impact Analysis. */
+  /* The whole column scrolls as one. Panels size to their content so the Impact
+     Analysis results are never crushed to a zero-height (previously the panel was
+     capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.85);
 }
 
-/* Node Detail takes the flexible space and scrolls internally when it has many
-   relations. */
+/* Node Detail caps its height and scrolls internally so a node with many
+   relations cannot push Impact Analysis far down the column. */
 .graph-canvas__detail :deep(.node-detail-panel) {
-  flex: 1 1 auto;
-  min-height: 8rem;
+  flex: 0 0 auto;
+  max-height: 55vh;
   overflow-y: auto;
 }
 
-/* Impact Analysis keeps a stable, readable height and never collapses. Its
-   header/controls stay pinned; only its results body scrolls (see panel CSS). */
+/* Impact Analysis sizes to its content so its result list is always visible. */
 .graph-canvas__detail :deep(.impact-panel) {
   flex: 0 0 auto;
-  min-height: 15rem;
-  max-height: 38vh;
 }
 
 /* Data Flow detail fills the right column and scrolls internally. */
@@ -996,47 +1109,17 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
+/* When the sidebar is collapsed a floating expand chevron occupies the top-left
+   corner. Shift the edge-label toggle clear of it so the two controls never
+   overlap (they previously stacked at the same coordinates). */
+.graph-edge-label-toggle--shifted {
+  left: 3.5rem;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-</style>
-
-<style scoped>
-.graph-safe-mode-notice {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  max-width: min(90%, 40rem);
-  padding: 0.5rem 0.9rem;
-  border: 1px solid rgba(251, 191, 36, 0.45);
-  border-radius: 999px;
-  background: rgba(120, 53, 15, 0.82);
-  color: #fde68a;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
-}
-
-.graph-safe-mode-notice strong {
-  color: #fef3c7;
-  font-weight: 700;
-}
-
-.graph-safe-mode-notice__dot {
-  flex: 0 0 auto;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25);
-}
 </style>
