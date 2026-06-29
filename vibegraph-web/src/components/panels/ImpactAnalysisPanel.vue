@@ -10,10 +10,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useImpactAnalysis } from '@/composables/useImpactAnalysis'
 import type { GraphNode, NodeType } from '@/types/graph'
 import type { ImpactNode, ImpactProfile } from '@/lib/api'
+import FilePath from '@/components/ui/FilePath.vue'
+import CodeViewerModal from '@/components/panels/CodeViewerModal.vue'
 
 const props = defineProps<{
   projectId: string
   node: GraphNode | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'select', nodeId: string): void
 }>()
 
 const {
@@ -137,6 +143,33 @@ function nodeKey(node: ImpactNode): string {
   return node.id || node.fullName || node.name
 }
 
+// Affected nodes that resolve to a real source file can open the read-only code viewer.
+// Packages/projects are directories and External imports live outside the source tree.
+const NON_SOURCE_TYPES = new Set(['Package', 'Project', 'External'])
+function canViewImpact(node: ImpactNode): boolean {
+  return !!node.filePath && !NON_SOURCE_TYPES.has(node.type)
+}
+
+const showCode = ref(false)
+const codeNode = ref<ImpactNode | null>(null)
+
+function openImpactCode(node: ImpactNode): void {
+  if (!node.filePath) return
+  codeNode.value = node
+  showCode.value = true
+}
+
+// Clicking an affected node navigates the graph to it (selects + focuses), so the user can
+// inspect that node's own detail/impact without hunting for it on the canvas.
+function selectAffected(node: ImpactNode): void {
+  if (node.id) emit('select', node.id)
+}
+
+function closeCode(): void {
+  showCode.value = false
+  codeNode.value = null
+}
+
 function analyze(): void {
   if (!props.node) return
   void loadImpact(props.projectId, props.node.id, selectedDepth.value, selectedProfile.value)
@@ -233,8 +266,27 @@ watch(status, (next) => {
             <h3 :id="`impact-group-${group.key}`">{{ group.label }} ({{ group.nodes.length }})</h3>
             <ul class="impact-panel__nodes">
               <li v-for="affected in group.nodes" :key="nodeKey(affected)">
-                <span class="impact-panel__node-name">{{ affected.name }}</span>
-                <span class="impact-panel__node-path">{{ affected.filePath }}</span>
+                <div class="impact-panel__node-head">
+                  <button
+                    type="button"
+                    class="impact-panel__node-name"
+                    :title="`Show ${affected.name} in graph`"
+                    @click="selectAffected(affected)"
+                  >
+                    {{ affected.name }}
+                  </button>
+                  <button
+                    v-if="canViewImpact(affected)"
+                    type="button"
+                    class="impact-panel__node-code"
+                    :aria-label="`View source of ${affected.name}`"
+                    title="View source"
+                    @click="openImpactCode(affected)"
+                  >
+                    <span aria-hidden="true">{&nbsp;}</span>
+                  </button>
+                </div>
+                <FilePath v-if="affected.filePath" :path="affected.filePath" class="impact-panel__node-path" />
               </li>
             </ul>
           </section>
@@ -263,6 +315,13 @@ watch(status, (next) => {
           Choose a depth and run analysis to see what this node affects.
         </p>
       </div>
+
+      <CodeViewerModal
+        v-if="showCode && codeNode"
+        :project-id="props.projectId"
+        :node="codeNode"
+        @close="closeCode"
+      />
     </template>
   </aside>
 </template>
@@ -500,9 +559,67 @@ watch(status, (next) => {
   background: rgba(31, 41, 55, 0.72);
 }
 
+.impact-panel__node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.impact-panel__node-code {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 1.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.4rem;
+  background: rgba(15, 23, 42, 0.6);
+  color: #93c5fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.impact-panel__node-code:hover,
+.impact-panel__node-code:focus-visible {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(37, 99, 235, 0.22);
+  color: #f8fafc;
+  outline: none;
+}
+
+.impact-panel__node-code:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
 .impact-panel__node-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #e5e7eb;
+  font: inherit;
   font-weight: 600;
+  text-align: left;
   overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.impact-panel__node-name:hover,
+.impact-panel__node-name:focus-visible {
+  color: #bfdbfe;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  outline: none;
 }
 
 .impact-panel__node-path {

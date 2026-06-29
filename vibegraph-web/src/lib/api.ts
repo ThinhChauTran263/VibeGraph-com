@@ -62,6 +62,27 @@ export interface ImpactAnalysisResponse {
   mayNeedTesting: ImpactNode[]
 }
 
+/**
+ * A bounded, redacted slice of a source file returned by the code viewer endpoint.
+ * Mirrors the backend `SourceFileService.SourceContent` record.
+ *
+ * `found=false` means the file exists in the graph but cannot be served as source
+ * (disallowed extension, missing on disk, binary, …) — `truncationReason` carries why.
+ * Paths are always project-relative; an absolute host path is never returned.
+ */
+export interface SourceContent {
+  found: boolean
+  relativePath: string
+  language: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  content: string
+  truncated: boolean
+  truncationReason?: string | null
+  warnings: string[]
+}
+
 /** Traversal depths the backend accepts (see GraphServiceImpl ALLOWED_IMPACT_DEPTHS). */
 export const IMPACT_ALLOWED_DEPTHS = [1, 2, 3, 5] as const
 export type ImpactDepth = (typeof IMPACT_ALLOWED_DEPTHS)[number]
@@ -298,6 +319,23 @@ export const graphApi = {
     const query = new URLSearchParams({ nodeId, depth: String(depth), profile })
     return api.get<ImpactAnalysisResponse>(
       `/api/projects/${projectId}/graph/impact?${query}`,
+    )
+  },
+
+  /**
+   * Read a bounded slice of a source file for the in-app code viewer.
+   * GET /api/projects/{projectId}/source?path=...&startLine=...&endLine=...
+   *
+   * `path` is typically the selected node's absolute `filePath`; the backend confines it to the
+   * project source root and rejects traversal. `startLine`/`endLine` are 1-based; omit them to
+   * read from the top (the server caps the window size and reports truncation).
+   */
+  getSource: (projectId: string, path: string, startLine?: number, endLine?: number) => {
+    const params = new URLSearchParams({ path })
+    if (startLine != null) params.set('startLine', String(startLine))
+    if (endLine != null) params.set('endLine', String(endLine))
+    return api.get<SourceContent>(
+      `/api/projects/${encodeURIComponent(projectId)}/source?${params}`,
     )
   },
 }

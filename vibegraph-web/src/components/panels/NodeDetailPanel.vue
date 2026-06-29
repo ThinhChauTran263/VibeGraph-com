@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { getEdgeColor, getNodeColor } from '@/lib/graphAdapter'
 import { NODE_DETAIL_MAX_PROPERTIES, NODE_DETAIL_MAX_CONNECTIONS } from '@/lib/runtimeConfig'
 import type { GraphEdge, GraphNode } from '@/types/graph'
+import CodeViewerModal from '@/components/panels/CodeViewerModal.vue'
+import FilePath from '@/components/ui/FilePath.vue'
 
 interface NodeConnection {
   edge: GraphEdge
@@ -24,9 +26,13 @@ const { selectedNode, filteredGraphData, clearSelection } = useGraphData()
 // The id of the relation edge currently PINNED in the graph (clicked by the user).
 // Drives the persistent "selected" styling on the matching connection item so the
 // pinned relation stays visually marked after the pointer leaves it.
-const props = defineProps<{
-  pinnedEdgeId?: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    pinnedEdgeId?: string | null
+    projectId?: string
+  }>(),
+  { pinnedEdgeId: null, projectId: '' },
+)
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -61,14 +67,40 @@ const showFullName = computed(() => {
   return !!node && !!node.fullName && node.fullName !== node.filePath
 })
 
-// Location line: the file path, with a line number only when it is meaningful
-// (code symbols). File nodes point at line 1 of themselves, so the ":1" is noise.
-const locationLabel = computed(() => {
+// Location line: only attach a line number for code symbols. File nodes point at line 1 of
+// themselves, so the ":1" is noise. The path itself is rendered collapsed via <FilePath>.
+const locationLine = computed(() => {
   const node = selectedNode.value
-  if (!node?.filePath) return ''
-  const hasLine = node.type !== 'File' && typeof node.lineNumber === 'number' && node.lineNumber > 0
-  return hasLine ? `${node.filePath}:${node.lineNumber}` : node.filePath
+  if (!node?.filePath) return null
+  return node.type !== 'File' && typeof node.lineNumber === 'number' && node.lineNumber > 0
+    ? node.lineNumber
+    : null
 })
+
+// Any node backed by a source file can open the read-only code viewer. `codeNode` is the node
+// whose source is shown — the selected node, or a counterpart from an Incoming/Outgoing relation.
+const showCode = ref(false)
+const codeNode = ref<GraphNode | null>(null)
+
+const canViewSource = computed(() => !!selectedNode.value?.filePath)
+
+// Counterparts that resolve to a real project source file. Packages/projects are directories and
+// External imports live outside the source tree, so they have no readable file.
+const NON_SOURCE_TYPES = new Set(['Package', 'Project', 'External'])
+function canViewConnection(node: GraphNode): boolean {
+  return !!node.filePath && !NON_SOURCE_TYPES.has(node.type)
+}
+
+function openCode(node: GraphNode | null): void {
+  if (!node?.filePath) return
+  codeNode.value = node
+  showCode.value = true
+}
+
+function closeCode(): void {
+  showCode.value = false
+  codeNode.value = null
+}
 
 const propertyEntries = computed(() => {
   if (!selectedNode.value) return []
@@ -118,8 +150,18 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
       <div class="node-detail-panel__meta">
         <span class="node-detail-panel__badge">{{ selectedNode.type }}</span>
         <span v-if="showFullName">{{ selectedNode.fullName }}</span>
-        <span v-if="locationLabel">{{ locationLabel }}</span>
+        <FilePath v-if="selectedNode.filePath" :path="selectedNode.filePath" :line="locationLine" />
       </div>
+
+      <button
+        v-if="canViewSource"
+        type="button"
+        class="node-detail-panel__view-source"
+        @click="openCode(selectedNode)"
+      >
+        <span class="node-detail-panel__view-source-icon" aria-hidden="true">{ }</span>
+        View source code
+      </button>
 
       <section v-if="propertyEntries.length > 0" class="node-detail-panel__section" aria-labelledby="node-properties-heading">
         <h3 id="node-properties-heading">Properties</h3>
@@ -134,7 +176,11 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
       <section class="node-detail-panel__section" aria-labelledby="incoming-heading">
         <h3 id="incoming-heading">Incoming ({{ incomingConnections.length }})</h3>
         <ul v-if="incomingConnections.length > 0" class="node-detail-panel__connections">
-          <li v-for="connection in incomingConnections" :key="connection.edge.id">
+          <li
+            v-for="connection in incomingConnections"
+            :key="connection.edge.id"
+            class="node-detail-panel__connection-item"
+          >
             <button
               type="button"
               class="node-detail-panel__connection"
@@ -158,6 +204,16 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
                 </span>
               </span>
             </button>
+            <button
+              v-if="canViewConnection(connection.node)"
+              type="button"
+              class="node-detail-panel__connection-code"
+              :aria-label="`View source of ${connection.node.name}`"
+              title="View source"
+              @click="openCode(connection.node)"
+            >
+              <span aria-hidden="true">{ }</span>
+            </button>
           </li>
         </ul>
         <p v-else class="node-detail-panel__empty-list">No incoming edges.</p>
@@ -166,7 +222,11 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
       <section class="node-detail-panel__section" aria-labelledby="outgoing-heading">
         <h3 id="outgoing-heading">Outgoing ({{ outgoingConnections.length }})</h3>
         <ul v-if="outgoingConnections.length > 0" class="node-detail-panel__connections">
-          <li v-for="connection in outgoingConnections" :key="connection.edge.id">
+          <li
+            v-for="connection in outgoingConnections"
+            :key="connection.edge.id"
+            class="node-detail-panel__connection-item"
+          >
             <button
               type="button"
               class="node-detail-panel__connection"
@@ -190,10 +250,27 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
                 </span>
               </span>
             </button>
+            <button
+              v-if="canViewConnection(connection.node)"
+              type="button"
+              class="node-detail-panel__connection-code"
+              :aria-label="`View source of ${connection.node.name}`"
+              title="View source"
+              @click="openCode(connection.node)"
+            >
+              <span aria-hidden="true">{ }</span>
+            </button>
           </li>
         </ul>
         <p v-else class="node-detail-panel__empty-list">No outgoing edges.</p>
       </section>
+
+      <CodeViewerModal
+        v-if="showCode && codeNode"
+        :project-id="props.projectId"
+        :node="codeNode"
+        @close="closeCode"
+      />
     </template>
 
     <div v-else class="node-detail-panel__empty">
@@ -280,6 +357,37 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   color: #bfdbfe;
 }
 
+.node-detail-panel__view-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 0.625rem;
+  background: rgba(37, 99, 235, 0.18);
+  color: #bfdbfe;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.node-detail-panel__view-source:hover,
+.node-detail-panel__view-source:focus-visible {
+  border-color: rgba(96, 165, 250, 0.8);
+  background: rgba(37, 99, 235, 0.32);
+  color: #f8fafc;
+  outline: none;
+}
+
+.node-detail-panel__view-source-icon {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  color: #93c5fd;
+}
+
 .node-detail-panel__section {
   margin-top: 1.25rem;
 }
@@ -306,6 +414,51 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   gap: 0.5rem;
   padding: 0;
   list-style: none;
+}
+
+/* Connection row: the relation button grows; an optional code-view button sits beside it. */
+.node-detail-panel__connection-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.node-detail-panel__connection-item .node-detail-panel__connection {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.node-detail-panel__connection-code {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  border: 1px solid rgba(55, 65, 81, 0.85);
+  border-radius: 0.625rem;
+  background: rgba(31, 41, 55, 0.72);
+  color: #93c5fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.node-detail-panel__connection-code:hover,
+.node-detail-panel__connection-code:focus-visible {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(37, 99, 235, 0.22);
+  color: #f8fafc;
+  outline: none;
+}
+
+.node-detail-panel__connection-code:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .node-detail-panel__connection {

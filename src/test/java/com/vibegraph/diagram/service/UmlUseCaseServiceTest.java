@@ -87,6 +87,30 @@ class UmlUseCaseServiceTest {
                 .build();
     }
 
+    // ---- class-layer fallback fixtures (projects without HTTP endpoints) ---------------------
+
+    private NodeDto serviceClass(String fqcn, String simpleName) {
+        return classNode(fqcn, simpleName, "Class", "SERVICE");
+    }
+
+    private NodeDto classNode(String fqcn, String simpleName, String type, String springLayer) {
+        return NodeDto.builder()
+                .id(fqcn).type(type).name(simpleName).fullName(fqcn)
+                .properties(Map.of("springLayer", springLayer))
+                .build();
+    }
+
+    private NodeDto method(String methodFqcn, String simpleName) {
+        return NodeDto.builder()
+                .id(methodFqcn).type("Method").name(simpleName).fullName(methodFqcn)
+                .properties(Map.of("visibility", "public", "kind", "METHOD"))
+                .build();
+    }
+
+    private EdgeDto hasMethod(String ownerFqcn, String methodFqcn) {
+        return EdgeDto.builder().source(ownerFqcn).target(methodFqcn).type("HAS_METHOD").build();
+    }
+
     private void stubGraph(List<NodeDto> nodes, List<EdgeDto> edges) {
         lenient().when(graphService.getFullGraph(PROJECT_ID))
                 .thenReturn(GraphDataResponse.builder().nodes(nodes).edges(edges).build());
@@ -756,5 +780,242 @@ class UmlUseCaseServiceTest {
         assertThat(res.getUseCases()).isNotEmpty();
         assertThat(res.getWarnings())
                 .anyMatch(w -> w.toLowerCase().contains("low-confidence"));
+    }
+
+    // ---- edge cases: no API / no annotations / empty / frontend-only -------------------------
+
+    @Test
+    @DisplayName("a project with NO HTTP endpoints derives business use cases from the service layer")
+    void noApiEndpointsDerivesUseCasesFromServiceLayer() {
+        // A service-only / library / batch project: no Route/APIEndpoint nodes and no HANDLES_ROUTE
+        // edges, but the business behaviour lives in service classes and their public methods.
+        // Reporting "empty" here would be wrong — the system clearly DOES things.
+        stubGraph(
+                List.of(serviceClass("com.app.OrderService", "OrderService"),
+                        method("com.app.OrderService.placeOrder()", "placeOrder"),
+                        method("com.app.OrderService.cancelOrder()", "cancelOrder"),
+                        method("com.app.OrderService.getOrder()", "getOrder"),
+                        serviceClass("com.app.CategoryService", "CategoryService"),
+                        method("com.app.CategoryService.listCategories()", "listCategories"),
+                        method("com.app.CategoryService.getCategory()", "getCategory")),
+                List.of(hasMethod("com.app.OrderService", "com.app.OrderService.placeOrder()"),
+                        hasMethod("com.app.OrderService", "com.app.OrderService.cancelOrder()"),
+                        hasMethod("com.app.OrderService", "com.app.OrderService.getOrder()"),
+                        hasMethod("com.app.CategoryService", "com.app.CategoryService.listCategories()"),
+                        hasMethod("com.app.CategoryService", "com.app.CategoryService.getCategory()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        // A write-heavy service becomes "Manage", a read-only one becomes "View".
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Orders", "View Categories");
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .contains("Registered User");
+        assertThat(res.getWarnings()).anyMatch(w -> w.toLowerCase().contains("no http endpoints"));
+        assertThat(res.getPlantUmlSyntax()).startsWith("@startuml").endsWith("@enduml");
+        assertThat(res.getMermaidSyntax()).startsWith("flowchart TB");
+        assertThat(res.getViews()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("a domain-model-only project derives Manage goals from entities")
+    void entityOnlyProjectDerivesManageGoalsFromEntities() {
+        // No services, no controllers — only @Entity domain models. A system with a Product and an
+        // Order entity almost certainly lets someone manage them, so emit coarse Manage goals.
+        stubGraph(
+                List.of(classNode("com.app.Product", "Product", "DBModel", "ENTITY"),
+                        classNode("com.app.Order", "Order", "DBModel", "ENTITY")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Products", "Manage Orders");
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .contains("Registered User");
+        assertThat(res.getWarnings()).anyMatch(w -> w.toLowerCase().contains("no http endpoints"));
+    }
+
+    @Test
+    @DisplayName("with no services, the fallback derives goals from controller classes")
+    void controllerLayerFallbackWhenNoServices() {
+        stubGraph(
+                List.of(classNode("com.app.InvoiceController", "InvoiceController", "Class", "CONTROLLER"),
+                        method("com.app.InvoiceController.createInvoice()", "createInvoice"),
+                        method("com.app.InvoiceController.listInvoices()", "listInvoices")),
+                List.of(hasMethod("com.app.InvoiceController", "com.app.InvoiceController.createInvoice()"),
+                        hasMethod("com.app.InvoiceController", "com.app.InvoiceController.listInvoices()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Invoices");
+    }
+
+    @Test
+    @DisplayName("an auth service contributes the Guest register/login goals in the fallback")
+    void authServiceDerivesGuestGoals() {
+        stubGraph(
+                List.of(serviceClass("com.app.AuthService", "AuthService"),
+                        method("com.app.AuthService.register()", "register"),
+                        method("com.app.AuthService.login()", "login")),
+                List.of(hasMethod("com.app.AuthService", "com.app.AuthService.register()"),
+                        hasMethod("com.app.AuthService", "com.app.AuthService.login()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName).contains("Guest");
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Register Account", "Log In");
+    }
+
+    @Test
+    @DisplayName("an admin-named service assigns the Administrator actor in the fallback")
+    void adminServiceAssignsAdminActor() {
+        stubGraph(
+                List.of(serviceClass("com.app.AdminUserService", "AdminUserService"),
+                        method("com.app.AdminUserService.deleteUser()", "deleteUser"),
+                        method("com.app.AdminUserService.listUsers()", "listUsers")),
+                List.of(hasMethod("com.app.AdminUserService", "com.app.AdminUserService.deleteUser()"),
+                        hasMethod("com.app.AdminUserService", "com.app.AdminUserService.listUsers()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .contains("Administrator");
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage User Accounts");
+    }
+
+    @Test
+    @DisplayName("an entity with only accessor getters is still 'Manage' (accessors are not read operations)")
+    void entityWithAccessorsStillManageNotView() {
+        // Regression: real entities carry getId/getName getters. Those are data accessors, not
+        // business reads, so they must NOT downgrade the goal to "View Products".
+        stubGraph(
+                List.of(classNode("com.app.Product", "Product", "DBModel", "ENTITY"),
+                        method("com.app.Product.getId()", "getId"),
+                        method("com.app.Product.getName()", "getName"),
+                        method("com.app.Product.getPrice()", "getPrice")),
+                List.of(hasMethod("com.app.Product", "com.app.Product.getId()"),
+                        hasMethod("com.app.Product", "com.app.Product.getName()"),
+                        hasMethod("com.app.Product", "com.app.Product.getPrice()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Products");
+    }
+
+    @Test
+    @DisplayName("a plain business class (no service/controller/entity naming) still yields a goal")
+    void genericBusinessClassProducesGoal() {
+        // CLI/util-style project: App (only main -> noise, skipped) + Calculator with real operations.
+        stubGraph(
+                List.of(classNode("com.app.App", "App", "Class", "NONE"),
+                        method("com.app.App.main()", "main"),
+                        classNode("com.app.Calculator", "Calculator", "Class", "NONE"),
+                        method("com.app.Calculator.add()", "add"),
+                        method("com.app.Calculator.subtract()", "subtract"),
+                        method("com.app.Calculator.multiply()", "multiply")),
+                List.of(hasMethod("com.app.App", "com.app.App.main()"),
+                        hasMethod("com.app.Calculator", "com.app.Calculator.add()"),
+                        hasMethod("com.app.Calculator", "com.app.Calculator.subtract()"),
+                        hasMethod("com.app.Calculator", "com.app.Calculator.multiply()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        // App is skipped (only main); Calculator yields a non-empty goal. "add" is a mutating verb,
+        // so the calculator surface reads as "Manage Calculators".
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Calculators");
+        assertThat(res.getActors()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("a graph with only infrastructure classes (no business services) stays empty")
+    void onlyInfraClassesProducesEmptyModel() {
+        // Repositories, configs, and utils are not business goals — the fallback must skip them.
+        stubGraph(
+                List.of(classNode("com.app.OrderRepository", "OrderRepository", "Interface", "REPOSITORY"),
+                        classNode("com.app.SecurityConfig", "SecurityConfig", "Class", "CONFIG"),
+                        classNode("com.app.JwtUtils", "JwtUtils", "Class", "NONE")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).isEmpty();
+        assertThat(res.getActors()).isEmpty();
+        assertThat(res.getWarnings())
+                .anyMatch(w -> w.toLowerCase().contains("no business use cases"));
+    }
+
+    @Test
+    @DisplayName("a null graph is handled gracefully (no crash, empty model with warning)")
+    void nullGraphDoesNotCrash() {
+        lenient().when(graphService.getFullGraph(PROJECT_ID)).thenReturn(null);
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res).isNotNull();
+        assertThat(res.getUseCases()).isEmpty();
+        assertThat(res.getActors()).isEmpty();
+        assertThat(res.getWarnings())
+                .anyMatch(w -> w.toLowerCase().contains("no business use cases"));
+        assertThat(res.getPlantUmlSyntax()).startsWith("@startuml").endsWith("@enduml");
+    }
+
+    @Test
+    @DisplayName("a graph whose nodes/edges lists are empty produces an empty model, not an error")
+    void emptyGraphProducesEmptyModel() {
+        stubGraph(List.of(), List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).isEmpty();
+        assertThat(res.getActors()).isEmpty();
+        assertThat(res.getWarnings())
+                .anyMatch(w -> w.toLowerCase().contains("no business use cases"));
+    }
+
+    @Test
+    @DisplayName("a project whose only endpoints are infra/static assets yields no business use cases")
+    void onlyInfraAndStaticEndpointsProducesEmptyModel() {
+        stubGraph(
+                List.of(endpoint("GET", "/actuator/health"),
+                        endpoint("GET", "/swagger-ui/index.html"),
+                        endpoint("GET", "/favicon.ico"),
+                        endpoint("GET", "/assets/app.js"),
+                        endpoint("GET", "/error")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).isEmpty();
+        assertThat(res.getWarnings())
+                .anyMatch(w -> w.toLowerCase().contains("no business use cases"));
+    }
+
+    @Test
+    @DisplayName("endpoints present but NO security annotations: roles are guessed and flagged, model still builds")
+    void noSecurityAnnotationsStillBuildsWithGuessWarning() {
+        // The parser captured routes (HANDLES_ROUTE) but no @PreAuthorize/security metadata, so every
+        // actor role is a path heuristic. The diagram must still build AND warn that roles are guessed.
+        stubGraph(
+                List.of(endpoint("GET", "/api/products"),
+                        endpoint("POST", "/api/products"),
+                        endpoint("DELETE", "/api/products/{id}")),
+                List.of(handles("com.app.ProductController#list()", "GET", "/api/products"),
+                        handles("com.app.ProductController#create()", "POST", "/api/products"),
+                        handles("com.app.ProductController#delete()", "DELETE", "/api/products/{id}")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .containsExactly("Manage Products");
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .containsExactly("Registered User");
+        assertThat(res.getWarnings())
+                .anyMatch(w -> w.toLowerCase().contains("inferred from http path"));
     }
 }

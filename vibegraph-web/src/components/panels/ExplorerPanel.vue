@@ -180,7 +180,8 @@ function onSelect(nodeId: string): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
 }
 
 .explorer-panel__header h2 {
@@ -190,6 +191,7 @@ function onSelect(nodeId: string): void {
 
 .explorer-panel__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.375rem;
 }
 

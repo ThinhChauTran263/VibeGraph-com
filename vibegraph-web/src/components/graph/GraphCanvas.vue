@@ -344,6 +344,22 @@ function onSearchClear(): void {
   emit('nodeSelected', null)
 }
 
+// Clicking an affected node in Impact Analysis navigates the graph to it: select it (so the
+// detail/impact panels retarget) and center it on the canvas. Resolve against the FULL graph
+// since a dependent may be filtered out of the visible `nodes`.
+function onImpactSelect(nodeId: string): void {
+  const node = graphData.value.nodes.find((candidate) => candidate.id === nodeId) ?? null
+  if (!node) return
+  resetRelationFocus()
+  hoveredGraphNode.value = null
+  activeFlow.value = null
+  activeFlowDetail.value = null
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+  focusNode(node.id)
+}
+
 function onDetailClose(): void {
   resetRelationFocus()
   clearSelection()
@@ -683,11 +699,12 @@ onUnmounted(() => {
     <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
       <NodeDetailPanel
         :pinned-edge-id="pinnedRelation?.edgeId ?? null"
+        :project-id="props.projectId"
         @close="onDetailClose"
         @relation-hover="onRelationHover"
         @relation-select="onRelationSelect"
       />
-      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
+      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" @select="onImpactSelect" />
     </aside>
   </div>
 </template>
@@ -769,20 +786,27 @@ onUnmounted(() => {
 }
 
 .graph-canvas__sidebar-topbar {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.375rem;
   flex: 0 0 auto;
 }
 
 .graph-canvas__sidebar-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.375rem;
   flex: 1 1 auto;
   min-width: 0;
+  /* Reserve room for the pinned collapse button so wrapped tabs never slide under it. */
+  padding-right: 2.25rem;
 }
 
 .graph-canvas__sidebar-collapse {
+  position: absolute;
+  top: 0;
+  right: 0;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -844,14 +868,17 @@ onUnmounted(() => {
 }
 
 .graph-canvas__sidebar-tab {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: max-content;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   background: rgba(15, 23, 42, 0.92);
   color: #cbd5e1;
   font-size: 0.8125rem;
   font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background 150ms ease,

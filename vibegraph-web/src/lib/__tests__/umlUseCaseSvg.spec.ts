@@ -172,6 +172,25 @@ describe('renderUmlUseCaseSvg', () => {
     expect(svg).toContain('Empty')
   })
 
+  it('shows an explanatory note when no use cases and no actors are detected', () => {
+    const svg = renderUmlUseCaseSvg({ systemName: 'Empty', actors: [], useCases: [], relations: [] })
+    expect(svg).toContain('No business use cases detected')
+    expect(svg).toContain('This project exposes no API endpoints to infer use cases from')
+    // No ellipses / actor figures in a truly empty model.
+    expect((svg.match(/<ellipse/g) ?? []).length).toBe(0)
+    expect((svg.match(/<circle/g) ?? []).length).toBe(0)
+  })
+
+  it('does not show the empty note when at least one use case exists', () => {
+    const svg = renderUmlUseCaseSvg({
+      systemName: 'S',
+      actors: [actor('A1', 'User')],
+      useCases: [uc('U1', 'Do thing')],
+      relations: [rel('A1', 'U1', 'association')],
+    })
+    expect(svg).not.toContain('No business use cases detected')
+  })
+
   it('skips dangling relations whose endpoints are missing', () => {
     const svg = renderUmlUseCaseSvg({
       systemName: 'S',

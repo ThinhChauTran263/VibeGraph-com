@@ -102,7 +102,11 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   let innerW = 0
   for (let c = 0; c < cols; c++) innerW += colW[c]!
   innerW += (cols - 1) * UC_COL_GAP
-  const boundaryW = Math.max(MIN_BOUNDARY_W, BOUNDARY_PAD * 2 + innerW)
+  // When empty we render a one-line explanatory note, so the boundary must be wide enough to hold
+  // it without clipping (the note is ~60 chars).
+  const isEmpty = count === 0 && actors.length === 0
+  const minBoundaryW = isEmpty ? EMPTY_BOUNDARY_W : MIN_BOUNDARY_W
+  const boundaryW = Math.max(minBoundaryW, BOUNDARY_PAD * 2 + innerW)
   const boundaryRight = bx0 + boundaryW
   const boundaryBottom = by0 + boundaryH
 
@@ -200,12 +204,24 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
     `<text x="${bx0 + 14}" y="${by0 + 24}" font-size="15" font-weight="600" fill="#333">` +
     `${esc(model.systemName || 'System')}</text>`
 
+  // Empty state: no API endpoints / no inferable actors. Draw a centered note inside the boundary
+  // so the diagram reads as an intentional "nothing detected" rather than an empty rectangle.
+  const emptyNote =
+    count === 0 && actorOrder.length === 0
+      ? `<text x="${round(bx0 + boundaryW / 2)}" y="${round(by0 + boundaryH / 2 - 8)}" ` +
+        `text-anchor="middle" font-size="14" fill="#888">No business use cases detected</text>` +
+        `<text x="${round(bx0 + boundaryW / 2)}" y="${round(by0 + boundaryH / 2 + 14)}" ` +
+        `text-anchor="middle" font-size="12" fill="#aaa">` +
+        `This project exposes no API endpoints to infer use cases from</text>`
+      : ''
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(totalW)}" height="${Math.ceil(totalH)}" ` +
     `viewBox="0 0 ${Math.ceil(totalW)} ${Math.ceil(totalH)}" role="img" data-test="uml-usecase-svg" ` +
     `font-family="Segoe UI, Arial, sans-serif">` +
     DEFS +
     boundary +
+    emptyNote +
     edgeParts.join('') +
     ucParts.join('') +
     actorParts.join('') +
@@ -228,6 +244,7 @@ const UC_COL_GAP = 56
 const BOUNDARY_PAD = 44
 const BOUNDARY_TITLE_H = 34
 const MIN_BOUNDARY_W = 220
+const EMPTY_BOUNDARY_W = 420
 const CHAR_W = 7.3
 const UC_MAX_CHARS = UML_USECASE_MAX_CHARS
 const UC_LINE_H = 16
