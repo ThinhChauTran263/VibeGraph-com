@@ -933,6 +933,61 @@ class UmlUseCaseServiceTest {
     }
 
     @Test
+    @DisplayName("a named security role becomes its own actor instead of collapsing to User")
+    void namedRoleBecomesItsOwnActor() {
+        stubGraph(
+                List.of(securedEndpoint("GET", "/api/products", "SELLER"),
+                        securedEndpoint("POST", "/api/products", "SELLER")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName).contains("Seller");
+    }
+
+    @Test
+    @DisplayName("an underscored role token is Title-cased into a readable actor name")
+    void underscoredRoleIsTitleCased() {
+        stubGraph(
+                List.of(securedEndpoint("POST", "/api/inventory", "ROLE_STORE_MANAGER")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .contains("Store Manager");
+    }
+
+    @Test
+    @DisplayName("a generic ROLE_USER still collapses to the default Registered User actor")
+    void genericUserRoleStaysRegisteredUser() {
+        stubGraph(
+                List.of(securedEndpoint("GET", "/api/orders", "ROLE_USER")),
+                List.of());
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getActors()).extracting(UmlUseCaseResponse.Actor::getName)
+                .containsExactly("Registered User");
+    }
+
+    @Test
+    @DisplayName("business verbs like 'ship' count as mutating so the goal reads Manage, not View")
+    void shipVerbCountsAsMutating() {
+        stubGraph(
+                List.of(serviceClass("com.app.OrderService", "OrderService"),
+                        method("com.app.OrderService.shipOrder()", "shipOrder"),
+                        method("com.app.OrderService.getOrder()", "getOrder")),
+                List.of(hasMethod("com.app.OrderService", "com.app.OrderService.shipOrder()"),
+                        hasMethod("com.app.OrderService", "com.app.OrderService.getOrder()")));
+
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+
+        assertThat(res.getUseCases()).extracting(UmlUseCaseResponse.UseCaseElement::getName)
+                .contains("Manage Orders");
+    }
+
+    @Test
     @DisplayName("a graph with only infrastructure classes (no business services) stays empty")
     void onlyInfraClassesProducesEmptyModel() {
         // Repositories, configs, and utils are not business goals — the fallback must skip them.
