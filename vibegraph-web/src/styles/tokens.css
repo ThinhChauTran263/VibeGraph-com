@@ -1,0 +1,171 @@
+/**
+ * VibeGraph design tokens + base styles.
+ *
+ * Single source of truth for color, typography, spacing, motion and elevation.
+ * Imported once in main.ts so every view/component can use the same vocabulary
+ * instead of re-declaring hex values. Dark-first (the product is a code-analysis
+ * tool — deep slate canvas, blue for structure, green for "run / vibe").
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Surfaces ---- */
+  --vg-bg: #070b16;
+  --vg-bg-elev: #0b1120;
+  --vg-surface: #0f172a;
+  --vg-surface-2: #141e34;
+  --vg-surface-3: #1b2742;
+
+  /* ---- Text ---- */
+  --vg-text: #e8edf6;
+  --vg-text-muted: #9fb0c7;
+  --vg-text-dim: #6b7c97;
+
+  /* ---- Borders / lines ---- */
+  --vg-border: rgba(148, 163, 184, 0.16);
+  --vg-border-strong: rgba(148, 163, 184, 0.32);
+
+  /* ---- Brand accents ---- */
+  --vg-blue: #3b82f6;
+  --vg-blue-bright: #60a5fa;
+  --vg-blue-deep: #1d4ed8;
+  --vg-cyan: #22d3ee;
+  --vg-green: #22c55e;
+  --vg-green-bright: #4ade80;
+  --vg-violet: #a78bfa;
+  --vg-amber: #fbbf24;
+  --vg-danger: #ef4444;
+
+  /* ---- Gradients ---- */
+  --vg-grad-brand: linear-gradient(135deg, #60a5fa 0%, #22d3ee 45%, #22c55e 100%);
+  --vg-grad-blue: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  --vg-grad-surface: linear-gradient(160deg, rgba(27, 39, 66, 0.9), rgba(11, 17, 32, 0.9));
+
+  /* ---- Typography ---- */
+  --vg-font-display: 'Fira Code', ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+  --vg-font-body: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --vg-text-xs: 0.75rem;
+  --vg-text-sm: 0.875rem;
+  --vg-text-base: 1rem;
+  --vg-text-lg: clamp(1.05rem, 1rem + 0.3vw, 1.2rem);
+  --vg-text-xl: clamp(1.3rem, 1.1rem + 0.8vw, 1.6rem);
+  --vg-text-2xl: clamp(1.7rem, 1.3rem + 1.6vw, 2.4rem);
+  --vg-text-hero: clamp(2.6rem, 1.6rem + 4.4vw, 5rem);
+
+  /* ---- Spacing rhythm (8px base) ---- */
+  --vg-space-1: 0.25rem;
+  --vg-space-2: 0.5rem;
+  --vg-space-3: 0.75rem;
+  --vg-space-4: 1rem;
+  --vg-space-6: 1.5rem;
+  --vg-space-8: 2rem;
+  --vg-space-12: 3rem;
+  --vg-space-16: 4rem;
+  --vg-space-section: clamp(4rem, 3rem + 6vw, 9rem);
+
+  /* ---- Radii ---- */
+  --vg-radius-sm: 8px;
+  --vg-radius: 12px;
+  --vg-radius-lg: 18px;
+  --vg-radius-xl: 26px;
+  --vg-radius-pill: 999px;
+
+  /* ---- Elevation ---- */
+  --vg-shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.4);
+  --vg-shadow: 0 10px 30px -12px rgba(2, 6, 23, 0.7);
+  --vg-shadow-lg: 0 28px 70px -28px rgba(2, 6, 23, 0.85);
+  --vg-glow-blue: 0 0 0 1px rgba(96, 165, 250, 0.35), 0 18px 50px -20px rgba(59, 130, 246, 0.55);
+
+  /* ---- Motion ---- */
+  --vg-dur-fast: 150ms;
+  --vg-dur: 240ms;
+  --vg-dur-slow: 420ms;
+  --vg-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --vg-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ---- Layout ---- */
+  --vg-maxw: 1180px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--vg-bg);
+  color: var(--vg-text);
+  font-family: var(--vg-font-body);
+  font-size: var(--vg-text-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--vg-font-display);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: rgba(96, 165, 250, 0.32);
+  color: #fff;
+}
+
+/* Thin, themed scrollbars so the dark canvas stays cohesive. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vg-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--vg-border-strong);
+  border-radius: var(--vg-radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

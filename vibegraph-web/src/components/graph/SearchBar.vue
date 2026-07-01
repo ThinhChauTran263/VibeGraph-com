@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue'
 import type { GraphNode } from '@/types/graph'
+import { SEARCH_SUGGESTIONS_LIMIT } from '@/lib/runtimeConfig'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -27,7 +28,7 @@ const results = computed(() => {
       const fullName = node.fullName.toLowerCase()
       return name.includes(term) || fullName.includes(term)
     })
-    .slice(0, 8)
+    .slice(0, SEARCH_SUGGESTIONS_LIMIT)
 })
 
 const hasQuery = computed(() => query.value.trim().length > 0)

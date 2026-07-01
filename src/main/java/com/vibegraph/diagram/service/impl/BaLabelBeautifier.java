@@ -54,7 +54,19 @@ public class BaLabelBeautifier {
             Map.entry("manage trackings", "Manage Tracking Orders"),
             Map.entry("view resources", "Manage System Resources"),
             Map.entry("view stats", "Analyze Statistics"),
-            Map.entry("manage users", "Manage User Accounts"));
+            Map.entry("manage stats", "Analyze Statistics"),
+            Map.entry("view statistics", "Analyze Statistics"),
+            Map.entry("view analytics", "View Analytics"),
+            Map.entry("view audit logs", "View Audit Logs"),
+            Map.entry("manage users", "Manage User Accounts"),
+            Map.entry("manage user accounts", "Manage User Accounts"),
+            Map.entry("manage categories", "Manage Categories"),
+            Map.entry("view categories", "View Categories"),
+            Map.entry("manage orders", "Manage Orders"),
+            Map.entry("manage carts", "Manage Cart"),
+            Map.entry("manage payments", "Manage Payments"),
+            Map.entry("manage reviews", "Manage Reviews"),
+            Map.entry("manage wishlists", "Manage Wishlist"));
 
     /**
      * Format a raw project identifier into a presentable system boundary title.

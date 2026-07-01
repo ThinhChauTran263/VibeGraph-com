@@ -72,7 +72,8 @@ describe('NodeDetailPanel', () => {
     expect(wrapper.text()).toContain('OrderService')
     expect(wrapper.text()).toContain('Class')
     expect(wrapper.text()).toContain('com.example.OrderService')
-    expect(wrapper.text()).toContain('src/main/java/com/example/OrderService.java:42')
+    // The path is collapsed to its trailing segments by default; the full path is one click away.
+    expect(wrapper.text()).toContain('…/example/OrderService.java:42')
     expect(wrapper.text()).toContain('visibility')
     expect(wrapper.text()).toContain('public')
     expect(wrapper.text()).toContain('springLayer')
@@ -82,6 +83,19 @@ describe('NodeDetailPanel', () => {
     expect(wrapper.text()).not.toContain('sk-test')
     expect(wrapper.text()).not.toContain('accessToken')
     expect(wrapper.text()).not.toContain('token-value')
+  })
+
+  it('expands the collapsed file path to the full path on demand', async () => {
+    selectedNode.value = node({})
+    const wrapper = mount(NodeDetailPanel)
+
+    // Collapsed by default; full path hidden until requested.
+    expect(wrapper.text()).toContain('…/example/OrderService.java:42')
+    expect(wrapper.text()).not.toContain('src/main/java/com/example/OrderService.java:42')
+
+    await wrapper.get('.file-path').trigger('click')
+
+    expect(wrapper.text()).toContain('src/main/java/com/example/OrderService.java:42')
   })
 
   it('renders incoming and outgoing relationships for the selected node', () => {

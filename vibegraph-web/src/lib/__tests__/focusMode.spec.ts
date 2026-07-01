@@ -464,7 +464,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     })
     graph.addNode('create', { label: 'create', color: '#3B82F6', size: 6 })
     graph.addEdgeWithKey('route->create', 'route', 'create', {
-      color: '#059669',
+      color: '#65A30D',
       size: 1,
       label: 'HANDLES_ROUTE',
     })
@@ -527,8 +527,8 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     const related =
       reducers.edgeReducer?.('route->create', graph.getEdgeAttributes('route->create')) ?? {}
     expect(related.hidden).toBe(false)
-    expect(related.color).toBe('#059669') // keeps edge-type color, never white
-    expect(related.labelColor).toBe('#059669') // label text matches the edge-type hue
+    expect(related.color).toBe(EDGE_COLORS.HANDLES_ROUTE) // keeps edge-type color, never white
+    expect(related.labelColor).toBe(EDGE_COLORS.HANDLES_ROUTE) // label text matches the edge-type hue
     // related edges show their type label when zoom density allows edge labels
     expect(related.label).toBe('HANDLES_ROUTE')
     expect(related.forceLabel).toBe(true)

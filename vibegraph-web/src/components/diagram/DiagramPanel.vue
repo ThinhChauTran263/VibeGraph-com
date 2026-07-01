@@ -2,8 +2,8 @@
 import mermaid from 'mermaid'
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useDiagrams, type DiagramKind } from '@/composables/useDiagrams'
-import type { UmlUseCaseResponse } from '@/lib/api'
-import { renderUmlUseCaseSvg } from '@/lib/umlUseCaseSvg'
+import type { UmlUseCaseResponse, UmlUseCaseView } from '@/lib/api'
+import { renderUmlUseCaseSvg, type UmlUseCaseModel } from '@/lib/umlUseCaseSvg'
 
 const props = defineProps<{
   projectId: string
@@ -16,6 +16,8 @@ const WHEEL_ZOOM_FACTOR = 1.12
 
 const activeKind = ref<DiagramKind>('uml')
 const packageFilter = ref('')
+// -1 = the full diagram; >=0 selects a per-actor / per-domain projection from `umlViews`.
+const selectedViewIndex = ref(-1)
 const renderedSvg = ref('')
 const renderError = ref<string | null>(null)
 const diagramZoom = ref(1)
@@ -29,7 +31,7 @@ const { status, diagram, errorMessage, isLoading, isStale, loadUmlUseCaseDiagram
 let renderSeq = 0
 
 const tabs: Array<{ kind: DiagramKind; label: string }> = [
-  { kind: 'uml', label: 'UML Use Case' },
+  { kind: 'uml', label: 'As-Built Use Case' },
   { kind: 'class', label: 'Class' },
 ]
 
@@ -64,6 +66,39 @@ const warnings = computed<string[]>(() => {
   return 'warnings' in current && Array.isArray(current.warnings) ? current.warnings : []
 })
 
+// Per-actor / per-domain projections of the same canonical UML model (R4). Drives the view selector;
+// empty when the backend returned no views (older payloads / non-UML), so the selector stays hidden.
+//
+// The loaded value is deep-readonly; the renderer only reads it, so we view it through a plain
+// (mutable-typed) shape via a single safe cast and derive everything from there.
+const umlResponse = computed<UmlUseCaseResponse | null>(() => {
+  const current = diagram.value
+  if (current?.kind !== 'uml') return null
+  return current as unknown as UmlUseCaseResponse
+})
+
+const umlViews = computed<UmlUseCaseView[]>(() => {
+  const views = umlResponse.value?.views
+  return Array.isArray(views) ? views : []
+})
+
+// The model actually drawn: the full diagram (index -1) or the selected projection. Switching views
+// is pure client-side filtering of data already in the response — never a re-fetch or re-inference.
+const currentUmlModel = computed<UmlUseCaseModel | null>(() => {
+  const uml = umlResponse.value
+  if (!uml) return null
+  const views = umlViews.value
+  const idx = selectedViewIndex.value
+  const scope = idx >= 0 && idx < views.length ? views[idx] : uml
+  if (!scope) return null
+  return {
+    systemName: uml.systemName,
+    actors: scope.actors,
+    useCases: scope.useCases,
+    relations: scope.relations,
+  }
+})
+
 // htmlLabels:false makes Mermaid emit native SVG <text> instead of <foreignObject> HTML labels.
 // foreignObject taints a <canvas> when rasterized, which would break the PNG export below — plain
 // SVG text rasterizes cleanly. securityLevel 'strict' is kept for sanitization.
@@ -91,14 +126,22 @@ async function refresh(force = false): Promise<void> {
   // boundary, dashed include/extend, hollow-triangle generalization) from the JSON model. The
   // Class tab keeps using Mermaid.
   if (activeKind.value === 'uml' && diagram.value?.kind === 'uml') {
-    // diagram.value is a deep-readonly ref value; the renderer only reads it.
-    renderUmlSvg(diagram.value as UmlUseCaseResponse & { kind: 'uml' })
+    // A fresh load always starts on the full diagram; views are an explicit user choice.
+    selectedViewIndex.value = -1
+    renderCurrentUml()
   } else {
     await renderMermaid(mermaidSource.value)
   }
 }
 
-function renderUmlSvg(model: UmlUseCaseResponse & { kind: 'uml' }): void {
+/** Render the currently-selected UML model (full diagram or a per-actor/per-domain projection). */
+function renderCurrentUml(): void {
+  const model = currentUmlModel.value
+  if (!model) return
+  renderUmlSvg(model)
+}
+
+function renderUmlSvg(model: UmlUseCaseModel): void {
   const seq = ++renderSeq
   try {
     const svg = renderUmlUseCaseSvg(model)
@@ -344,6 +387,15 @@ watch(
   },
 )
 
+// Re-render when the user switches between the full diagram and a per-actor/per-domain view.
+// Pure client-side: no fetch, just redraw the projection already present in the loaded response.
+watch(selectedViewIndex, () => {
+  if (activeKind.value === 'uml' && diagram.value?.kind === 'uml' && status.value === 'success') {
+    resetZoom()
+    renderCurrentUml()
+  }
+})
+
 onMounted(() => {
   void refresh()
 })
@@ -391,6 +443,36 @@ onActivated(() => {
       >
         {{ tab.label }}
       </button>
+    </div>
+
+    <p
+      v-if="activeKind === 'uml'"
+      class="diagram-panel__caption"
+      data-test="diagram-asbuilt-caption"
+    >
+      <strong>As-Built Use Case View</strong> — reverse-engineered from the source (controllers +
+      Spring Security), using OMG UML 2.5 use-case notation. It reflects the system's implemented
+      capabilities for design-vs-code verification, not a hand-authored business-intent model.
+    </p>
+
+    <div
+      v-if="activeKind === 'uml' && umlViews.length > 0"
+      class="diagram-panel__views"
+      data-test="diagram-view-select-wrap"
+    >
+      <label class="diagram-panel__views-label" for="diagram-view-select">View</label>
+      <select
+        id="diagram-view-select"
+        v-model.number="selectedViewIndex"
+        class="diagram-panel__views-select"
+        data-test="diagram-view-select"
+        :disabled="isLoading"
+      >
+        <option :value="-1">Full diagram</option>
+        <option v-for="(view, index) in umlViews" :key="index" :value="index">
+          {{ view.viewType === 'actor' ? 'Actor' : 'Domain' }}: {{ view.title }}
+        </option>
+      </select>
     </div>
 
     <form v-if="activeKind === 'class'" class="diagram-panel__filters" @submit.prevent="refresh(true)">
@@ -460,7 +542,10 @@ onActivated(() => {
       </li>
     </ul>
 
-    <p v-if="isLoading" class="diagram-panel__status" role="status">Loading diagram…</p>
+    <div v-if="isLoading" class="diagram-panel__loading" role="status">
+      <div class="diagram-panel__spinner" aria-hidden="true"></div>
+      <p>Loading diagram…</p>
+    </div>
 
     <p v-else-if="status === 'error'" class="diagram-panel__error" role="alert">
       {{ errorMessage }}
@@ -766,6 +851,45 @@ onActivated(() => {
   font-size: 0.875rem;
 }
 
+/* Centered loading feedback so the spinner + label sit in the middle of the
+   diagram area instead of clinging to the top-left. */
+.diagram-panel__loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 14rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+.diagram-panel__loading p {
+  margin: 0;
+}
+
+.diagram-panel__spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: diagram-spin 0.8s linear infinite;
+}
+
+@keyframes diagram-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagram-panel__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 .diagram-panel__error {
   padding: 0.75rem;
   border: 1px solid rgba(239, 68, 68, 0.5);
@@ -842,6 +966,63 @@ onActivated(() => {
 .diagram-panel__stage :deep(svg) {
   max-width: none;
   height: auto;
+}
+
+.diagram-panel__views {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.diagram-panel__views-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #9fb0c7;
+}
+
+.diagram-panel__views-select {
+  flex: 0 1 auto;
+  max-width: 22rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 0.5rem;
+  background: rgba(7, 11, 22, 0.6);
+  color: #e8edf6;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.diagram-panel__views-select:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.diagram-panel__views-select:focus-visible {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.diagram-panel__views-select option {
+  background: #0f172a;
+  color: #e8edf6;
+}
+
+.diagram-panel__caption {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #9fb0c7;
+  background: rgba(7, 11, 22, 0.5);
+  border-left: 3px solid var(--vg-blue-bright, #60a5fa);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.diagram-panel__caption strong {
+  color: #e8edf6;
 }
 
 .diagram-panel__warnings {

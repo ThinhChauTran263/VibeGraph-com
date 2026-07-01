@@ -1,4 +1,5 @@
 import type { UmlActor, UmlRelation, UmlUseCaseElement } from '@/lib/api'
+import { UML_USECASE_MAX_CHARS, UML_ACTOR_MAX_CHARS } from '@/lib/runtimeConfig'
 
 /**
  * Minimal model the renderer needs. {@code UmlUseCaseResponse & { kind: 'uml' }} is structurally
@@ -74,24 +75,23 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   }
   for (const uc of actorSorted) emit(uc)
 
-  // --- row-major packing ----------------------------------------------------------------------
-  // Fill ROW by ROW (not column by column) so the actor-sorted order flows top-to-bottom across
-  // the whole grid. Each actor's goals then sit at the vertical band next to that actor (Guest
-  // top, User middle, Admin lower), keeping association lines roughly horizontal instead of
-  // cutting long diagonals across the boundary.
+  // --- single-column packing ------------------------------------------------------------------
+  // OMG UML 2.5.1 textbook layout: every use case sits in ONE vertical column, actors on the left,
+  // and each association is a STRAIGHT line drawn directly from an actor to the ellipse it reaches.
+  // A single column guarantees those straight lines never graze another ellipse (every ellipse is to
+  // the right of the line's endpoint), so we avoid both the old "single-wire bus" and the orthogonal
+  // "plumbing" routing a reviewer can misread as use-case-to-use-case flow.
   const count = ordered.length
-  const cols = count <= 7 ? 1 : count <= 14 ? 2 : 3
-  const rows = Math.max(1, Math.ceil(count / cols))
+  const cols = 1
+  const rows = Math.max(1, count)
 
-  // index k -> row = floor(k/cols), col = k % cols
-  const colOf = (k: number) => k % cols
-  const rowOf = (k: number) => Math.floor(k / cols)
+  const colOf = () => 0
+  const rowOf = (k: number) => k
 
-  const colW: number[] = Array.from({ length: cols }, () => UC_MIN_W)
+  const colW: number[] = [UC_MIN_W]
   for (let k = 0; k < count; k++) {
-    const c = colOf(k)
     const longest = wrapLabel(ordered[k]!.name, UC_MAX_CHARS, 2).reduce((m, ln) => Math.max(m, ln.length), 0)
-    colW[c] = Math.max(colW[c]!, ellipseWidth('x'.repeat(longest)))
+    colW[0] = Math.max(colW[0]!, ellipseWidth('x'.repeat(longest)))
   }
 
   // --- geometry -------------------------------------------------------------------------------
@@ -102,7 +102,11 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   let innerW = 0
   for (let c = 0; c < cols; c++) innerW += colW[c]!
   innerW += (cols - 1) * UC_COL_GAP
-  const boundaryW = Math.max(MIN_BOUNDARY_W, BOUNDARY_PAD * 2 + innerW)
+  // When empty we render a one-line explanatory note, so the boundary must be wide enough to hold
+  // it without clipping (the note is ~60 chars).
+  const isEmpty = count === 0 && actors.length === 0
+  const minBoundaryW = isEmpty ? EMPTY_BOUNDARY_W : MIN_BOUNDARY_W
+  const boundaryW = Math.max(minBoundaryW, BOUNDARY_PAD * 2 + innerW)
   const boundaryRight = bx0 + boundaryW
   const boundaryBottom = by0 + boundaryH
 
@@ -122,14 +126,14 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   const ucParts: string[] = []
   for (let k = 0; k < count; k++) {
     const uc = ordered[k]!
-    const c = colOf(k)
+    const c = colOf()
     const r = rowOf(k)
     const w = colW[c]!
     const cx = colX[c]! + w / 2
     const cy = by0 + BOUNDARY_TITLE_H + BOUNDARY_PAD + UC_H / 2 + r * (UC_H + UC_GAP_Y)
     boxes.set(uc.id, { cx, cy, w, h: UC_H, ellipse: true })
     ucMeta.set(uc.id, { col: c, row: r })
-    ucParts.push(useCaseSvg(cx, cy, w, uc.name))
+    ucParts.push(useCaseSvg(cx, cy, w, uc.name, isFaintUseCase(uc)))
   }
 
   // actors: align each actor with the vertical centroid of the use cases it connects to, so
@@ -170,57 +174,14 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   placeColumn(right, rightX)
 
   // --- edges (painted before nodes so nodes cover the line ends) ------------------------------
-  // Actor->use-case associations are routed ORTHOGONALLY through clear lanes (a vertical corridor
-  // just inside the boundary edge, and the gap between columns / above a row) so a line never runs
-  // straight through another ellipse. A straight diagonal that grazes an in-between ellipse reads
-  // as an illegal use-case<->use-case association; orthogonal routing removes that ambiguity.
-  // include/extend (uc->uc) and generalization (actor->actor) stay straight — they are short and
-  // never cross a node.
-  const LANE = 18
-  const leftCorridorX = bx0 + 16
-  const rightCorridorX = boundaryRight - 16
-  const midGapX = cols > 1 ? colX[1]! - UC_COL_GAP / 2 : 0
-  const rowGapY = (row: number) =>
-    by0 + BOUNDARY_TITLE_H + BOUNDARY_PAD + row * (UC_H + UC_GAP_Y) - UC_GAP_Y / 2
-
-  const associationPath = (actor: Box, target: Box, tcol: number, trow: number): string => {
-    const fromLeft = actor.cx < bx0
-    const pts: Array<[number, number]> = []
-    if (fromLeft) {
-      const corridor = leftCorridorX
-      pts.push([actor.cx + LANE, actor.cy], [corridor, actor.cy])
-      if (tcol === 0) {
-        pts.push([corridor, target.cy], [target.cx - target.w / 2, target.cy])
-      } else {
-        const gy = rowGapY(trow)
-        pts.push([corridor, gy], [midGapX, gy], [midGapX, target.cy], [target.cx - target.w / 2, target.cy])
-      }
-    } else {
-      const corridor = rightCorridorX
-      pts.push([actor.cx - LANE, actor.cy], [corridor, actor.cy])
-      if (tcol === cols - 1) {
-        pts.push([corridor, target.cy], [target.cx + target.w / 2, target.cy])
-      } else {
-        const gy = rowGapY(trow)
-        pts.push([corridor, gy], [midGapX, gy], [midGapX, target.cy], [target.cx + target.w / 2, target.cy])
-      }
-    }
-    const d = pts.map(([x, y]) => `${round(x)},${round(y)}`).join(' ')
-    return `<polyline points="${d}" fill="none" stroke="black" stroke-width="1.3"/>`
-  }
-
+  // With a single use-case column, every association is a STRAIGHT line from the actor directly to
+  // the ellipse border (see exitPoint). Because all ellipses share one column to the right of the
+  // human actors (or left of an external system), such a straight line can never graze another
+  // ellipse, so no orthogonal "corridor" routing is needed. This is the canonical UML look and it
+  // cannot be misread as use-case-to-use-case flow. include/extend and generalization are likewise
+  // straight, short segments.
   const edgeParts: string[] = []
   for (const r of relations) {
-    if (r.type === REL_ASSOCIATION) {
-      const from = boxes.get(r.from)
-      const to = boxes.get(r.to)
-      const meta = ucMeta.get(r.to)
-      // Orthogonal routing only when an actor (rect) connects to a use case (ellipse) we placed.
-      if (from && to && meta && !from.ellipse && to.ellipse) {
-        edgeParts.push(associationPath(from, to, meta.col, meta.row))
-        continue
-      }
-    }
     const part = edgeSvg(r, boxes)
     if (part) edgeParts.push(part)
   }
@@ -243,12 +204,24 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
     `<text x="${bx0 + 14}" y="${by0 + 24}" font-size="15" font-weight="600" fill="#333">` +
     `${esc(model.systemName || 'System')}</text>`
 
+  // Empty state: no API endpoints / no inferable actors. Draw a centered note inside the boundary
+  // so the diagram reads as an intentional "nothing detected" rather than an empty rectangle.
+  const emptyNote =
+    count === 0 && actorOrder.length === 0
+      ? `<text x="${round(bx0 + boundaryW / 2)}" y="${round(by0 + boundaryH / 2 - 8)}" ` +
+        `text-anchor="middle" font-size="14" fill="#888">No business use cases detected</text>` +
+        `<text x="${round(bx0 + boundaryW / 2)}" y="${round(by0 + boundaryH / 2 + 14)}" ` +
+        `text-anchor="middle" font-size="12" fill="#aaa">` +
+        `This project exposes no API endpoints to infer use cases from</text>`
+      : ''
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(totalW)}" height="${Math.ceil(totalH)}" ` +
     `viewBox="0 0 ${Math.ceil(totalW)} ${Math.ceil(totalH)}" role="img" data-test="uml-usecase-svg" ` +
     `font-family="Segoe UI, Arial, sans-serif">` +
     DEFS +
     boundary +
+    emptyNote +
     edgeParts.join('') +
     ucParts.join('') +
     actorParts.join('') +
@@ -271,10 +244,11 @@ const UC_COL_GAP = 56
 const BOUNDARY_PAD = 44
 const BOUNDARY_TITLE_H = 34
 const MIN_BOUNDARY_W = 220
+const EMPTY_BOUNDARY_W = 420
 const CHAR_W = 7.3
-const UC_MAX_CHARS = 28
+const UC_MAX_CHARS = UML_USECASE_MAX_CHARS
 const UC_LINE_H = 16
-const ACTOR_MAX_CHARS = 18
+const ACTOR_MAX_CHARS = UML_ACTOR_MAX_CHARS
 const ACTOR_LINE_H = 15
 const SYS_ACTOR_W = 120
 const SYS_ACTOR_H = 64
@@ -304,6 +278,17 @@ interface Box {
 
 function isExternalSystem(name: string): boolean {
   return /\b(system|service|gateway|api|server|provider|platform)\b/i.test(name ?? '')
+}
+
+/** A relation is "faint" (heuristic) when its confidence is low — drawn dashed + translucent. */
+const FAINT_THRESHOLD = 0.6
+function isFaint(rel: UmlRelation): boolean {
+  return typeof rel.confidence === 'number' && rel.confidence < FAINT_THRESHOLD
+}
+
+/** A use case is heuristic when its confidence is low (e.g. an inferred shared-service include). */
+function isFaintUseCase(uc: UmlUseCaseElement): boolean {
+  return typeof uc.confidence === 'number' && uc.confidence < FAINT_THRESHOLD
 }
 
 function ellipseWidth(label: string): number {
@@ -377,22 +362,26 @@ function systemActorSvg(x: number, yTop: number, name: string): string {
   )
 }
 
-function useCaseSvg(cx: number, cy: number, w: number, full: string): string {
+function useCaseSvg(cx: number, cy: number, w: number, full: string, faint = false): string {
   const rx = w / 2
   const ry = UC_H / 2
   // Wrap long names onto up to two lines so nothing is cut off (e.g. "Receive Shipment Status
   // Update"). The full name is also kept in <title> for hover.
   const lines = wrapLabel(full, UC_MAX_CHARS, 2)
   const startY = lines.length === 1 ? cy + 4 : cy - 4
+  // Heuristic (low-confidence, inferred) use cases are drawn with a dashed, translucent outline so a
+  // reader can tell a certain goal from a guessed one at a glance.
+  const ellipseExtra = faint ? ' stroke-dasharray="5 4" opacity="0.7"' : ''
+  const labelFill = faint ? '#555' : 'black'
   const labelSvg = lines
     .map(
       (ln, i) =>
         `<text x="${cx}" y="${startY + i * UC_LINE_H}" text-anchor="middle" font-size="14" ` +
-        `fill="black">${esc(ln)}</text>`,
+        `fill="${labelFill}">${esc(ln)}</text>`,
     )
     .join('')
   return (
-    `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="white" stroke="black" stroke-width="1.5">` +
+    `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="white" stroke="black" stroke-width="1.5"${ellipseExtra}>` +
     `<title>${esc(full)}</title></ellipse>` +
     labelSvg
   )
@@ -426,8 +415,12 @@ function edgeSvg(rel: UmlRelation, boxes: Map<string, Box>): string {
     case REL_GENERALIZATION:
       return `<line ${base} marker-end="url(#uml-triangle)"/>`
     case REL_ASSOCIATION:
-    default:
-      return `<line ${base}/>`
+    default: {
+      // A low-confidence association (e.g. to an inferred shared-service use case) is drawn dashed
+      // and translucent so it reads as heuristic rather than certain.
+      const faint = isFaint(rel) ? ' stroke-dasharray="2 3" opacity="0.6"' : ''
+      return `<line ${base}${faint}/>`
+    }
   }
 }
 

@@ -10,6 +10,7 @@
 
 import type { NodeDetailConnection, NodeDetailResponse } from './api'
 import type { GraphEdge, GraphNode, NodeType } from '@/types/graph'
+import { EXPAND_MAX_NEIGHBORS } from '@/lib/runtimeConfig'
 
 export interface GraphFragment {
   nodes: GraphNode[]
@@ -24,9 +25,9 @@ export interface GraphFragment {
  * Max neighbors merged in a single lazy expansion. Bounds the freeze risk of double-clicking a
  * high-degree "hub" node (a popular Class/File reached by thousands of callers): without this,
  * one expand could inject thousands of nodes into Sigma and hang the tab — the exact failure the
- * HTTP/WebSocket caps prevent elsewhere.
+ * HTTP/WebSocket caps prevent elsewhere. Sourced from `VITE_EXPAND_MAX_NEIGHBORS` (runtimeConfig).
  */
-export const EXPAND_MAX_NEIGHBORS = 500
+export { EXPAND_MAX_NEIGHBORS }
 
 /** Map a backend NodeDto-shaped object to a frontend GraphNode (filling nullable fields). */
 function toGraphNode(n: NodeDetailResponse['node']): GraphNode {

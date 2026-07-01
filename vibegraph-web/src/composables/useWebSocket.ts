@@ -17,6 +17,11 @@
 import { ref, type Ref } from 'vue'
 import { Client, type IMessage, type IStompSocket, type StompSubscription } from '@stomp/stompjs'
 import { WS_URL } from '@/lib/constants'
+import {
+  WS_RECONNECT_DELAY_MS,
+  WS_HEARTBEAT_INCOMING_MS,
+  WS_HEARTBEAT_OUTGOING_MS,
+} from '@/lib/runtimeConfig'
 
 export type WebSocketStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -63,9 +68,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     const SockJS = sockjsModule.default
     return new Client({
       webSocketFactory: () => new SockJS(url) as unknown as IStompSocket,
-      reconnectDelay: 5000,
-      heartbeatIncoming: 10000,
-      heartbeatOutgoing: 10000,
+      reconnectDelay: WS_RECONNECT_DELAY_MS,
+      heartbeatIncoming: WS_HEARTBEAT_INCOMING_MS,
+      heartbeatOutgoing: WS_HEARTBEAT_OUTGOING_MS,
     })
   }
 

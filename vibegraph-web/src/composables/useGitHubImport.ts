@@ -7,6 +7,11 @@ import {
   type ProjectStatusEvent,
 } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
+import {
+  IMPORT_POLL_INTERVAL_MS,
+  IMPORT_STALL_TIMEOUT_MS,
+  IMPORT_ABSOLUTE_TIMEOUT_MS,
+} from '@/lib/runtimeConfig'
 
 const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
 const GENERIC_GITHUB_IMPORT_ERROR = 'Import failed. Verify the repository is public and try again.'
@@ -23,14 +28,14 @@ const SAFE_ERROR_PATTERNS = [
   /still analyzing/i,
   /taking longer than expected/i,
 ]
-const GITHUB_IMPORT_POLL_INTERVAL_MS = 1_000
+const GITHUB_IMPORT_POLL_INTERVAL_MS = IMPORT_POLL_INTERVAL_MS
 // A large repo can analyze for many minutes, so there is no fixed poll cap. Instead we only give
 // up when the backend stops making progress (a genuine stall) for this long. A project that keeps
 // inching forward — even slowly — never trips this and analyzes to completion. Set generously so a
 // heavy final phase that sits at 9x% for several minutes is not mistaken for a stuck backend.
-const GITHUB_IMPORT_STALL_TIMEOUT_MS = 300_000
+const GITHUB_IMPORT_STALL_TIMEOUT_MS = IMPORT_STALL_TIMEOUT_MS
 // Absolute safety ceiling so a pathological backend can't poll forever.
-const GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS = 60 * 60_000
+const GITHUB_IMPORT_ABSOLUTE_TIMEOUT_MS = IMPORT_ABSOLUTE_TIMEOUT_MS
 
 export type GitHubImportStatus = 'idle' | 'importing' | 'success' | 'error'
 

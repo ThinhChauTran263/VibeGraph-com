@@ -112,46 +112,167 @@ class SpringAnnotationVisitorTest {
     }
 
     @Nested
-    @DisplayName("Injection detection")
-    class InjectionDetection {
+    @DisplayName("Security role extraction")
+    class SecurityRoleExtraction {
 
         @Test
-        @DisplayName("@Autowired field produces an INJECTS edge")
-        void autowiredFieldProducesInjectsEdge() {
+        @DisplayName("@PreAuthorize hasRole('ADMIN') attaches requiredRole=ADMIN to the endpoint")
+        void preAuthorizeAdminRole() {
             SpringAnnotationVisitor visitor = visit("""
                 package com.example;
-                import org.springframework.beans.factory.annotation.Autowired;
+                import org.springframework.web.bind.annotation.PostMapping;
+                import org.springframework.security.access.prepost.PreAuthorize;
 
-                public class UserController {
-                    @Autowired
-                    private UserService userService;
+                public class ProductController {
+                    @PostMapping("/products")
+                    @PreAuthorize("hasRole('ADMIN')")
+                    public void create() { }
                 }
                 """);
 
-            EdgeData injects = visitor.getExtractedEdges().stream()
-                    .filter(e -> e.type().equals("INJECTS"))
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
                     .findFirst()
-                    .orElseThrow(() -> new AssertionError("No INJECTS edge extracted"));
-            assertThat(injects.sourceFullName()).contains("UserController");
-            assertThat(injects.targetFullName()).isEqualTo("com.example.UserService");
+                    .orElseThrow();
+            assertThat(route.properties()).containsEntry("requiredRole", "ADMIN");
         }
 
         @Test
-        @DisplayName("@RequiredArgsConstructor + final field produces an INJECTS edge")
-        void lombokConstructorInjectionProducesInjectsEdge() {
+        @DisplayName("class-level @PreAuthorize applies to every method lacking its own role")
+        void classLevelRoleAppliesToMethods() {
             SpringAnnotationVisitor visitor = visit("""
                 package com.example;
-                import lombok.RequiredArgsConstructor;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.security.access.prepost.PreAuthorize;
 
-                @RequiredArgsConstructor
-                public class OrderService {
-                    private final OrderRepository repository;
+                @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+                public class AnalyticsController {
+                    @GetMapping("/analytics")
+                    public String view() { return null; }
                 }
                 """);
 
-            assertThat(visitor.getExtractedEdges())
-                    .anyMatch(e -> e.type().equals("INJECTS")
-                            && e.targetFullName().equals("com.example.OrderRepository"));
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            // ROLE_ prefix is stripped.
+            assertThat(route.properties()).containsEntry("requiredRole", "ADMIN");
+        }
+
+        @Test
+        @DisplayName("@RolesAllowed and @Secured are also mined")
+        void rolesAllowedAndSecured() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import jakarta.annotation.security.RolesAllowed;
+
+                public class ReportController {
+                    @GetMapping("/reports")
+                    @RolesAllowed("ADMIN")
+                    public String reports() { return null; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).containsEntry("requiredRole", "ADMIN");
+        }
+
+        @Test
+        @DisplayName("an endpoint without any security annotation has no requiredRole")
+        void noRoleWhenUnsecured() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.GetMapping;
+
+                public class CatalogController {
+                    @GetMapping("/catalog")
+                    public String catalog() { return null; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).doesNotContainKey("requiredRole");
+        }
+    }
+
+    @Nested
+    @DisplayName("View (page) route detection")
+    class ViewRouteDetection {
+
+        @Test
+        @DisplayName("a plain @Controller GET returning a view name is marked view=true")
+        void controllerViewGetMarkedView() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.stereotype.Controller;
+                import org.springframework.web.bind.annotation.GetMapping;
+
+                @Controller
+                public class HomeController {
+                    @GetMapping("/checkout")
+                    public String checkout() { return "module/order/checkout"; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).containsEntry("view", true);
+        }
+
+        @Test
+        @DisplayName("a @RestController route is never marked as a view, even returning String")
+        void restControllerNotView() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class ApiController {
+                    @GetMapping("/api/ping")
+                    public String ping() { return "pong"; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).doesNotContainKey("view");
+        }
+
+        @Test
+        @DisplayName("a @Controller method with @ResponseBody returns data, not a view")
+        void responseBodyNotView() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.stereotype.Controller;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.ResponseBody;
+
+                @Controller
+                public class MixedController {
+                    @GetMapping("/data")
+                    @ResponseBody
+                    public String data() { return "{}"; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).doesNotContainKey("view");
         }
     }
 }

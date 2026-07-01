@@ -15,12 +15,14 @@
  */
 
 import type { GraphData, GraphNode, NodeType } from '@/types/graph'
+import { GRAPH_SAFE_NODE_LIMIT } from '@/lib/runtimeConfig'
 
 /**
  * Default render budget. Above this many (post-filter) nodes the graph enters Safe
- * Mode and only the top-ranked nodes are rendered. Tuned so a mid laptop stays smooth.
+ * Mode and only the top-ranked nodes are rendered. Sourced from
+ * `VITE_GRAPH_SAFE_NODE_LIMIT` (see runtimeConfig); tuned so a mid laptop stays smooth.
  */
-export const GRAPH_SAFE_NODE_LIMIT = 1500
+export { GRAPH_SAFE_NODE_LIMIT }
 
 /** Higher = kept first when capping. Structural/architectural nodes outrank leaves. */
 const NODE_TYPE_PRIORITY: Record<NodeType, number> = {

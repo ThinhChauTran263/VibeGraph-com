@@ -7,7 +7,7 @@
 
 import Graph from 'graphology'
 import type { GraphData, GraphNode, GraphEdge, NodeType, EdgeType } from '@/types/graph'
-import { NODE_COLORS, EDGE_COLORS, NODE_SIZES } from './constants'
+import { NODE_COLORS, EDGE_COLORS, NODE_SIZES, NODE_SIZE_BY_TYPE } from './constants'
 
 export interface SigmaNodeAttributes {
   label: string
@@ -149,31 +149,11 @@ export function getEdgeColor(edgeType: EdgeType): string {
 }
 
 /**
- * Return node size based on type. Structural nodes are larger.
+ * Return node size based on type. Larger = wider structural scope (Project,
+ * Package, File), smaller = deeper / more numerous detail (Field, LocalVariable).
+ * Values come from {@link NODE_SIZE_BY_TYPE} (env-tunable via runtimeConfig); an
+ * unknown type falls back to the default radius.
  */
 export function getNodeSize(nodeType: NodeType): number {
-  switch (nodeType) {
-    case 'File':
-      return 6.5
-    case 'Project':
-    case 'Package':
-      return 6
-    case 'Class':
-    case 'Interface':
-    case 'Enum':
-    case 'Record':
-    case 'DBModel':
-      return 5
-    case 'Method':
-    case 'Constructor':
-    case 'Route':
-    case 'APIEndpoint':
-      return 4
-    case 'Field':
-    case 'Annotation':
-    case 'External':
-      return NODE_SIZES.min
-    default:
-      return NODE_SIZES.default
-  }
+  return NODE_SIZE_BY_TYPE[nodeType] ?? NODE_SIZES.default
 }

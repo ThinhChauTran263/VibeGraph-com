@@ -62,6 +62,27 @@ export interface ImpactAnalysisResponse {
   mayNeedTesting: ImpactNode[]
 }
 
+/**
+ * A bounded, redacted slice of a source file returned by the code viewer endpoint.
+ * Mirrors the backend `SourceFileService.SourceContent` record.
+ *
+ * `found=false` means the file exists in the graph but cannot be served as source
+ * (disallowed extension, missing on disk, binary, …) — `truncationReason` carries why.
+ * Paths are always project-relative; an absolute host path is never returned.
+ */
+export interface SourceContent {
+  found: boolean
+  relativePath: string
+  language: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  content: string
+  truncated: boolean
+  truncationReason?: string | null
+  warnings: string[]
+}
+
 /** Traversal depths the backend accepts (see GraphServiceImpl ALLOWED_IMPACT_DEPTHS). */
 export const IMPACT_ALLOWED_DEPTHS = [1, 2, 3, 5] as const
 export type ImpactDepth = (typeof IMPACT_ALLOWED_DEPTHS)[number]
@@ -300,6 +321,23 @@ export const graphApi = {
       `/api/projects/${projectId}/graph/impact?${query}`,
     )
   },
+
+  /**
+   * Read a bounded slice of a source file for the in-app code viewer.
+   * GET /api/projects/{projectId}/source?path=...&startLine=...&endLine=...
+   *
+   * `path` is typically the selected node's absolute `filePath`; the backend confines it to the
+   * project source root and rejects traversal. `startLine`/`endLine` are 1-based; omit them to
+   * read from the top (the server caps the window size and reports truncation).
+   */
+  getSource: (projectId: string, path: string, startLine?: number, endLine?: number) => {
+    const params = new URLSearchParams({ path })
+    if (startLine != null) params.set('startLine', String(startLine))
+    if (endLine != null) params.set('endLine', String(endLine))
+    return api.get<SourceContent>(
+      `/api/projects/${encodeURIComponent(projectId)}/source?${params}`,
+    )
+  },
 }
 
 export interface DiagramResponse {
@@ -345,6 +383,22 @@ export interface UmlRelation {
 }
 
 /**
+ * A per-actor or per-domain projection of the same canonical UML model (R4). Pure projection of
+ * the full diagram, so a view can never disagree with it. Mirrors backend `UseCaseView`.
+ */
+export interface UmlUseCaseView {
+  /** `actor` or `domain`. */
+  viewType: string
+  /** The actor name or domain this view is scoped to. */
+  title: string
+  actors: UmlActor[]
+  useCases: UmlUseCaseElement[]
+  relations: UmlRelation[]
+  mermaidSyntax?: string | null
+  plantUmlSyntax?: string | null
+}
+
+/**
  * Business-level UML Use Case diagram. Mirrors the backend `UmlUseCaseResponse`.
  * Holds inferred actors and verb-phrased use cases, plus a Mermaid fallback and
  * a standard PlantUML source for proper UML render/copy.
@@ -360,6 +414,8 @@ export interface UmlUseCaseResponse {
   warnings: string[]
   mermaidSyntax: string
   plantUmlSyntax: string
+  /** Per-actor and per-domain projections of the same model; optional/empty for non-UML styles. */
+  views?: UmlUseCaseView[]
 }
 
 // Diagram endpoints

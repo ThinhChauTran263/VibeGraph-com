@@ -17,6 +17,9 @@ import { debounce } from '@/lib/debounce'
 import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
+import ExplorerPanel from '@/components/panels/ExplorerPanel.vue'
+import FlowsPanel from '@/components/panels/FlowsPanel.vue'
+import DataFlowDetailPanel from '@/components/panels/DataFlowDetailPanel.vue'
 import NodeDetailPanel, { type RelationHoverPayload } from '@/components/panels/NodeDetailPanel.vue'
 import ImpactAnalysisPanel from '@/components/panels/ImpactAnalysisPanel.vue'
 import {
@@ -26,6 +29,8 @@ import {
   type FocusLabelDensity,
   type HoveredRelation,
 } from '@/lib/focusMode'
+import { createFlowFocusReducers, partitionFlowGraph } from '@/lib/flowFocus'
+import type { FlowListItem } from '@/lib/dataFlow'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
 import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent } from '@/types/graph'
 
@@ -38,6 +43,50 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+
+// Left sidebar tab: file Explorer (browse source), Graph filters, or Data Flows.
+const activeSidebarTab = ref<'explorer' | 'filters' | 'flows'>('explorer')
+
+// Active Data Flow highlight (set of node ids + connecting edge ids). When set,
+// the canvas spotlights the whole traced chain instead of a single node.
+const activeFlow = ref<{ nodeIds: Set<string>; edgeIds: Set<string>; primaryNodeId: string } | null>(null)
+// The selected flow shown in the right-hand DataFlowDetailPanel.
+const activeFlowDetail = ref<FlowListItem | null>(null)
+
+// User-resizable left sidebar width (px). Bound to a CSS custom property so the
+// responsive media query can still collapse the layout on narrow screens.
+const wrapperRef = ref<HTMLElement | null>(null)
+const sidebarWidth = ref(288)
+let resizing = false
+
+// Collapsed state for the left sidebar. When collapsed the panel column shrinks
+// to zero and a floating chevron lets the user reopen it, freeing the full width
+// for the graph canvas.
+const sidebarCollapsed = ref(false)
+
+function toggleSidebar(): void {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+function onResizeStart(event: PointerEvent): void {
+  resizing = true
+  ;(event.target as HTMLElement).setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', onResizeMove)
+  window.addEventListener('pointerup', onResizeEnd)
+  event.preventDefault()
+}
+
+function onResizeMove(event: PointerEvent): void {
+  if (!resizing || !wrapperRef.value) return
+  const left = wrapperRef.value.getBoundingClientRect().left
+  sidebarWidth.value = Math.min(Math.max(event.clientX - left, 220), 640)
+}
+
+function onResizeEnd(): void {
+  resizing = false
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd)
+}
 
 // Monotonic counter to discard stale async graph loads (see load()).
 let loadSeq = 0
@@ -89,7 +138,6 @@ const {
   selectNode,
   clearSelection,
   selectedNode,
-  renderInfo,
   nodes,
 } = useGraphData()
 
@@ -102,6 +150,8 @@ const {
   setEdgeLabelsVisible,
   setGhostPartition,
   refresh: refreshSigma,
+  zoomToFit,
+  focusNode,
 } = useSigma({
   container: canvasRef,
   onNodeClick: (nodeId: string) => {
@@ -111,6 +161,8 @@ const {
     // newly selected node is what stays focused after the click settles.
     resetRelationFocus()
     hoveredGraphNode.value = null
+    activeFlow.value = null
+    activeFlowDetail.value = null
     selectNode(node)
     emit('nodeSelected', nodeId)
   },
@@ -127,7 +179,7 @@ const {
     emit('nodeSelected', null)
   },
   onNodeHover: (nodeId: string) => {
-    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value) return
+    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value) return
     hoveredGraphNode.value = nodeId
     applyFocusReducers()
   },
@@ -172,6 +224,12 @@ function applyFocusReducers(): void {
     return
   }
 
+  // 3.5: an active Data Flow highlights the whole traced chain.
+  if (activeFlow.value) {
+    applyFlowFocus()
+    return
+  }
+
   // 4: clicked/searched selection focus.
   if (selectedNode.value) {
     focusOn(selectedNode.value.id, null)
@@ -204,6 +262,47 @@ function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   setEdgeLabelsVisible?.(edgeLabelsEnabled.value && labelDensity.value === 'edges')
 }
 
+/** Spotlight the whole active Data Flow chain on the graph. */
+function applyFlowFocus(): void {
+  if (!graphInstance.value || !activeFlow.value) return
+  const { nodeIds, edgeIds, primaryNodeId } = activeFlow.value
+  setReducers(createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId))
+  setGhostPartition?.(partitionFlowGraph(nodeIds, edgeIds, graphInstance.value))
+  setEdgeLabelsVisible?.(true)
+}
+
+// A Data Flow was selected in the Flows panel: highlight the chain, open the
+// detail panel, and exit any single-node selection.
+function onFlowSelect(item: FlowListItem): void {
+  resetRelationFocus()
+  hoveredGraphNode.value = null
+  clearSelection()
+  emit('nodeSelected', null)
+  activeFlowDetail.value = item
+  activeFlow.value = {
+    nodeIds: new Set(item.flow.steps.map((step) => step.nodeId)),
+    edgeIds: new Set(item.flow.edgeIds),
+    primaryNodeId: item.flow.steps[0]?.nodeId ?? '',
+  }
+  applyFlowFocus()
+}
+
+// A flow step row was activated: keep the chain highlighted but center the node.
+function onFlowStep(nodeId: string): void {
+  if (activeFlow.value) {
+    activeFlow.value = { ...activeFlow.value, primaryNodeId: nodeId }
+    applyFlowFocus()
+  }
+  focusNode(nodeId)
+}
+
+// The flow was cleared: restore the default graph view.
+function onFlowClear(): void {
+  activeFlow.value = null
+  activeFlowDetail.value = null
+  applyFocusReducers()
+}
+
 async function load(projectId: string) {
   // Stale-load guard: if the project changes (or another load starts) while this
   // fetch is in flight, a late-resolving response must NOT init an outdated graph.
@@ -213,6 +312,11 @@ async function load(projectId: string) {
   if (graph && canvasRef.value) {
     initSigma(graph)
     applyFocusReducers()
+    // Frame the whole graph once the canvas has its final box (next frame), so a
+    // first-paint mis-measure can't leave the graph offset to one edge.
+    requestAnimationFrame(() => {
+      if (seq === loadSeq) zoomToFit()
+    })
   }
 }
 
@@ -222,9 +326,38 @@ function onSearchSelect(node: GraphNode): void {
   applyFocusReducers()
 }
 
+// Clicking a file in the Explorer focuses its representative node. The Explorer
+// is built from the FULL graph (so the whole source tree shows even when filters
+// hide types), so resolve against graphData rather than the filtered `nodes`.
+function onExplorerSelect(nodeId: string): void {
+  const node = graphData.value.nodes.find((candidate) => candidate.id === nodeId) ?? null
+  if (!node) return
+  resetRelationFocus()
+  hoveredGraphNode.value = null
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+}
+
 function onSearchClear(): void {
   clearSelection()
   emit('nodeSelected', null)
+}
+
+// Clicking an affected node in Impact Analysis navigates the graph to it: select it (so the
+// detail/impact panels retarget) and center it on the canvas. Resolve against the FULL graph
+// since a dependent may be filtered out of the visible `nodes`.
+function onImpactSelect(nodeId: string): void {
+  const node = graphData.value.nodes.find((candidate) => candidate.id === nodeId) ?? null
+  if (!node) return
+  resetRelationFocus()
+  hoveredGraphNode.value = null
+  activeFlow.value = null
+  activeFlowDetail.value = null
+  selectNode(node)
+  emit('nodeSelected', node.id)
+  applyFocusReducers()
+  focusNode(node.id)
 }
 
 function onDetailClose(): void {
@@ -403,42 +536,115 @@ watch(
 
 onUnmounted(() => {
   rebuildGraph.cancel()
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd)
 })
 </script>
 
 <template>
   <div
+    ref="wrapperRef"
     class="graph-canvas-wrapper"
-    :class="{ 'graph-canvas-wrapper--detail-open': !loading && !error && selectedNode }"
+    :class="{
+      'graph-canvas-wrapper--detail-open': !loading && !error && (selectedNode || activeFlowDetail),
+      'graph-canvas-wrapper--collapsed': !loading && !error && sidebarCollapsed,
+      'graph-canvas-wrapper--loading': loading || error,
+    }"
+    :style="{ '--sidebar-width': (sidebarCollapsed ? 0 : sidebarWidth) + 'px' }"
   >
-    <aside v-if="!loading && !error" class="graph-canvas__sidebar">
-      <FilterPanel :graph-data="graphData" />
+    <aside v-show="!loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
+      <div class="graph-canvas__sidebar-topbar">
+        <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'explorer'"
+          @click="activeSidebarTab = 'explorer'"
+        >
+          Explorer
+        </button>
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'filters'"
+          @click="activeSidebarTab = 'filters'"
+        >
+          Filters
+        </button>
+        <button
+          class="graph-canvas__sidebar-tab"
+          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
+          type="button"
+          role="tab"
+          :aria-selected="activeSidebarTab === 'flows'"
+          @click="activeSidebarTab = 'flows'"
+        >
+          Flows
+        </button>
+        </div>
+        <button
+          class="graph-canvas__sidebar-collapse"
+          type="button"
+          title="Collapse panel"
+          aria-label="Collapse sidebar panel"
+          @click="toggleSidebar"
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+      </div>
+
+      <ExplorerPanel
+        v-show="activeSidebarTab === 'explorer'"
+        :nodes="graphData.nodes"
+        :selected-node-id="selectedNode?.id ?? null"
+        @select="onExplorerSelect"
+      />
+      <FilterPanel v-show="activeSidebarTab === 'filters'" :graph-data="graphData" />
+      <FlowsPanel
+        v-show="activeSidebarTab === 'flows'"
+        :graph-data="graphData"
+        :selected-flow-id="activeFlowDetail?.id ?? null"
+        @select="onFlowSelect"
+      />
     </aside>
+
+    <div
+      v-if="!loading && !error && !sidebarCollapsed"
+      class="graph-canvas__resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      title="Drag to resize"
+      :style="{ left: sidebarWidth + 'px' }"
+      @pointerdown="onResizeStart"
+    />
 
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
 
-      <div
-        v-if="!loading && !error && renderInfo?.truncated"
-        class="graph-safe-mode-notice"
-        role="status"
+      <button
+        v-if="!loading && !error && sidebarCollapsed"
+        type="button"
+        class="graph-canvas__sidebar-expand"
+        title="Expand panel"
+        aria-label="Expand sidebar panel"
+        @click="toggleSidebar"
       >
-        <span class="graph-safe-mode-notice__dot" aria-hidden="true" />
-        <span>
-          Safe Mode — showing
-          <strong>{{ renderInfo.renderedNodes.toLocaleString() }}</strong> /
-          <strong>{{ renderInfo.totalNodes.toLocaleString() }}</strong> nodes and
-          <strong>{{ renderInfo.renderedEdges.toLocaleString() }}</strong> /
-          <strong>{{ renderInfo.totalEdges.toLocaleString() }}</strong> relationships. Use search
-          or filters to narrow the view.
-        </span>
-      </div>
+        <span aria-hidden="true">›</span>
+      </button>
 
       <button
         v-if="!loading && !error"
         type="button"
         class="graph-edge-label-toggle"
-        :class="{ 'graph-edge-label-toggle--off': !edgeLabelsEnabled }"
+        :class="{
+          'graph-edge-label-toggle--off': !edgeLabelsEnabled,
+          'graph-edge-label-toggle--shifted': sidebarCollapsed,
+        }"
         :aria-pressed="edgeLabelsEnabled"
         @click="toggleEdgeLabels"
       >
@@ -481,14 +687,24 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <aside v-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+    <aside v-if="!loading && !error && activeFlowDetail" class="graph-canvas__detail">
+      <DataFlowDetailPanel
+        :item="activeFlowDetail"
+        :selected-node-id="activeFlow?.primaryNodeId ?? null"
+        @focus-step="onFlowStep"
+        @close="onFlowClear"
+      />
+    </aside>
+
+    <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
       <NodeDetailPanel
         :pinned-edge-id="pinnedRelation?.edgeId ?? null"
+        :project-id="props.projectId"
         @close="onDetailClose"
         @relation-hover="onRelationHover"
         @relation-select="onRelationSelect"
       />
-      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" />
+      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" @select="onImpactSelect" />
     </aside>
   </div>
 </template>
@@ -496,7 +712,8 @@ onUnmounted(() => {
 <style scoped>
 .graph-canvas-wrapper {
   display: grid;
-  grid-template-columns: 18rem 1fr;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr;
+  position: relative;
   width: 100%;
   /* Fill the remaining height of the 100vh flex column in GraphView instead of
      forcing 100% (which resolves to the full viewport and overflows past it by
@@ -507,7 +724,55 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--detail-open {
-  grid-template-columns: 18rem 1fr 23rem;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr 23rem;
+}
+
+/* When the sidebar is collapsed it is removed from the grid flow (display:none),
+   so the stage would auto-place into the now-0px first track and shrink to
+   nothing. Drop the empty sidebar track entirely so the stage fills the row. */
+.graph-canvas-wrapper--collapsed {
+  grid-template-columns: 1fr;
+}
+
+.graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 1fr 23rem;
+}
+
+/* While loading or in an error state the sidebar/detail are hidden, but the grid
+   would otherwise keep their reserved columns and push the centered overlay off to
+   one side. Collapse to a single full-width column so the spinner is truly centered. */
+.graph-canvas-wrapper--loading,
+.graph-canvas-wrapper--loading.graph-canvas-wrapper--detail-open {
+  grid-template-columns: 1fr;
+}
+
+/* Draggable divider on the right edge of the sidebar. */
+.graph-canvas__resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.5rem;
+  transform: translateX(-50%);
+  z-index: 8;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.graph-canvas__resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  transition: background 150ms ease, width 150ms ease;
+}
+
+.graph-canvas__resizer:hover::after,
+.graph-canvas__resizer:active::after {
+  width: 3px;
+  background: rgba(96, 165, 250, 0.8);
 }
 
 .graph-canvas__sidebar {
@@ -518,6 +783,125 @@ onUnmounted(() => {
   overflow-y: auto;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.85);
+}
+
+.graph-canvas__sidebar-topbar {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  flex: 0 0 auto;
+}
+
+.graph-canvas__sidebar-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Reserve room for the pinned collapse button so wrapped tabs never slide under it. */
+  padding-right: 2.25rem;
+}
+
+.graph-canvas__sidebar-collapse {
+  position: absolute;
+  top: 0;
+  right: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-collapse:hover,
+.graph-canvas__sidebar-collapse:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(37, 99, 235, 0.22);
+  color: #f8fafc;
+  outline: none;
+}
+
+/* Floating chevron to reopen the sidebar after it has been collapsed. */
+.graph-canvas__sidebar-expand {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-expand:hover,
+.graph-canvas__sidebar-expand:focus-visible {
+  border-color: rgba(96, 165, 250, 0.7);
+  background: rgba(37, 99, 235, 0.3);
+  color: #f8fafc;
+  outline: none;
+}
+
+.graph-canvas__sidebar-tab {
+  flex: 1 1 auto;
+  min-width: max-content;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 0.4rem 0.6rem;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.graph-canvas__sidebar-tab:hover,
+.graph-canvas__sidebar-tab:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  outline: none;
+}
+
+.graph-canvas__sidebar-tab--active {
+  border-color: rgba(96, 165, 250, 0.82);
+  background: rgba(37, 99, 235, 0.32);
+  color: #bfdbfe;
+}
+
+/* The Explorer and Flows panels own the remaining height and scroll internally. */
+.graph-canvas__sidebar > .explorer-panel,
+.graph-canvas__sidebar > .flows-panel {
+  flex: 1 1 auto;
 }
 
 .graph-canvas__stage {
@@ -538,28 +922,32 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  /* The column is height-constrained to the graph viewport; each panel manages
-     its OWN scroll so a long Node Detail can never crush Impact Analysis. */
+  /* The whole column scrolls as one. Panels size to their content so the Impact
+     Analysis results are never crushed to a zero-height (previously the panel was
+     capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.85);
 }
 
-/* Node Detail takes the flexible space and scrolls internally when it has many
-   relations. */
+/* Node Detail caps its height and scrolls internally so a node with many
+   relations cannot push Impact Analysis far down the column. */
 .graph-canvas__detail :deep(.node-detail-panel) {
-  flex: 1 1 auto;
-  min-height: 8rem;
+  flex: 0 0 auto;
+  max-height: 55vh;
   overflow-y: auto;
 }
 
-/* Impact Analysis keeps a stable, readable height and never collapses. Its
-   header/controls stay pinned; only its results body scrolls (see panel CSS). */
+/* Impact Analysis sizes to its content so its result list is always visible. */
 .graph-canvas__detail :deep(.impact-panel) {
   flex: 0 0 auto;
-  min-height: 15rem;
-  max-height: 38vh;
+}
+
+/* Data Flow detail fills the right column and scrolls internally. */
+.graph-canvas__detail :deep(.dfd) {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 @media (max-width: 64rem) {
@@ -575,6 +963,10 @@ onUnmounted(() => {
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.16);
     max-height: 14rem;
+  }
+
+  .graph-canvas__resizer {
+    display: none;
   }
 
   .graph-canvas-wrapper--detail-open {
@@ -744,47 +1136,17 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
+/* When the sidebar is collapsed a floating expand chevron occupies the top-left
+   corner. Shift the edge-label toggle clear of it so the two controls never
+   overlap (they previously stacked at the same coordinates). */
+.graph-edge-label-toggle--shifted {
+  left: 3.5rem;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-</style>
-
-<style scoped>
-.graph-safe-mode-notice {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  max-width: min(90%, 40rem);
-  padding: 0.5rem 0.9rem;
-  border: 1px solid rgba(251, 191, 36, 0.45);
-  border-radius: 999px;
-  background: rgba(120, 53, 15, 0.82);
-  color: #fde68a;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
-}
-
-.graph-safe-mode-notice strong {
-  color: #fef3c7;
-  font-weight: 700;
-}
-
-.graph-safe-mode-notice__dot {
-  flex: 0 0 auto;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25);
-}
 </style>
