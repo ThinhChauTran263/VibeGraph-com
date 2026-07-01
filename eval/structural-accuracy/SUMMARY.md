@@ -64,6 +64,8 @@ categorization difference, not a real miss. So real type recall is ~100% on both
 - **Type extraction: ~100%** across both repos (0 spurious types in either).
 - **Entity detection: 100%** across both repos.
 - **Endpoint detection on classic verb-mapping controllers: ~94%**.
+- **Method-call (CALLS) precision: 100%** on a 30-edge sample of spring-petclinic
+  (Wilson 95% CI [88.6%, 100%]); no fabricated calls found. See `mcall-precision.md`.
 
 ## Next steps (prioritized by the numbers)
 
@@ -74,8 +76,8 @@ categorization difference, not a real miss. So real type recall is ~100% on both
    spring-petclinic: 0 -> 6.
 3. OPEN F1 remainder: endpoints on build-generated / interface-inherited mappings need
    generated-source analysis or interface-inheritance resolution - larger separate task.
-4. Phase 2b: method-call PRECISION via stratified random sampling of CALLS edges + manual
-   verification, reported with a confidence interval (not yet measured).
+4. DONE (Phase 2b): method-call CALLS precision measured by seeded random sampling +
+   source verification, with a Wilson 95% CI. See `mcall-precision.ps1` / `.md`.
 5. Add a 3rd/4th repo (a `@PreAuthorize` CRUD, a service-only lib) for breadth.
 
 ## Reproduce
