@@ -109,6 +109,70 @@ class SpringAnnotationVisitorTest {
             assertThat(visitor.getExtractedEdges())
                     .noneMatch(e -> e.type().equals("HANDLES_ROUTE"));
         }
+
+        @Test
+        @DisplayName("@RequestMapping(method = RequestMethod.GET) resolves to the concrete GET verb")
+        void requestMappingWithMethodResolvesVerb() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RequestMethod;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class LegacyController {
+                    @RequestMapping(value = "/legacy", method = RequestMethod.GET)
+                    public String legacy() { return null; }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).containsEntry("httpMethod", "GET");
+            assertThat(route.fullName()).isEqualTo("GET /legacy");
+        }
+
+        @Test
+        @DisplayName("@RequestMapping with multiple methods emits one endpoint per verb")
+        void requestMappingWithMultipleMethods() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RequestMethod;
+
+                public class MultiController {
+                    @RequestMapping(value = "/items", method = {RequestMethod.POST, RequestMethod.PUT})
+                    public void save() { }
+                }
+                """);
+
+            assertThat(visitor.getExtractedNodes())
+                    .filteredOn(n -> n.type().equals("APIEndpoint"))
+                    .extracting(NodeData::fullName)
+                    .containsExactlyInAnyOrder("POST /items", "PUT /items");
+        }
+
+        @Test
+        @DisplayName("@RequestMapping without a method attribute stays the generic REQUEST verb")
+        void requestMappingWithoutMethodStaysGeneric() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.RequestMapping;
+
+                public class RootController {
+                    @RequestMapping("/")
+                    public void root() { }
+                }
+                """);
+
+            NodeData route = visitor.getExtractedNodes().stream()
+                    .filter(n -> n.type().equals("APIEndpoint"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(route.properties()).containsEntry("httpMethod", "REQUEST");
+        }
     }
 
     @Nested
@@ -200,6 +264,91 @@ class SpringAnnotationVisitorTest {
                     .findFirst()
                     .orElseThrow();
             assertThat(route.properties()).doesNotContainKey("requiredRole");
+        }
+    }
+
+    @Nested
+    @DisplayName("Constructor injection")
+    class ConstructorInjection {
+
+        @Test
+        @DisplayName("a Spring bean's constructor parameters produce INJECTS edges (no @Autowired needed)")
+        void constructorParamsInjected() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class OwnerController {
+                    private final OwnerService service;
+                    private final OwnerMapper mapper;
+                    public OwnerController(OwnerService service, OwnerMapper mapper) {
+                        this.service = service;
+                        this.mapper = mapper;
+                    }
+                }
+                """);
+
+            assertThat(visitor.getExtractedEdges())
+                    .filteredOn(e -> e.type().equals("INJECTS"))
+                    .extracting(EdgeData::targetFullName)
+                    .contains("com.example.OwnerService", "com.example.OwnerMapper");
+        }
+
+        @Test
+        @DisplayName("a plain (non-Spring) class constructor produces no INJECTS edges")
+        void plainClassConstructorNotInjected() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                public class Money {
+                    private final long amount;
+                    public Money(long amount) { this.amount = amount; }
+                }
+                """);
+
+            assertThat(visitor.getExtractedEdges())
+                    .noneMatch(e -> e.type().equals("INJECTS"));
+        }
+
+        @Test
+        @DisplayName("with multiple constructors only the @Autowired one is wired")
+        void multipleConstructorsPrefersAutowired() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.stereotype.Service;
+                import org.springframework.beans.factory.annotation.Autowired;
+
+                @Service
+                public class BillingService {
+                    public BillingService() { }
+                    @Autowired
+                    public BillingService(PaymentGateway gateway) { }
+                }
+                """);
+
+            assertThat(visitor.getExtractedEdges())
+                    .filteredOn(e -> e.type().equals("INJECTS"))
+                    .extracting(EdgeData::targetFullName)
+                    .containsExactly("com.example.PaymentGateway");
+        }
+
+        @Test
+        @DisplayName("primitive and common value-type constructor params are skipped")
+        void valueTypeParamsSkipped() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import org.springframework.stereotype.Component;
+
+                @Component
+                public class Worker {
+                    public Worker(TaskQueue queue, String name, int retries) { }
+                }
+                """);
+
+            assertThat(visitor.getExtractedEdges())
+                    .filteredOn(e -> e.type().equals("INJECTS"))
+                    .extracting(EdgeData::targetFullName)
+                    .containsExactly("com.example.TaskQueue");
         }
     }
 
