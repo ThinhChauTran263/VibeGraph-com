@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chương Đánh giá — VibeGraph</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --line: #d0d0d0; --accent: #1f4e79;
+    --thead: #eef2f7; --note: #fff8e1; --note-border: #e0c060; --code-bg: #f5f5f5;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Times New Roman", Georgia, serif;
+    color: var(--ink); line-height: 1.55; font-size: 12pt;
+    max-width: 900px; margin: 0 auto; padding: 32px 28px 64px;
+    background: #fff;
+  }
+  h1 { font-size: 22pt; color: var(--accent); border-bottom: 3px solid var(--accent);
+       padding-bottom: 8px; margin: 0 0 6px; }
+  h2 { font-size: 15pt; color: var(--accent); margin: 26px 0 8px;
+       border-bottom: 1px solid var(--line); padding-bottom: 4px; page-break-after: avoid; }
+  h3 { font-size: 13pt; margin: 18px 0 6px; page-break-after: avoid; }
+  p, li { text-align: justify; }
+  .subtitle { color: var(--muted); font-size: 11pt; margin: 0 0 18px; }
+  blockquote.note {
+    background: var(--note); border-left: 4px solid var(--note-border);
+    margin: 14px 0; padding: 10px 14px; font-size: 10.5pt; color: #4a3f10;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 10.5pt;
+          page-break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; }
+  th { background: var(--thead); text-align: left; }
+  td.num, th.num { text-align: right; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+         font-family: "Consolas", "Courier New", monospace; font-size: 10pt; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px;
+        padding: 12px 14px; overflow-x: auto; font-size: 9.5pt; page-break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  strong { color: #111; }
+  sup { color: var(--accent); }
+  .footnote { font-size: 10pt; color: var(--muted); border-top: 1px dashed var(--line);
+              margin-top: 6px; padding-top: 6px; }
+  @page { size: A4; margin: 20mm 18mm; }
+  @media print { body { padding: 0; max-width: none; } a { color: inherit; text-decoration: none; } }
+</style>
+</head>
+<body>
+
+<h1>Chương: Đánh giá (Evaluation)</h1>
+<p class="subtitle">VibeGraph — reverse-engineering mã nguồn Java thành đồ thị tri thức và sơ đồ UML</p>
+
+<blockquote class="note">
+  Bản render từ <code>eval/EVALUATION-CHAPTER.md</code> (nguồn gốc). Mọi con số là kết quả đo
+  thật, tái lập được. Tác giả cần biên tập văn phong, chuyển sang mẫu Word/LaTeX của trường,
+  và <strong>bổ sung trích dẫn</strong> ở những chỗ đánh dấu “[cần trích dẫn]”. Sửa nội dung
+  nên sửa ở bản Markdown gốc rồi tạo lại HTML để tránh lệch hai nguồn.
+</blockquote>
+
+<h2>1. Giới thiệu chương</h2>
+<p>Chương này đánh giá <strong>độ chính xác</strong> và <strong>tính hữu dụng</strong> của
+VibeGraph trong việc dịch ngược (reverse-engineering) một dự án Java thành mô hình mã nguồn:
+đồ thị tri thức mã (code knowledge graph) và các sơ đồ UML (đặc biệt là sơ đồ Use Case
+“as-built”). Mục tiêu là chứng minh bằng số liệu rằng công cụ trích xuất đúng những gì có
+trong mã nguồn, đồng thời nêu rõ giới hạn của phương pháp — thay vì chỉ khẳng định định tính.</p>
+<p>Đánh giá được thiết kế theo hướng <strong>định lượng, có ground truth độc lập và tái lập
+được</strong>: mọi số liệu đều sinh ra từ các script trong thư mục <code>eval/</code>, chạy
+lại cho kết quả như nhau.</p>
+
+<h2>2. Mục tiêu và câu hỏi đánh giá</h2>
+<p>Ba câu hỏi nghiên cứu (Research Questions):</p>
+<ul>
+  <li><strong>RQ1 — Trích xuất cấu trúc.</strong> VibeGraph nhận diện đúng bao nhiêu phần trăm
+  phần tử cấu trúc (lớp, interface, enum, entity) so với mã nguồn thật?</li>
+  <li><strong>RQ2 — Trích xuất quan hệ.</strong> Các cạnh quan hệ quan trọng — lời gọi phương
+  thức (CALLS), phụ thuộc tiêm (INJECTS), điểm cuối API (endpoint) — có chính xác không?</li>
+  <li><strong>RQ3 — Suy luận Use Case.</strong> Thuật toán suy luận sơ đồ Use Case có đúng và
+  ổn định trên nhiều kiểu cấu trúc dự án khác nhau không?</li>
+</ul>
+
+<h2>3. Thiết kế đánh giá</h2>
+<h3>3.1 Định nghĩa độ đo</h3>
+<p>Gọi TP (true positive) là phần tử tool sinh ra và có thật; FP (false positive) là phần tử
+tool sinh ra nhưng không có thật; FN (false negative) là phần tử có thật nhưng tool bỏ sót.</p>
+<ul>
+  <li><strong>Precision</strong> P = TP / (TP + FP) — trong những gì tool nói, bao nhiêu là đúng.</li>
+  <li><strong>Recall</strong> R = TP / (TP + FN) — trong những gì có thật, tool bắt được bao nhiêu.</li>
+  <li><strong>F1</strong> = 2·P·R / (P + R) — trung bình điều hòa của P và R.</li>
+</ul>
+<p>Với ước lượng tỉ lệ từ mẫu (precision của CALLS), dùng <strong>khoảng tin cậy Wilson
+95%</strong> thay cho khoảng chuẩn normal, vì Wilson chính xác hơn khi tỉ lệ gần 0/1 và cỡ
+mẫu vừa phải [cần trích dẫn: Wilson 1927].</p>
+
+<h3>3.2 Đối tượng đánh giá (subjects)</h3>
+<table>
+  <thead><tr><th>Dự án</th><th>Loại</th><th>Quy mô (main)</th><th>Vì sao chọn</th></tr></thead>
+  <tbody>
+    <tr><td>spring-petclinic</td><td>Spring MVC cổ điển (@Controller, @GetMapping)</td>
+        <td>30 file, 300 node, 912 cạnh</td><td>Chuẩn tham chiếu phổ biến của cộng đồng Spring [cần trích dẫn]</td></tr>
+    <tr><td>spring-petclinic-rest</td><td>Spring REST (OpenAPI-first)</td>
+        <td>87 file, 987 node, 3668 cạnh</td><td>Kiểm hành vi trên kiến trúc REST + mã sinh lúc build</td></tr>
+    <tr><td>6 fixture gán nhãn</td><td>Tổng hợp, có chủ đích</td><td>nhỏ</td>
+        <td>Phủ các nhánh thuật toán use case, chạy trong CI</td></tr>
+  </tbody>
+</table>
+<p>Việc chọn dự án là <strong>có chủ đích</strong> (purposive sampling) nhằm phủ các kiểu kiến
+trúc khác nhau, không phải chọn ngẫu nhiên.</p>
+
+<h3>3.3 Môi trường</h3>
+<p>Backend Spring Boot 4 + Neo4j 5 (Docker); phân tích bằng JavaParser + Symbol Solver. Ground
+truth đo trên cùng máy, cùng phiên bản mã nguồn dự án.</p>
+
+<h2>4. Phương pháp</h2>
+<p><strong>Ground truth độc lập (tránh đo vòng).</strong> Nếu dùng chính JavaParser để lập
+ground truth rồi chấm công cụ (cũng dựa trên JavaParser) thì phép đo vô nghĩa. Do đó ground
+truth cấu trúc được đếm trực tiếp từ mã nguồn <code>.java</code> bằng biểu thức chính quy,
+<strong>sau khi loại bỏ comment và chuỗi ký tự</strong> (nếu không, chuỗi như
+<code>// lớp này ...</code> sẽ bị đếm nhầm). Tín hiệu chính là <strong>so khớp theo TÊN</strong>
+— so tập tên type của tool với tập tên type trong nguồn — thay vì đếm thô.</p>
+<p><strong>Cùng phạm vi file.</strong> Công cụ và oracle bị ép cùng phân tích
+<code>src/main/java</code> (mã production), loại trừ test và mã sinh lúc build. Đây là điều
+kiện bắt buộc để phép so sánh công bằng (xem bài học ở mục 7).</p>
+<p><strong>Đo precision quan hệ CALLS bằng lấy mẫu.</strong> Tập cạnh CALLS thường lớn, không
+kiểm tay hết được, nên dùng lấy mẫu ngẫu nhiên có hạt giống cố định (seed = 42, để tái lập).
+Với mỗi cạnh mẫu (phương thức gọi → phương thức đích), kiểm tra trong mã nguồn của lớp gọi có
+xuất hiện lời gọi tới tên phương thức đích hay không. Precision được báo cáo kèm khoảng tin
+cậy Wilson.</p>
+<p><strong>Công cụ đo.</strong> Toàn bộ tái lập bằng script:
+<code>eval/structural-accuracy/run-eval.ps1</code> (cấu trúc + quan hệ) và
+<code>mcall-precision.ps1</code> (precision CALLS); kết quả lưu ở <code>report.md</code>/<code>.csv</code>,
+<code>SUMMARY.md</code>, <code>mcall-precision.md</code>.</p>
+
+<h2>5. Kết quả</h2>
+
+<h3>5.1 RQ1 — Trích xuất cấu trúc</h3>
+<table>
+  <thead><tr><th>Hạng mục</th><th class="num">spring-petclinic</th><th class="num">spring-petclinic-rest</th></tr></thead>
+  <tbody>
+    <tr><td>Types (class/interface/enum)</td><td class="num">25/25 = <strong>100%</strong></td><td class="num">84/85 = <strong>98.8%</strong><sup>1</sup></td></tr>
+    <tr><td>Class (gồm DBModel)</td><td class="num">22/22 = 100%</td><td class="num">57/57 = 100%</td></tr>
+    <tr><td>Interface</td><td class="num">3/3 = 100%</td><td class="num">27/28 = 96.4%<sup>1</sup></td></tr>
+    <tr><td>Entity (@Entity → DBModel)</td><td class="num">6/6 = 100%</td><td class="num">8/8 = 100%</td></tr>
+    <tr><td>Tên type sai (thiếu / thừa)</td><td class="num">0 / 0</td><td class="num">1 / 0</td></tr>
+  </tbody>
+</table>
+<p class="footnote"><sup>1</sup> Một type “thiếu” ở petclinic-rest là <code>@interface PetAgeValidation</code>;
+công cụ phân loại nó thành node <code>Annotation</code> thay vì <code>Interface</code>. Đây là
+khác biệt phân loại, không phải bỏ sót — nếu tính gộp thì recall type thực chất là ~100%.</p>
+<p><strong>Diễn giải.</strong> Kết quả cho thấy công cụ trích xuất cấu trúc gần như tuyệt đối
+trên cả dự án nhỏ (30 file) lẫn dự án vừa (87 file). Điểm đáng chú ý nhất là <strong>không có
+type thừa (FP = 0)</strong> ở cả hai dự án: công cụ không “bịa” ra lớp không tồn tại — tính
+chất quan trọng cho một công cụ dịch ngược, vì FP làm mất niềm tin nhanh hơn cả FN.</p>
+
+<h3>5.2 RQ2 — Trích xuất quan hệ</h3>
+<p><strong>Precision lời gọi phương thức (CALLS)</strong> — spring-petclinic:</p>
+<table>
+  <thead><tr><th>Chỉ số</th><th class="num">Giá trị</th></tr></thead>
+  <tbody>
+    <tr><td>Tổng cạnh CALLS</td><td class="num">64</td></tr>
+    <tr><td>Cỡ mẫu (seed = 42)</td><td class="num">30</td></tr>
+    <tr><td>Kiểm chứng được</td><td class="num">30</td></tr>
+    <tr><td>Đúng</td><td class="num">30</td></tr>
+    <tr><td><strong>Precision</strong></td><td class="num"><strong>100%</strong></td></tr>
+    <tr><td>Wilson 95% CI</td><td class="num"><strong>[88.6%, 100%]</strong></td></tr>
+  </tbody>
+</table>
+<p><strong>Diễn giải.</strong> Trên mẫu 30/64 cạnh, mọi cạnh CALLS đều được xác nhận có lời gọi
+tương ứng trong mã nguồn — không phát hiện cạnh bịa. Với cỡ mẫu 30, khoảng tin cậy Wilson là
+[88.6%, 100%], nghĩa là precision thực rất khả năng nằm trên ~89%. Đây là proxy ở mức file
+(xem giới hạn ở mục 7); để chặt hơn có thể kiểm ở mức thân phương thức.</p>
+<p><strong>Điểm cuối API (endpoint).</strong> Trên spring-petclinic (kiểu verb-mapping cổ điển):
+16/17 = <strong>94.1%</strong>. Một endpoint bị thiếu là ứng viên cho phân tích nguyên nhân
+chi tiết ở công việc sau. Với spring-petclinic-rest, xem bài học phạm vi ở mục 7.</p>
+<p><strong>Phụ thuộc tiêm (INJECTS).</strong> Ban đầu công cụ chỉ bắt tiêm qua field
+<code>@Autowired</code>, nên với dự án dùng <strong>constructor injection</strong> kết quả là
+<code>INJECTS = 0</code>. Sau khi bổ sung nhận diện constructor injection cho Spring bean,
+spring-petclinic đo được <strong>INJECTS = 0 → 6</strong> (đúng chuỗi controller → service →
+repository). Đây là minh chứng cho vòng lặp “đo → phát hiện thiếu → sửa → đo lại”.</p>
+
+<h3>5.3 RQ3 — Suy luận Use Case</h3>
+<p>Thuật toán suy luận được kiểm bằng bộ <strong>6 fixture gán nhãn</strong> phủ các cấu trúc
+dự án: (a) REST có phân quyền <code>@PreAuthorize</code>, (b) chỉ có service, (c) chỉ có entity,
+(d) auth (register/login), (e) interface + impl, (f) MVC. Với mỗi fixture, mô hình đúng (ground
+truth) được gán nhãn thủ công; công cụ đạt <strong>F1 = 1.0</strong> trên cả ba chiều
+actor / use case / quan hệ. Bộ đánh giá chạy <strong>tự động trong CI</strong> như lưới chống
+hồi quy.</p>
+<ul>
+  <li><strong>Suy luận actor từ phân quyền thật:</strong> vai trò <code>@PreAuthorize</code>
+  (Seller, Store Manager…) trở thành actor riêng thay vì gộp hết về “User”.</li>
+  <li><strong>Fallback nhiều tầng:</strong> dự án không có REST API (chỉ service / entity / lớp
+  thường) vẫn sinh được sơ đồ use case, thay vì trả về rỗng.</li>
+</ul>
+
+<h2>6. So sánh với công cụ liên quan (Related work)</h2>
+<blockquote class="note">Đặc điểm của công cụ ngoài là mô tả tổng quát; tác giả cần
+<strong>kiểm chứng và trích dẫn</strong> tài liệu chính thức trước khi nộp.</blockquote>
+<table>
+  <thead><tr><th>Tiêu chí</th><th>VibeGraph</th><th>jQAssistant</th><th>Structure101</th><th>Sourcetrail</th><th>Understand</th><th>IntelliJ</th></tr></thead>
+  <tbody>
+    <tr><td>Nguồn phân tích</td><td>Mã nguồn Java (AST)</td><td>Bytecode + scan</td><td>Bytecode</td><td>Mã nguồn (đa NN)</td><td>Mã nguồn (đa NN)</td><td>Mã nguồn (trong IDE)</td></tr>
+    <tr><td>Lưu trữ đồ thị</td><td>Neo4j</td><td>Neo4j</td><td>Nội bộ</td><td>Nội bộ</td><td>CSDL riêng</td><td>Nội bộ</td></tr>
+    <tr><td>Truy vấn đồ thị</td><td>Có (API)</td><td>Cypher</td><td>Hạn chế</td><td>Tìm kiếm</td><td>API/script</td><td>Không</td></tr>
+    <tr><td>Sơ đồ UML lớp</td><td>Có</td><td>Không</td><td>Có</td><td>Không</td><td>Có</td><td>Có</td></tr>
+    <tr><td><strong>Use Case “as-built”</strong></td><td><strong>Có (điểm mới)</strong></td><td>Không</td><td>Không</td><td>Không</td><td>Không</td><td>Không</td></tr>
+    <tr><td>Suy luận actor/goal</td><td>Có (heuristic + LLM)</td><td>Không</td><td>Không</td><td>Không</td><td>Không</td><td>Không</td></tr>
+    <tr><td>Giao diện web tương tác</td><td>Có (Sigma.js)</td><td>Hạn chế</td><td>Desktop</td><td>Desktop</td><td>Desktop</td><td>Trong IDE</td></tr>
+    <tr><td>Realtime khi sửa file</td><td>Có (watcher)</td><td>Không</td><td>Không</td><td>Không</td><td>Không</td><td>Một phần</td></tr>
+    <tr><td>Mã nguồn mở / miễn phí</td><td>Đồ án</td><td>Có</td><td>Thương mại</td><td>Có (đã lưu trữ)</td><td>Thương mại</td><td>Kèm IDE</td></tr>
+  </tbody>
+</table>
+<p><strong>Định vị.</strong> Đa số công cụ hiện có tập trung vào cấu trúc tĩnh (sơ đồ lớp, phụ
+thuộc) hoặc điều hướng mã. Khác biệt chính của VibeGraph: (1) <strong>sinh sơ đồ Use Case
+“as-built” trực tiếp từ mã</strong> — suy luận actor/mục tiêu từ controller/endpoint/phân
+quyền và, khi không có API, từ tầng service/entity; (2) đồ thị tri thức Neo4j + giao diện web
+tương tác + realtime trong một sản phẩm thống nhất. jQAssistant cũng dùng Neo4j nhưng thiên
+về kiểm tra ràng buộc kiến trúc bằng Cypher, không có sơ đồ use case hay giao diện đồ thị cho
+người dùng cuối.</p>
+<p><strong>So sánh đánh giá.</strong> Nhiều công cụ thương mại không công bố số liệu độ chính
+xác trích xuất công khai; luận văn đóng góp một bộ đánh giá định lượng, tái lập được với ground
+truth độc lập — bản thân điều này cũng là một giá trị.</p>
+
+<h2>7. Đe dọa tính hợp lệ (Threats to validity)</h2>
+<p><strong>Nội tại (internal).</strong> Oracle bằng regex là gần đúng, đã giảm thiểu bằng loại
+bỏ comment/chuỗi và so khớp theo tên (0 sai lệch tên trên petclinic); vẫn có thể lệch với khai
+báo generic/lồng nhau. Precision CALLS là proxy mức file — một phương thức trùng tên trong cùng
+file có thể gây “chấp nhận nhầm”, nên 100% là ước lượng cận trên với N = 30 (CI [88.6, 100]).</p>
+<p><strong>Xây dựng (construct).</strong> Độ chính xác Use Case được đo trên fixture tổng hợp
+gán nhãn, không phải dự án thật — vì “sơ đồ use case đúng” mang tính chủ quan. Fixture kiểm
+chứng hành vi thuật toán; đánh giá người dùng (user study) là hướng bổ sung.</p>
+<p><strong>Bài học phương pháp (đã phát hiện và sửa).</strong> Chẩn đoán ban đầu “endpoint
+spring-petclinic-rest chỉ đạt 1/11 ≈ 9%” là <strong>sai</strong>: đã so endpoint mức phương thức
+với <code>@RequestMapping</code> mức lớp (chỉ là tiền tố đường dẫn). Endpoint thật của
+petclinic-rest nằm trong interface sinh lúc build (OpenAPI generator,
+<code>target/generated-sources/</code>), ngoài phạm vi phân tích mã nguồn; endpoint duy nhất
+thực sự có trong mã nguồn đã được nhận diện đúng. Bài học: <strong>công cụ và oracle phải cùng
+phạm vi file</strong>.</p>
+<p><strong>Ngoại tại (external).</strong> Chỉ 2 dự án thật cho phần cấu trúc, đều là Spring/Java;
+chưa khái quát cho framework/ngôn ngữ khác. Cần mở rộng số dự án.</p>
+
+<h2>8. Bàn luận</h2>
+<p>Số liệu ủng hộ giả thuyết rằng cách tiếp cận dựa trên AST + đồ thị của VibeGraph trích xuất
+cấu trúc và lời gọi chính xác cao cho mã Java thông thường. Các sai lệch quan sát được đều
+<strong>giải thích được bằng nguyên nhân cụ thể</strong> (annotation-type vs interface; endpoint
+trong mã sinh; constructor injection trước khi bổ sung) chứ không phải lỗi ngẫu nhiên — cho biết
+đường hướng cải tiến rõ ràng. Hai giới hạn đã được xử lý ngay trong quá trình đánh giá (INJECTS
+0→6; <code>@RequestMapping(method=)</code> → verb đúng), minh họa giá trị của việc có bộ đo.</p>
+
+<h2>9. Kết luận chương</h2>
+<p>VibeGraph đạt độ chính xác cao ở lõi trích xuất: type/entity ~100% (không có phần tử thừa),
+precision lời gọi 100% trên mẫu (CI 95% [88.6%, 100%]), nhận diện endpoint 94.1% với controller
+kiểu verb-mapping, và suy luận use case đạt F1 = 1.0 trên bộ fixture đại diện. Đóng góp phương
+pháp là một quy trình đánh giá định lượng, độc lập, tái lập được. Giới hạn còn mở — endpoint từ
+mã sinh lúc build / kế thừa interface, và bề rộng dự án — được nêu rõ làm hướng phát triển.</p>
+
+<h2>Phụ lục — Cách tái lập</h2>
+<pre><code># Cấu trúc + quan hệ + endpoint
+./eval/structural-accuracy/run-eval.ps1 -RepoPath &lt;repo&gt; -Name &lt;name&gt; -ProjectId &lt;id&gt;
+
+# Precision lời gọi phương thức (CALLS)
+./eval/structural-accuracy/mcall-precision.ps1 -RepoPath &lt;repo&gt; -ProjectId &lt;id&gt; -SampleSize 30</code></pre>
+<p>Báo cáo sinh ra: <code>report.md</code>/<code>report.csv</code> (per-repo),
+<code>SUMMARY.md</code> (tổng hợp), <code>mcall-precision.md</code> (precision + CI).</p>
+
+</body>
+</html>
