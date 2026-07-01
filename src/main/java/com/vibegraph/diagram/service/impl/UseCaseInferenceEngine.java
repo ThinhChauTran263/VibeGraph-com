@@ -516,7 +516,11 @@ public class UseCaseInferenceEngine {
             "pay", "charge", "refund", "send", "publish", "approve", "reject", "assign", "unassign",
             "upload", "import", "export", "generate", "reset", "revoke", "grant", "apply", "confirm",
             "complete", "close", "open", "toggle", "increment", "decrement", "move", "copy", "clone",
-            "merge", "split", "schedule", "reschedule", "book", "order", "login", "logout", "authenticate");
+            "merge", "split", "schedule", "reschedule", "book", "order", "login", "logout", "authenticate",
+            // Additional common business mutation verbs (were previously misread as reads, e.g. shipOrder).
+            "ship", "dispatch", "deliver", "fulfill", "restock", "adjust", "transfer", "allocate",
+            "escalate", "resolve", "archive", "restore", "verify", "lock", "unlock", "ban", "unban",
+            "suspend", "promote", "demote", "issue", "renew", "void", "settle", "capture", "release");
     // Pure accessor / plumbing methods that carry no business goal on their own.
     private static final Set<String> NOISE_METHODS = Set.of(
             "equals", "hashcode", "tostring", "builder", "valueof", "values", "ordinal", "name",
@@ -1212,11 +1216,19 @@ public class UseCaseInferenceEngine {
         String role = ep.requiredRole();
         if (role != null && !role.isBlank()) {
             String r = role.toUpperCase(Locale.ROOT);
-            if (r.contains("ADMIN")) {
+            if (r.contains("ADMIN") || r.contains("SUPERUSER") || r.contains("ROOT")) {
                 return new ActorGuess(ACTOR_ADMIN, "security:@PreAuthorize", 0.95, false);
             }
-            // Any other declared role is an authenticated, non-anonymous user.
-            return new ActorGuess(ACTOR_USER, "security:@PreAuthorize", 0.9, false);
+            String bare = r.startsWith("ROLE_") ? r.substring(5) : r;
+            // Generic "any authenticated user" roles collapse to the default User actor.
+            if (bare.equals("USER") || bare.equals("USERS") || bare.equals("MEMBER")
+                    || bare.equals("AUTHENTICATED") || bare.equals("AUTH") || bare.isBlank()) {
+                return new ActorGuess(ACTOR_USER, "security:@PreAuthorize", 0.9, false);
+            }
+            // A named business role (SELLER, STORE_MANAGER, COURIER, …) is its own actor. This is a
+            // real authorization fact, so it is not flagged as guessed. Keeping it distinct (instead
+            // of collapsing to "User") preserves who-does-what fidelity from the security model.
+            return new ActorGuess(roleToActorName(r), "security:@PreAuthorize:role", 0.85, false);
         }
         String p = ep.path().toLowerCase(Locale.ROOT);
         if (p.contains("/admin")) {
@@ -1225,6 +1237,30 @@ public class UseCaseInferenceEngine {
         // Default: an authenticated end user. We no longer guess Admin from the HTTP method —
         // a write operation does not imply an administrator.
         return new ActorGuess(ACTOR_USER, "default-authenticated", 0.7, true);
+    }
+
+    /**
+     * Turn a Spring Security role token into a human actor name: strip a leading {@code ROLE_},
+     * replace underscores with spaces, and Title Case each word. {@code ROLE_STORE_MANAGER} &rarr;
+     * "Store Manager", {@code SELLER} &rarr; "Seller".
+     */
+    private String roleToActorName(String upperRole) {
+        String token = upperRole.startsWith("ROLE_") ? upperRole.substring(5) : upperRole;
+        token = token.replace('_', ' ').replace('-', ' ').trim().toLowerCase(Locale.ROOT);
+        if (token.isBlank()) {
+            return ACTOR_USER;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String w : token.split("\\s+")) {
+            if (w.isBlank()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(capitalize(w));
+        }
+        return sb.length() == 0 ? ACTOR_USER : sb.toString();
     }
 
     private boolean isMutating(String method) {

@@ -66,6 +66,12 @@ const warnings = computed<string[]>(() => {
   return 'warnings' in current && Array.isArray(current.warnings) ? current.warnings : []
 })
 
+// True when the model was derived from the class layer (service/controller/entity methods) because
+// the project exposes no HTTP endpoints. Drives an accurate caption instead of the endpoint wording.
+const derivedFromClassLayer = computed<boolean>(() =>
+  warnings.value.some((w) => w.toLowerCase().includes('no http endpoints')),
+)
+
 // Per-actor / per-domain projections of the same canonical UML model (R4). Drives the view selector;
 // empty when the backend returned no views (older payloads / non-UML), so the selector stays hidden.
 //
@@ -450,9 +456,18 @@ onActivated(() => {
       class="diagram-panel__caption"
       data-test="diagram-asbuilt-caption"
     >
-      <strong>As-Built Use Case View</strong> — reverse-engineered from the source (controllers +
-      Spring Security), using OMG UML 2.5 use-case notation. It reflects the system's implemented
-      capabilities for design-vs-code verification, not a hand-authored business-intent model.
+      <strong>As-Built Use Case View</strong> —
+      <template v-if="derivedFromClassLayer">
+        reverse-engineered from the service/controller class layer and their public methods (no HTTP
+        endpoints were found), using OMG UML 2.5 use-case notation. It reflects the system's
+        implemented capabilities for design-vs-code verification, not a hand-authored business-intent
+        model.
+      </template>
+      <template v-else>
+        reverse-engineered from the source (controllers + Spring Security), using OMG UML 2.5
+        use-case notation. It reflects the system's implemented capabilities for design-vs-code
+        verification, not a hand-authored business-intent model.
+      </template>
     </p>
 
     <div

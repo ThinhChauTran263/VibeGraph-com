@@ -84,6 +84,152 @@ class UseCaseAccuracyEvalTest {
         return EdgeDto.builder().source(fqcn).target(method + " " + path).type("HANDLES_ROUTE").build();
     }
 
+    // --- class-layer fixtures (projects without HTTP endpoints) -------------------------------
+
+    private NodeDto svc(String fqcn, String simple) {
+        return clazz(fqcn, simple, "Class", "SERVICE");
+    }
+
+    private NodeDto clazz(String fqcn, String simple, String type, String layer) {
+        return NodeDto.builder().id(fqcn).type(type).name(simple).fullName(fqcn)
+                .properties(Map.of("springLayer", layer)).build();
+    }
+
+    private NodeDto m(String methodFqcn, String simple) {
+        return NodeDto.builder().id(methodFqcn).type("Method").name(simple).fullName(methodFqcn)
+                .properties(Map.of("visibility", "public", "kind", "METHOD")).build();
+    }
+
+    private EdgeDto hasMethod(String owner, String methodFqcn) {
+        return EdgeDto.builder().source(owner).target(methodFqcn).type("HAS_METHOD").build();
+    }
+
+    /** Run the service on a fixture graph, print the labelled accuracy report, and return it. */
+    private UseCaseDiagramEvaluator.Report runAndReport(String title, GraphDataResponse graph,
+            UseCaseDiagramEvaluator.ExpectedModel expected) {
+        lenient().when(graphService.getFullGraph(PROJECT_ID)).thenReturn(graph);
+        UmlUseCaseResponse res = service.generateUmlUseCase(PROJECT_ID, "detailed");
+        UseCaseDiagramEvaluator.Report report = UseCaseDiagramEvaluator.evaluate(res, expected);
+        System.out.println("=== " + title + " ===");
+        System.out.println(report.pretty());
+        return report;
+    }
+
+    private void assertExact(UseCaseDiagramEvaluator.Report report) {
+        assertThat(report.actors().f1()).as("actors F1").isEqualTo(1.0);
+        assertThat(report.useCases().f1()).as("use cases F1").isEqualTo(1.0);
+        assertThat(report.relations().f1()).as("relations F1").isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("named security roles become distinct actors (Seller, Store Manager) — exact model")
+    void namedRolesFixture() {
+        GraphDataResponse graph = GraphDataResponse.builder()
+                .nodes(List.of(
+                        secured("GET", "/api/products", "SELLER"),
+                        secured("POST", "/api/products", "SELLER"),
+                        secured("GET", "/api/reports", "STORE_MANAGER")))
+                .edges(List.of(
+                        handles("com.app.ProductController#list()", "GET", "/api/products"),
+                        handles("com.app.ProductController#create()", "POST", "/api/products"),
+                        handles("com.app.ReportController#list()", "GET", "/api/reports")))
+                .build();
+        UseCaseDiagramEvaluator.ExpectedModel expected = new UseCaseDiagramEvaluator.ExpectedModel(
+                Set.of("Seller", "Store Manager"),
+                Set.of("Manage Products", "View Reports"),
+                Set.of("association|Seller|Manage Products", "association|Store Manager|View Reports"));
+        assertExact(runAndReport("named roles", graph, expected));
+    }
+
+    @Test
+    @DisplayName("service-layer-only project (no HTTP) — exact model from public methods")
+    void serviceLayerFixture() {
+        GraphDataResponse graph = GraphDataResponse.builder()
+                .nodes(List.of(
+                        svc("com.app.OrderService", "OrderService"),
+                        m("com.app.OrderService.placeOrder()", "placeOrder"),
+                        m("com.app.OrderService.cancelOrder()", "cancelOrder"),
+                        m("com.app.OrderService.getOrder()", "getOrder"),
+                        svc("com.app.CategoryService", "CategoryService"),
+                        m("com.app.CategoryService.listCategories()", "listCategories"),
+                        m("com.app.CategoryService.getCategory()", "getCategory")))
+                .edges(List.of(
+                        hasMethod("com.app.OrderService", "com.app.OrderService.placeOrder()"),
+                        hasMethod("com.app.OrderService", "com.app.OrderService.cancelOrder()"),
+                        hasMethod("com.app.OrderService", "com.app.OrderService.getOrder()"),
+                        hasMethod("com.app.CategoryService", "com.app.CategoryService.listCategories()"),
+                        hasMethod("com.app.CategoryService", "com.app.CategoryService.getCategory()")))
+                .build();
+        UseCaseDiagramEvaluator.ExpectedModel expected = new UseCaseDiagramEvaluator.ExpectedModel(
+                Set.of("Registered User"),
+                Set.of("Manage Orders", "View Categories"),
+                Set.of("association|Registered User|Manage Orders",
+                        "association|Registered User|View Categories"));
+        assertExact(runAndReport("service layer", graph, expected));
+    }
+
+    @Test
+    @DisplayName("entity-only project — Manage goals per entity, exact model")
+    void entityOnlyFixture() {
+        GraphDataResponse graph = GraphDataResponse.builder()
+                .nodes(List.of(
+                        clazz("com.app.Product", "Product", "DBModel", "ENTITY"),
+                        clazz("com.app.Order", "Order", "DBModel", "ENTITY"),
+                        clazz("com.app.Customer", "Customer", "DBModel", "ENTITY")))
+                .edges(List.of())
+                .build();
+        UseCaseDiagramEvaluator.ExpectedModel expected = new UseCaseDiagramEvaluator.ExpectedModel(
+                Set.of("Registered User"),
+                Set.of("Manage Products", "Manage Orders", "Manage Customers"),
+                Set.of("association|Registered User|Manage Products",
+                        "association|Registered User|Manage Orders",
+                        "association|Registered User|Manage Customers"));
+        assertExact(runAndReport("entity only", graph, expected));
+    }
+
+    @Test
+    @DisplayName("auth service contributes Guest register/login goals — exact model")
+    void authServiceFixture() {
+        GraphDataResponse graph = GraphDataResponse.builder()
+                .nodes(List.of(
+                        svc("com.app.AuthService", "AuthService"),
+                        m("com.app.AuthService.register()", "register"),
+                        m("com.app.AuthService.login()", "login")))
+                .edges(List.of(
+                        hasMethod("com.app.AuthService", "com.app.AuthService.register()"),
+                        hasMethod("com.app.AuthService", "com.app.AuthService.login()")))
+                .build();
+        UseCaseDiagramEvaluator.ExpectedModel expected = new UseCaseDiagramEvaluator.ExpectedModel(
+                Set.of("Guest"),
+                Set.of("Register Account", "Log In"),
+                Set.of("association|Guest|Register Account", "association|Guest|Log In"));
+        assertExact(runAndReport("auth service", graph, expected));
+    }
+
+    @Test
+    @DisplayName("interface + impl service collapses to one goal — exact model")
+    void interfaceImplFixture() {
+        GraphDataResponse graph = GraphDataResponse.builder()
+                .nodes(List.of(
+                        clazz("com.app.PaymentService", "PaymentService", "Interface", "NONE"),
+                        m("com.app.PaymentService.pay()", "pay"),
+                        m("com.app.PaymentService.refund()", "refund"),
+                        svc("com.app.PaymentServiceImpl", "PaymentServiceImpl"),
+                        m("com.app.PaymentServiceImpl.pay()", "pay"),
+                        m("com.app.PaymentServiceImpl.refund()", "refund")))
+                .edges(List.of(
+                        hasMethod("com.app.PaymentService", "com.app.PaymentService.pay()"),
+                        hasMethod("com.app.PaymentService", "com.app.PaymentService.refund()"),
+                        hasMethod("com.app.PaymentServiceImpl", "com.app.PaymentServiceImpl.pay()"),
+                        hasMethod("com.app.PaymentServiceImpl", "com.app.PaymentServiceImpl.refund()")))
+                .build();
+        UseCaseDiagramEvaluator.ExpectedModel expected = new UseCaseDiagramEvaluator.ExpectedModel(
+                Set.of("Registered User"),
+                Set.of("Manage Payments"),
+                Set.of("association|Registered User|Manage Payments"));
+        assertExact(runAndReport("interface + impl", graph, expected));
+    }
+
     @Test
     @DisplayName("baseline accuracy on the trimmed fatc fixture meets the regression floor")
     void baselineAccuracy() {
