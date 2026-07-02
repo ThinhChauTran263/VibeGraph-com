@@ -13,20 +13,37 @@ import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
-  SIGMA_MIN_LABEL_ZOOM_SCALE,
-  SIGMA_MAX_LABEL_ZOOM_SCALE,
-  SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE,
-  SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE,
   SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
   FA2_GRAVITY,
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
   FA2_SLOW_DOWN,
   FA2_ITERATIONS,
+  FA2_LINLOG_MODE,
+  FA2_OUTBOUND_ATTRACTION,
+  FA2_ADJUST_SIZES,
+  FA2_STRONG_GRAVITY_MODE,
+  FA2_OUTLIER_CLAMP_PERCENTILE,
+  FA2_LARGE_GRAPH_THRESHOLD,
+  FA2_GRAVITY_LARGE,
+  FA2_SCALING_RATIO_LARGE,
+  FA2_ITERATIONS_LARGE,
+  LAYOUT_NORMALIZE_SPAN,
+  NOVERLAP_ENABLED,
+  NOVERLAP_MARGIN,
+  NOVERLAP_MAX_ITERATIONS,
   LAYOUT_AUTO_STOP_MS,
   ZOOM_FIT_DURATION_MS,
+  SIGMA_MAX_EDGE_LABELS_PER_FRAME,
+  SIGMA_MIN_EDGE_THICKNESS,
 } from '@/lib/runtimeConfig'
-import { drawDefaultNodeLabel, drawHighlightNodeHover, drawEdgeTypeLabel } from '@/lib/sigmaRenderers'
+import {
+  drawDefaultNodeLabel,
+  drawHighlightNodeHover,
+  drawEdgeTypeLabel,
+  setLabelZoom,
+  resetEdgeLabelBudget,
+} from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
 import type { FocusPartition } from '@/lib/focusMode'
 
@@ -40,40 +57,12 @@ export interface UseSigmaOptions {
   onCameraRatioChange?: (ratio: number) => void
 }
 
-// Base label sizes at the default (ratio = 1) zoom. Labels are scaled inversely
-// with the camera ratio so they GROW as the user zooms in and shrink as they zoom
-// out, matching the node sizes (which Sigma already scales with zoom). Without
-// this, Sigma keeps labels at a fixed pixel size, so a zoomed-in node looks huge
-// while its label stays tiny.
+// Base label sizes (on-screen px) at the fit view. The actual per-zoom scaling is
+// applied live inside the label renderers (see setLabelZoom / sigmaRenderers), NOT
+// via sigma.setSetting — so zooming never triggers a full refresh (no "reload"
+// flash) and labels resize smoothly as the camera renders each frame.
 const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
 const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
-// Allow labels to shrink further when zoomed OUT (small nodes) so they don't look
-// oversized, while still capping growth when zoomed IN.
-const MIN_LABEL_ZOOM_SCALE = SIGMA_MIN_LABEL_ZOOM_SCALE
-const MAX_LABEL_ZOOM_SCALE = SIGMA_MAX_LABEL_ZOOM_SCALE
-// Edge labels can grow with zoom-in like node labels. Raise MAX to let
-// relationship text (DEFINES, IMPORTS…) get bigger when zoomed in; lower it to
-// cap sooner. MIN is the floor when zoomed out (smaller = shrinks more).
-const MIN_EDGE_LABEL_ZOOM_SCALE = SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE
-const MAX_EDGE_LABEL_ZOOM_SCALE = SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE
-
-function clampLabelScale(ratio: number): number {
-  if (!Number.isFinite(ratio) || ratio <= 0) return 1
-  return Math.min(Math.max(1 / ratio, MIN_LABEL_ZOOM_SCALE), MAX_LABEL_ZOOM_SCALE)
-}
-
-function clampEdgeLabelScale(ratio: number): number {
-  if (!Number.isFinite(ratio) || ratio <= 0) return 1
-  return Math.min(Math.max(1 / ratio, MIN_EDGE_LABEL_ZOOM_SCALE), MAX_EDGE_LABEL_ZOOM_SCALE)
-}
-
-function applyZoomResponsiveLabelSize(sigma: Sigma, ratio: number): void {
-  sigma.setSetting('labelSize', Math.round(BASE_NODE_LABEL_SIZE * clampLabelScale(ratio) * 100) / 100)
-  sigma.setSetting(
-    'edgeLabelSize',
-    Math.round(BASE_EDGE_LABEL_SIZE * clampEdgeLabelScale(ratio) * 100) / 100,
-  )
-}
 
 export function useSigma(options: UseSigmaOptions) {
   const { container, onNodeClick, onNodeDoubleClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
@@ -98,12 +87,15 @@ export function useSigma(options: UseSigmaOptions) {
   // disabled and the layout worker is stopped so the node stays where dropped.
   const draggedNode = shallowRef<string | null>(null)
 
-  // True once the pointer actually MOVED while holding a node. Sigma still fires
-  // `clickNode` on the mouse-up that ends a drag, which would wrongly select the
+  // True once the pointer actually MOVED while holding a node. Sigma still fires  // `clickNode` on the mouse-up that ends a drag, which would wrongly select the
   // node the user was just repositioning. We use this flag to swallow exactly
   // that one click. A plain click (no movement) never sets it, so selecting by
   // clicking still works.
   const dragMoved = shallowRef(false)
+
+  // Last applied edge-label visibility, so setEdgeLabelsVisible can skip redundant
+  // setSetting + full refresh churn. Reset on each init (new Sigma defaults false).
+  let lastEdgeLabelsVisible: boolean | null = null
 
   /**
    * Initialize Sigma with a Graphology graph.
@@ -133,10 +125,16 @@ export function useSigma(options: UseSigmaOptions) {
       renderEdgeLabels: false,
       defaultEdgeType: 'line',
       zIndex: true,
-      // Performance on large graphs: skip drawing edges and labels during camera
-      // pan/zoom so interaction stays at 60fps; they snap back when movement stops.
-      hideEdgesOnMove: true,
-      hideLabelsOnMove: true,
+      // Edges render at a constant thin width regardless of zoom: SIGMA_EDGE_SIZE is
+      // tiny so this floor dominates, pinning line thickness instead of letting it
+      // balloon with the default size/√ratio zoom scaling.
+      minEdgeThickness: SIGMA_MIN_EDGE_THICKNESS,
+      // Keep edges + labels drawn during pan/zoom (no vanish-then-repaint "reload"
+      // flash). Label scaling is done live in the renderers without setSetting, so
+      // there is no refresh churn; a filtered few-hundred-node graph paints these
+      // cheaply every frame.
+      hideEdgesOnMove: false,
+      hideLabelsOnMove: false,
       labelRenderedSizeThreshold: SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
@@ -159,6 +157,14 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
+    // A fresh Sigma starts with renderEdgeLabels:false (see settings above). Reset
+    // the visibility guard so the first setEdgeLabelsVisible after a rebuild always
+    // applies instead of being skipped as a false no-op.
+    lastEdgeLabelsVisible = false
+
+    // Refill the per-frame edge-label draw budget at the start of every frame so a
+    // zoom level with many visible edges can't stack hundreds of text draws.
+    sigma.on('beforeRender', () => resetEdgeLabelBudget(SIGMA_MAX_EDGE_LABELS_PER_FRAME))
 
     // Ghost background canvas: a Sigma-managed 2D canvas inserted physically below
     // the WebGL edges layer. Unrelated nodes/edges are hidden in this Sigma during
@@ -211,13 +217,16 @@ export function useSigma(options: UseSigmaOptions) {
     // expansions keep the user's current pan/zoom instead of resetting the view.
     if (prevCameraState) camera.setState(prevCameraState)
     let lastRatio = camera.getState().ratio
-    applyZoomResponsiveLabelSize(sigma, lastRatio)
+    // zoom level relative to the fit view (ratio 1 = fit): 1/ratio grows as you zoom in.
+    // Feed it to the renderers (no setSetting → no refresh flash); Sigma repaints on
+    // camera move and the label renderers read this value to size text live.
+    setLabelZoom(1 / lastRatio)
     onCameraRatioChange?.(lastRatio)
     camera.on('updated', () => {
       const ratio = camera.getState().ratio
       if (ratio === lastRatio) return
       lastRatio = ratio
-      applyZoomResponsiveLabelSize(sigma, ratio)
+      setLabelZoom(1 / ratio)
       onCameraRatioChange?.(ratio)
     })
 
@@ -276,22 +285,211 @@ export function useSigma(options: UseSigmaOptions) {
   /**
    * Compute the ForceAtlas2 layout synchronously (no worker, no animation) and
    * write final x/y onto the graph before it is first rendered.
+   *
+   * Small graphs keep the base profile (already spread well). Large graphs switch
+   * to a cluster-separating profile — LinLog mode + dissuade-hubs + lower gravity
+   * and scaling + more iterations — which turns a dense hairball into visibly
+   * separated communities. An optional Noverlap pass then removes residual node
+   * overlap without collapsing the cluster structure FA2 produced.
    */
   function settleLayout(graph: Graph): void {
     if (graph.order === 0) return
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     try {
       forceAtlas2.assign(graph, {
-        iterations: FA2_ITERATIONS,
+        iterations: isLarge ? FA2_ITERATIONS_LARGE : FA2_ITERATIONS,
         settings: {
-          gravity: FA2_GRAVITY,
-          scalingRatio: FA2_SCALING_RATIO,
+          gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+          scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
           barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
           slowDown: FA2_SLOW_DOWN,
+          linLogMode: FA2_LINLOG_MODE,
+          outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+          adjustSizes: FA2_ADJUST_SIZES,
+          strongGravityMode: FA2_STRONG_GRAVITY_MODE,
         },
       })
     } catch {
       // Leave the random seed positions if the layout fails.
     }
+
+    // Bound far-flung outliers first so the camera frames the main body, THEN run
+    // Noverlap as the final pass so it also resolves any pile-up the clamp creates
+    // on the bounding ring — guaranteeing no two nodes render touching.
+    if (isLarge) clampOutliers(graph, FA2_OUTLIER_CLAMP_PERCENTILE)
+
+    // Normalize the settled layout to a fixed span so node sizes (rendered in
+    // layout space, see Sigma `itemSizesReference`) map to a predictable pixel
+    // radius and the Noverlap margin becomes a consistent on-screen gap.
+    if (isLarge) normalizeSpan(graph, LAYOUT_NORMALIZE_SPAN)
+
+    if (isLarge && NOVERLAP_ENABLED) {
+      try {
+        resolveOverlaps(graph, NOVERLAP_MARGIN, NOVERLAP_MAX_ITERATIONS)
+      } catch {
+        // Keep the FA2 layout if the overlap-removal pass fails.
+      }
+    }
+  }
+
+  /**
+   * Guarantee no two nodes render overlapping by separating every pair closer than
+   * (radius_a + radius_b + margin), in the SAME layout-coordinate space Sigma uses
+   * for node sizes (`itemSizesReference: 'positions'`). Unlike graphology's noverlap
+   * — which nudges only one node of each pair by a small fixed step and plateaus
+   * with residual overlaps in dense clusters — this pushes BOTH nodes apart by the
+   * FULL half-overlap along their axis each pass, which converges reliably. A uniform
+   * spatial grid (cell = largest node diameter + margin) keeps it O(n) per pass.
+   */
+  function resolveOverlaps(graph: Graph, margin: number, maxIterations: number): void {
+    const ids = graph.nodes()
+    const n = ids.length
+    if (n < 2) return
+    const X = new Float64Array(n)
+    const Y = new Float64Array(n)
+    const S = new Float64Array(n)
+    let maxS = 0
+    for (let i = 0; i < n; i++) {
+      X[i] = graph.getNodeAttribute(ids[i]!, 'x') as number
+      Y[i] = graph.getNodeAttribute(ids[i]!, 'y') as number
+      const s = graph.getNodeAttribute(ids[i]!, 'size') as number
+      S[i] = s
+      if (s > maxS) maxS = s
+    }
+    const cell = 2 * maxS + margin + 1
+    const jitter = (seed: number) => {
+      // deterministic pseudo-random in [-0.5, 0.5] to split exactly-coincident nodes
+      const v = Math.sin(seed * 12.9898) * 43758.5453
+      return v - Math.floor(v) - 0.5
+    }
+    for (let it = 0; it < maxIterations; it++) {
+      let minX = Infinity
+      let minY = Infinity
+      for (let i = 0; i < n; i++) {
+        if (X[i]! < minX) minX = X[i]!
+        if (Y[i]! < minY) minY = Y[i]!
+      }
+      const grid = new Map<number, number[]>()
+      const cols = 1 << 15
+      const key = (cx: number, cy: number) => cx * cols + cy
+      for (let i = 0; i < n; i++) {
+        const cx = Math.floor((X[i]! - minX) / cell)
+        const cy = Math.floor((Y[i]! - minY) / cell)
+        const k = key(cx, cy)
+        const arr = grid.get(k)
+        if (arr) arr.push(i)
+        else grid.set(k, [i])
+      }
+      let moved = false
+      for (let i = 0; i < n; i++) {
+        const xi = X[i]!
+        const yi = Y[i]!
+        const si = S[i]!
+        const cx = Math.floor((xi - minX) / cell)
+        const cy = Math.floor((yi - minY) / cell)
+        for (let gx = cx - 1; gx <= cx + 1; gx++) {
+          for (let gy = cy - 1; gy <= cy + 1; gy++) {
+            const arr = grid.get(key(gx, gy))
+            if (!arr) continue
+            for (const j of arr) {
+              if (j <= i) continue
+              let dx = X[j]! - xi
+              let dy = Y[j]! - yi
+              let dist = Math.hypot(dx, dy)
+              const minDist = si + S[j]! + margin
+              if (dist < minDist) {
+                moved = true
+                if (dist < 1e-6) {
+                  dx = jitter(i + 1)
+                  dy = jitter(j + 1)
+                  dist = Math.hypot(dx, dy) || 1
+                }
+                const push = (minDist - dist) / 2
+                const ux = dx / dist
+                const uy = dy / dist
+                X[i] = X[i]! - ux * push
+                Y[i] = Y[i]! - uy * push
+                X[j] = X[j]! + ux * push
+                Y[j] = Y[j]! + uy * push
+              }
+            }
+          }
+        }
+      }
+      if (!moved) break
+    }
+    for (let i = 0; i < n; i++) {
+      graph.setNodeAttribute(ids[i]!, 'x', X[i]!)
+      graph.setNodeAttribute(ids[i]!, 'y', Y[i]!)
+    }
+  }
+
+  /**
+   * Uniformly rescale node positions about their centroid so the layout's larger
+   * bounding-box dimension equals `targetSpan` units. No-op when disabled (0) or
+   * the graph is degenerate.
+   */
+  function normalizeSpan(graph: Graph, targetSpan: number): void {
+    if (targetSpan <= 0 || graph.order === 0) return
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    graph.forEachNode((_id, attr) => {
+      const x = attr.x as number
+      const y = attr.y as number
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    })
+    const span = Math.max(maxX - minX, maxY - minY)
+    if (!(span > 0)) return
+    const k = targetSpan / span
+    if (Math.abs(k - 1) < 1e-3) return
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+    graph.forEachNode((id, attr) => {
+      graph.setNodeAttribute(id, 'x', cx + ((attr.x as number) - cx) * k)
+      graph.setNodeAttribute(id, 'y', cy + ((attr.y as number) - cy) * k)
+    })
+  }
+
+  /**
+   * Move every node whose distance from the centroid exceeds the given percentile
+   * radius onto that radius (keeping its direction). Disabled when percentile is
+   * 0 or ≥ 1. Operates in place on the graph's x/y attributes.
+   */
+  function clampOutliers(graph: Graph, percentile: number): void {
+    if (percentile <= 0 || percentile >= 1 || graph.order === 0) return
+    let sumX = 0
+    let sumY = 0
+    const nodes: string[] = []
+    graph.forEachNode((id, attr) => {
+      sumX += attr.x as number
+      sumY += attr.y as number
+      nodes.push(id)
+    })
+    const cx = sumX / nodes.length
+    const cy = sumY / nodes.length
+    const radii = nodes.map((id) => {
+      const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+      const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+      return Math.hypot(dx, dy)
+    })
+    const sorted = [...radii].sort((a, b) => a - b)
+    const maxR = sorted[Math.min(sorted.length - 1, Math.floor(percentile * sorted.length))] ?? 0
+    if (!(maxR > 0)) return
+    nodes.forEach((id, i) => {
+      const r = radii[i] ?? 0
+      if (r > maxR) {
+        const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+        const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+        const k = maxR / r
+        graph.setNodeAttribute(id, 'x', cx + dx * k)
+        graph.setNodeAttribute(id, 'y', cy + dy * k)
+      }
+    })
   }
 
   /**
@@ -465,12 +663,17 @@ export function useSigma(options: UseSigmaOptions) {
   function startLayout(graph: Graph) {
     stopLayout()
 
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     const fa2 = new FA2Layout(graph, {
       settings: {
-        gravity: FA2_GRAVITY,
-        scalingRatio: FA2_SCALING_RATIO,
+        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
         barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
         slowDown: FA2_SLOW_DOWN,
+        linLogMode: FA2_LINLOG_MODE,
+        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+        adjustSizes: FA2_ADJUST_SIZES,
+        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
       },
     })
 
@@ -545,11 +748,17 @@ export function useSigma(options: UseSigmaOptions) {
 
   /**
    * Toggle edge label rendering. Edge labels add clutter at the default view,
-   * so we only show them while a node is focused.
+   * so we only show them while a node is focused. Guarded against no-op churn:
+   * `applyFocusReducers` runs on every hover/leave/zoom-threshold event, but the
+   * edge-label visibility only actually flips at a couple of zoom thresholds. A
+   * redundant `setSetting` + `refresh` here reprocesses the whole graph into WebGL
+   * buffers for nothing — a real per-interaction stall — so skip when unchanged.
    */
   function setEdgeLabelsVisible(visible: boolean): void {
     const sigma = sigmaInstance.value
     if (!sigma) return
+    if (visible === lastEdgeLabelsVisible) return
+    lastEdgeLabelsVisible = visible
     sigma.setSetting('renderEdgeLabels', visible)
     sigma.refresh()
   }

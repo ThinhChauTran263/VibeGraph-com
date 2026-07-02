@@ -16,12 +16,19 @@ const props = defineProps<{
   nodeStats: Partial<Record<NodeType, number>>
   /** Optional heading; defaults to "Legend". */
   title?: string
+  /** Node types in the current graph highlight; matching swatches get a yellow ring. */
+  highlightedTypes?: Set<NodeType>
 }>()
 
 const items = computed(() =>
   (Object.entries(props.nodeStats) as [NodeType, number][])
     .filter(([, count]) => count > 0)
-    .map(([type, count]) => ({ type, count, color: NODE_COLORS[type] ?? '#94a3b8' }))
+    .map(([type, count]) => ({
+      type,
+      count,
+      color: NODE_COLORS[type] ?? '#94a3b8',
+      highlighted: props.highlightedTypes?.has(type) ?? false,
+    }))
     .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type)),
 )
 </script>
@@ -30,8 +37,13 @@ const items = computed(() =>
   <section class="legend" aria-label="Node type legend">
     <h3 v-if="(title ?? 'Legend') !== ''" class="legend__title">{{ title ?? 'Legend' }}</h3>
     <ul v-if="items.length > 0" class="legend__grid">
-      <li v-for="item in items" :key="item.type" class="legend__item">
-        <span class="legend__swatch" :style="{ backgroundColor: item.color }" aria-hidden="true" />
+      <li v-for="item in items" :key="item.type" class="legend__item" :class="{ 'legend__item--highlighted': item.highlighted }">
+        <span
+          class="legend__swatch"
+          :class="{ 'legend__swatch--highlighted': item.highlighted }"
+          :style="{ backgroundColor: item.color }"
+          aria-hidden="true"
+        />
         <span class="legend__name">{{ item.type }}</span>
         <span class="legend__count">{{ item.count }}</span>
       </li>
@@ -77,6 +89,21 @@ const items = computed(() =>
   height: 0.75rem;
   border-radius: 999px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+/* Swatch of a node type present in the current graph highlight: a yellow ring +
+   soft glow, matching the on-graph selection ring / yellow focus label. */
+.legend__swatch--highlighted {
+  box-shadow:
+    0 0 0 2px #facc15,
+    0 0 6px 1px rgba(250, 204, 21, 0.6);
+  transform: scale(1.12);
+}
+
+.legend__item--highlighted .legend__name {
+  color: #fde68a;
+  font-weight: 600;
 }
 
 .legend__name {

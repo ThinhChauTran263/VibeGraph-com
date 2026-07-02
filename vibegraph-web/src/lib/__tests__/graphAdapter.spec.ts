@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { apiToGraphology } from '../graphAdapter'
-import { NODE_COLORS, EDGE_COLORS, STRUCTURAL_EDGE_TYPES, CPG_LITE_EDGE_TYPES } from '../constants'
+import { NODE_COLORS, EDGE_COLORS, STRUCTURAL_EDGE_TYPES, CPG_LITE_EDGE_TYPES, NODE_SIZE_BY_TYPE } from '../constants'
 import type { EdgeType, GraphData } from '@/types/graph'
 
 /**
@@ -197,15 +197,15 @@ describe('apiToGraphology', () => {
     const graph = apiToGraphology(data)
 
     expect(graph.getNodeAttribute('file:User.java', 'color')).toBe(NODE_COLORS.File)
-    expect(graph.getNodeAttribute('file:User.java', 'size')).toBe(6.5)
+    expect(graph.getNodeAttribute('file:User.java', 'size')).toBe(NODE_SIZE_BY_TYPE.File)
     expect(graph.getNodeAttribute('com.example.UserRecord', 'color')).toBe(NODE_COLORS.Record)
-    expect(graph.getNodeAttribute('com.example.UserRecord', 'size')).toBe(5)
+    expect(graph.getNodeAttribute('com.example.UserRecord', 'size')).toBe(NODE_SIZE_BY_TYPE.Record)
     expect(graph.getNodeAttribute('com.example.UserEntity', 'color')).toBe(NODE_COLORS.DBModel)
-    expect(graph.getNodeAttribute('com.example.UserEntity', 'size')).toBe(5)
+    expect(graph.getNodeAttribute('com.example.UserEntity', 'size')).toBe(NODE_SIZE_BY_TYPE.DBModel)
     expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'color')).toBe(NODE_COLORS.Constructor)
-    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(4)
+    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(NODE_SIZE_BY_TYPE.Constructor)
     expect(graph.getNodeAttribute('GET /api/users', 'color')).toBe(NODE_COLORS.APIEndpoint)
-    expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(4)
+    expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(NODE_SIZE_BY_TYPE.APIEndpoint)
   })
 
   it('labels the Project node with its readable name while keying it by the stable id', () => {

@@ -9,7 +9,7 @@ Module quản lý knowledge graph trong Neo4j: lưu trữ nodes/edges, cung cấ
 graph/
 ├── controller/
 │   ├── ProjectController.java    — POST /api/projects, GET /api/projects
-│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/neighbors, /graph/impact
+│   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/impact (3 profiles)
 │   ├── ImportController.java     — POST /api/projects/import-archive, /import-github
 │   └── LocalProjectController.java — POST /api/projects/import-local, GET /api/projects/browse
 ├── service/
@@ -72,8 +72,6 @@ graph/
 ### GraphController
 - [ ] `GET /api/projects/{id}/graph`: Full graph (paginated) → GraphDataResponse
 - [ ] `GET /api/projects/{id}/graph?filter=...`: Filtered graph (by nodeTypes, packages, layers)
-- [ ] `GET /api/projects/{id}/graph/neighbors/{nodeId}?hops=2`: N-hop neighborhood
-- [ ] `GET /api/projects/{id}/nodes/{nodeId}`: Node detail với INCOMING + OUTGOING connections
 - [ ] `GET /api/projects/{id}/search?q=...`: Full-text search nodes by name
 
 ### Impact analysis (trên GraphController/GraphService)
@@ -93,7 +91,6 @@ graph/
   3. Insert new nodes/edges
   4. Push incremental update via WebSocket
 - [ ] `GraphService.getGraph(projectId, filter)`: Query graph với optional filters
-- [ ] `GraphService.getNeighbors(nodeId, hops)`: BFS traversal N hops
 - [x] `GraphService.getImpactAnalysis(projectId, nodeId, depth, profile)`: Trace upstream dependencies (blast radius)
 - [ ] `TarballImportService.importFromGithub(request)` (MỚI):
   1. Pre-flight check (GET https://api.github.com/repos/{owner}/{repo})
@@ -133,7 +130,7 @@ Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph man
 4. **Transaction per file**: Batch write nodes/edges trong 1 transaction per file
 5. **Pagination**: Tất cả list endpoints phải support pagination
 6. **Indexes**: Đảm bảo indexes được tạo cho fullName, filePath, routePath
-7. **No disk write for import**: GitHub tarball stream parse in-memory, không ghi file tạm
+7. **Server-managed workspace for import**: GitHub tarball is extracted to a server-owned workspace directory before parsing; workspace is not user-accessible and is cleaned up after import
 
 ## Performance Targets
 

@@ -3,6 +3,8 @@
 **Trạng thái:** Ghi nhận sau thảo luận review (2026-07). Đây là tài liệu định hướng, KHÔNG phải mô tả tính năng đã hoàn thành.
 **Phạm vi:** Áp dụng khi chuyển VibeGraph từ chế độ **local/self-host một người dùng** sang **deploy đa người dùng**.
 
+> **Verified 2026-07-02:** Phần "1. Hiện trạng (as-built)" đã được đối chiếu với code — `glob **/{Security*,*Security*}.java` trong `src/main/java` trả 0 file, xác nhận **chưa có SecurityConfig/SecurityFilterChain**. Các mục V1-V9 vẫn open. Roadmap chưa apply.
+
 > Tóm tắt 1 dòng: VibeGraph hiện chạy đúng cho **local/dev một người dùng**. Để deploy đa người dùng an toàn cần thêm **xác thực + phân quyền theo chủ sở hữu + sandbox theo user + quota**, cùng các bước hardening tiêu chuẩn (TLS, bảo vệ khoá, auth cho WebSocket, rate-limit, CORS/CSRF/XSS, giới hạn CPU).
 
 ---

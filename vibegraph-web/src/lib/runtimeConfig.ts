@@ -45,30 +45,40 @@ export function envFloat(key: string, fallback: number, bounds: NumberBounds = {
   return clamp(parsed, bounds)
 }
 
+/** Read a boolean env var. Accepts `1/true/yes/on` (case-insensitive) as true; falls back otherwise. */
+export function envBool(key: string, fallback: boolean): boolean {
+  const raw = ENV[key]
+  if (raw === undefined || raw.trim() === '') return fallback
+  const v = raw.trim().toLowerCase()
+  if (v === '1' || v === 'true' || v === 'yes' || v === 'on') return true
+  if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false
+  return fallback
+}
+
 // ── Graph rendering ──────────────────────────────────────────────────────────
 /** Max nodes handed to the renderer before Safe Mode caps the view. */
 export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 1500, { min: 0 })
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
-export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 5, { min: 1 })
-export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 3, { min: 1 })
-export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 20, { min: 1 })
+export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 7, { min: 1 })
+export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 4, { min: 1 })
+export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 26, { min: 1 })
 
 // Per-tier node radii (Sigma units). Sizes follow the containment hierarchy:
 // the wider a node's structural scope (and the rarer it is), the larger it renders;
 // the deeper / more numerous it is, the smaller — so dense member nodes don't drown
 // out the architecture. Floats are allowed (e.g. 4.5) for fine-grained tuning.
 //   Project > Package > File > Type decl > Member/Endpoint > Detail/metadata
-export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 10, { min: 1 })
-export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 7, { min: 1 })
-export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 6, { min: 1 })
+export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 14, { min: 1 })
+export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 10, { min: 1 })
+export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 9, { min: 1 })
 /** Type declarations: Class / Interface / Enum / Record / DBModel. */
-export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 5, { min: 1 })
+export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 8, { min: 1 })
 /** Behavioral members: Method / Constructor. */
-export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 4, { min: 1 })
+export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 6, { min: 1 })
 /** HTTP entry points: Route / APIEndpoint (kept prominent despite shallow scope). */
-export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 4, { min: 1 })
+export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 6, { min: 1 })
 /** Focus-mode opacities for the active vs dimmed nodes (0–1). */
 export const FOCUS_OPACITY_ACTIVE = envFloat('VITE_FOCUS_OPACITY_ACTIVE', 1.0, { min: 0, max: 1 })
 export const FOCUS_OPACITY_DIMMED = envFloat('VITE_FOCUS_OPACITY_DIMMED', 0.1, { min: 0, max: 1 })
@@ -98,16 +108,79 @@ export const WS_HEARTBEAT_OUTGOING_MS = envInt('VITE_WS_HEARTBEAT_OUTGOING_MS', 
 
 // ── Sigma labels (zoom-responsive sizing) ────────────────────────────────────
 /** Base node / edge label size at ratio=1 zoom. */
-export const SIGMA_BASE_NODE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_NODE_LABEL_SIZE', 8, { min: 1 })
-export const SIGMA_BASE_EDGE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_EDGE_LABEL_SIZE', 3, { min: 1 })
+export const SIGMA_BASE_NODE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_NODE_LABEL_SIZE', 7, { min: 1 })
+export const SIGMA_BASE_EDGE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_EDGE_LABEL_SIZE', 8, { min: 1 })
 /** Node label zoom-scale floor / cap. */
 export const SIGMA_MIN_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_LABEL_ZOOM_SCALE', 0.5, { min: 0 })
 export const SIGMA_MAX_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_LABEL_ZOOM_SCALE', 2.25, { min: 0 })
-/** Edge label zoom-scale floor / cap. */
+/**
+ * Edge label zoom-scale floor / cap. Edge type labels hold a FIXED size across the
+ * normal zoom range (see SIGMA_EDGE_LABEL_GROW_ZOOM) and only enlarge once you zoom
+ * deep past that threshold, then scale with 1/ratio up to this cap. Lower the cap to
+ * stop growth sooner; raise it to allow larger labels under extreme magnification.
+ */
 export const SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE', 1, { min: 0 })
-export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE', 4, { min: 0 })
-/** Min on-screen node size before Sigma draws its label (progressive reveal). */
-export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt('VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD', 15, { min: 0 })
+export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE', 5, { min: 0 })
+/**
+ * Min on-screen node size (px) before Sigma draws its label. Lower = labels appear
+ * sooner / at a more zoomed-out view. Kept modest so names show without deep zoom
+ * while still hiding under a heavy zoom-out where everything would overlap.
+ */
+export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt('VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD', 6, { min: 0 })
+
+/**
+ * Zoom-in factor (relative to the initial fit view = 1×) past which labels START
+ * growing. Below it, labels keep a CONSTANT on-screen size while panning/zooming so
+ * casual zoom doesn't jitter text; only when the user zooms in deeper than this
+ * threshold do labels scale up with the zoom for readability. Zooming out below the
+ * fit view shrinks labels toward the min scale and then hides them. e.g. 2.5 =
+ * labels stay fixed until you zoom to 2.5× the initial view, then enlarge.
+ */
+export const SIGMA_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_LABEL_GROW_ZOOM', 1.5, { min: 1 })
+
+/**
+ * Zoom-in factor past which EDGE type labels start growing. Kept high so edge labels
+ * appear and stay a FIXED size across the normal zoom range, and only begin scaling
+ * up once you zoom deep past this factor (e.g. 10 = labels hold their size until 10×
+ * the fit view, then enlarge with further zoom). Zooming back out below it returns
+ * them to the fixed size. This is separate from the node grow factor so node labels
+ * can grow early for readability while edge labels stay calm until deep zoom.
+ */
+export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, { min: 1 })
+
+/** Rendered edge thickness (screen px, constant across zoom). Lower = thinner lines. */
+export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.15, { min: 0.05 })
+
+/**
+ * Minimum rendered edge thickness (screen px). Sigma floors every edge at this, and
+ * because SIGMA_EDGE_SIZE is tiny the floor dominates → edges render at a CONSTANT
+ * thin width no matter how far you zoom in (they never balloon with zoom like the
+ * default size/√ratio scaling would). This is the effective edge line thickness.
+ */
+export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 1.7, { min: 0.5 })
+
+/**
+ * Camera-ratio thresholds that stage label reveal (Sigma ratio: LOWER = zoomed IN).
+ *   ratio > MINIMAL           -> 'minimal' (only a forced/selected label)
+ *   EDGE < ratio <= MINIMAL   -> 'nodes'   (node labels reveal by size threshold)
+ *   ratio <= EDGE             -> 'edges'   (edge type labels appear)
+ * EDGE is kept fairly deep so edge type labels only force ON once the view is
+ * magnified enough that few edges remain on screen — that, plus viewport culling in
+ * the edge-label renderer, keeps zooming smooth while still drawing every frame.
+ */
+export const SIGMA_MINIMAL_LABEL_RATIO = envFloat('VITE_SIGMA_MINIMAL_LABEL_RATIO', 1.05, { min: 0 })
+export const SIGMA_EDGE_LABEL_RATIO = envFloat('VITE_SIGMA_EDGE_LABEL_RATIO', 0.45, { min: 0 })
+
+/**
+ * Max edge type labels DRAWN per frame. Off-screen labels are culled for free and
+ * don't count; this caps only the visible ones so a zoom level with many edges on
+ * screen can't stack hundreds of rotated text draws into a single frame (the last
+ * remaining source of zoom jank). Higher = more labels at once (denser, heavier);
+ * lower = smoother but fewer labels shown simultaneously.
+ */
+export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABELS_PER_FRAME', 48, {
+  min: 1,
+})
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.2, { min: 0 })
@@ -117,6 +190,74 @@ export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
 /** Synchronous ForceAtlas2 iterations run once before first paint (no live animation). */
 export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 400, { min: 1 })
+
+// ── ForceAtlas2 cluster separation (anti-hairball) ───────────────────────────
+// The reference "grapuco" look is standard ForceAtlas2 (NOT LinLog) with strong
+// repulsion + dissuade-hubs: connected nodes stay close (short, local edges) while
+// unrelated nodes push far apart, so the graph spreads into organic branches
+// instead of one dense hairball. LinLog is intentionally OFF — it lengthens edges
+// and pulls the body toward the center (measured edgeToRadius 0.48 vs 0.29).
+//
+// Do NOT enable adjustSizes + Noverlap together — those pack the graph into a
+// uniform square and destroy the branch structure. They default OFF.
+export const FA2_LINLOG_MODE = envBool('VITE_FA2_LINLOG_MODE', false)
+export const FA2_OUTBOUND_ATTRACTION = envBool('VITE_FA2_OUTBOUND_ATTRACTION', true)
+/** Account for node radius while laying out. OFF: it packs nodes into a solid square. */
+export const FA2_ADJUST_SIZES = envBool('VITE_FA2_ADJUST_SIZES', false)
+/**
+ * Strong gravity pulls a node toward the center by a force PROPORTIONAL to its
+ * distance. It keeps outliers close but COMPRESSES the whole body into a dense
+ * disc (crammed look), so it defaults OFF. Framing is handled instead by clamping
+ * outliers (below), which keeps the body airy while still bounding the view.
+ */
+export const FA2_STRONG_GRAVITY_MODE = envBool('VITE_FA2_STRONG_GRAVITY_MODE', false)
+
+/**
+ * After layout, pull the farthest nodes (disconnected singletons / tiny orphan
+ * components) inward to this radius percentile of the main body. Without this a
+ * few edge-less nodes drift far out, forcing zoom-to-fit to shrink the whole graph
+ * to a crammed dot. Clamping them to a bounding ring lets the airy body fill the
+ * view. Range 0–1; set 0 (or ≥1) to disable.
+ */
+export const FA2_OUTLIER_CLAMP_PERCENTILE = envFloat('VITE_FA2_OUTLIER_CLAMP_PERCENTILE', 0.9, {
+  min: 0,
+  max: 1,
+})
+
+// Adaptive settings: small graphs already spread well with the base values, so we
+// only switch to the heavier, more separated large-graph profile past this size.
+export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD', 300, { min: 1 })
+/**
+ * Large-graph overrides. Strong repulsion (high scalingRatio) spreads the graph
+ * wide; gravity ~1 combined with strongGravityMode keeps disconnected nodes near
+ * the body so the camera frames the main cluster instead of a distant outlier.
+ */
+export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 1, { min: 0 })
+export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 60, { min: 0 })
+/** Iterations for the large-graph profile (more passes = better separated). */
+export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 900, { min: 1 })
+
+/**
+ * Rescale the settled layout so its bounding box spans this many layout units.
+ * Node sizes are rendered in the SAME layout-coordinate space (see Sigma
+ * `itemSizesReference: 'positions'`), so a fixed span makes a node of `size` s
+ * render at a predictable pixel radius (≈ s · viewport / span) on EVERY project,
+ * regardless of how large the raw force-layout coordinates came out. It also makes
+ * the Noverlap `margin` translate to a consistent on-screen gap. Set 0 to disable.
+ */
+export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 1000, { min: 0 })
+
+// ── Overlap removal (post-pass) ──────────────────────────────────────────────
+// After ForceAtlas2 + normalization, a custom symmetric de-overlap pass separates
+// every pair of nodes closer than (radius_a + radius_b + margin). It runs in the
+// same layout-coordinate space Sigma renders node sizes in, so it GUARANTEES no
+// nodes overlap on screen. `margin` is the minimum clear gap (layout units) kept
+// between node boundaries; at the normalized span it maps to a consistent pixel gap.
+export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
+export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 20, { min: 0 })
+export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.5, { min: 0 })
+export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
+
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 5000, { min: 0 })
 /** Zoom-to-fit camera animation duration. */
