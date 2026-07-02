@@ -25,35 +25,47 @@ table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}th,td{te
   <div class="bc"><a href="index.html">← Mục lục</a> · C9 · Legend</div>
   <span class="tag">Frontend</span>
   <h1>Legend — Chú thích &amp; đếm loại node</h1>
-  <p class="lead">Khối chú thích màu ở cuối sidebar (tab Explorer): mỗi loại node kèm màu &amp; số lượng trong graph hiện tại, giúp đọc màu trên canvas.</p>
+  <p class="lead">Khối chú thích màu ở cuối sidebar (tab Explorer): mỗi loại node kèm màu &amp; số lượng trong graph hiện tại, giúp đọc màu trên canvas mà không cần mở tab Filters.</p>
+
+  <h2>Cơ chế dựng legend (chính xác theo code)</h2>
+  <p><code>LegendPanel.vue</code> nhận prop <code>nodeStats</code> (đếm node theo loại) + <code>title</code> (mặc định "Legend"), rồi tính <code>items</code> bằng <code>computed</code>:</p>
+  <ul class="flow">
+    <li><b>Chỉ hiện loại có mặt</b>: lọc <code>count &gt; 0</code> — loại nào không có node trong graph hiện tại thì không xuất hiện.</li>
+    <li><b>Màu lấy từ nguồn duy nhất</b>: <code>NODE_COLORS[type]</code> trong <code>lib/constants.ts</code> — <b>cùng bảng màu graph dùng để tô node</b>, nên legend luôn khớp canvas. Nếu loại lạ không có trong bảng → dùng màu <b>xám dự phòng</b> <code>#94a3b8</code>.</li>
+    <li><b>Sắp xếp</b>: theo <b>số lượng giảm dần</b>, nếu bằng nhau thì theo tên loại (A→Z).</li>
+    <li><b>Rỗng</b>: nếu không có loại nào &gt;0 → hiện "No nodes to describe."</li>
+  </ul>
+  <p class="muted">Mỗi dòng = ô màu tròn (swatch) + tên loại + số đếm (font <code>tabular-nums</code>), xếp lưới 2 cột.</p>
 
   <h2>Kịch bản thao tác</h2>
   <table>
     <tr><th>#</th><th>Thao tác</th><th>Kết quả kỳ vọng</th><th>P/F</th></tr>
-    <tr><td>1</td><td>Mở tab Explorer, xem khối LEGEND</td><td>Liệt kê loại node (Method, Field, External, File, Class, APIEndpoint…) kèm màu &amp; số đếm.</td><td></td></tr>
-    <tr><td>2</td><td>Đối chiếu màu với node trên canvas</td><td>Màu trong legend khớp màu node cùng loại.</td><td></td></tr>
-    <tr><td>3</td><td>Thu gọn/mở LEGEND</td><td>Đóng/mở mượt.</td><td></td></tr>
-    <tr><td>4</td><td>Đối chiếu số đếm với Filters</td><td>Số lượng mỗi loại nhất quán giữa Legend &amp; FilterPanel.</td><td></td></tr>
+    <tr><td>1</td><td>Mở tab Explorer, xem khối LEGEND</td><td>Liệt kê các loại node <b>đang có</b> (Method, Field, External, File, Class, APIEndpoint…) kèm màu &amp; số đếm, xếp theo số lượng giảm dần.</td><td></td></tr>
+    <tr><td>2</td><td>Đối chiếu màu với node trên canvas</td><td>Màu swatch khớp màu node cùng loại (cùng nguồn <code>NODE_COLORS</code>).</td><td></td></tr>
+    <tr><td>3</td><td>Bật/tắt filter một loại node</td><td>Số đếm &amp; danh sách loại trong Legend cập nhật theo tập đang hiển thị.</td><td></td></tr>
+    <tr><td>4</td><td>Đối chiếu số đếm với FilterPanel</td><td>Số lượng mỗi loại nhất quán giữa Legend &amp; Filters (cùng lấy từ nodeStats).</td><td></td></tr>
   </table>
 
   <h2>Điểm cần soi</h2>
   <ul class="check">
-    <li>Bảng màu lấy từ nguồn duy nhất (<code>lib/constants.ts</code> / <code>colors.ts</code>) để legend, canvas &amp; filter đồng nhất.</li>
-    <li>Số đếm phản ánh đúng graph đang hiển thị.</li>
+    <li>Bảng màu chỉ có <b>một nguồn</b> (<code>lib/constants.ts</code> · <code>NODE_COLORS</code>) để legend, canvas &amp; filter đồng nhất — không hardcode màu rời rạc.</li>
+    <li>Loại node mới (nếu parser sinh thêm) mà chưa khai báo trong <code>NODE_COLORS</code> sẽ rơi về màu xám dự phòng — dấu hiệu cần bổ sung màu.</li>
+    <li>Số đếm phản ánh đúng tập <b>đang hiển thị</b> (đã lọc), không phải tổng graph gốc — thống nhất kỳ vọng với team.</li>
+    <li>Swatch có <code>aria-hidden</code>; tên loại là text đọc được — ổn cho screen reader.</li>
   </ul>
 
   <h2>Luồng hoạt động của code</h2>
   <ul class="flow">
-    <li><b>UI</b>: <code>LegendPanel.vue</code> đọc thống kê loại node từ graph (nodeStats) và bảng màu.</li>
-    <li><b>Nguồn màu</b>: <code>lib/constants.ts</code> (NODE_COLORS/EDGE_COLORS) &amp; <code>lib/colors.ts</code> — dùng chung với <code>graphAdapter.ts</code> khi tô node/edge.</li>
-    <li><b>Số đếm</b>: <code>nodeStats</code>/<code>edgeStats</code> từ <code>useGraphData.ts</code> (tính trên dữ liệu đã lọc).</li>
+    <li><b>UI</b>: <code>LegendPanel.vue</code> — prop <code>nodeStats</code>, computed <code>items</code> (lọc &gt;0, map màu, sort).</li>
+    <li><b>Nguồn màu</b>: <code>lib/constants.ts</code> (<code>NODE_COLORS</code>) — dùng chung với <code>graphAdapter.ts</code> khi tô node/edge.</li>
+    <li><b>Số đếm</b>: <code>nodeStats</code> từ <code>useGraphData.ts</code> (tính trên dữ liệu đã lọc).</li>
   </ul>
 
   <h2>File liên quan</h2>
   <table>
     <tr><th>Tầng</th><th>File</th></tr>
     <tr><td>UI</td><td><code>components/panels/LegendPanel.vue</code></td></tr>
-    <tr><td>Nguồn dữ liệu/màu</td><td><code>lib/constants.ts</code>, <code>lib/colors.ts</code>, <code>composables/useGraphData.ts</code></td></tr>
+    <tr><td>Nguồn dữ liệu/màu</td><td><code>lib/constants.ts</code> (<code>NODE_COLORS</code>), <code>composables/useGraphData.ts</code></td></tr>
   </table>
 
   <div class="foot">
