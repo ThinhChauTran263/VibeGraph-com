@@ -43,6 +43,7 @@ import {
   drawEdgeTypeLabel,
   setLabelZoom,
   resetEdgeLabelBudget,
+  setShowEdgeKind,
 } from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
 import type { FocusPartition } from '@/lib/focusMode'
@@ -764,6 +765,15 @@ export function useSigma(options: UseSigmaOptions) {
   }
 
   /**
+   * Toggle the target-node kind suffix on edge labels (e.g. "IMPORTS Class"). A
+   * cheap repaint (no re-index) since it only changes label text/colors.
+   */
+  function setEdgeKindVisible(visible: boolean): void {
+    setShowEdgeKind(visible)
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+  }
+
+  /**
    * Zoom to fit the entire graph in view.
    */
   function zoomToFit() {
@@ -820,6 +830,7 @@ export function useSigma(options: UseSigmaOptions) {
     stopLayout,
     setReducers,
     setEdgeLabelsVisible,
+    setEdgeKindVisible,
     setGhostPartition,
   }
 }

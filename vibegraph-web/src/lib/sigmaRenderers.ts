@@ -41,6 +41,13 @@ export function resetEdgeLabelBudget(cap: number): void {
   edgeLabelBudget = cap
 }
 
+// Whether edge labels append the TARGET node's kind (e.g. "IMPORTS Class"), with
+// the kind word tinted to that node's legend color. Toggled from the UI.
+let showEdgeKind = true
+export function setShowEdgeKind(show: boolean): void {
+  showEdgeKind = show
+}
+
 /**
  * Piecewise label scale vs. zoom (relative to fit = 1), with a per-label-type grow
  * threshold:
@@ -260,9 +267,20 @@ export function drawEdgeTypeLabel(
     if (cx < -margin || cx > vw + margin || cy < -margin || cy > vh + margin) return
   }
 
-  // The whole label must fit within the visible edge span; otherwise hide it.
-  // Width comes from the linear-scaled cache (no per-frame measureText).
-  const textLength = measureEdgeLabelWidth(context, label, weight, font, size)
+  // Optional target-node kind suffix (e.g. "DEFINES / Method"), tinted to the target
+  // node's legend color and placed on the TARGET side of the edge so the coloured
+  // word sits next to the node it matches.
+  const kindRaw = (targetData as EndpointData & { nodeType?: unknown }).nodeType
+  const kind = showEdgeKind && typeof kindRaw === 'string' && kindRaw ? kindRaw : ''
+  const sep = kind ? ' / ' : ''
+  const kindColor = (targetData.color as string | undefined) ?? '#cbd5e1'
+
+  // The whole label (edge type + separator + kind) must fit within the visible edge
+  // span; otherwise hide it. Widths come from the linear-scaled cache.
+  const typeWidth = measureEdgeLabelWidth(context, label, weight, font, size)
+  const sepWidth = sep ? measureEdgeLabelWidth(context, sep, weight, font, size) : 0
+  const kindWidth = kind ? measureEdgeLabelWidth(context, kind, weight, font, size) : 0
+  const textLength = typeWidth + sepWidth + kindWidth
   if (textLength > d) return
 
   // This label will actually be drawn: spend one unit of the per-frame budget. When
@@ -283,6 +301,28 @@ export function drawEdgeTypeLabel(
   context.save()
   context.translate(cx, cy)
   context.rotate(angle)
-  context.fillText(label, -textLength / 2, (edgeData.size ?? 1) / 2 + size)
+  context.textAlign = 'left'
+  const baseline = (edgeData.size ?? 1) / 2 + size
+  const startX = -textLength / 2
+
+  if (!kind) {
+    context.fillStyle = color ?? '#000'
+    context.fillText(label, startX, baseline)
+  } else if (Math.cos(angle) * dx + Math.sin(angle) * dy >= 0) {
+    // Text's +x (right) points toward the target node → kind word on the right.
+    context.fillStyle = color ?? '#000'
+    context.fillText(label, startX, baseline)
+    context.fillText(sep, startX + typeWidth, baseline)
+    context.fillStyle = kindColor
+    context.fillText(kind, startX + typeWidth + sepWidth, baseline)
+  } else {
+    // +x points toward the source → put the kind word on the LEFT so it still sits
+    // next to the target node.
+    context.fillStyle = kindColor
+    context.fillText(kind, startX, baseline)
+    context.fillStyle = color ?? '#000'
+    context.fillText(sep, startX + kindWidth, baseline)
+    context.fillText(label, startX + kindWidth + sepWidth, baseline)
+  }
   context.restore()
 }
