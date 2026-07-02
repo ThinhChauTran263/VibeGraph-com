@@ -10,8 +10,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
@@ -38,6 +40,9 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
     // Captures the role token from hasRole('ADMIN'), hasAuthority('ROLE_ADMIN'), "ROLE_ADMIN",
     // @RolesAllowed("ADMIN"), etc. The ROLE_ prefix is optional and stripped by the caller.
     private static final Pattern ROLE_TOKEN = Pattern.compile("(?:ROLE_)?([A-Z][A-Z0-9_]+)");
+    // Captures the HTTP verb(s) from @RequestMapping(method = RequestMethod.GET) or
+    // method = {RequestMethod.GET, RequestMethod.POST}. Only the REST-relevant verbs are mined.
+    private static final Pattern REQUEST_METHOD_TOKEN = Pattern.compile("\\b(GET|POST|PUT|DELETE|PATCH)\\b");
 
     private final List<NodeData> extractedNodes = new ArrayList<>();
     private final List<EdgeData> extractedEdges = new ArrayList<>();
@@ -61,6 +66,8 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
         for (FieldDeclaration field : n.getFields()) {
             processFieldAnnotations(field, classFqcn, n, lombokConstructorInjection);
         }
+
+        processConstructorInjection(n, classFqcn);
 
         super.visit(n, arg);
     }
@@ -88,8 +95,7 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
 
         for (AnnotationExpr annotation : method.getAnnotations()) {
             String name = annotation.getName().getIdentifier();
-            String httpMethod = httpMethodFor(name);
-            if (httpMethod != null) {
+            for (String httpMethod : resolveHttpMethods(name, annotation)) {
                 String path = combinePaths(classPrefix, extractPath(annotation));
                 if (path != null && !path.isBlank()) {
                     String routeId = httpMethod + " " + path;
@@ -163,6 +169,69 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
                 .anyMatch(name -> name.equals("RequiredArgsConstructor") || name.equals("AllArgsConstructor"));
     }
 
+    /** Spring stereotype annotations that mark a class as a container-managed bean. */
+    private static final Set<String> SPRING_STEREOTYPES = Set.of(
+            "Component", "Service", "Repository", "Controller", "RestController",
+            "Configuration", "RestControllerAdvice", "ControllerAdvice");
+    /** Simple type names that are values/framework objects, never injected business beans. */
+    private static final Set<String> NON_BEAN_TYPES = Set.of(
+            "String", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
+            "Character", "Object", "BigDecimal", "BigInteger");
+
+    private boolean isSpringBean(ClassOrInterfaceDeclaration n) {
+        return n.getAnnotations().stream()
+                .anyMatch(a -> SPRING_STEREOTYPES.contains(a.getName().getIdentifier()));
+    }
+
+    /**
+     * Capture constructor-parameter injection - the modern Spring default where a bean declares its
+     * dependencies as constructor parameters with no {@code @Autowired} needed. Field {@code @Autowired}
+     * is handled by {@link #processFieldAnnotations}; this closes the gap for constructor-injected
+     * beans (previously reported as {@code INJECTS = 0} on such projects).
+     *
+     * <p>Restricted to Spring-managed beans (stereotype annotated) to avoid treating every POJO
+     * constructor as injection. When several constructors exist, only the {@code @Autowired}-annotated
+     * one is wired (Spring's rule); a single constructor is auto-wired implicitly. Primitive and common
+     * value types are skipped.
+     */
+    private void processConstructorInjection(ClassOrInterfaceDeclaration owner, String classFqcn) {
+        if (!isSpringBean(owner)) {
+            return;
+        }
+        List<ConstructorDeclaration> ctors = owner.getConstructors();
+        if (ctors.isEmpty()) {
+            return;
+        }
+        ConstructorDeclaration injectable;
+        if (ctors.size() == 1) {
+            injectable = ctors.get(0);
+        } else {
+            injectable = ctors.stream()
+                    .filter(c -> c.getAnnotations().stream()
+                            .anyMatch(a -> a.getName().getIdentifier().equals("Autowired")))
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (injectable == null) {
+            return;
+        }
+        for (Parameter param : injectable.getParameters()) {
+            if (param.getType().isPrimitiveType()) {
+                continue;
+            }
+            String rawType = param.getType().asString();
+            String baseName = rawType.contains("<") ? rawType.substring(0, rawType.indexOf('<')) : rawType;
+            if (NON_BEAN_TYPES.contains(baseName)) {
+                continue;
+            }
+            String resolvedType = resolveTypeName(rawType, owner);
+            extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
+                    "annotation", "Constructor",
+                    "lineNumber", injectable.getBegin().map(p -> p.line).orElse(0)
+            )));
+        }
+    }
+
     private boolean hasAnnotationNamed(ClassOrInterfaceDeclaration n, String simpleName) {
         return n.getAnnotations().stream()
                 .anyMatch(a -> a.getName().getIdentifier().equals(simpleName));
@@ -215,6 +284,47 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             case "RequestMapping" -> "REQUEST";
             default -> null;
         };
+    }
+
+    /**
+     * Resolve the concrete HTTP verb(s) an endpoint annotation maps to. The dedicated verb mappings
+     * ({@code @GetMapping}, ...) each map to one verb. {@code @RequestMapping} is method-agnostic
+     * unless it declares {@code method = RequestMethod.X} (or a set); when it does, emit the real
+     * verb(s) instead of the generic {@code "REQUEST"} placeholder so a controller written in the
+     * older {@code @RequestMapping(method = ...)} style is classified correctly.
+     */
+    private List<String> resolveHttpMethods(String annotationName, AnnotationExpr annotation) {
+        String single = httpMethodFor(annotationName);
+        if (single == null) {
+            return List.of();
+        }
+        if (!"REQUEST".equals(single)) {
+            return List.of(single);
+        }
+        List<String> verbs = extractRequestMethods(annotation);
+        return verbs.isEmpty() ? List.of("REQUEST") : verbs;
+    }
+
+    /** Extract HTTP verbs from a {@code @RequestMapping}'s {@code method = ...} attribute. */
+    private List<String> extractRequestMethods(AnnotationExpr annotation) {
+        if (!(annotation instanceof NormalAnnotationExpr normal)) {
+            return List.of();
+        }
+        for (MemberValuePair pair : normal.getPairs()) {
+            if (!pair.getNameAsString().equals("method")) {
+                continue;
+            }
+            List<String> verbs = new ArrayList<>();
+            Matcher m = REQUEST_METHOD_TOKEN.matcher(pair.getValue().toString());
+            while (m.find()) {
+                String verb = m.group(1);
+                if (!verbs.contains(verb)) {
+                    verbs.add(verb);
+                }
+            }
+            return verbs;
+        }
+        return List.of();
     }
 
     private String extractRequestMappingPath(ClassOrInterfaceDeclaration n) {

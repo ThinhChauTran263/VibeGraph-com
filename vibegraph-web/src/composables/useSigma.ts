@@ -110,16 +110,23 @@ export function useSigma(options: UseSigmaOptions) {
    * Starts ForceAtlas2 layout in a web worker.
    */
   function init(graph: Graph) {
+    // Preserve the camera across a REBUILD (filter toggle / lazy expand) so
+    // re-showing a node type doesn't snap the view back to the default framing.
+    // On the very first init there is no prior Sigma → null → default framing
+    // (load() then calls zoomToFit once the canvas has its final box).
+    const prevCameraState = sigmaInstance.value?.getCamera().getState() ?? null
+
     dispose()
 
     if (!container.value) return
 
     graphInstance.value = graph
 
-    // Run ForceAtlas2 SYNCHRONOUSLY once before the first paint, so nodes appear
-    // already settled (no live "drift" animation on load). Stronger repulsion +
-    // weaker gravity spread the graph out.
-    settleLayout(graph)
+    // Seed node positions from the cache and run ForceAtlas2 only for nodes that
+    // have never been laid out. A pure filter toggle re-shows nodes that are all
+    // cached → the expensive layout pass is skipped entirely and positions are
+    // reused, which is what removes the freeze on re-showing a node type.
+    applyCachedLayout(graph)
 
     const sigma = new Sigma(graph, container.value, {
       allowInvalidContainer: true,
@@ -200,6 +207,9 @@ export function useSigma(options: UseSigmaOptions) {
     attachResizeObserver(sigma)
 
     const camera = sigma.getCamera()
+    // Restore the pre-rebuild camera (see prevCameraState) so filter toggles and
+    // expansions keep the user's current pan/zoom instead of resetting the view.
+    if (prevCameraState) camera.setState(prevCameraState)
     let lastRatio = camera.getState().ratio
     applyZoomResponsiveLabelSize(sigma, lastRatio)
     onCameraRatioChange?.(lastRatio)
@@ -213,6 +223,54 @@ export function useSigma(options: UseSigmaOptions) {
 
     // Layout is precomputed synchronously (settleLayout) before paint, so there is
     // no live worker animation. Node positions are static until the user drags.
+  }
+
+  /**
+   * Persistent node position cache. Survives graph rebuilds (filter toggles, lazy
+   * expansions) so re-showing nodes reuses their settled coordinates instead of
+   * recomputing the whole ForceAtlas2 layout — and re-seeding every node to a new
+   * random spot — on every rebuild. Cleared on project switch via resetLayout().
+   */
+  const positionCache = new Map<string, { x: number; y: number }>()
+
+  /** Drop all cached positions so the next init recomputes a fresh layout. */
+  function resetLayout(): void {
+    positionCache.clear()
+  }
+
+  /**
+   * Seed node positions from the cache and run ForceAtlas2 only for nodes that
+   * have no cached position yet (first load or a lazy expansion). When every node
+   * is already cached — the filter toggle case — the layout pass is skipped
+   * entirely, which removes the freeze on re-showing a node type. Resulting
+   * positions are written back so the next rebuild is just as cheap.
+   */
+  function applyCachedLayout(graph: Graph): void {
+    if (graph.order === 0) return
+
+    let uncached = 0
+    graph.forEachNode((id) => {
+      const cached = positionCache.get(id)
+      if (cached) {
+        graph.setNodeAttribute(id, 'x', cached.x)
+        graph.setNodeAttribute(id, 'y', cached.y)
+      } else {
+        uncached++
+      }
+    })
+
+    // Only pay for a global relayout when at least one node is new; a toggle that
+    // re-shows already-laid-out nodes hits none of this.
+    if (uncached > 0) {
+      settleLayout(graph)
+    }
+
+    graph.forEachNode((id) => {
+      positionCache.set(id, {
+        x: graph.getNodeAttribute(id, 'x') as number,
+        y: graph.getNodeAttribute(id, 'y') as number,
+      })
+    })
   }
 
   /**
@@ -544,6 +602,7 @@ export function useSigma(options: UseSigmaOptions) {
     init,
     dispose,
     refresh,
+    resetLayout,
     zoomToFit,
     focusNode,
     startLayout: () => {

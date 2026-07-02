@@ -76,6 +76,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 | `neo4j-schema.md` | Lược đồ node/edge và Cypher của graph |
 | `file-checklist.md` | Các tệp hiện có và checklist hoàn thành MVP |
 | `deployment-plan.md` | Ghi chú triển khai Docker, domain, SSL, CI/CD |
+| `security-multiuser-roadmap.md` | Hiện trạng bảo mật + lỗ hổng đã nhận diện + hướng phát triển đa người dùng (auth, phân quyền, sandbox, quota, hardening) |
 | `presentation.html` | Bản trình bày phi kỹ thuật được sinh ra, không phải nguồn chân lý triển khai |
 | `project-structure.html` | Bản đồ dự án trực quan được sinh ra, không phải nguồn chân lý triển khai |
 
