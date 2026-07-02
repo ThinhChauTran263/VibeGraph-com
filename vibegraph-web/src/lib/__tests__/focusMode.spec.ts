@@ -31,7 +31,7 @@ describe('resolveFocusLabelDensity', () => {
   it('progressively reveals focus labels as the camera zooms in', () => {
     expect(resolveFocusLabelDensity(1.3)).toBe('minimal')
     expect(resolveFocusLabelDensity(0.9)).toBe('nodes')
-    expect(resolveFocusLabelDensity(0.5)).toBe('edges')
+    expect(resolveFocusLabelDensity(0.3)).toBe('edges')
   })
 
   it('falls back to node labels for invalid camera ratios', () => {

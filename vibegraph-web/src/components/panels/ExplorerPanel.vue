@@ -15,6 +15,8 @@ import type { GraphNode, NodeType } from '@/types/graph'
 const props = defineProps<{
   nodes: GraphNode[]
   selectedNodeId?: string | null
+  /** Node types in the current graph highlight; their Legend swatches get a ring. */
+  highlightedTypes?: Set<NodeType>
 }>()
 
 const emit = defineEmits<{
@@ -155,7 +157,7 @@ function onSelect(nodeId: string): void {
         <span>Legend</span>
         <span class="explorer-panel__legend-chevron" :class="{ 'explorer-panel__legend-chevron--open': showLegend }" aria-hidden="true">›</span>
       </button>
-      <LegendPanel v-show="showLegend" :node-stats="nodeTypeCounts" title="" />
+      <LegendPanel v-show="showLegend" :node-stats="nodeTypeCounts" :highlighted-types="highlightedTypes" title="" />
     </div>
 
     <footer v-if="hasNodes" class="explorer-panel__footer">{{ fileCount }} files</footer>

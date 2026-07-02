@@ -8,6 +8,7 @@
 import Graph from 'graphology'
 import type { GraphData, GraphNode, GraphEdge, NodeType, EdgeType } from '@/types/graph'
 import { NODE_COLORS, EDGE_COLORS, NODE_SIZES, NODE_SIZE_BY_TYPE } from './constants'
+import { SIGMA_EDGE_SIZE } from './runtimeConfig'
 
 export interface SigmaNodeAttributes {
   label: string
@@ -156,7 +157,7 @@ export function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
     label: edge.type,
     color,
     labelColor: color,
-    size: 1,
+    size: SIGMA_EDGE_SIZE,
     edgeType: edge.type,
   }
 }

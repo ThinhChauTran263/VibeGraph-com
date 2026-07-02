@@ -10,7 +10,6 @@ parser/
 ├── service/
 │   ├── ParserService.java              — Interface: orchestrate parsing pipeline (+ ParseProgressListener overload)
 │   ├── ParseProgressListener.java      — Per-file progress callback (filesParsed/total)
-│   ├── CacheService.java               — Parse-result cache (checksum-keyed)
 │   └── impl/
 │       └── ParserServiceImpl.java      — Main parser orchestrator (resolve + call graph inline)
 ├── visitor/
@@ -26,8 +25,6 @@ parser/
 │   ├── NodeData.java                   — Extracted node model
 │   ├── EdgeData.java                   — Extracted edge model
 │   └── ParseResult.java               — Internal result model (nodes + edges + warnings)
-├── util/
-│   └── TypeNames.java                  — Type-name normalization helpers
 ├── Signatures.java                     — Method/field signature formatting
 └── dto/
     ├── request/
@@ -41,7 +38,7 @@ parser/
 ### ParserService
 - [ ] `parseProject(Path projectDir)`: Scan tất cả .java files, parse từng file, trả về aggregated ParseResult
 - [ ] `parseFile(Path file)`: Parse single file → ParseResult (nodes + edges)
-- [ ] `parseIncremental(Path file, String previousChecksum)`: Chỉ parse nếu checksum thay đổi
+- [defer] `parseIncremental(Path file, String previousChecksum)`: Chỉ parse nếu checksum thay đổi *(deferred — CacheService chưa implement, file placeholder đã gỡ)*
 - [ ] Parallel parsing sử dụng virtual threads (Java 21)
 - [ ] Parse time < 30 seconds cho 500 files
 - [ ] Graceful error handling: skip unparseable files, log warnings, continue

@@ -79,6 +79,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 | `security-multiuser-roadmap.md` | Hiện trạng bảo mật + lỗ hổng đã nhận diện + hướng phát triển đa người dùng (auth, phân quyền, sandbox, quota, hardening) |
 | `presentation.html` | Bản trình bày phi kỹ thuật được sinh ra, không phải nguồn chân lý triển khai |
 | `project-structure.html` | Bản đồ dự án trực quan được sinh ra, không phải nguồn chân lý triển khai |
+| `team-setup-guide.html` | Hướng dẫn setup team-scope được sinh ra, không phải nguồn chân lý triển khai |
 
 ## Đường găng (critical path)
 

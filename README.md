@@ -14,16 +14,21 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 - Project import qua 3 luồng: **local folder** (`POST /api/projects/import-local`), **archive** `.zip`/`.tar`/`.tar.gz` (`POST /api/projects/import-archive`), và **GitHub public repo** (`POST /api/projects/import-github`), có thanh tiến độ realtime
 - Local-folder import với realtime thật: sửa file `.java` trong IDE và graph cập nhật tại chỗ (add/modify/delete) qua server-side File Watcher + WebSocket/STOMP. (GitHub/archive import theo dõi bản copy server-side = snapshot.)
 - UML diagrams: **Use Case** (SVG UML 2.5 chuẩn) & **Class** (Mermaid), API Map
-- MCP Server tools cho AI tools (Cursor, Kiro, Claude Code)
-- REST API: register project, run analysis, fetch full graph
+- **Impact Analysis** với 3 profile (`dependency` / `structural` / `type-data-flow`) qua `GET /api/projects/{id}/graph/impact`
+- **Source viewer**: đọc source file redacted, project-relative path qua `SourceController` + FE `CodeViewerModal` (+ MCP source tools)
+- **AI-refined Use Case** qua Gemini failover client (`com.vibegraph.ai/*` + `LlmUseCaseRefiner`)
+- **Deep CPG opt-in**: `LocalVariable` nodes + `READS`/`WRITES`/`CATCHES` edges qua env `VIBEGRAPH_PARSER_DEEP_CPG=true`
+- **15 MCP tools** cho AI tools (Cursor, Kiro, Claude Code) — xem `docs/mcp-integration.md`
+- REST API: register project, run analysis, fetch full graph, impact analysis, source viewer
 
 **Đang phát triển:**
-- Impact Analysis: blast radius khả dụng qua `GET /api/projects/{id}/graph/impact`; controller/endpoint chuyên biệt và neighborhood query vẫn là scaffold (xem `graph/MODULE-GUIDE.md`)
+- Neighborhood N-hop query (`GET /api/projects/{id}/graph/neighbors/{nodeId}?hops=N`) — `Neo4jGraphRepository.getNeighborhood` hiện ném `UnsupportedOperationException` (Sprint 2/3)
+- `ImpactController` chuyên biệt là scaffold rỗng — thực tế impact endpoint đang dùng `GraphController /graph/impact`
 
 **Hoãn sau MVP (post-MVP):**
 - Sequence diagram
 - Steering-file generation for AI tools
-- Multi-language parsing, authentication/billing
+- Multi-language parsing, authentication/billing (xem `VibeGraph-specs-2month/security-multiuser-roadmap.md`)
 
 ## Tech Stack
 
@@ -72,7 +77,8 @@ See `VibeGraph-specs-2month/` for detailed documentation:
 - `requirements-trimmed.md` — Functional requirements (MVP scope)
 - `architecture.md` — System design
 - `file-checklist.md` — Sprint tasks và trạng thái theo file
-- `file-checklist.md` — File creation checklist
+- `neo4j-schema.md` — Node/edge schema và Cypher migrations
+- `security-multiuser-roadmap.md` — Bảo mật hiện trạng + hướng multi-user
 - `deployment-plan.md` — Docker / domain / SSL / CI notes
 - `presentation.html` — Customer-facing overview (generated)
 

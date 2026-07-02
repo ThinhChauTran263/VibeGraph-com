@@ -32,7 +32,7 @@ import {
 import { createFlowFocusReducers, partitionFlowGraph } from '@/lib/flowFocus'
 import type { FlowListItem } from '@/lib/dataFlow'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
-import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent } from '@/types/graph'
+import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent, NodeType } from '@/types/graph'
 
 const props = defineProps<{
   projectId: string
@@ -107,6 +107,28 @@ const hoveredRelation = ref<HoveredRelation | null>(null)
 const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
+
+// Node types present in the currently highlighted cluster (selected/hovered node +
+// its bright neighbours, or the active flow's nodes). Drives the yellow ring around
+// matching swatches in the Legend, so the legend reflects what the focus contains.
+// Empty when nothing is focused.
+const highlightedNodeTypes = ref<Set<NodeType>>(new Set())
+
+/** Map a set of node ids to the set of their node types (via the live graph). */
+function updateHighlightedTypes(nodeIds: Set<string> | null): void {
+  const graph = graphInstance.value
+  if (!nodeIds || !graph) {
+    if (highlightedNodeTypes.value.size > 0) highlightedNodeTypes.value = new Set()
+    return
+  }
+  const types = new Set<NodeType>()
+  nodeIds.forEach((id) => {
+    if (!graph.hasNode(id)) return
+    const type = graph.getNodeAttribute(id, 'nodeType') as NodeType | undefined
+    if (type) types.add(type)
+  })
+  highlightedNodeTypes.value = types
+}
 
 // User toggle for showing edge type labels at all. When off, edge labels never
 // render regardless of zoom/selection. Driven by the "Edge labels" button.
@@ -192,6 +214,9 @@ const {
     const nextDensity = resolveFocusLabelDensity(ratio)
     if (nextDensity === labelDensity.value) return
     labelDensity.value = nextDensity
+    // Apply the label-density reducer swap immediately so edge labels appear the
+    // moment you cross the zoom threshold and then stay drawn every frame (the
+    // per-frame budget + viewport culling keep that cheap) — no vanish/reload.
     applyFocusReducers()
   },
 })
@@ -251,6 +276,7 @@ function applyFocusReducers(): void {
   })
   setGhostPartition?.(null)
   setEdgeLabelsVisible?.(showEdgeLabels)
+  updateHighlightedTypes(null)
 }
 
 /** Focus the graph on a node (and optional single relation), revealing edge labels. */
@@ -259,7 +285,9 @@ function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   setReducers(
     createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
   )
-  setGhostPartition?.(partitionFocusGraph(nodeId, graphInstance.value, relation))
+  const partition = partitionFocusGraph(nodeId, graphInstance.value, relation)
+  setGhostPartition?.(partition)
+  updateHighlightedTypes(partition.foregroundNodes)
   setEdgeLabelsVisible?.(edgeLabelsEnabled.value && labelDensity.value === 'edges')
 }
 
@@ -269,6 +297,7 @@ function applyFlowFocus(): void {
   const { nodeIds, edgeIds, primaryNodeId } = activeFlow.value
   setReducers(createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId))
   setGhostPartition?.(partitionFlowGraph(nodeIds, edgeIds, graphInstance.value))
+  updateHighlightedTypes(nodeIds)
   setEdgeLabelsVisible?.(true)
 }
 
@@ -605,6 +634,7 @@ onUnmounted(() => {
         v-show="activeSidebarTab === 'explorer'"
         :nodes="graphData.nodes"
         :selected-node-id="selectedNode?.id ?? null"
+        :highlighted-types="highlightedNodeTypes"
         @select="onExplorerSelect"
       />
       <FilterPanel v-show="activeSidebarTab === 'filters'" :graph-data="graphData" />

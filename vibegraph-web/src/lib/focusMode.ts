@@ -1,6 +1,7 @@
 import type Graph from 'graphology'
 import { dimColor } from './color'
 import { EDGE_COLORS } from './constants'
+import { SIGMA_MINIMAL_LABEL_RATIO, SIGMA_EDGE_LABEL_RATIO } from './runtimeConfig'
 import type { EdgeType } from '@/types/graph'
 
 export interface FocusReducers {
@@ -11,14 +12,12 @@ export interface FocusReducers {
 export type FocusLabelDensity = 'minimal' | 'nodes' | 'edges'
 
 // Sigma camera convention: a LOWER ratio means more zoomed IN. Labels reveal
-// progressively as the user zooms in:
-//   ratio > 1.05         -> zoomed out  -> 'minimal' (only the forced selected label)
-//   0.7 < ratio <= 1.05  -> medium zoom -> 'nodes'   (node labels reveal by size threshold)
-//   ratio <= 0.7         -> zoomed in   -> 'edges'   (related edge type labels appear)
-// The edge threshold is 0.7 (not a deep 0.2) so edge labels surface at a normal
-// zoomed-in level rather than only under extreme magnification.
-const MINIMAL_LABEL_RATIO = 1.05
-const EDGE_LABEL_RATIO = 0.7
+// progressively as the user zooms in (thresholds are configurable knobs):
+//   ratio > MINIMAL_LABEL_RATIO         -> zoomed out  -> 'minimal'
+//   EDGE_LABEL_RATIO < ratio <= MINIMAL -> medium zoom -> 'nodes'
+//   ratio <= EDGE_LABEL_RATIO           -> zoomed in   -> 'edges'
+const MINIMAL_LABEL_RATIO = SIGMA_MINIMAL_LABEL_RATIO
+const EDGE_LABEL_RATIO = SIGMA_EDGE_LABEL_RATIO
 
 export function resolveFocusLabelDensity(cameraRatio: number): FocusLabelDensity {
   if (!Number.isFinite(cameraRatio)) return 'nodes'

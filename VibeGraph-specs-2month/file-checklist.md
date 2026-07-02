@@ -30,15 +30,17 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 - [x] `ParserService.java`
 - [x] `impl/ParserServiceImpl.java` (`parseFile`/`parseProject` đã chạy; `parseFileWithCache` còn deferred Sprint 2 và ném `UnsupportedOperationException`)
-- [s] `SymbolResolverService.java` + [s] `impl/SymbolResolverServiceImpl.java` (interface/impl còn khung TODO; symbol solving thực tế đang nằm trong `ParserServiceImpl` + visitor)
-- [s] `CallGraphBuilderService.java` + [s] `impl/CallGraphBuilderServiceImpl.java` (interface/impl còn khung TODO; CALLS hiện do `MethodVisitor` phát ra cho resolved in-project calls)
+
+> **Đã gỡ trong đợt refactor Sprint 3:** `SymbolResolverService.java` + impl và `CallGraphBuilderService.java` + impl (verify 2026-07-02: `glob **/{Symbol*,CallGraph*}.java` → 0 file). Symbol solving hiện nằm trong `ParserServiceImpl` + visitor; CALLS do `MethodVisitor` phát ra cho resolved in-project calls.
+
+> **Empty placeholder stubs đã gỡ (2026-07-02):** `parser/service/CacheService.java` và `parser/util/TypeNames.java` (cả hai 0 byte, T84/T94 chưa implement) đã bị xóa. Nếu cần implement sau, tạo file mới.
 
 ### `src/main/java/com/vibegraph/common/config/`
 
 - [x] `Neo4jMigrationRunner.java` (áp dụng `V1__init_schema.cypher` lúc khởi động; thay thế config Neo4j cũ đã bị xóa)
 - [x] `WebSocketConfig.java` với `/ws/graph-updates` (endpoint/broker đã có; allowed origins/heartbeat còn TODO hardening)
 - [x] `CorsConfig.java`
-- [s] `McpServerConfig.java` (class config đã có; chưa đăng ký MCP tool/transport custom nào trong file này)
+- [x] `McpServerConfig.java` (verify 2026-07-02: đã đăng ký 15 MCP tools qua Spring AI streamable HTTP tại `/mcp`)
 - [x] `AsyncConfig.java` (`@EnableAsync` + bean `analysisExecutor` bounded thread pool đã có)
 
 ### `src/main/java/com/vibegraph/common/exception/`
@@ -87,7 +89,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `ProjectController.java`
 - [x] `GraphController.java`
 - [x] `ImportController.java` (`POST /api/projects/import-archive` sync/async và `POST /api/projects/import-github` đã có)
-- [s] `ImpactController.java` (chỉ khung `@RestController`, chưa có endpoint — `// TODO`)
+- [removed] `ImpactController.java` — đã xóa (commit `331c613`); impact endpoint gộp vào `GraphController /graph/impact`
 
 ### `src/main/java/com/vibegraph/graph/service/`
 
@@ -95,7 +97,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `AnalyzeService.java` + [x] `impl/AnalyzeServiceImpl.java`
 - [x] `GraphService.java` + [x] `impl/GraphServiceImpl.java` (`GraphServiceTest` đã bật và pass cho `getFullGraph`/`searchNodes`)
 - [x] `ArchiveImportService.java` + [x] `impl/ArchiveImportServiceImpl.java` (flow chính Sprint 2 — nhận upload ZIP/TAR/TAR.GZ, validate, materialize `.java`, register project, analyze sync/async)
-- [s] `ImpactService.java` + [s] `impl/ImpactServiceImpl.java` (interface chưa có method; impl `// TODO: Implement`; `ImpactServiceTest` còn `@Disabled`)
+- [removed] `ImpactService.java` + `impl/ImpactServiceImpl.java` — đã xóa (commit `331c613`); impact logic nằm trong `GraphServiceImpl.getImpactAnalysis`
 - [x] `TarballImportService.java` (service contract có `importFromGithub`)
 - [x] `impl/TarballImportServiceImpl.java` (GitHub public repo: parse URL, pre-flight, download tarball, extract qua archive pipeline, analyze async, broadcast status)
 
@@ -113,7 +115,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 ### `src/main/java/com/vibegraph/graph/websocket/`
 
 - [x] `GraphUpdateController.java` (`broadcastStatus` publish `/topic/projects/{id}/status`; `broadcastFullUpdate` và `broadcastIncremental` publish `/topic/projects/{id}/updates`. Producer broadcast `INCREMENTAL` (added/removed) cho mọi thay đổi file CREATE/MODIFY/DELETE qua `FileChangeBroadcaster`)
-- [s] `WebSocketEventListener.java` (listener đã có; connect/disconnect handler còn `// TODO`)
+- [removed] `WebSocketEventListener.java` — đã xóa (commit `331c613`)
 
 ### `src/main/java/com/vibegraph/graph/dto/`
 
@@ -137,7 +139,7 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 - [x] `service/UseCaseDiagramService.java` + [x] `impl/UseCaseDiagramServiceImpl.java` (Mermaid `flowchart LR` từ Route/HANDLES_ROUTE)
 - [x] `service/ClassDiagramService.java` + [x] `impl/ClassDiagramServiceImpl.java` (Mermaid `classDiagram`, visibility/stereotype, package filter)
 - [x] `service/MermaidGeneratorService.java` + [x] `impl/MermaidGeneratorServiceImpl.java` (sanitizeId/escapeLabel an toàn cho Mermaid)
-- [s] `repository/DiagramQueryRepository.java` (class đã có; query methods còn TODO)
+- [removed] `repository/DiagramQueryRepository.java` — đã xóa (commit `331c613`); diagram queries thực hiện qua `GraphService.getFullGraph`
 - [x] `dto/response/DiagramResponse.java`
 - [x] `dto/response/UseCaseResponse.java`
 
@@ -145,17 +147,29 @@ Checklist này bám theo bố cục repo hiện tại. Không tạo `vibegraph-c
 
 ### `src/main/java/com/vibegraph/mcp/`
 
-- [s] `tool/ArchitectureTool.java` (`// TODO: Add @Tool method`)
-- [s] `tool/ClassContextTool.java` (`// TODO: Add @Tool method`)
-- [s] `tool/LayerPatternTool.java` (`// TODO: Add @Tool method`)
-- [s] `tool/ImpactAnalysisTool.java` (`// TODO: Add @Tool method`)
-- [s] `controller/McpEndpointController.java` (class/controller đã có; chưa expose endpoint/tool method riêng trong code này)
-- [s] `service/McpToolService.java` + [s] `impl/McpToolServiceImpl.java` (interface/impl còn khung; `// TODO: Implement`)
-- [s] `service/ArchitectureAnalyzer.java` + [s] `impl/ArchitectureAnalyzerImpl.java` (interface/impl còn khung; `// TODO: Implement`)
-- [x] response DTOs: `ArchitectureContextResponse`, `ClassContextResponse`, `LayerPatternResponse`
-- [x] request DTOs: `ClassContextRequest`, `LayerPatternRequest`
+MCP surface đã mở rộng từ 4 tool kế hoạch lên **15 tool đã ship** (verify 2026-07-02 qua `mcp/MODULE-GUIDE.md` + `mcp/service/impl/` = 14 analyzer/impl).
 
-> `McpToolsTest` đã có nhưng còn `@Disabled`.
+- [x] `tool/ArchitectureTool.java` — @Tool `get_project_architecture`
+- [x] `tool/ClassContextTool.java` — @Tool `get_class_context`
+- [x] `tool/LayerPatternTool.java` — @Tool `get_layer_pattern`
+- [x] `tool/ImpactAnalysisTool.java` — @Tool `get_impact_analysis` (3 profile)
+- [x] `tool/TraceEndpointTool.java` — @Tool `trace_endpoint`
+- [x] `tool/FindReferencesTool.java` — @Tool `find_references`
+- [x] `tool/SourceFileTool.java` — @Tool `get_source_file`
+- [x] `tool/SearchSourceTool.java` — @Tool `search_source`
+- [x] `tool/MethodSourceTool.java` — @Tool `get_method_source`
+- [x] `tool/MethodCpgTool.java` — @Tool `get_method_cpg_context`
+- [x] `tool/FindRelatedTestsTool.java` — @Tool `find_related_tests`
+- [x] `tool/SuggestTestPlanTool.java` — @Tool `suggest_test_plan`
+- [x] `tool/PlanCodeChangeTool.java` — @Tool `plan_code_change`
+- [x] `tool/ExplainFailureTool.java` — @Tool `explain_failure_path`
+- [x] `tool/ProjectConventionsTool.java` — @Tool `get_project_conventions`
+- [x] `common/config/McpServerConfig.java` — đăng ký toàn bộ 15 tool
+- [x] `service/impl/*AnalyzerImpl.java` × 14 (mỗi analyzer phục vụ 1 hoặc nhiều tool)
+- [x] `source/GraphView` + `SourceFileService` + `SourceGraphSupport` — shared helpers
+- [x] response DTOs + request DTOs
+
+> Test coverage: `SeniorMcpToolsTest`, `McpToolsTest`, `ProjectConventionsServiceTest`, `ProjectRestartSourceTest`, `ProjectServicePersistenceTest` đã enabled và pass.
 
 ### `src/main/java/com/vibegraph/watcher/`
 
@@ -221,22 +235,22 @@ Test fixture:
 - [s] `components/layout/MainLayout.vue` (khung đã có; chưa render `SidePanel | GraphCanvas | NodeDetailPanel`)
 - [s] `components/layout/SidePanel.vue` (khung đã có; tabs/panel content còn `// TODO`)
 - [s] `components/layout/StatusBar.vue` (khung đã có; connection/stats còn `// TODO`)
-- [s] `components/panels/FilterPanel.vue` (khung đã có; node/edge toggles còn `// TODO`; focus depth UI đã loại bỏ theo UX review)
+- [x] `components/panels/FilterPanel.vue` (207 LOC, functional — toggle node/edge type + counts, wired vào GraphCanvas)
 - [s] `components/panels/ExplorerPanel.vue` (khung đã có; search/folder tree còn `// TODO`)
 - [s] `components/panels/FlowsPanel.vue` (khung đã có; flow list/highlight còn `// TODO`)
-- [s] `components/panels/NodeDetailPanel.vue` (khung đã có; incoming/outgoing detail còn `// TODO`)
+- [x] `components/panels/NodeDetailPanel.vue` (465 LOC — incoming/outgoing connections, properties, redaction, wired vào GraphCanvas)
 - [s] `components/panels/LegendPanel.vue` (khung đã có; render legend còn `// TODO`)
 - [x] `components/panels/FocusDepthControl.vue` (removed; hop-depth Focus Mode không còn dùng trong UI)
 - [s] `components/panels/CodeInspector.vue` (khung đã có; code viewer/syntax highlight còn `// TODO`)
 - [x] `components/graph/GraphCanvas.vue`
 - [s] `components/graph/GraphControls.vue` (khung đã có; control buttons còn `// TODO`)
-- [s] `components/graph/SearchBar.vue` (khung đã có; input/dropdown còn `// TODO`)
-- [s] `components/diagram/DiagramPanel.vue` (khung đã có; tabs/render active diagram còn `// TODO`)
-- [s] `components/diagram/UseCaseDiagram.vue` (khung đã có; Mermaid render còn `// TODO`)
-- [s] `components/diagram/ClassDiagram.vue` (khung đã có; Mermaid render + package filter còn `// TODO`)
-- [defer] `components/diagram/SequenceDiagram.vue` (file khung có sẵn, nhưng sequence diagram nằm ngoài MVP 2 tháng)
+- [x] `components/graph/SearchBar.vue` (181 LOC — functional client-side search, suggestions dropdown, wired vào GraphCanvas)
+- [x] `components/diagram/DiagramPanel.vue` (998 LOC — renders Use Case SVG UML 2.5 + Class Mermaid, package filter, loading/error/empty states)
+- [deleted] `components/diagram/UseCaseDiagram.vue` (stub đã xóa 2026-07-02 — `DiagramPanel.vue` render trực tiếp)
+- [deleted] `components/diagram/ClassDiagram.vue` (stub đã xóa 2026-07-02 — `DiagramPanel.vue` render trực tiếp)
+- [deleted] `components/diagram/SequenceDiagram.vue` (stub đã xóa 2026-07-02 — sequence diagram defer post-MVP)
 - [x] `components/projects/AddProjectArchive.vue` (flow chính — chọn file `.zip`/`.tar`/`.tar.gz`, bấm Add, hiển thị trạng thái/progress)
-- [ ] `Empty placeholder: vibegraph-web/src/components/projects/GitHubImportForm.vue`
+- [x] `components/projects/GitHubImportForm.vue` (351 LOC — form + validation + progress + tests)
 - [x] `components/ui/Button.vue`
 - [x] `components/ui/Input.vue`
 - [s] `components/ui/Tabs.vue` (khung đã có; tab triggers/content slot còn `// TODO`)
@@ -247,21 +261,21 @@ Test fixture:
 - [x] `composables/useSigma.ts`
 - [x] `composables/useWebSocket.ts` (STOMP-over-SockJS connect/subscribe/disconnect đã có; dùng cho status topic)
 - [x] `composables/useGraphData.ts`
-- [s] `composables/useDiagrams.ts` (Mermaid rendering còn `// TODO`)
-- [s] `composables/useFilters.ts` (filter state management còn `// TODO`)
+- [x] `composables/useDiagrams.ts` (150 LOC — loads UML Use Case + Class diagram from backend)
+- [x] `composables/useFilters.ts` (25 LOC thin wrapper + `graphFilters.ts` logic)
 - [x] `composables/useArchiveImport.ts` (flow chính — gọi `POST /api/projects/import-archive` multipart sync/async, theo dõi progress qua status topic)
-- [ ] `Empty placeholder: vibegraph-web/src/composables/useGitHubImport.ts`
+- [x] `composables/useGitHubImport.ts` (225 LOC — import logic + error mapping + tests)
 - [x] `lib/constants.ts`
 - [x] `lib/api.ts`
 - [x] `lib/graphAdapter.ts` (được bao phủ bởi `lib/__tests__/graphAdapter.spec.ts`)
 - [s] `lib/focusMode.ts` (N-hop BFS/reducers còn `// TODO`)
-- [x] `lib/colors.ts`
+- [deleted] `lib/colors.ts` (dead code, đã xóa 2026-07-02 — functions sống trong `graphAdapter.ts` + `lib/color.ts`)
 - [x] `stores/graph.ts`
 - [s] `stores/filter.ts` (state đã có; toggle actions còn `// TODO`)
 - [s] `stores/project.ts` (state đã có; project management actions còn `// TODO`)
 - [x] `types/graph.ts`
 
-> `stores/counter.ts` là scaffolding Vue còn sót lại và có thể gỡ bỏ.
+> ~~`stores/counter.ts` là scaffolding Vue còn sót lại và có thể gỡ bỏ.~~ ✅ Đã xóa 2026-07-02.
 
 ## DevOps - Gốc repo
 
@@ -273,10 +287,10 @@ Test fixture:
 - [x] `.env.example`
 - [x] `.dockerignore`
 - [~] `README.md`
-- [ ] `Empty placeholder: .github/workflows/ci.yml`
+- [x] `.github/workflows/backend.yml` + `.github/workflows/frontend.yml` (CI trên PR/push cho poc/develop/main)
 - [~] file compose/nginx/certbot cho production (template đã có tài liệu trong `deployment-plan.md`; chưa commit thành file)
-- [ ] `docs/setup.md`
-- [ ] `docs/mcp-integration.md`
+- [x] `docs/setup.md`
+- [x] `docs/mcp-integration.md` (hướng dẫn MCP 15 tools cho AI coding assistants)
 
 ## Hoãn lại tường minh
 
@@ -293,20 +307,15 @@ Test fixture:
 
 ## Hạng mục công việc tiếp theo
 
-Lát cắt dọc Sprint 1 đã hiện thực và xanh. Bề mặt Sprint 2-3 cho **diagram, MCP,
-watcher/realtime không còn chỉ là scaffold: realtime CREATE/MODIFY/DELETE đã wired đầy đủ (incremental qua FileChangeBroadcaster). Một số panel/frontend phụ có thể còn scaffold** (xem các dòng
-`[s]` ở trên) — nên phần việc còn lại gồm cả hiện thực, không chỉ kiểm chứng:
-
-1. Hoàn thiện các phần còn lại quanh import: GitHub import UI (`GitHubImportForm.vue`/`useGitHubImport.ts`) và hardening public-demo cho archive/GitHub flow.
-2. Hiện thực các stub `[s]`: endpoint cho `DiagramController`/`ImpactController`, các
-   `*DiagramServiceImpl` + `MermaidGeneratorServiceImpl`, 4 MCP `@Tool` +
-   `McpToolServiceImpl`/`ArchitectureAnalyzerImpl`, và `getNeighborhood`/`getImpact`
-   trong `Neo4jGraphRepository`.
-3. Bật lại các test backend đang `@Disabled` (impact, tarball/archive import, import controller,
-   diagram, mcp, watcher, app context) và làm cho chúng xanh — biến `[~]` thành `[x]`.
-4. Dựng các frontend scaffold `[s]`: layout shell, filter/explorer/detail panels,
-   graph controls/search, filter/focus logic, graph patch realtime, và diagram UI.
-5. Dựng UI import GitHub: `Empty placeholder: vibegraph-web/src/composables/useGitHubImport.ts` và
-   `Empty placeholder: vibegraph-web/src/components/projects/GitHubImportForm.vue` (đường import phía backend đã có sẵn).
-6. Thêm `Empty placeholder: .github/workflows/ci.yml` và các trang `docs/` setup + tích hợp MCP.
-7. Gỡ scaffolding còn sót (`stores/counter.ts`).
+> **Cập nhật 2026-07-02:** Hầu hết các hạng mục trước đây đã hoàn thành hoặc bị loại bỏ:
+> - ImpactController/ImpactService/WebSocketEventListener/DiagramQueryRepository/SymbolResolverService/CallGraphBuilderService đã XÓA
+> - GitHub Import UI, FilterPanel, NodeDetailPanel, DiagramPanel, SearchBar, useDiagrams, useFilters đã SHIP
+> - MCP surface mở rộng từ 4 lên 15 tool
+> - CI workflow backend + frontend đã có
+>
+> Việc còn lại (Sprint 4 polish):
+> 1. ~~Gỡ dead Vue stubs~~ ✅ Đã xóa ClassDiagram.vue, UseCaseDiagram.vue, SequenceDiagram.vue (2026-07-02)
+> 2. ~~Gỡ `stores/counter.ts`~~ ✅ Đã xóa (2026-07-02)
+> 3. ~~Gỡ empty Java stubs~~ ✅ Đã xóa CacheService.java, TypeNames.java, GraphStats.vue (2026-07-02)
+> 4. OpenAPI/Swagger annotations (T78/T79)
+> 5. Production Docker + domain + SSL (T99/T103-T105)

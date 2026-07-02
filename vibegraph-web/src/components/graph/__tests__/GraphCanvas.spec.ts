@@ -189,15 +189,17 @@ describe('GraphCanvas edge label toggle', () => {
     loading.value = false
     error.value = null
 
+    // The zoom-driven density change applies its reducer swap synchronously, so the
+    // captured onCameraRatioChange handler drives setEdgeLabelsVisible immediately.
     const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
     await flushPromises()
     setEdgeLabelsVisible.mockClear()
 
     expect(capturedCameraRatioChange).toBeTypeOf('function')
 
-    // Zoom in past the edge-label ratio (0.7) -> density 'edges'. Toggle defaults
-    // ON, so edge labels become visible.
-    capturedCameraRatioChange?.(0.5)
+    // Zoom in past the edge-label ratio (0.45) -> density 'edges'. Toggle defaults
+    // ON, so edge labels become visible immediately.
+    capturedCameraRatioChange?.(0.3)
     expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
 
     // Toggle OFF -> edge labels forced off even though we are still zoomed in.
