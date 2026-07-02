@@ -139,6 +139,15 @@ function toggleEdgeLabels(): void {
   applyFocusReducers()
 }
 
+// User toggle for appending the target node's kind to edge labels (e.g. "IMPORTS
+// Class", kind tinted to the node color). Independent of the edge-label toggle.
+const edgeKindEnabled = ref(true)
+
+function toggleEdgeKind(): void {
+  edgeKindEnabled.value = !edgeKindEnabled.value
+  setEdgeKindVisible?.(edgeKindEnabled.value)
+}
+
 function resetRelationFocus(): void {
   hoveredRelation.value = null
   pinnedRelation.value = null
@@ -170,6 +179,7 @@ const {
   graphInstance,
   setReducers,
   setEdgeLabelsVisible,
+  setEdgeKindVisible,
   setGhostPartition,
   refresh: refreshSigma,
   resetLayout: resetSigmaLayout,
@@ -685,6 +695,21 @@ onUnmounted(() => {
         {{ edgeLabelsEnabled ? 'Edge labels: On' : 'Edge labels: Off' }}
       </button>
 
+      <button
+        v-if="!loading && !error"
+        type="button"
+        class="graph-edge-label-toggle graph-edge-kind-toggle"
+        :class="{
+          'graph-edge-label-toggle--off': !edgeKindEnabled,
+          'graph-edge-kind-toggle--shifted': sidebarCollapsed,
+          'graph-edge-kind-toggle--tucked': selectedNode || activeFlowDetail,
+        }"
+        :aria-pressed="edgeKindEnabled"
+        @click="toggleEdgeKind"
+      >
+        {{ edgeKindEnabled ? 'Node kind: On' : 'Node kind: Off' }}
+      </button>
+
       <div v-if="!loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
         <div class="graph-controls-help__title">Controls</div>
         <div class="graph-controls-help__row">
@@ -1143,6 +1168,8 @@ onUnmounted(() => {
   top: 1rem;
   left: 1rem;
   z-index: 6;
+  min-width: 8rem;
+  text-align: center;
   padding: 0.4rem 0.75rem;
   border: 1px solid rgba(96, 165, 250, 0.45);
   border-radius: 999px;
@@ -1155,7 +1182,8 @@ onUnmounted(() => {
   transition:
     background 150ms ease,
     border-color 150ms ease,
-    color 150ms ease;
+    color 150ms ease,
+    left 150ms ease;
 }
 
 .graph-edge-label-toggle:hover,
@@ -1170,11 +1198,27 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
-/* When the sidebar is collapsed a floating expand chevron occupies the top-left
-   corner. Shift the edge-label toggle clear of it so the two controls never
-   overlap (they previously stacked at the same coordinates). */
+/* Sidebar collapsed: clear the floating expand chevron in the top-left corner. */
 .graph-edge-label-toggle--shifted {
   left: 3.5rem;
+}
+
+/* Node-kind toggle sits to the RIGHT of the edge-labels toggle on the same row
+   (both 8rem wide + gap). Only THIS button relocates while a detail panel is open
+   (the search bar shifts left over this spot) — the shorter edge-labels toggle
+   stays put since it never reaches the search bar. */
+.graph-edge-kind-toggle {
+  left: 9.5rem;
+}
+
+.graph-edge-kind-toggle--shifted {
+  left: 12rem;
+}
+
+/* Detail open: tuck the node-kind toggle into the empty space just past the
+   (centered) search bar's Clear button. */
+.graph-edge-kind-toggle--tucked {
+  left: calc(50% + 14rem + 0.75rem);
 }
 
 @keyframes spin {
