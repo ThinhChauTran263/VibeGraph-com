@@ -18,6 +18,7 @@ table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}th,td{te
 .check{list-style:none;padding:0}.check li{padding:.35rem 0 .35rem 1.8rem;position:relative}.check li::before{content:"☐";position:absolute;left:0;top:.3rem;color:var(--ac);font-size:1.05rem}
 .foot{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bd);font-size:.9rem}.foot a{text-decoration:none;color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:.6rem 1rem}.foot a:hover{border-color:var(--ac);background:var(--s2)}
 .muted{color:var(--dim);font-size:.85rem}
+.co{border-left:3px solid var(--ac);background:var(--s2);border-radius:0 10px 10px 0;padding:.8rem 1.1rem;margin:1rem 0}
 </style>
 </head>
 <body>
@@ -26,6 +27,8 @@ table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}th,td{te
   <span class="tag">Frontend</span>
   <h1>Legend — Chú thích &amp; đếm loại node</h1>
   <p class="lead">Khối chú thích màu ở cuối sidebar (tab Explorer): mỗi loại node kèm màu &amp; số lượng trong graph hiện tại, giúp đọc màu trên canvas mà không cần mở tab Filters.</p>
+
+  <div class="co"><b>Không rõ "Method / Field / Annotation… là gì"?</b> Xem <a href="graph-model.html">Graph Model → Từ điển dễ hiểu</a> — giải thích mỗi loại node/edge bằng ví dụ Java cụ thể (dành cho người mới &amp; thầy cô).</div>
 
   <h2>Cơ chế dựng legend (chính xác theo code)</h2>
   <p><code>LegendPanel.vue</code> nhận prop <code>nodeStats</code> (đếm node theo loại) + <code>title</code> (mặc định "Legend"), rồi tính <code>items</code> bằng <code>computed</code>:</p>

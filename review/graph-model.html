@@ -29,6 +29,53 @@ table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.86rem}th,td{t
   <h1>Graph Model — Cách dựng đồ thị tri thức</h1>
   <p class="lead">Đây là <b>nền tảng của mọi tính năng</b> (Graph, Impact, Flows, Diagrams, MCP). Hiểu node/edge nào được sinh ra và <b>điều kiện</b> giúp review chuẩn: nếu một cạnh thiếu, mọi tính năng phía trên đều lệch theo.</p>
 
+  <div class="co tip"><b>Dành cho người mới / thầy cô hỏi nhanh:</b> đọc mục <b>"Từ điển dễ hiểu"</b> ngay dưới đây (giải thích mỗi loại là gì + ví dụ Java). Muốn biết <b>parser sinh ra chúng khi nào</b> thì đọc tiếp mục "Catalog" ở phần sau (chi tiết kỹ thuật).</div>
+
+  <h2>Từ điển dễ hiểu — LOẠI NODE (điểm/đốm trên đồ thị)</h2>
+  <p class="muted">Node = một "phần tử" trong mã nguồn. Trên panel <b>NODE TYPES</b>, mỗi loại có màu &amp; số đếm riêng. Con số ví dụ dưới đây lấy từ một project mẫu.</p>
+  <table>
+    <tr><th>Loại node</th><th>Là gì (nói đơn giản)</th><th>Ví dụ trong code Java</th></tr>
+    <tr><td class="mono">Project</td><td>Cả dự án — 1 điểm gốc đại diện toàn bộ codebase (luôn có đúng 1).</td><td>toàn bộ repo <code>my-app</code></td></tr>
+    <tr><td class="mono">Package</td><td>Gói/thư mục Java — nhóm các file cùng nhánh.</td><td><code>package com.abc.service;</code></td></tr>
+    <tr><td class="mono">File</td><td>Một tập tin mã nguồn <code>.java</code>.</td><td><code>UserService.java</code></td></tr>
+    <tr><td class="mono">Class</td><td>Một <b>lớp</b> — bản thiết kế cho đối tượng.</td><td><code>class UserService { }</code></td></tr>
+    <tr><td class="mono">Interface</td><td><b>Giao diện</b> — bản hợp đồng liệt kê phương thức, không có phần thân.</td><td><code>interface Repository { }</code></td></tr>
+    <tr><td class="mono">Enum</td><td>Kiểu <b>liệt kê</b> — tập hằng số cố định.</td><td><code>enum Status { ON, OFF }</code></td></tr>
+    <tr><td class="mono">Record</td><td>Lớp <b>bản ghi</b> — lớp chứa dữ liệu bất biến, viết gọn.</td><td><code>record Point(int x, int y) {}</code></td></tr>
+    <tr><td class="mono">Annotation</td><td><b>Chú thích</b> — nhãn gắn lên code để đánh dấu / cấu hình.</td><td><code>@Service</code>, <code>@Override</code></td></tr>
+    <tr><td class="mono">Method</td><td><b>Phương thức</b> (hàm) trong lớp — một hành vi/việc code làm được.</td><td><code>public void save() { }</code></td></tr>
+    <tr><td class="mono">Constructor</td><td><b>Hàm khởi tạo</b> — chạy khi tạo đối tượng mới bằng <code>new</code>.</td><td><code>public UserService() { }</code></td></tr>
+    <tr><td class="mono">Field</td><td><b>Thuộc tính</b> (biến thành viên) của một lớp.</td><td><code>private int age;</code></td></tr>
+    <tr><td class="mono">APIEndpoint</td><td>Một <b>điểm cuối REST</b> = phương thức HTTP + đường dẫn; là "cửa" client gọi vào backend.</td><td><code>GET /api/users</code></td></tr>
+    <tr><td class="mono">DBModel</td><td>Lớp <b>ánh xạ bảng dữ liệu</b> (có <code>@Entity/@Table/@Node...</code>) — đại diện 1 bảng/collection trong DB.</td><td><code>@Entity class User { }</code></td></tr>
+    <tr><td class="mono">External</td><td>Node <b>"bên ngoài"</b> — thứ code có nhắc tới nhưng VibeGraph <b>chưa/không phân tích</b> (thư viện, JDK, hoặc chưa resolve). Giữ lại để cạnh không bị mất.</td><td><code>String</code>, <code>List</code>, class của thư viện ngoài</td></tr>
+  </table>
+
+  <h2>Từ điển dễ hiểu — LOẠI EDGE (đường nối giữa 2 node)</h2>
+  <p class="muted">Edge = một <b>quan hệ có hướng</b> giữa 2 node. Đọc theo mẫu <b>"A —QUAN HỆ→ B"</b>. Trên panel <b>EDGE TYPES</b> mỗi loại cũng có màu &amp; số đếm riêng.</p>
+  <table>
+    <tr><th>Loại edge</th><th>Ý nghĩa (A —quan hệ→ B)</th><th>Ví dụ</th></tr>
+    <tr><td class="mono">CONTAINS</td><td>A <b>chứa</b> B (theo cấu trúc thư mục/gói).</td><td>Package —CONTAINS→ File</td></tr>
+    <tr><td class="mono">DEFINES</td><td>File <b>khai báo/định nghĩa</b> phần tử nào bên trong nó.</td><td>File —DEFINES→ Class</td></tr>
+    <tr><td class="mono">HAS_METHOD</td><td>Lớp <b>có</b> phương thức này.</td><td>Class —HAS_METHOD→ Method</td></tr>
+    <tr><td class="mono">HAS_FIELD</td><td>Lớp <b>có</b> thuộc tính này.</td><td>Class —HAS_FIELD→ Field</td></tr>
+    <tr><td class="mono">IMPORTS</td><td>File <b>dùng nhờ</b> (import) lớp/gói khác.</td><td>File —IMPORTS→ Class</td></tr>
+    <tr><td class="mono">EXTENDS</td><td>Lớp con <b>kế thừa</b> lớp cha (hoặc interface mở rộng interface).</td><td>Dog —EXTENDS→ Animal</td></tr>
+    <tr><td class="mono">IMPLEMENTS</td><td>Lớp <b>hiện thực</b> một giao diện.</td><td>UserServiceImpl —IMPLEMENTS→ UserService</td></tr>
+    <tr><td class="mono">CALLS</td><td>Phương thức A <b>gọi</b> phương thức B (chỉ khi B nằm trong dự án).</td><td>save() —CALLS→ validate()</td></tr>
+    <tr><td class="mono">OVERRIDES</td><td>Phương thức <b>ghi đè</b> phương thức cùng tên ở lớp cha.</td><td>toString() —OVERRIDES→ Object.toString()</td></tr>
+    <tr><td class="mono">RETURNS</td><td>Phương thức <b>trả về</b> kiểu dữ liệu gì (bỏ <code>void</code>).</td><td>getUser() —RETURNS→ User</td></tr>
+    <tr><td class="mono">PARAMETER_TYPE</td><td><b>Kiểu tham số</b> của phương thức.</td><td>save(User u) —PARAMETER_TYPE→ User</td></tr>
+    <tr><td class="mono">THROWS</td><td>Phương thức có thể <b>ném ngoại lệ</b> loại nào.</td><td>read() —THROWS→ IOException</td></tr>
+    <tr><td class="mono">TYPE_OF</td><td><b>Kiểu</b> của một thuộc tính (bỏ kiểu nguyên thủy/String).</td><td>field <code>repo</code> —TYPE_OF→ UserRepository</td></tr>
+    <tr><td class="mono">INSTANTIATES</td><td>Nơi code <b>tạo mới đối tượng</b> bằng <code>new</code>.</td><td>method —INSTANTIATES→ ArrayList</td></tr>
+    <tr><td class="mono">ANNOTATED_BY</td><td>Phần tử <b>được gắn</b> annotation nào.</td><td>UserService —ANNOTATED_BY→ @Service</td></tr>
+    <tr><td class="mono">HANDLES_ROUTE</td><td>Phương thức <b>xử lý</b> endpoint REST nào.</td><td>listUsers() —HANDLES_ROUTE→ GET /api/users</td></tr>
+    <tr><td class="mono">INJECTS</td><td><b>Tiêm phụ thuộc</b> (Spring DI): lớp được "tiêm" một bean khác vào để dùng.</td><td>UserController —INJECTS→ UserService</td></tr>
+    <tr><td class="mono">STEP_IN_FLOW</td><td>Một <b>bước trong luồng xử lý</b> (suy luận: từ endpoint đi theo các lời gọi) — dùng dựng Data Flow.</td><td>controller → service → repository</td></tr>
+    <tr><td class="mono">READS / WRITES / CATCHES</td><td>Phương thức <b>đọc/ghi</b> một field, hoặc <b>bắt</b> ngoại lệ — chỉ khi bật chế độ phân tích sâu (deep-cpg).</td><td>save() —WRITES→ field <code>count</code></td></tr>
+  </table>
+
   <h2>Pipeline phân tích</h2>
   <ul class="flow">
     <li><b>Scan</b>: <code>ParserServiceImpl.parseProject</code> quét file <code>.java</code>, dựng <b>1 parser project-wide</b> với SymbolSolver (Reflection + JavaParserTypeSolver cho mọi source root; phát hiện <code>src/main/java</code>, <code>src/test/java</code> hoặc suy từ package declaration).</li>
