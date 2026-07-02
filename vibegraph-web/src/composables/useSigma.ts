@@ -9,6 +9,7 @@ import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import forceAtlas2 from 'graphology-layout-forceatlas2'
+import noverlap from 'graphology-layout-noverlap'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
@@ -23,6 +24,19 @@ import {
   FA2_BARNES_HUT_MIN_NODES,
   FA2_SLOW_DOWN,
   FA2_ITERATIONS,
+  FA2_LINLOG_MODE,
+  FA2_OUTBOUND_ATTRACTION,
+  FA2_ADJUST_SIZES,
+  FA2_STRONG_GRAVITY_MODE,
+  FA2_OUTLIER_CLAMP_PERCENTILE,
+  FA2_LARGE_GRAPH_THRESHOLD,
+  FA2_GRAVITY_LARGE,
+  FA2_SCALING_RATIO_LARGE,
+  FA2_ITERATIONS_LARGE,
+  NOVERLAP_ENABLED,
+  NOVERLAP_MARGIN,
+  NOVERLAP_RATIO,
+  NOVERLAP_MAX_ITERATIONS,
   LAYOUT_AUTO_STOP_MS,
   ZOOM_FIT_DURATION_MS,
 } from '@/lib/runtimeConfig'
@@ -276,22 +290,92 @@ export function useSigma(options: UseSigmaOptions) {
   /**
    * Compute the ForceAtlas2 layout synchronously (no worker, no animation) and
    * write final x/y onto the graph before it is first rendered.
+   *
+   * Small graphs keep the base profile (already spread well). Large graphs switch
+   * to a cluster-separating profile — LinLog mode + dissuade-hubs + lower gravity
+   * and scaling + more iterations — which turns a dense hairball into visibly
+   * separated communities. An optional Noverlap pass then removes residual node
+   * overlap without collapsing the cluster structure FA2 produced.
    */
   function settleLayout(graph: Graph): void {
     if (graph.order === 0) return
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     try {
       forceAtlas2.assign(graph, {
-        iterations: FA2_ITERATIONS,
+        iterations: isLarge ? FA2_ITERATIONS_LARGE : FA2_ITERATIONS,
         settings: {
-          gravity: FA2_GRAVITY,
-          scalingRatio: FA2_SCALING_RATIO,
+          gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+          scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
           barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
           slowDown: FA2_SLOW_DOWN,
+          linLogMode: FA2_LINLOG_MODE,
+          outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+          adjustSizes: FA2_ADJUST_SIZES,
+          strongGravityMode: FA2_STRONG_GRAVITY_MODE,
         },
       })
     } catch {
       // Leave the random seed positions if the layout fails.
     }
+
+    // Post-pass: only worth it on large graphs where FA2 can still leave nodes
+    // overlapping inside dense clusters. Guarded separately so a noverlap failure
+    // never discards the good FA2 positions.
+    if (isLarge && NOVERLAP_ENABLED) {
+      try {
+        noverlap.assign(graph, {
+          maxIterations: NOVERLAP_MAX_ITERATIONS,
+          settings: {
+            margin: NOVERLAP_MARGIN,
+            ratio: NOVERLAP_RATIO,
+          },
+        })
+      } catch {
+        // Keep the FA2 layout if the overlap-removal pass fails.
+      }
+    }
+
+    // Pull far-flung outliers (disconnected singletons / orphan components) inward
+    // to a bounding ring so zoom-to-fit frames the airy main body instead of
+    // shrinking everything to fit a distant dot. See FA2_OUTLIER_CLAMP_PERCENTILE.
+    if (isLarge) clampOutliers(graph, FA2_OUTLIER_CLAMP_PERCENTILE)
+  }
+
+  /**
+   * Move every node whose distance from the centroid exceeds the given percentile
+   * radius onto that radius (keeping its direction). Disabled when percentile is
+   * 0 or ≥ 1. Operates in place on the graph's x/y attributes.
+   */
+  function clampOutliers(graph: Graph, percentile: number): void {
+    if (percentile <= 0 || percentile >= 1 || graph.order === 0) return
+    let sumX = 0
+    let sumY = 0
+    const nodes: string[] = []
+    graph.forEachNode((id, attr) => {
+      sumX += attr.x as number
+      sumY += attr.y as number
+      nodes.push(id)
+    })
+    const cx = sumX / nodes.length
+    const cy = sumY / nodes.length
+    const radii = nodes.map((id) => {
+      const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+      const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+      return Math.hypot(dx, dy)
+    })
+    const sorted = [...radii].sort((a, b) => a - b)
+    const maxR = sorted[Math.min(sorted.length - 1, Math.floor(percentile * sorted.length))]
+    if (!(maxR > 0)) return
+    nodes.forEach((id, i) => {
+      const r = radii[i]
+      if (r > maxR) {
+        const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+        const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+        const k = maxR / r
+        graph.setNodeAttribute(id, 'x', cx + dx * k)
+        graph.setNodeAttribute(id, 'y', cy + dy * k)
+      }
+    })
   }
 
   /**
@@ -465,12 +549,17 @@ export function useSigma(options: UseSigmaOptions) {
   function startLayout(graph: Graph) {
     stopLayout()
 
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     const fa2 = new FA2Layout(graph, {
       settings: {
-        gravity: FA2_GRAVITY,
-        scalingRatio: FA2_SCALING_RATIO,
+        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
         barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
         slowDown: FA2_SLOW_DOWN,
+        linLogMode: FA2_LINLOG_MODE,
+        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+        adjustSizes: FA2_ADJUST_SIZES,
+        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
       },
     })
 

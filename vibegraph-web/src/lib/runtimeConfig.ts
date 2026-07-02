@@ -45,6 +45,16 @@ export function envFloat(key: string, fallback: number, bounds: NumberBounds = {
   return clamp(parsed, bounds)
 }
 
+/** Read a boolean env var. Accepts `1/true/yes/on` (case-insensitive) as true; falls back otherwise. */
+export function envBool(key: string, fallback: boolean): boolean {
+  const raw = ENV[key]
+  if (raw === undefined || raw.trim() === '') return fallback
+  const v = raw.trim().toLowerCase()
+  if (v === '1' || v === 'true' || v === 'yes' || v === 'on') return true
+  if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false
+  return fallback
+}
+
 // ── Graph rendering ──────────────────────────────────────────────────────────
 /** Max nodes handed to the renderer before Safe Mode caps the view. */
 export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 1500, { min: 0 })
@@ -117,6 +127,62 @@ export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
 /** Synchronous ForceAtlas2 iterations run once before first paint (no live animation). */
 export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 400, { min: 1 })
+
+// ── ForceAtlas2 cluster separation (anti-hairball) ───────────────────────────
+// The reference "grapuco" look is standard ForceAtlas2 (NOT LinLog) with strong
+// repulsion + dissuade-hubs: connected nodes stay close (short, local edges) while
+// unrelated nodes push far apart, so the graph spreads into organic branches
+// instead of one dense hairball. LinLog is intentionally OFF — it lengthens edges
+// and pulls the body toward the center (measured edgeToRadius 0.48 vs 0.29).
+//
+// Do NOT enable adjustSizes + Noverlap together — those pack the graph into a
+// uniform square and destroy the branch structure. They default OFF.
+export const FA2_LINLOG_MODE = envBool('VITE_FA2_LINLOG_MODE', false)
+export const FA2_OUTBOUND_ATTRACTION = envBool('VITE_FA2_OUTBOUND_ATTRACTION', true)
+/** Account for node radius while laying out. OFF: it packs nodes into a solid square. */
+export const FA2_ADJUST_SIZES = envBool('VITE_FA2_ADJUST_SIZES', false)
+/**
+ * Strong gravity pulls a node toward the center by a force PROPORTIONAL to its
+ * distance. It keeps outliers close but COMPRESSES the whole body into a dense
+ * disc (crammed look), so it defaults OFF. Framing is handled instead by clamping
+ * outliers (below), which keeps the body airy while still bounding the view.
+ */
+export const FA2_STRONG_GRAVITY_MODE = envBool('VITE_FA2_STRONG_GRAVITY_MODE', false)
+
+/**
+ * After layout, pull the farthest nodes (disconnected singletons / tiny orphan
+ * components) inward to this radius percentile of the main body. Without this a
+ * few edge-less nodes drift far out, forcing zoom-to-fit to shrink the whole graph
+ * to a crammed dot. Clamping them to a bounding ring lets the airy body fill the
+ * view. Range 0–1; set 0 (or ≥1) to disable.
+ */
+export const FA2_OUTLIER_CLAMP_PERCENTILE = envFloat('VITE_FA2_OUTLIER_CLAMP_PERCENTILE', 0.9, {
+  min: 0,
+  max: 1,
+})
+
+// Adaptive settings: small graphs already spread well with the base values, so we
+// only switch to the heavier, more separated large-graph profile past this size.
+export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD', 300, { min: 1 })
+/**
+ * Large-graph overrides. Strong repulsion (high scalingRatio) spreads the graph
+ * wide; gravity ~1 combined with strongGravityMode keeps disconnected nodes near
+ * the body so the camera frames the main cluster instead of a distant outlier.
+ */
+export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 1, { min: 0 })
+export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 60, { min: 0 })
+/** Iterations for the large-graph profile (more passes = better separated). */
+export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 900, { min: 1 })
+
+// ── Noverlap post-pass ───────────────────────────────────────────────────────
+// A Noverlap pass removes residual node overlap, but on a large graph it fills the
+// gaps between branches and turns the airy layout into a uniformly packed square.
+// It therefore defaults OFF; enable only for small/moderate graphs if desired.
+export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', false)
+export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 5, { min: 0 })
+export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.2, { min: 0 })
+export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 100, { min: 1 })
+
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 5000, { min: 0 })
 /** Zoom-to-fit camera animation duration. */

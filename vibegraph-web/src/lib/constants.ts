@@ -126,11 +126,22 @@ export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
 // count > 0 remains revealable.
 export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TYPES
 
-// Node types hidden by default. `LocalVariable` (deep CPG) is only present when
-// the backend deep-cpg flag is enabled; it is hidden by default to keep the graph
-// readable and revealed via the Node Types "Show all" button.
+// Node types hidden by default so the architecture graph stays readable, matching
+// the density of comparable tools. These low-signal leaf/structural types add most
+// of the on-screen clutter (Field/External/Annotation alone are ~40% of nodes on a
+// typical project) without conveying architecture. All remain in the data and are
+// revealed via the Node Types "Show all" button or by toggling each type.
+//   - LocalVariable: deep-CPG detail (only present with the backend deep-cpg flag)
+//   - Field / Annotation: member-level noise that clutters every class
+//   - External: third-party symbols outside the project
+//   - Package / Project: structural containers (the Explorer tree already shows these)
 export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'LocalVariable',
+  'Field',
+  'Annotation',
+  'External',
+  'Package',
+  'Project',
 ])
 
 // Default node sizes (sourced from env via runtimeConfig)
