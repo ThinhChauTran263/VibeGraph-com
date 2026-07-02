@@ -150,6 +150,7 @@ const {
   setEdgeLabelsVisible,
   setGhostPartition,
   refresh: refreshSigma,
+  resetLayout: resetSigmaLayout,
   zoomToFit,
   focusNode,
 } = useSigma({
@@ -310,6 +311,10 @@ async function load(projectId: string) {
   const graph = await loadGraph(projectId)
   if (seq !== loadSeq) return
   if (graph && canvasRef.value) {
+    // A project (re)load starts from a clean layout: drop cached positions so the
+    // fresh graph is laid out from scratch. Filter toggles / expansions keep the
+    // cache (see useSigma.applyCachedLayout) so they never recompute the layout.
+    resetSigmaLayout()
     initSigma(graph)
     applyFocusReducers()
     // Frame the whole graph once the canvas has its final box (next frame), so a
@@ -531,7 +536,6 @@ watch(
     if (!canvasRef.value || loading.value || error.value) return
     rebuildGraph(graphData)
   },
-  { deep: true },
 )
 
 onUnmounted(() => {
