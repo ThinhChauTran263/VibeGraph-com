@@ -6,6 +6,25 @@ spring:
   application:
     name: VibeGraph
 
+  # ── Control plane (Postgres) — auth / ownership. Data plane stays Neo4j. ──
+  # Flyway owns the schema (V1__init_auth_schema.sql); JPA only VALIDATES it, never
+  # generates DDL (ddl-auto=validate). Connection comes from POSTGRES_* env; a local
+  # default is provided so `docker compose up` + a running Postgres just works.
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:vibegraph}
+    username: ${POSTGRES_USER:vibegraph}
+    password: ${POSTGRES_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
   # Multipart limits for archive upload (POST /api/projects/import-archive).
   # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
   # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
