@@ -66,14 +66,16 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- ── Auth / ownership control plane (Phase 1 foundation) ───────────────
-             Spring Data JPA + PostgreSQL for the control plane (users/ownership),
-             Flyway for schema, JJWT for later token work. Neo4j stays the data plane.
-             NOTE: spring-boot-starter-security is intentionally NOT added here — it
-             would activate Spring Boot's default security (HTTP Basic on all routes)
-             before our explicit filter chain exists. It lands in the SecurityConfig/
-             JwtAuthFilter slice, in the same commit as the explicit allow-list/JWT
-             policy. Google OAuth deps are also deferred. -->
+        <!-- ── Auth / ownership control plane ────────────────────────────────────
+             Spring Security (stateless JWT), Spring Data JPA + PostgreSQL for the
+             control plane (users/ownership), Flyway for schema, JJWT for tokens.
+             Neo4j stays the data plane. Spring Security is added HERE together with
+             the explicit SecurityFilterChain (SecurityConfig) so default HTTP-Basic
+             lockdown never ships without our allow-list/JWT policy. Google OAuth deferred. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>

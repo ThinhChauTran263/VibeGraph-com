@@ -80,6 +80,17 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  # ── Auth (Phase 1) ──────────────────────────────────────────────────────────
+  # JWT is HS256; the secret MUST be >=32 chars or the app fails fast at startup.
+  # realtime.demo-permit defaults false = /ws and /mcp require auth (fail closed);
+  # setting it true permits those routes for demo/local only and logs a startup WARN.
+  auth:
+    jwt:
+      secret: ${JWT_SECRET:}
+      expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+    realtime:
+      demo-permit: ${VIBEGRAPH_REALTIME_DEMO_PERMIT:false}
+
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
