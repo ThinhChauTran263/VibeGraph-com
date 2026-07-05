@@ -19,8 +19,23 @@
 | Cache (khi cần) | **Caffeine** in-memory (Spring Cache) — KHÔNG Redis |
 | FE | Pinia store `auth` + axios interceptor + vue-router guard (lib đã có) |
 | WebSocket/MCP auth | cùng JWT, gắn vào STOMP connectHeaders / header MCP |
-| OAuth GitHub | Phase 2 (tùy chọn) |
+| **OAuth Google** | **Phase 1 (thêm)** — FE lấy Google ID token → BE verify (Google JWKS) → phát JWT nội bộ. Lib: `google-api-client` (GoogleIdTokenVerifier) |
+| OAuth GitHub | Phase 3+ (tùy chọn) — dùng lại bảng `user_identities`, không đổi schema |
 | Redis | ❌ chưa — chỉ cần khi scale nhiều instance |
+
+> **Đăng nhập đa phương thức:** local (email + mật khẩu) **và** Google cùng tồn tại. Schema tách bảng `user_identities` để 1 user link nhiều provider + account-linking theo email (xem `database/ERD.md`). `users.password_hash` NULLABLE (user chỉ dùng Google thì không có mật khẩu).
+
+## Tiêu chuẩn 10/10 trước khi triển khai
+
+Kế hoạch được xem là "sẵn sàng giao dev" khi thỏa các điểm sau:
+
+- **Không mâu thuẫn nguồn dữ liệu:** user, ownership, quota, API key nằm ở Postgres/JPA; Neo4j chỉ giữ graph code và metadata cần cho phân tích.
+- **Mọi đường vào project đều có chủ sở hữu:** create/import-local/import-archive/import-github phải tạo hoặc cập nhật dòng `projects.owner_id`.
+- **Mọi đường đọc/sửa/xóa theo `projectId` đều qua ownership guard:** REST, diagram, source viewer, MCP tool, WebSocket subscribe.
+- **Migration dữ liệu cũ idempotent:** project cũ trong Neo4j được gán cho admin bootstrap đúng 1 lần, chạy lại không tạo trùng.
+- **Test có cả Postgres và Neo4j:** auth/ownership dùng PostgreSQL Testcontainers; graph/import vẫn dùng Neo4j Testcontainers.
+- **Không có "permit tạm" âm thầm:** nếu Phase 1 tạm permit `/ws` hoặc `/mcp`, phải ghi rõ trong config, docs, và backlog Phase 3.
+- **Rollback/dev ergonomics rõ:** `.env.example`, Docker Compose, Flyway, healthcheck, và tài liệu chạy local phải đồng bộ.
 
 **Tổ chức mã (Mức 1 — tách package, cùng 1 app):**
 ```
@@ -38,6 +53,8 @@ com.vibegraph
 
 **Nguyên tắc:** làm theo pha, mỗi pha chạy được + test được rồi mới sang pha sau. Không ôm hết một lần.
 
+**Quy tắc nguồn schema:** Flyway migration trong `src/main/resources/db/migration/` là nguồn chạy thật của backend. Bản trong `database/schema/` chỉ dùng làm tài liệu/tham khảo hoặc phải được cập nhật cùng commit để tránh drift.
+
 ---
 
 ## Bản đồ pha
@@ -49,6 +66,14 @@ com.vibegraph
 | **Phase 3** | Auth cho WebSocket + MCP theo user | V6, V10 | ⬜ |
 | **Phase 4** | CLI `vibegraph` (login + push) | (đưa code lên server) | ⬜ |
 | **Phase 5** | Hardening: TLS/headers/CORS/CSRF/rate-limit, quét secret, xoá sạch, giám sát | V7–V9, V11–V16 | ⬜ |
+
+## Cổng nghiệm thu từng pha
+
+- **Phase 1 pass:** register/login/me hoạt động; mọi REST endpoint có `projectId` trả 401/403/404 đúng; import mới gắn owner; project cũ gán admin; FE login/register/router guard chạy; `mvnw verify` pass với PostgreSQL + Neo4j Testcontainers.
+- **Phase 2 pass:** không còn browse ổ đĩa host cho user thường; mọi file nằm dưới `<storage-root>/<userId>/<projectId>`; quota và file cap trả lỗi đúng.
+- **Phase 3 pass:** WebSocket CONNECT/SUBSCRIBE và MCP tool đều xác thực, dùng chung ownership guard, không còn permit tạm cho dữ liệu user.
+- **Phase 4 pass:** CLI login/push/analyze dùng API key hash/rotate/revoke, có quota và ownership.
+- **Phase 5 pass:** hardening, secret masking, audit log, backup/restore drill, purge account/project có test.
 
 Chi tiết task từng pha:
 - `phase-1-auth.md` — **làm trước, ưu tiên cao nhất** (đúng thứ hội đồng yêu cầu)

@@ -25,8 +25,12 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE users (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     email         VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,          -- BCrypt hash, KHÔNG lưu mật khẩu thô
+    -- NULLABLE: user đăng nhập BẰNG OAuth (Google) không có mật khẩu cục bộ.
+    -- User local (email+mật khẩu) thì cột này có BCrypt hash.
+    password_hash VARCHAR(255),                    -- BCrypt hash, KHÔNG lưu mật khẩu thô; NULL nếu chỉ dùng OAuth
     display_name  VARCHAR(120),
+    avatar_url    VARCHAR(512),                     -- ảnh đại diện (lấy từ Google profile nếu có)
+    email_verified BOOLEAN     NOT NULL DEFAULT false,  -- Google trả email đã xác thực; local mặc định false
     role          VARCHAR(20)  NOT NULL DEFAULT 'USER',       -- USER | ADMIN
     quota_bytes   BIGINT       NOT NULL DEFAULT 524288000,    -- hạn mức lưu (mặc định 500MB)
     used_bytes    BIGINT       NOT NULL DEFAULT 0,            -- đã dùng
@@ -42,6 +46,28 @@ CREATE UNIQUE INDEX uq_users_email_lower ON users (lower(email));
 CREATE TRIGGER trg_users_updated
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- user_identities — phương thức đăng nhập ngoài (OAuth: Google, sau này GitHub)
+-- ---------------------------------------------------------------------
+-- Mỗi dòng = 1 tài khoản nhà cung cấp gắn với 1 user. Cho phép:
+--   * 1 user link nhiều provider (Google + GitHub) mà không tạo user trùng.
+--   * Account linking theo email: đăng nhập Google trùng email đã có -> gắn vào user cũ.
+--   * Thêm provider mới sau này KHÔNG phải đổi schema.
+-- Đăng nhập LOCAL (email+mật khẩu) KHÔNG nằm ở đây — nó dùng users.password_hash.
+CREATE TABLE user_identities (
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id          UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider         VARCHAR(20)  NOT NULL,          -- GOOGLE | GITHUB (mở rộng sau)
+    provider_user_id VARCHAR(255) NOT NULL,          -- id ổn định của provider (Google: claim 'sub')
+    email            VARCHAR(255),                   -- email tại thời điểm link (tham khảo)
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT chk_identity_provider CHECK (provider IN ('GOOGLE','GITHUB')),
+    -- Một tài khoản provider chỉ gắn được cho đúng 1 user.
+    CONSTRAINT uq_identity_provider_uid UNIQUE (provider, provider_user_id)
+);
+
+CREATE INDEX idx_user_identities_user ON user_identities (user_id);
 
 -- ---------------------------------------------------------------------
 -- projects — bản ghi quyền sở hữu (project_id trùng id dùng trong Neo4j)
