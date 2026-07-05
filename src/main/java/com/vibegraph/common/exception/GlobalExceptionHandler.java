@@ -52,6 +52,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        // Authenticated but not the owner — 403 with a generic message (no project/owner leak).
+        ErrorResponse error = ErrorResponse.builder()
+                .code("FORBIDDEN")
+                .message("Access denied")
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidCredentials(InvalidCredentialsException ex) {
         // Unknown email or wrong password — generic 401, no user enumeration.
