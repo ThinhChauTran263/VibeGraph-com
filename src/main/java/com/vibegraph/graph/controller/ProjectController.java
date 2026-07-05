@@ -1,17 +1,26 @@
 package com.vibegraph.graph.controller;
 
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.ProjectService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -20,10 +29,15 @@ public class ProjectController {
 
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(projectService.createProject(request)));
+        // Project is created first; ownership is recorded synchronously before returning success,
+        // so a validation failure inside createProject leaves no ownership row.
+        ProjectResponse project = projectService.createProject(request);
+        ownershipRegistrar.registerLocal(project.getId(), project.getName());
+        return ResponseEntity.ok(ApiResponse.success(project));
     }
 
     @GetMapping

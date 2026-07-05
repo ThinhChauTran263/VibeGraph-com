@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
@@ -37,12 +39,14 @@ class ProjectControllerTest {
     private MockMvc mockMvc;
     private ProjectService projectService;
     private AnalyzeService analyzeService;
+    private ProjectOwnershipRegistrar ownershipRegistrar;
 
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
         analyzeService = Mockito.mock(AnalyzeService.class);
-        ProjectController controller = new ProjectController(projectService, analyzeService);
+        ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
+        ProjectController controller = new ProjectController(projectService, analyzeService, ownershipRegistrar);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -61,6 +65,9 @@ class ProjectControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.name").value("test"));
+
+        // Ownership is recorded for the created project.
+        verify(ownershipRegistrar, times(1)).registerLocal("abc123", "test");
     }
 
     @Test
@@ -72,6 +79,9 @@ class ProjectControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        // Validation fails before the handler body runs, so no ownership row is created.
+        verify(ownershipRegistrar, never()).registerLocal(any(), any());
     }
 
     @Test

@@ -5,8 +5,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import static org.mockito.ArgumentMatchers.any;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.when;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
@@ -37,12 +38,14 @@ class ProjectApiIT {
     private MockMvc mockMvc;
     private ProjectService projectService;
     private AnalyzeService analyzeService;
+    private ProjectOwnershipRegistrar ownershipRegistrar;
 
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
         analyzeService = Mockito.mock(AnalyzeService.class);
-        ProjectController controller = new ProjectController(projectService, analyzeService);
+        ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
+        ProjectController controller = new ProjectController(projectService, analyzeService, ownershipRegistrar);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
