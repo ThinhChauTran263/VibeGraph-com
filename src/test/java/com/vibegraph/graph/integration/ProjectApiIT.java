@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -39,13 +40,16 @@ class ProjectApiIT {
     private ProjectService projectService;
     private AnalyzeService analyzeService;
     private ProjectOwnershipRegistrar ownershipRegistrar;
+    private ProjectOwnershipGuard ownershipGuard;
 
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
         analyzeService = Mockito.mock(AnalyzeService.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
-        ProjectController controller = new ProjectController(projectService, analyzeService, ownershipRegistrar);
+        ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
+        ProjectController controller =
+                new ProjectController(projectService, analyzeService, ownershipRegistrar, ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

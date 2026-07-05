@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -18,8 +19,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
@@ -40,13 +43,16 @@ class ProjectControllerTest {
     private ProjectService projectService;
     private AnalyzeService analyzeService;
     private ProjectOwnershipRegistrar ownershipRegistrar;
+    private ProjectOwnershipGuard ownershipGuard;
 
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
         analyzeService = Mockito.mock(AnalyzeService.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
-        ProjectController controller = new ProjectController(projectService, analyzeService, ownershipRegistrar);
+        ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
+        ProjectController controller =
+                new ProjectController(projectService, analyzeService, ownershipRegistrar, ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -93,6 +99,19 @@ class ProjectControllerTest {
         mockMvc.perform(get("/api/projects/nope"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("PROJECT_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id} returns 403 when the ownership guard rejects a non-owner")
+    void shouldReturn403WhenNotOwner() throws Exception {
+        doThrow(new ForbiddenException("Access denied")).when(ownershipGuard).assertOwner("p1");
+
+        mockMvc.perform(get("/api/projects/p1"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        // Guard blocks before the service is consulted.
+        verify(projectService, never()).getProject("p1");
     }
 
     @Test

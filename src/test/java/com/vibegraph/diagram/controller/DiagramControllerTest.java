@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -15,8 +16,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.diagram.dto.response.DiagramResponse;
 import com.vibegraph.diagram.dto.response.UmlUseCaseResponse;
 import com.vibegraph.diagram.service.ClassDiagramService;
@@ -37,17 +40,32 @@ class DiagramControllerTest {
     private UseCaseDiagramService useCaseDiagramService;
     private ClassDiagramService classDiagramService;
     private ProjectService projectService;
+    private ProjectOwnershipGuard ownershipGuard;
 
     @BeforeEach
     void setUp() {
         useCaseDiagramService = Mockito.mock(UseCaseDiagramService.class);
         classDiagramService = Mockito.mock(ClassDiagramService.class);
         projectService = Mockito.mock(ProjectService.class);
+        ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         DiagramController controller =
-                new DiagramController(useCaseDiagramService, classDiagramService, projectService);
+                new DiagramController(useCaseDiagramService, classDiagramService, projectService, ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/usecase returns 403 when the ownership guard rejects a non-owner")
+    void shouldReturn403WhenNotOwner() throws Exception {
+        doThrow(new ForbiddenException("Access denied")).when(ownershipGuard).assertOwner("p1");
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/usecase"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        // Guard blocks before the project/analysis is consulted.
+        verifyNoInteractions(useCaseDiagramService, classDiagramService, projectService);
     }
 
     private void stubAnalyzed(String projectId) {

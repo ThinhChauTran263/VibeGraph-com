@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -30,6 +31,7 @@ public class ProjectController {
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final ProjectOwnershipGuard ownershipGuard;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -47,11 +49,13 @@ public class ProjectController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProjectResponse>> get(@PathVariable String id) {
+        ownershipGuard.assertOwner(id);
         return ResponseEntity.ok(ApiResponse.success(projectService.getProject(id)));
     }
 
     @PostMapping("/{id}/analyze")
     public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
+        ownershipGuard.assertOwner(id);
         ProjectResponse project = projectService.getProject(id);
         AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
 
