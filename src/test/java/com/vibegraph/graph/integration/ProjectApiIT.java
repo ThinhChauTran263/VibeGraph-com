@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -41,6 +42,7 @@ class ProjectApiIT {
     private AnalyzeService analyzeService;
     private ProjectOwnershipRegistrar ownershipRegistrar;
     private ProjectOwnershipGuard ownershipGuard;
+    private ProjectOwnershipQuery ownershipQuery;
 
     @BeforeEach
     void setUp() {
@@ -48,8 +50,9 @@ class ProjectApiIT {
         analyzeService = Mockito.mock(AnalyzeService.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
-        ProjectController controller =
-                new ProjectController(projectService, analyzeService, ownershipRegistrar, ownershipGuard);
+        ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
+        ProjectController controller = new ProjectController(
+                projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -70,6 +73,7 @@ class ProjectApiIT {
                 .andExpect(jsonPath("$.data.id").value("p1"));
 
         when(projectService.listProjects()).thenReturn(List.of(p1));
+        when(ownershipQuery.ownedProjectIds()).thenReturn(List.of("p1"));
         mockMvc.perform(get("/api/projects"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value("p1"));

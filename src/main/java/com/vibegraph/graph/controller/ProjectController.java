@@ -1,6 +1,7 @@
 package com.vibegraph.graph.controller;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -32,6 +34,7 @@ public class ProjectController {
     private final AnalyzeService analyzeService;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final ProjectOwnershipGuard ownershipGuard;
+    private final ProjectOwnershipQuery ownershipQuery;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -44,7 +47,14 @@ public class ProjectController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectResponse>>> list() {
-        return ResponseEntity.ok(ApiResponse.success(projectService.listProjects()));
+        // Owner-scoped: Postgres (projects.owner_id) is the source of truth for which projects the
+        // caller may see. We take the underlying ProjectService listing (in-memory + Neo4j metadata)
+        // unchanged and keep only those whose id is owned by the current user.
+        Set<String> ownedIds = Set.copyOf(ownershipQuery.ownedProjectIds());
+        List<ProjectResponse> owned = projectService.listProjects().stream()
+                .filter(project -> ownedIds.contains(project.getId()))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(owned));
     }
 
     @GetMapping("/{id}")

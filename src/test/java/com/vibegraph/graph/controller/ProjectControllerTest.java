@@ -1,5 +1,7 @@
 package com.vibegraph.graph.controller;
 
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
@@ -44,6 +47,7 @@ class ProjectControllerTest {
     private AnalyzeService analyzeService;
     private ProjectOwnershipRegistrar ownershipRegistrar;
     private ProjectOwnershipGuard ownershipGuard;
+    private ProjectOwnershipQuery ownershipQuery;
 
     @BeforeEach
     void setUp() {
@@ -51,8 +55,9 @@ class ProjectControllerTest {
         analyzeService = Mockito.mock(AnalyzeService.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
-        ProjectController controller =
-                new ProjectController(projectService, analyzeService, ownershipRegistrar, ownershipGuard);
+        ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
+        ProjectController controller = new ProjectController(
+                projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -88,6 +93,20 @@ class ProjectControllerTest {
 
         // Validation fails before the handler body runs, so no ownership row is created.
         verify(ownershipRegistrar, never()).registerLocal(any(), any());
+    }
+
+    @Test
+    @DisplayName("GET /api/projects returns only projects owned by the current user")
+    void shouldListOnlyOwnedProjects() throws Exception {
+        ProjectResponse mine = ProjectResponse.builder().id("mine").name("Mine").status("ANALYZED").build();
+        ProjectResponse theirs = ProjectResponse.builder().id("theirs").name("Theirs").status("ANALYZED").build();
+        when(projectService.listProjects()).thenReturn(List.of(mine, theirs));
+        when(ownershipQuery.ownedProjectIds()).thenReturn(List.of("mine"));
+
+        mockMvc.perform(get("/api/projects"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value("mine"));
     }
 
     @Test
