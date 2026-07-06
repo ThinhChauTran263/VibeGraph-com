@@ -4,6 +4,8 @@
  */
 
 import { API_BASE_URL } from './constants'
+import http from './http'
+import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
 
 /**
@@ -147,8 +149,23 @@ export interface ProjectStatusEvent {
   timestamp: string
 }
 
+/**
+ * Shared 401 handler for all fetch-based API calls.
+ * Clears stored auth session and redirects to /login (unless already there).
+ */
+function handleUnauthorized(): void {
+  localStorage.removeItem('vg_token')
+  localStorage.removeItem('vg_user')
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
 async function unwrap<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) {
+      handleUnauthorized()
+    }
     // Try to extract a structured error message from the response body
     // before falling back to the raw text or HTTP status.
     const message = await extractErrorMessage(res)
@@ -175,15 +192,23 @@ async function extractErrorMessage(res: Response): Promise<string | undefined> {
 export const api = {
   baseUrl: API_BASE_URL,
 
+  /** Build auth headers if a token is present. */
+  _authHeaders(): Record<string, string> {
+    const token = localStorage.getItem('vg_token')
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  },
+
   async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`)
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      headers: { ...this._authHeaders() },
+    })
     return unwrap<T>(res)
   },
 
   async post<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
       body: body ? JSON.stringify(body) : undefined,
     })
     return unwrap<T>(res)
@@ -195,16 +220,25 @@ export const api = {
    * breaks the upload.
    */
   async postMultipart<T>(path: string, form: FormData): Promise<T> {
+    const authHeaders = this._authHeaders()
+    const hasAuth = Object.keys(authHeaders).length > 0
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
+      ...(hasAuth ? { headers: authHeaders } : {}),
       body: form,
     })
     return unwrap<T>(res)
   },
 
   async delete(path: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}${path}`, { method: 'DELETE' })
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'DELETE',
+      headers: { ...this._authHeaders() },
+    })
     if (!res.ok) {
+      if (res.status === 401) {
+        handleUnauthorized()
+      }
       const message = await extractErrorMessage(res)
       throw new ApiError(res.status, res.statusText, message)
     }
@@ -436,5 +470,28 @@ export const diagramApi = {
   sequence: (projectId: string, entry: string) => {
     const query = new URLSearchParams({ entry })
     return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`)
+  },
+}
+
+
+// ─── Auth API ──────────────────────────────────────────────────────────────────
+
+/**
+ * Auth endpoints. login/register use the base `api` object (no Bearer token needed,
+ * no 401 redirect for invalid credentials). `me()` uses the authenticated `http` instance.
+ */
+export const authApi = {
+  register(data: RegisterRequest): Promise<AuthResponse> {
+    return api.post<AuthResponse>('/api/auth/register', data)
+  },
+
+  login(data: LoginRequest): Promise<AuthResponse> {
+    return api.post<AuthResponse>('/api/auth/login', data)
+  },
+
+  /** Fetch current user profile; requires a valid token. */
+  async me(): Promise<User> {
+    const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
+    return res.data.data
   },
 }
