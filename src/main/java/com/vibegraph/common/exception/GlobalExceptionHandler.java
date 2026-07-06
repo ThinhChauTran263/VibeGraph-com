@@ -82,6 +82,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(PartialDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePartialDeletion(PartialDeletionException ex) {
+        // A delete removed one plane but failed on another — inconsistent state, cleanup needed.
+        // Never a 204: report 500 with a stable code. Details already logged at the orchestrator
+        // with projectId/userId/plane; the client body stays generic.
+        log.error("Partial project deletion (failedPlane={}): {}", ex.getFailedPlane(), ex.getMessage());
+        ErrorResponse error = ErrorResponse.builder()
+                .code("DELETE_PARTIAL_FAILED")
+                .message("Project deletion did not fully complete; please retry")
+                .build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(ProjectNotAnalyzedException.class)
     public ResponseEntity<ApiResponse<Void>> handleProjectNotAnalyzed(ProjectNotAnalyzedException ex) {
         // Project exists but its graph has not been built yet — surface a clear 409 so

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
@@ -35,6 +36,7 @@ public class ProjectController {
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
+    private final ProjectDeletionOrchestrator deletionOrchestrator;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -77,7 +79,10 @@ public class ProjectController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
-        projectService.deleteProject(id);
+        // Fail-safe delete: ownership first (403/404), then data plane, then control plane.
+        // 204 only after BOTH planes are removed; partial failure surfaces an error, never 204.
+        ownershipGuard.assertOwner(id);
+        deletionOrchestrator.delete(id);
         return ResponseEntity.noContent().build();
     }
 }
