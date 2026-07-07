@@ -8,13 +8,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vibegraph.common.dto.response.ApiResponse;
-import com.vibegraph.common.dto.response.ErrorResponse;
-
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 
 /**
  * Emits a 403 in the standard {@link ApiResponse} envelope when an authenticated caller
@@ -22,20 +17,15 @@ import lombok.RequiredArgsConstructor;
  * guard (a later slice); this handles filter-chain-level access denials consistently.
  */
 @Component
-@RequiredArgsConstructor
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
-
-    private final ObjectMapper objectMapper;
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        ErrorResponse error = ErrorResponse.builder()
-                .code("FORBIDDEN")
-                .message("Access denied")
-                .build();
-        objectMapper.writeValue(response.getOutputStream(), ApiResponse.error(error));
+        response.getWriter().write("""
+                {"success":false,"error":{"code":"FORBIDDEN","message":"Access denied"}}
+                """);
     }
 }
