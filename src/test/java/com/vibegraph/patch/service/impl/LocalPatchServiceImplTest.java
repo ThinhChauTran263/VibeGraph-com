@@ -196,4 +196,133 @@ class LocalPatchServiceImplTest {
 
         assertThat(Files.exists(root.resolve("src/Good.java"))).isFalse();
     }
+
+    // --- additional coverage requested by Agent 4.7 security matrix ----------------------------
+
+    @Test
+    @DisplayName("rejects id_rsa by exact filename")
+    void rejectsIdRsaByFilename() {
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID,
+                changeOf(".ssh/id_rsa", "PRIVATE", false)))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.BLOCKED_FILE);
+    }
+
+    @Test
+    @DisplayName("rejects .env.local (dotfile-prefix branch)")
+    void rejectsDotEnvLocal() {
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID,
+                changeOf(".env.local", "SECRET=1", false)))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.BLOCKED_FILE);
+    }
+
+    @Test
+    @DisplayName("rejects Windows-style backslash traversal")
+    void rejectsBackslashPath() {
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID,
+                changeOf("..\\..\\evil.java", "x", false)))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.BACKSLASH_PATH);
+    }
+
+    @Test
+    @DisplayName("rejects a file that exceeds the per-file size limit")
+    void rejectsFileTooLarge() {
+        LocalPatchProperties tight = new LocalPatchProperties();
+        tight.setMaxFileBytes(64);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+
+        String big = "a".repeat(128); // 128 raw bytes → decoded > 64
+        PatchRequest request = new PatchRequest(
+                List.of(new PatchFileChange("src/Big.java", b64(big), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> bounded.applyPatch(PROJECT_ID, request))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.FILE_TOO_LARGE);
+    }
+
+    @Test
+    @DisplayName("rejects a request that exceeds the cumulative total-bytes limit")
+    void rejectsTotalTooLarge() {
+        LocalPatchProperties tight = new LocalPatchProperties();
+        tight.setMaxFileBytes(64);
+        tight.setMaxTotalBytes(80);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+
+        String chunk = "a".repeat(50); // two files, 50 + 50 = 100 > 80 total
+        PatchRequest request = new PatchRequest(
+                List.of(
+                        new PatchFileChange("src/A.java", b64(chunk), "base64"),
+                        new PatchFileChange("src/B.java", b64(chunk), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> bounded.applyPatch(PROJECT_ID, request))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.TOTAL_TOO_LARGE);
+
+        assertThat(Files.exists(root.resolve("src/A.java"))).isFalse();
+        assertThat(Files.exists(root.resolve("src/B.java"))).isFalse();
+    }
+
+    @Test
+    @DisplayName("rejects a request that exceeds the maximum number of files")
+    void rejectsTooManyFiles() {
+        LocalPatchProperties tight = new LocalPatchProperties();
+        tight.setMaxFiles(2);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+
+        PatchRequest request = new PatchRequest(
+                List.of(
+                        new PatchFileChange("src/A.java", b64("A"), "base64"),
+                        new PatchFileChange("src/B.java", b64("B"), "base64"),
+                        new PatchFileChange("src/C.java", b64("C"), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> bounded.applyPatch(PROJECT_ID, request))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.TOO_MANY_FILES);
+    }
+
+    @Test
+    @DisplayName("rejects a symlink escape via toRealPath (nearest existing ancestor)")
+    void rejectsSymlinkEscape() throws Exception {
+        // Create an outside directory containing the real secret.
+        Path outside = Files.createTempDirectory("vibegraph-outside-");
+        try {
+            // Inside the project root, place a symlink dir "src/escape" that points to `outside`.
+            Path linkDir = root.resolve("src");
+            Files.createDirectories(linkDir);
+            Path link = linkDir.resolve("escape");
+            try {
+                Files.createSymbolicLink(link, outside);
+            } catch (UnsupportedOperationException | java.nio.file.FileSystemException notPermitted) {
+                // Windows without Developer Mode + non-admin has no symlink privilege — skip cleanly.
+                return;
+            }
+
+            PatchRequest request = new PatchRequest(
+                    List.of(new PatchFileChange("src/escape/Owned.java", b64("owned"), "base64")),
+                    List.of(),
+                    false);
+
+            assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, request))
+                    .isInstanceOf(PatchRejectedException.class)
+                    .extracting("reason").isEqualTo(Reason.SYMLINK_ESCAPE);
+
+            // Nothing was written outside the root.
+            assertThat(Files.exists(outside.resolve("Owned.java"))).isFalse();
+        } finally {
+            // Best-effort cleanup — leave real files intact.
+            try {
+                Files.deleteIfExists(outside);
+            } catch (Exception ignored) {
+                // temp — OS cleanup will handle it
+            }
+        }
+    }
 }
