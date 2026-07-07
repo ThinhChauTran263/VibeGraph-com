@@ -68,6 +68,8 @@ When the backend runs in Docker Compose, pass backend-visible paths to local imp
 vibegraph projects import-local --path /projects/demo --name demo
 ```
 
+For the full Local Patch workflow (push, watch, analyze), see **[docs/local-patch.md](docs/local-patch.md)**.
+
 ### Local development
 
 #### Backend
