@@ -177,6 +177,13 @@ vibegraph:
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 
+  # Local Patch endpoint guardrails (POST /api/projects/{id}/patch). Bounds a single CLI
+  # patch so it cannot exhaust disk/memory: max entries, per-file size, and total size.
+  patch:
+    max-files: ${VIBEGRAPH_PATCH_MAX_FILES:200}
+    max-file-bytes: ${VIBEGRAPH_PATCH_MAX_FILE_BYTES:1048576}
+    max-total-bytes: ${VIBEGRAPH_PATCH_MAX_TOTAL_BYTES:5242880}
+
   parser:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
