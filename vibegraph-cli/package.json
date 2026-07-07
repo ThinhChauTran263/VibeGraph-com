@@ -11,10 +11,12 @@
   },
   "files": [
     "bin",
+    "lib",
     "README.md"
   ],
   "scripts": {
-    "smoke": "node ./bin/vibegraph.js help && node ./bin/vibegraph.js config show"
+    "smoke": "node ./bin/vibegraph.js help && node ./bin/vibegraph.js config show",
+    "test": "node --test \"test/*.test.js\""
   },
   "license": "UNLICENSED",
   "private": true

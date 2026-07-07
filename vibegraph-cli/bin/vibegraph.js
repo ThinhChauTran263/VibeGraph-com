@@ -3,10 +3,26 @@
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Helper to dynamically import a lib module (Windows-safe). */
+function libImport(moduleName) {
+  const modPath = path.join(__dirname, "..", "lib", moduleName);
+  return import(pathToFileURL(modPath).href);
+}
 
 const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vibegraph");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
+
+class CliError extends Error {
+  constructor(message, exitCode = 1) {
+    super(message);
+    this.exitCode = exitCode;
+  }
+}
 
 main().catch((error) => {
   if (error instanceof CliError) {
@@ -46,6 +62,12 @@ async function main() {
     case "projects":
       await handleProjects(args);
       return;
+    case "watch":
+      await handleWatch(args);
+      return;
+    case "ignore":
+      await handleIgnore(args);
+      return;
     case "doctor":
       await handleDoctor();
       return;
@@ -72,6 +94,14 @@ Projects:
   vibegraph projects import-local --path <backendPath> [--name <name>]
   vibegraph projects analyze <projectId>
   vibegraph projects delete <projectId>
+  vibegraph projects push <projectId> --root <localPath> [--dry-run]
+  vibegraph projects status <projectId>
+
+Watch:
+  vibegraph watch <projectId> --root <localPath>
+
+Ignore:
+  vibegraph ignore init [--root <path>]
 
 Default API URL: ${DEFAULT_API_URL}`);
 }
@@ -218,7 +248,81 @@ async function handleProjects(args) {
     return;
   }
 
+  if (subcommand === "push") {
+    const projectId = args.shift();
+    if (!projectId) {
+      throw new CliError("Usage: vibegraph projects push <projectId> --root <path> [--dry-run]", 2);
+    }
+    const options = parseOptions(args);
+    if (!options.root) {
+      throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
+    }
+    const { executePush } = await libImport("push.js");
+    await executePush(projectId, {
+      root: options.root,
+      dryRun: Boolean(options["dry-run"]),
+    }, apiRequest);
+    return;
+  }
+
+  if (subcommand === "status") {
+    const projectId = args.shift();
+    if (!projectId) {
+      throw new CliError("Usage: vibegraph projects status <projectId>", 2);
+    }
+    const project = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, { auth: true });
+    console.log(JSON.stringify({
+      id: project.id,
+      name: project.name,
+      status: project.status,
+      rootPath: project.rootPath,
+      lastAnalyzedAt: project.lastAnalyzedAt || null,
+      nodeCount: project.nodeCount || null,
+      edgeCount: project.edgeCount || null,
+    }, null, 2));
+    return;
+  }
+
   throw new CliError(`Unknown projects command: ${subcommand}`, 2);
+}
+
+async function handleWatch(args) {
+  const projectId = args.shift();
+  if (!projectId) {
+    throw new CliError("Usage: vibegraph watch <projectId> --root <path>", 2);
+  }
+  const options = parseOptions(args);
+  if (!options.root) {
+    throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
+  }
+  const { executeWatch } = await libImport("watch.js");
+  await executeWatch(projectId, { root: options.root }, apiRequest);
+}
+
+async function handleIgnore(args) {
+  const subcommand = args.shift() || "init";
+
+  if (subcommand === "init") {
+    const options = parseOptions(args);
+    const rootDir = path.resolve(options.root || ".");
+    const ignorePath = path.join(rootDir, ".vibegraphignore");
+
+    // Check if file already exists
+    try {
+      await readFile(ignorePath);
+      console.log(`.vibegraphignore already exists at ${ignorePath}`);
+      return;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+
+    const { generateDefaultIgnoreContent } = await libImport("ignore.js");
+    await writeFile(ignorePath, generateDefaultIgnoreContent(), "utf8");
+    console.log(`Created .vibegraphignore at ${rootDir}`);
+    return;
+  }
+
+  throw new CliError(`Unknown ignore command: ${subcommand}`, 2);
 }
 
 async function handleDoctor() {
@@ -349,11 +453,4 @@ function printProject(project) {
     status: project.status,
     rootPath: project.rootPath
   }, null, 2));
-}
-
-class CliError extends Error {
-  constructor(message, exitCode = 1) {
-    super(message);
-    this.exitCode = exitCode;
-  }
 }
