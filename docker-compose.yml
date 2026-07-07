@@ -89,8 +89,10 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:?Set FRONTEND_URL in .env}
     volumes:
       - ./.env:/app/.env:ro
-      # Read-only local-path fallback projects
-      - ./projects:/projects:ro
+      # Writable local-path projects: the CLI Local Patch flow
+      # (POST /api/projects/{id}/patch) applies file changes under /projects,
+      # so this mount must be writable (was :ro, which blocked PATCH writes).
+      - ./projects:/projects
       # Writable workspace for uploaded archives (archive upload flow)
       - upload-workspaces:/uploads
     healthcheck:
