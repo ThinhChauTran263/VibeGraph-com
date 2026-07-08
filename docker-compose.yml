@@ -2,6 +2,7 @@ services:
   neo4j:
     image: neo4j:5-community
     container_name: vibegraph-neo4j
+    restart: unless-stopped
     ports:
       - "7474:7474"   # HTTP browser
       - "7687:7687"   # Bolt protocol
@@ -9,6 +10,13 @@ services:
       NEO4J_AUTH: ${NEO4J_USERNAME:?Set NEO4J_USERNAME in .env}/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      # Bound Neo4j JVM + page cache so a heavy analyze run can't exhaust host RAM
+      # and freeze the whole machine. Tune up if you have headroom.
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_SIZE:-1G}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_SIZE:-1G}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-512M}
+    # Hard container memory ceiling (heap + pagecache + JVM overhead + headroom).
+    mem_limit: ${NEO4J_MEM_LIMIT:-2g}
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
@@ -23,6 +31,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: vibegraph-backend
+    restart: unless-stopped
     ports:
       - "${SERVER_PORT:?Set SERVER_PORT in .env}:8080"
     depends_on:
@@ -52,6 +61,13 @@ services:
       - ./projects:/projects:ro
       # Writable workspace for uploaded archives (archive upload flow)
       - upload-workspaces:/uploads
+    healthcheck:
+      # Spring Boot Actuator liveness — busybox wget ships in the JRE-alpine image.
+      test: ["CMD", "wget", "-O", "/dev/null", "-q", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   frontend:
     build:
@@ -62,10 +78,19 @@ services:
         VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL in .env}
         VIBEGRAPH_DOCKER_BUILD: "true"
     container_name: vibegraph-frontend
+    restart: unless-stopped
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Nginx serves the SPA on port 80 inside the container.
+      test: ["CMD", "wget", "-O", "/dev/null", "-q", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     environment:
       VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in .env}
       VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL in .env}

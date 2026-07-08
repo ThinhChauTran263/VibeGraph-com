@@ -21,6 +21,7 @@ export type NodeType =
   | 'Constructor'
   | 'Field'
   | 'Annotation'
+  | 'LocalVariable'
   | 'Route'
   | 'APIEndpoint'
   | 'External'
@@ -41,9 +42,14 @@ export type EdgeType =
   | 'PARAMETER_TYPE'
   | 'THROWS'
   | 'CALLS'
+  | 'INSTANTIATES'
   | 'INJECTS'
   | 'HANDLES_ROUTE'
   | 'ANNOTATED_BY'
+  | 'READS'
+  | 'WRITES'
+  | 'CATCHES'
+  | 'STEP_IN_FLOW'
 
 export interface GraphNode {
   id: string
@@ -70,18 +76,36 @@ export interface GraphData {
   edges: GraphEdge[]
   nodeStats: Record<NodeType, number>
   edgeStats: Record<EdgeType, number>
+  /**
+   * Server-side payload guardrail metadata (HTTP graph endpoint only). Present when the
+   * backend capped the payload; absent on internal/websocket snapshots. Mirrors the backend
+   * `GraphDataResponse.Meta`.
+   */
+  meta?: GraphMeta
+}
+
+/** Truncation metadata describing how the returned payload relates to the full backend graph. */
+export interface GraphMeta {
+  truncated: boolean
+  totalNodes: number
+  totalEdges: number
+  returnedNodes: number
+  returnedEdges: number
+  nodeLimit: number
+  edgeLimit: number
+  reason?: string | null
 }
 
 /**
  * Realtime graph-update events delivered over the STOMP topic
  * `/topic/projects/{projectId}/updates`.
  *
- * CONTRACT (Sprint 2): kept in sync with the backend producer records
+ * CONTRACT: kept in sync with the backend producer records
  * `graph/websocket/{GraphUpdateEvent, GraphChangeSet, GraphRemoval}.java`
- * (T36). The broadcast producer is implemented; the automatic file-change
- * trigger (T25 file watcher) is still pending, so events are not yet emitted
- * on real source edits. The consumer validates payloads defensively at the
- * boundary regardless.
+ * (T36). Both the broadcast producer and the automatic file-change trigger
+ * (FileChangeBroadcaster wired to the file watcher) are implemented, so events
+ * are emitted on real source edits for locally-watched projects. The consumer
+ * validates payloads defensively at the boundary regardless.
  */
 export interface GraphFullUpdateEvent {
   type: 'FULL_UPDATE'

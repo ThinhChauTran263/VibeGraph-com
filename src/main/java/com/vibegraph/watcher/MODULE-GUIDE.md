@@ -11,6 +11,8 @@ watcher/
 │   └── WatcherProperties.java        — @ConfigurationProperties("vibegraph.watcher")
 └── service/
     ├── FileWatcherService.java       — Interface: start/stop watching, register callbacks
+    ├── FileChangeEvent.java          — Event record (projectId, path, type)
+    ├── EventType.java                — CREATE / MODIFY / DELETE
     ├── DebouncedEventHandler.java    — Helper: debounce rapid events
     └── impl/
         └── FileWatcherServiceImpl.java — Java WatchService implementation
@@ -52,14 +54,16 @@ public record FileChangeEvent(
 
 ### WatcherProperties
 ```java
+@Data
+@Configuration
 @ConfigurationProperties(prefix = "vibegraph.watcher")
-public record WatcherProperties(
-    boolean enabled,           // default: true
-    long debounceMs,           // default: 500
-    List<String> ignoredPaths, // default: [build, target, .git, node_modules, .idea, .gradle]
-    boolean fallbackPolling,   // default: false (use polling if WatchService unreliable)
-    long pollingIntervalMs     // default: 5000 (when fallbackPolling = true)
-) {}
+public class WatcherProperties {
+    private boolean enabled = true;                 // default: true
+    private long debounceMs = 500;                  // default: 500
+    private List<String> ignoredPaths =             // default below (no .gradle)
+            List.of("target", "build", ".git", ".idea", "node_modules");
+    private List<String> watchedExtensions = List.of(".java");
+}
 ```
 
 ### Integration với AnalyzeService

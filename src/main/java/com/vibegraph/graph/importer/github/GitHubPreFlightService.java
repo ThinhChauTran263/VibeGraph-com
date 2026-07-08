@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.importer.config.GitHubImportProperties;
 
 /** Performs cheap GitHub metadata checks before downloading the tarball. */
 @Service
@@ -22,24 +23,31 @@ public class GitHubPreFlightService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ArchiveImportProperties properties;
+    private final Duration preflightRequestTimeout;
     private final HttpClient httpClient;
 
     @Autowired
-    public GitHubPreFlightService(ArchiveImportProperties properties) {
-        this(properties, HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+    public GitHubPreFlightService(ArchiveImportProperties properties, GitHubImportProperties github) {
+        this(properties, github, HttpClient.newBuilder()
+                .connectTimeout(github.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build());
     }
 
+    // Test seam (keeps the legacy 2-arg signature working): uses default GitHub timeouts.
     GitHubPreFlightService(ArchiveImportProperties properties, HttpClient httpClient) {
+        this(properties, new GitHubImportProperties(), httpClient);
+    }
+
+    GitHubPreFlightService(ArchiveImportProperties properties, GitHubImportProperties github, HttpClient httpClient) {
         this.properties = properties;
+        this.preflightRequestTimeout = github.getPreflightRequestTimeout();
         this.httpClient = httpClient;
     }
 
     public GitHubRepositoryRef validatePublicRepository(GitHubRepositoryRef ref) {
         HttpRequest request = HttpRequest.newBuilder(repositoryApiUri(ref))
-                .timeout(Duration.ofSeconds(20))
+                .timeout(preflightRequestTimeout)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "VibeGraph")
                 .GET()

@@ -84,6 +84,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
+        // A precondition/feature-state failure the caller can act on (e.g. directory browsing
+        // disabled because no allowed-root is configured). Surface the real reason as a 409
+        // instead of a generic 500 so the client can show actionable guidance.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("PRECONDITION_FAILED")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(GithubImportException.class)
     public ResponseEntity<ApiResponse<Void>> handleGithubImport(GithubImportException ex) {
         // Domain failure of the import (private/oversize/non-existent repo, bad URL,
@@ -102,6 +114,17 @@ public class GlobalExceptionHandler {
                 .message(ex.getMessage())
                 .build();
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ServiceBusyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleServiceBusy(ServiceBusyException ex) {
+        // The analysis executor is saturated; the project was marked FAILED before this was thrown.
+        // 503 tells the client to retry later instead of blocking the request thread on analysis.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("SERVICE_BUSY")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(error));
     }
 
     @ExceptionHandler(ArchiveImportException.class)

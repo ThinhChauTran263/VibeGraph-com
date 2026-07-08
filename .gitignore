@@ -72,6 +72,7 @@ Thumbs.db
 .claude/settings.local.json
 .codegraph/
 .gitnexus/
+.vibegraph/
 .understand-anything/
 .vite/
 
@@ -97,3 +98,10 @@ GEMINI.md
 .cursor/
 .antigravity/
 task/final/
+
+# ========================================
+# Temp / debug artifacts (root-level scratch JSON)
+# ========================================
+/graph_check.json
+/uc_check.json
+/uc_new*.json

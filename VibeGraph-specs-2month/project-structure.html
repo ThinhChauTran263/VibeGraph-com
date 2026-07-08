@@ -627,7 +627,7 @@ const backendTree = {
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package visitor' }
       ]}
     ]},
-    { name: 'watcher', icon: '📁', desc: 'File watcher - tự động re-parse khi file .java thay đổi', children: [
+    { name: 'watcher', icon: '📁', desc: 'File watcher - phát hiện thay đổi .java; mọi thay đổi (CREATE/MODIFY/DELETE) kích hoạt cập nhật graph tăng dần qua FileChangeBroadcaster', children: [
       { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package watcher' },
       { name: 'config', icon: '⚙️', desc: 'Cấu hình watcher', children: [
         { name: 'WatcherProperties.java', icon: '📄', type: 'file', desc: '@ConfigurationProperties: enabled, debounce-ms, ignored-paths, watched-extensions' },
@@ -635,10 +635,10 @@ const backendTree = {
       ]},
       { name: 'service', icon: '⚙️', desc: 'Dịch vụ theo dõi file system', children: [
         { name: 'DebouncedEventHandler.java', icon: '📄', type: 'file', desc: 'Gom nhiều file changes trong debounce window thành 1 batch' },
-        { name: 'FileWatcherService.java', icon: '📄', type: 'file', desc: 'Interface theo dõi thư mục, trigger ParserService khi có thay đổi' },
+        { name: 'FileWatcherService.java', icon: '📄', type: 'file', desc: 'Interface theo dõi thư mục; phát sự kiện file change cho handler (FileChangeBroadcaster) xử lý cập nhật graph' },
         { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package service' },
         { name: 'impl', icon: '📁', desc: 'Implementations của watcher services', children: [
-          { name: 'FileWatcherServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: Java WatchService, recursive dir watch, filter extensions' },
+          { name: 'FileWatcherServiceImpl.java', icon: '📄', type: 'file', desc: 'Impl: Java WatchService recursive + debounce; bộ phát sự kiện thuần (detect + emit), không tự mutate graph' },
           { name: 'package-info.java', icon: '📄', type: 'file', desc: 'Javadoc cho package impl' }
         ]}
       ]}

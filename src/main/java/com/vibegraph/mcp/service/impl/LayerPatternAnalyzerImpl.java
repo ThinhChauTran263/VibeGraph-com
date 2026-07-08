@@ -197,10 +197,10 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
 
     private LayerPatternResponse.LayerExample toLayerExample(NodeDto node) {
         return LayerPatternResponse.LayerExample.builder()
-                .id(node.getId())
+                .id(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getId()))
                 .type(node.getType())
                 .name(node.getName())
-                .fullName(node.getFullName())
+                .fullName(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getFullName()))
                 .lineNumber(node.getLineNumber())
                 .build();
     }

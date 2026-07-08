@@ -30,8 +30,10 @@ const props = withDefaults(
      * baseline behavior unchanged.
      */
     async?: boolean
+    /** Embedded inside the unified panel: drop card chrome + header. */
+    embedded?: boolean
   }>(),
-  { async: false },
+  { async: false, embedded: false },
 )
 
 const emit = defineEmits<{
@@ -66,9 +68,20 @@ const canSubmit = computed(
 )
 
 const submitLabel = computed(() => {
-  if (isAnalyzing.value) return `Analyzing... ${progress.value}%`
-  if (status.value === 'uploading') return 'Uploading...'
+  if (isAnalyzing.value) {
+    return progress.value >= 98 ? 'Finalizing…' : `Importing… ${progress.value}%`
+  }
+  if (status.value === 'uploading') return 'Uploading…'
   return 'Upload archive'
+})
+
+// Progress-bar caption. While the file is still uploading the byte progress
+// isn't known, so show "Uploading…"; once the server is analyzing show a
+// determinate percentage, and "Finalizing graph…" as it nears completion —
+// matching the GitHub/local import wording.
+const progressLabel = computed(() => {
+  if (!isAnalyzing.value) return 'Uploading…'
+  return progress.value >= 98 ? 'Finalizing graph…' : `Analyzing… ${progress.value}%`
 })
 
 function onFileChange(event: Event): void {
@@ -124,13 +137,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="archive-import" aria-labelledby="archive-import-heading">
-    <header class="archive-import__header">
-      <h2 id="archive-import-heading">Add project from archive</h2>
-      <p class="archive-import__hint">
-        Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Max
-        {{ maxSizeLabel }}.
-      </p>
+  <section class="archive-import" :class="{ 'archive-import--embedded': embedded }" aria-labelledby="archive-import-heading">
+    <header v-if="!embedded" class="archive-import__header">
+      <span class="archive-import__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7l9-4 9 4v10l-9 4-9-4z" />
+          <path d="M3 7l9 4 9-4" />
+          <path d="M12 11v10" />
+        </svg>
+      </span>
+      <div class="archive-import__heading-group">
+        <h2 id="archive-import-heading">Add project from archive</h2>
+        <p class="archive-import__hint">
+          Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Max
+          {{ maxSizeLabel }}.
+        </p>
+      </div>
     </header>
 
     <form class="archive-import__form" @submit.prevent="onSubmit">
@@ -140,6 +162,7 @@ onBeforeUnmount(() => {
           v-model="projectName"
           class="archive-import__text-input"
           type="text"
+          name="projectName"
           placeholder="my-java-service"
           :disabled="isBusy"
           aria-required="true"
@@ -154,6 +177,7 @@ onBeforeUnmount(() => {
           ref="fileInputRef"
           class="archive-import__file-input"
           type="file"
+          name="archiveFile"
           :accept="ARCHIVE_ACCEPT_ATTRIBUTE"
           :disabled="isBusy"
           aria-describedby="archive-import-file-help"
@@ -169,22 +193,21 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-if="isAnalyzing"
+        v-if="isBusy"
         class="archive-import__progress"
-        role="status"
-        aria-live="polite"
+        role="progressbar"
+        :aria-valuenow="progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="progressLabel"
       >
-        <div class="archive-import__progress-track">
-          <div
-            class="archive-import__progress-bar"
-            role="progressbar"
-            :aria-valuenow="progress"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :style="{ width: progress + '%' }"
-          />
+        <div class="archive-import__progress-head">
+          <span class="archive-import__progress-label">{{ progressLabel }}</span>
+          <span class="archive-import__progress-value">{{ progress }}%</span>
         </div>
-        <span class="archive-import__progress-label">Analyzing... {{ progress }}%</span>
+        <div class="archive-import__progress-track">
+          <div class="archive-import__progress-fill" :style="{ width: progress + '%' }"></div>
+        </div>
       </div>
 
       <div class="archive-import__actions">
@@ -231,154 +254,301 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .archive-import {
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.5rem;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  background: #111;
-  color: #e5e7eb;
-  max-width: 36rem;
+  gap: 1.35rem;
+  padding: 1.6rem;
+  overflow: hidden;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-lg);
+  background: var(--vg-grad-surface);
+  color: var(--vg-text);
+  box-shadow: var(--vg-shadow);
+  transition: border-color var(--vg-dur) var(--vg-ease-out),
+    transform var(--vg-dur) var(--vg-ease-out), box-shadow var(--vg-dur) var(--vg-ease-out);
+}
+
+.archive-import::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
+}
+
+.archive-import::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -20%;
+  width: 60%;
+  height: 80%;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--vg-dur) var(--vg-ease-out);
+}
+
+.archive-import:hover {
+  border-color: var(--vg-border-strong);
+  transform: translateY(-3px);
+  box-shadow: var(--vg-shadow-lg);
+}
+.archive-import:hover::after {
+  opacity: 1;
+}
+
+/* Embedded inside the unified panel: drop the card so only the fields show. */
+.archive-import--embedded {
+  gap: 1.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.archive-import--embedded::before,
+.archive-import--embedded::after {
+  display: none;
+}
+.archive-import--embedded:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .archive-import__header {
   display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.archive-import__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--vg-radius);
+  border: 1px solid var(--vg-border-strong);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.archive-import__heading-group {
+  display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  min-width: 0;
 }
 
 .archive-import__header h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: var(--vg-text-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .archive-import__hint {
   margin: 0;
-  font-size: 0.875rem;
-  color: #9ca3af;
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+  line-height: 1.5;
 }
 
 .archive-import__form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 .archive-import__field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.45rem;
 }
 
 .archive-import__label {
-  font-size: 0.875rem;
+  font-size: var(--vg-text-sm);
   font-weight: 500;
-  color: #d1d5db;
+  color: var(--vg-text-muted);
 }
 
 .archive-import__text-input {
   font: inherit;
-  color: inherit;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  background: #1f1f1f;
+  color: var(--vg-text);
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--vg-border-strong);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(7, 11, 22, 0.55);
+  transition: border-color var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur-fast) var(--vg-ease-out), background-color var(--vg-dur-fast);
 }
 
-.archive-import__text-input:focus-visible {
-  outline: 2px solid #60a5fa;
-  outline-offset: 2px;
-  border-color: #2563eb;
+.archive-import__text-input::placeholder {
+  color: var(--vg-text-dim);
+}
+
+.archive-import__text-input:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.archive-import__text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: rgba(7, 11, 22, 0.75);
 }
 
 .archive-import__text-input:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .archive-import__file-input {
   font: inherit;
-  color: inherit;
-  padding: 0.5rem 0.5rem 0.5rem 0;
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed var(--vg-border-strong);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(7, 11, 22, 0.4);
+  cursor: pointer;
+  transition: border-color var(--vg-dur-fast) var(--vg-ease-out),
+    background-color var(--vg-dur-fast);
+}
+
+.archive-import__file-input:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(7, 11, 22, 0.6);
+}
+
+.archive-import__file-input::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  margin-right: 0.75rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--vg-border-strong);
+  border-radius: var(--vg-radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background-color var(--vg-dur-fast) var(--vg-ease-out);
+}
+
+.archive-import__file-input::file-selector-button:hover {
+  background: rgba(34, 211, 238, 0.28);
 }
 
 .archive-import__file-input:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .archive-import__file-meta {
   margin: 0;
-  font-size: 0.8125rem;
-  color: #9ca3af;
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+}
+
+.archive-import__file-meta strong {
+  color: var(--vg-text);
 }
 
 .archive-import__error {
   margin: 0;
-  font-size: 0.875rem;
-  color: #f87171;
+  font-size: var(--vg-text-sm);
+  color: #fca5a5;
 }
 
 .archive-import__error--server {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #7f1d1d;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  border-radius: var(--vg-radius-sm);
   background: rgba(127, 29, 29, 0.2);
 }
 
 .archive-import__success {
   margin: 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #14532d;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: var(--vg-radius-sm);
   background: rgba(20, 83, 45, 0.2);
-  color: #4ade80;
-  font-size: 0.875rem;
+  color: var(--vg-green-bright);
+  font-size: var(--vg-text-sm);
 }
 
 .archive-import__progress {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.45rem;
+}
+
+.archive-import__progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+}
+
+.archive-import__progress-value {
+  font-family: var(--vg-font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--vg-text);
 }
 
 .archive-import__progress-track {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: #1f2937;
+  position: relative;
+  height: 8px;
+  border-radius: var(--vg-radius-pill);
+  background: rgba(7, 11, 22, 0.6);
+  border: 1px solid var(--vg-border);
   overflow: hidden;
 }
 
-.archive-import__progress-bar {
+.archive-import__progress-fill {
   height: 100%;
-  background: #2563eb;
-  border-radius: 999px;
-  transition: width 200ms ease;
+  border-radius: inherit;
+  background: var(--vg-grad-brand);
+  transition: width var(--vg-dur) var(--vg-ease-out);
 }
 
-.archive-import__progress-label {
-  font-size: 0.8125rem;
-  color: #9ca3af;
+@media (prefers-reduced-motion: reduce) {
+  .archive-import,
+  .archive-import__btn,
+  .archive-import__text-input,
+  .archive-import__progress-fill {
+    transition: none;
+  }
 }
 
 .archive-import__actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
 }
 
 .archive-import__btn {
   font: inherit;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #2a2a2a;
-  background: transparent;
-  color: inherit;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border-radius: var(--vg-radius-pill);
+  border: 1px solid var(--vg-border-strong);
+  background: rgba(148, 163, 184, 0.06);
+  color: var(--vg-text);
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out), transform var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 .archive-import__btn:disabled {
@@ -387,24 +557,23 @@ onBeforeUnmount(() => {
 }
 
 .archive-import__btn--primary {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
+  background: linear-gradient(135deg, #22d3ee, #0891b2);
+  border-color: transparent;
+  color: #04212b;
+  box-shadow: 0 8px 24px -10px rgba(34, 211, 238, 0.7);
 }
 
 .archive-import__btn--primary:not(:disabled):hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.5), 0 18px 40px -14px rgba(34, 211, 238, 0.8);
+}
+.archive-import__btn--primary:not(:disabled):active {
+  transform: translateY(0);
 }
 
 .archive-import__btn--ghost:not(:disabled):hover {
-  border-color: #4b5563;
-  color: #f3f4f6;
-}
-
-.archive-import__btn:focus-visible {
-  outline: 2px solid #60a5fa;
-  outline-offset: 2px;
+  border-color: var(--accent);
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .archive-import__submit-spinner {

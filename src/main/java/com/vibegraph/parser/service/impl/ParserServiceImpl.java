@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.github.javaparser.JavaParser;
@@ -21,7 +22,9 @@ import com.vibegraph.common.util.FileUtils;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
+import com.vibegraph.parser.service.ParseProgressListener;
 import com.vibegraph.parser.service.ParserService;
+import com.vibegraph.parser.visitor.AnnotationVisitor;
 import com.vibegraph.parser.visitor.ClassVisitor;
 import com.vibegraph.parser.visitor.FieldVisitor;
 import com.vibegraph.parser.visitor.ImportVisitor;
@@ -37,6 +40,15 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @Slf4j
 public class ParserServiceImpl implements ParserService {
+
+    /**
+     * Phase 3 deep CPG toggle. Default false: LocalVariable nodes + READS/WRITES/CATCHES
+     * are opt-in (body-level data-flow can multiply graph size). Bound from
+     * {@code vibegraph.parser.deep-cpg-enabled}; defaults to false when unset (e.g. in
+     * plain {@code new ParserServiceImpl()} unit tests), preserving the Phase 2 graph.
+     */
+    @Value("${vibegraph.parser.deep-cpg-enabled:false}")
+    private boolean deepCpgEnabled;
 
     @Override
     public ParseResult parseFile(Path filePath) {
@@ -81,14 +93,16 @@ public class ParserServiceImpl implements ParserService {
 
             // Apply visitors
             ClassVisitor classVisitor = new ClassVisitor();
-            MethodVisitor methodVisitor = new MethodVisitor();
+            MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
             FieldVisitor fieldVisitor = new FieldVisitor();
             SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
+            AnnotationVisitor annotationVisitor = new AnnotationVisitor();
 
             classVisitor.visit(cu, null);
             methodVisitor.visit(cu, null);
             fieldVisitor.visit(cu, null);
             springVisitor.visit(cu, null);
+            annotationVisitor.visit(cu, null);
 
             // ImportVisitor needs the source file's full name - use primary class FQCN
             String primaryFqcn = cu.getPrimaryTypeName().orElse("");
@@ -106,20 +120,35 @@ public class ParserServiceImpl implements ParserService {
             List<NodeData> nodes = new ArrayList<>();
             NodeData fileNode = fileNode(filePath);
             nodes.add(fileNode);
+            // Package node + CONTAINS edge (Package -> File). Default-package files
+            // (no package declaration) get no Package node. Deduped across files by
+            // {projectId, fullName} at MERGE time.
+            NodeData packageNode = packageName.isEmpty() ? null : packageNode(packageName);
+            if (packageNode != null) {
+                nodes.add(packageNode);
+            }
             nodes.addAll(classVisitor.getExtractedNodes());
             nodes.addAll(methodVisitor.getExtractedMethods());
+            // LocalVariable nodes (deep CPG only; empty list otherwise).
+            nodes.addAll(methodVisitor.getExtractedVariables());
             nodes.addAll(fieldVisitor.getExtractedFields());
             // Route nodes must be aggregated too - otherwise HANDLES_ROUTE edges below
             // reference a target node that was never persisted and get silently dropped.
             nodes.addAll(springVisitor.getExtractedNodes());
+            // Annotation nodes (annotation types used by classes/methods/fields).
+            nodes.addAll(annotationVisitor.getExtractedNodes());
 
             // Aggregate edges
             List<EdgeData> edges = new ArrayList<>();
             edges.addAll(fileDefinesEdges(fileNode, nodes));
+            if (packageNode != null) {
+                edges.add(EdgeData.of("CONTAINS", packageNode.fullName(), fileNode.fullName()));
+            }
             edges.addAll(classVisitor.getExtractedEdges());
             edges.addAll(methodVisitor.getExtractedEdges());
             edges.addAll(fieldVisitor.getExtractedEdges());
             edges.addAll(springVisitor.getExtractedEdges());
+            edges.addAll(annotationVisitor.getExtractedEdges());
             if (importVisitor != null) {
                 edges.addAll(importVisitor.getExtractedEdges());
             }
@@ -154,6 +183,19 @@ public class ParserServiceImpl implements ParserService {
         );
     }
 
+    /**
+     * Build a Package node from a Java package declaration. fullName is the package
+     * FQN (e.g. {@code com.example.service}); name is the last segment. filePath is
+     * empty so the package is never treated as a file-defined member by
+     * {@link #fileDefinesEdges} — its relationship to files is CONTAINS, not DEFINES.
+     */
+    private NodeData packageNode(String packageName) {
+        String simpleName = packageName.contains(".")
+                ? packageName.substring(packageName.lastIndexOf('.') + 1)
+                : packageName;
+        return NodeData.of("Package", simpleName, packageName, "", 0, 0, Map.of());
+    }
+
     private List<EdgeData> fileDefinesEdges(NodeData fileNode, List<NodeData> nodes) {
         return nodes.stream()
                 .filter(node -> !"File".equals(node.type()))
@@ -174,18 +216,22 @@ public class ParserServiceImpl implements ParserService {
     }
 
     @Override
-    public List<ParseResult> parseProject(Path projectRoot) {
+    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener) {
         List<ParseResult> results = new ArrayList<>();
+        ParseProgressListener listener = progressListener != null ? progressListener : ParseProgressListener.NOOP;
 
         try {
             List<Path> javaFiles = FileUtils.scanJavaFiles(projectRoot);
-            log.info("Found {} .java files in project: {}", javaFiles.size(), projectRoot);
+            int totalFiles = javaFiles.size();
+            log.info("Found {} .java files in project: {}", totalFiles, projectRoot);
+            listener.onFileParsed(0, totalFiles);
 
             // Build a single project-wide parser whose type solver indexes all source roots.
             // This lets MethodCallExpr.resolve() resolve cross-package, cross-class calls
             // (CALLS edges) instead of only same-directory ones.
             JavaParser parser = createProjectParser(projectRoot, javaFiles);
 
+            int parsed = 0;
             for (Path javaFile : javaFiles) {
                 try {
                     ParseResult result = parseFileInternal(javaFile, parser);
@@ -197,18 +243,14 @@ public class ParserServiceImpl implements ParserService {
                             .warnings(List.of("Unexpected error: " + e.getMessage()))
                             .build());
                 }
+                parsed++;
+                listener.onFileParsed(parsed, totalFiles);
             }
         } catch (IOException e) {
             log.error("Failed to scan project directory: {}", projectRoot, e);
         }
 
         return results;
-    }
-
-    @Override
-    public ParseResult parseFileWithCache(Path filePath, String projectId) {
-        // Cache-based incremental parsing deferred to Sprint 2
-        throw new UnsupportedOperationException("Not implemented yet - deferred to Sprint 2");
     }
 
     private JavaParser createParser(Path sourceRoot) {

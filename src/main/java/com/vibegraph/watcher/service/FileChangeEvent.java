@@ -7,8 +7,8 @@ import java.time.Instant;
  *
  * <p>{@code relativePath} is the path of the changed file relative to the project
  * root, normalized to forward slashes (e.g. {@code src/main/java/com/example/Foo.java}).
- * It is the exact value passed to {@link com.vibegraph.graph.repository.GraphRepository#deleteFile(String, String)}
- * on a {@link EventType#DELETE}.
+ * Handlers resolve it against the project root to recover the absolute path the graph
+ * stores (see {@code FileChangeBroadcaster}).
  *
  * @param projectId    tenant identifier the change belongs to
  * @param relativePath project-root-relative path of the changed file (forward-slash separated)

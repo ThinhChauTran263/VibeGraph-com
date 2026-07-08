@@ -6,7 +6,8 @@
  * assignments — the composable never mutates the previous result object.
  *
  * Backend contract: GET /api/projects/{projectId}/graph/impact?nodeId=&depth=
- * (see GraphController / GraphServiceImpl). Allowed depths: 1, 2, 3, 5.
+ * &profile= (see GraphController / GraphServiceImpl). Allowed depths: 1, 2,
+ * 3, 5. Default profile is `dependency`.
  */
 
 import { computed, readonly, ref } from 'vue'
@@ -14,16 +15,23 @@ import {
   ApiError,
   graphApi,
   IMPACT_ALLOWED_DEPTHS,
+  IMPACT_PROFILES,
   type ImpactAnalysisResponse,
   type ImpactDepth,
+  type ImpactProfile,
 } from '@/lib/api'
 
 export type ImpactStatus = 'idle' | 'loading' | 'success' | 'error'
 
 const DEFAULT_DEPTH: ImpactDepth = 1
+const DEFAULT_PROFILE: ImpactProfile = 'dependency'
 
 function isAllowedDepth(depth: number): depth is ImpactDepth {
   return (IMPACT_ALLOWED_DEPTHS as readonly number[]).includes(depth)
+}
+
+function isAllowedProfile(profile: string): profile is ImpactProfile {
+  return (IMPACT_PROFILES as readonly string[]).includes(profile)
 }
 
 function mapError(err: unknown): string {
@@ -41,9 +49,11 @@ export function useImpactAnalysis() {
   const result = ref<ImpactAnalysisResponse | null>(null)
   const errorMessage = ref<string | null>(null)
   const selectedDepth = ref<ImpactDepth>(DEFAULT_DEPTH)
+  const selectedProfile = ref<ImpactProfile>(DEFAULT_PROFILE)
 
   const isLoading = computed(() => status.value === 'loading')
   const allowedDepths = IMPACT_ALLOWED_DEPTHS
+  const allowedProfiles = IMPACT_PROFILES
 
   // Monotonic request token. Each in-flight request captures the current value;
   // when it settles, it only writes state if it is still the latest request.
@@ -64,6 +74,7 @@ export function useImpactAnalysis() {
     projectId: string,
     nodeId: string,
     depth: number = selectedDepth.value,
+    profile: ImpactProfile = selectedProfile.value,
   ): Promise<ImpactAnalysisResponse | null> {
     const trimmedProjectId = projectId?.trim() ?? ''
     const trimmedNodeId = nodeId?.trim() ?? ''
@@ -86,15 +97,22 @@ export function useImpactAnalysis() {
       errorMessage.value = `Depth must be one of ${IMPACT_ALLOWED_DEPTHS.join(', ')}.`
       return null
     }
+    if (!isAllowedProfile(profile)) {
+      status.value = 'error'
+      result.value = null
+      errorMessage.value = `Profile must be one of ${IMPACT_PROFILES.join(', ')}.`
+      return null
+    }
 
     selectedDepth.value = depth
+    selectedProfile.value = profile
     status.value = 'loading'
     errorMessage.value = null
 
     const seq = ++requestSeq
 
     try {
-      const data = await graphApi.getImpact(trimmedProjectId, trimmedNodeId, depth)
+      const data = await graphApi.getImpact(trimmedProjectId, trimmedNodeId, depth, profile)
       // A newer request (or a reset) superseded this one; drop the stale result.
       if (seq !== requestSeq) return null
       result.value = data
@@ -125,8 +143,10 @@ export function useImpactAnalysis() {
     result: readonly(result),
     errorMessage: readonly(errorMessage),
     selectedDepth,
+    selectedProfile,
     isLoading,
     allowedDepths,
+    allowedProfiles,
     loadImpact,
     reset,
   }

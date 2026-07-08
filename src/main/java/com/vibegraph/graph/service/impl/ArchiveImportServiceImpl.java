@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
+import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.importer.ArchiveExtractionResult;
@@ -21,6 +23,7 @@ import com.vibegraph.graph.importer.ArchiveExtractor;
 import com.vibegraph.graph.importer.ArchiveType;
 import com.vibegraph.graph.importer.ArchiveTypeDetector;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.ProjectService;
@@ -69,7 +72,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     public ProjectResponse importArchive(String name, MultipartFile file) {
         ImportContext ctx = prepare(name, file);
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.rootPath());
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
             projectService.updateProjectStats(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
@@ -87,7 +90,16 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         ImportContext ctx = prepare(name, file);
         projectService.markAnalyzing(ctx.projectId());
         graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0);
-        analysisExecutor.execute(() -> analyzeInBackground(ctx));
+        try {
+            analysisExecutor.execute(() -> analyzeInBackground(ctx));
+        } catch (RejectedExecutionException ex) {
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            String reason = "Server is busy analyzing other projects. Please retry shortly.";
+            projectService.markFailed(ctx.projectId(), reason);
+            graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
+            cleanup(ctx.workspace(), ctx.projectId());
+            throw new ServiceBusyException(reason);
+        }
         return projectService.getProject(ctx.projectId());
     }
 
@@ -143,7 +155,12 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      */
     private void analyzeInBackground(ImportContext ctx) {
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.rootPath());
+            AnalysisProgressListener listener = (percent, phase) -> {
+                projectService.updateProgress(ctx.projectId(), percent);
+                graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
+            };
+            AnalyzeService.AnalysisResult result =
+                    analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);

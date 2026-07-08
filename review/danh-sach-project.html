@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review · Danh sách Project</title>
+<style>
+:root{--bg:#0b1120;--surface:#111a2e;--s2:#16213c;--bd:rgba(148,163,184,.18);--tx:#e2e8f0;--dim:#94a3b8;--ac:#60a5fa;--ac2:#22d3ee;--gn:#34d399;--am:#fbbf24;--mono:"Cascadia Code",Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,"Segoe UI",sans-serif;background:radial-gradient(1200px 600px at 80% -10%,rgba(37,99,235,.12),transparent 60%),var(--bg);color:var(--tx);line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+.bc{font-size:.8rem;color:var(--dim);margin-bottom:1rem}.bc a{color:var(--ac);text-decoration:none}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--bd);color:#a78bfa;background:rgba(167,139,250,.1)}
+h1{font-size:1.9rem;margin:.5rem 0 .25rem;line-height:1.2}h2{font-size:1.2rem;margin:2rem 0 .7rem;padding-bottom:.4rem;border-bottom:1px solid var(--bd)}h3{font-size:1rem;margin:1.3rem 0 .5rem;color:#cbd5e1}
+.lead{color:var(--dim);font-size:1.02rem;margin:.5rem 0 1.4rem}a{color:var(--ac)}
+code{font-family:var(--mono);font-size:.86em;background:rgba(148,163,184,.14);padding:.1rem .4rem;border-radius:6px;color:#e0e7ff}
+.co{border-left:3px solid var(--ac);background:var(--s2);border-radius:0 10px 10px 0;padding:.8rem 1.1rem;margin:1rem 0}.co.warn{border-left-color:var(--am)}.co.tip{border-left-color:var(--gn)}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}th,td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--ac);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}td:first-child{white-space:nowrap;color:var(--dim)}
+.flow{list-style:none;padding:0}.flow li{position:relative;padding:.55rem 0 .55rem 1.6rem}.flow li::before{content:"→";position:absolute;left:0;top:.55rem;color:var(--ac2);font-weight:700}.flow b{color:#fff}
+.check{list-style:none;padding:0}.check li{padding:.35rem 0 .35rem 1.8rem;position:relative}.check li::before{content:"☐";position:absolute;left:0;top:.3rem;color:var(--ac);font-size:1.05rem}
+.foot{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bd);font-size:.9rem}.foot a{text-decoration:none;color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:.6rem 1rem}.foot a:hover{border-color:var(--ac);background:var(--s2)}
+.muted{color:var(--dim);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bc"><a href="index.html">← Mục lục</a> · B4 · Danh sách Project</div>
+  <span class="tag">Full-stack</span>
+  <h1>Danh sách Project đã import</h1>
+  <p class="lead">Khu vực bên phải Dashboard liệt kê mọi project đã import: mở để xem graph, xóa từng project, Clear all, Refresh, và <b>tự động cập nhật trạng thái</b> ANALYZING → ANALYZED.</p>
+
+  <h2>Mục tiêu review</h2>
+  <ul>
+    <li>Danh sách tải đúng, mở được project → vào graph.</li>
+    <li>Xóa 1 project, Clear all (có xác nhận), Refresh hoạt động.</li>
+    <li>Project đang phân tích tự cập nhật trạng thái mà không cần F5.</li>
+  </ul>
+
+  <h2>Tiền điều kiện</h2>
+  <p>Backend + Neo4j chạy; đã có ít nhất 1 project import trước đó.</p>
+
+  <h2>Kịch bản thao tác</h2>
+  <table>
+    <tr><th>#</th><th>Thao tác</th><th>Kết quả kỳ vọng</th><th>P/F</th></tr>
+    <tr><td>1</td><td>Mở <code>/dashboard</code></td><td>Khối "Imported projects" liệt kê project kèm nhãn trạng thái (ANALYZED/ANALYZING).</td><td></td></tr>
+    <tr><td>2</td><td>Bấm 1 project ANALYZED</td><td>Điều hướng <code>/projects/:id/graph</code>, graph tải.</td><td></td></tr>
+    <tr><td>3</td><td>Bấm <b>Refresh</b></td><td>Danh sách nạp lại từ backend.</td><td></td></tr>
+    <tr><td>4</td><td>Import 1 project mới, quay lại danh sách (không F5)</td><td>Trạng thái tự chuyển ANALYZING → ANALYZED nhờ auto-refresh nền.</td><td></td></tr>
+    <tr><td>5</td><td>Bấm <b>Delete</b> 1 project</td><td>Project biến mất khỏi danh sách; backend xóa dữ liệu graph tương ứng.</td><td></td></tr>
+    <tr><td>6</td><td>Bấm <b>Clear all</b></td><td>Hộp xác nhận hiện; xác nhận → xóa toàn bộ.</td><td></td></tr>
+  </table>
+
+  <div class="co warn"><b>Thao tác phá hủy:</b> Delete &amp; Clear all xóa dữ liệu graph khỏi Neo4j, không hoàn tác. Review cần xác nhận có bước xác nhận (Clear all đã có <code>window.confirm</code>) và thông báo lỗi khi xóa thất bại.</div>
+
+  <h2>Tham số cụ thể</h2>
+  <p>Nhịp auto-refresh nền: <code>PROJECTS_AUTO_REFRESH_INTERVAL_MS = 5000ms</code> (env <code>VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS</code>). Tạm dừng khi tab ẩn (<code>document.hidden</code>); không nháy "Loading…" và không đè lỗi đang hiển thị. Clear all có <code>window.confirm</code> và xóa tuần tự theo snapshot id.</p>
+
+  <h2>Điểm cần soi</h2>
+  <ul class="check">
+    <li>Auto-refresh nền không nháy "Loading…" và không đè lỗi người dùng đang đọc.</li>
+    <li>Tab ẩn (document.hidden) thì tạm dừng auto-refresh (tiết kiệm request).</li>
+    <li>Clear all xóa tuần tự, báo lỗi nếu vài project không xóa được.</li>
+  </ul>
+
+  <h2>Luồng hoạt động của code</h2>
+  <ul class="flow">
+    <li><b>UI</b>: <code>views/HomeView.vue</code> render danh sách + nút Open/Delete/Clear all/Refresh; auto-refresh bằng <code>setInterval</code> (gated theo <code>document.hidden</code>).</li>
+    <li><b>HTTP</b>: <code>projectApi.list()</code> → <code>GET /api/projects</code>; <code>projectApi.remove(id)</code> → <code>DELETE /api/projects/{id}</code>.</li>
+    <li><b>Backend</b>: <code>ProjectController</code> (list/get/delete) → <code>ProjectService</code> đọc/xóa qua <code>graph/repository</code> (Neo4j).</li>
+    <li><b>Mở project</b>: lưu <code>currentProjectId</code>/<code>projectName</code> vào <code>stores/project.ts</code> rồi <code>router.push</code> sang route graph.</li>
+  </ul>
+
+  <h2>File liên quan</h2>
+  <table>
+    <tr><th>Tầng</th><th>File</th></tr>
+    <tr><td>UI</td><td><code>views/HomeView.vue</code></td></tr>
+    <tr><td>Logic FE</td><td><code>lib/api.ts</code> (projectApi), <code>stores/project.ts</code>, <code>lib/runtimeConfig.ts</code> (interval)</td></tr>
+    <tr><td>Backend</td><td><code>graph/controller/ProjectController.java</code>, <code>graph/service</code> (ProjectService)</td></tr>
+  </table>
+
+  <div class="foot">
+    <a href="import-github.html">← Import GitHub</a>
+    <a href="graph-canvas.html">Graph Canvas →</a>
+  </div>
+</div>
+</body>
+</html>

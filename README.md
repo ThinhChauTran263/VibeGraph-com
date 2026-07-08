@@ -5,25 +5,30 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 ## Features
 
 > Trạng thái phản ánh kế hoạch 8 tuần trong `VibeGraph-specs-2month/`
-> (chi tiết: `task-breakdown-8week.md`, `file-checklist.md`).
+> (chi tiết: `file-checklist.md`, `requirements-trimmed.md`).
 
-**Đã có (MVP — Sprint 1):**
+**Đã có (đã ship):**
 - Parse Java source code with JavaParser → `NodeData` / `EdgeData`
 - Build knowledge graph in Neo4j via `GraphRepository` (raw Neo4j Java Driver)
-- Force-directed graph visualization (Sigma.js) with filtering + focus mode
-- REST API: register project (local path), run analysis, fetch full graph
+- Force-directed graph visualization (Sigma.js) with filtering, search, and click-driven node detail/highlight
+- Project import qua 3 luồng: **local folder** (`POST /api/projects/import-local`), **archive** `.zip`/`.tar`/`.tar.gz` (`POST /api/projects/import-archive`), và **GitHub public repo** (`POST /api/projects/import-github`), có thanh tiến độ realtime
+- Local-folder import với realtime thật: sửa file `.java` trong IDE và graph cập nhật tại chỗ (add/modify/delete) qua server-side File Watcher + WebSocket/STOMP. (GitHub/archive import theo dõi bản copy server-side = snapshot.)
+- UML diagrams: **Use Case** (SVG UML 2.5 chuẩn) & **Class** (Mermaid), API Map
+- **Impact Analysis** với 3 profile (`dependency` / `structural` / `type-data-flow`) qua `GET /api/projects/{id}/graph/impact`
+- **Source viewer**: đọc source file redacted, project-relative path qua `SourceController` + FE `CodeViewerModal` (+ MCP source tools)
+- **AI-refined Use Case** qua Gemini failover client (`com.vibegraph.ai/*` + `LlmUseCaseRefiner`)
+- **Deep CPG opt-in**: `LocalVariable` nodes + `READS`/`WRITES`/`CATCHES` edges qua env `VIBEGRAPH_PARSER_DEEP_CPG=true`
+- **15 MCP tools** cho AI tools (Cursor, Kiro, Claude Code) — xem `docs/mcp-integration.md`
+- REST API: register project, run analysis, fetch full graph, impact analysis, source viewer
 
-**Đang phát triển (Sprint 2–3):**
-- Project archive upload (`.zip`/`.tar`/`.tar.gz`) — flow chính mới thay cho việc nhập local path thủ công (`POST /api/projects/import-archive`)
-- GitHub public-repo import (tarball stream — backend path in place, UI pending)
-- Realtime incremental updates via server-side File Watcher + WebSocket/STOMP
-- UML diagrams: Use Case & Class (Mermaid)
-- MCP Server tools for AI tools (Cursor, Kiro, Claude Code)
+**Đang phát triển:**
+- Neighborhood N-hop query (`GET /api/projects/{id}/graph/neighbors/{nodeId}?hops=N`) — `Neo4jGraphRepository.getNeighborhood` hiện ném `UnsupportedOperationException` (Sprint 2/3)
+- `ImpactController` chuyên biệt là scaffold rỗng — thực tế impact endpoint đang dùng `GraphController /graph/impact`
 
 **Hoãn sau MVP (post-MVP):**
 - Sequence diagram
 - Steering-file generation for AI tools
-- Multi-language parsing, authentication/billing
+- Multi-language parsing, authentication/billing (xem `VibeGraph-specs-2month/security-multiuser-roadmap.md`)
 
 ## Tech Stack
 
@@ -71,8 +76,9 @@ Open: http://localhost:5173
 See `VibeGraph-specs-2month/` for detailed documentation:
 - `requirements-trimmed.md` — Functional requirements (MVP scope)
 - `architecture.md` — System design
-- `task-breakdown-8week.md` — Sprint tasks
-- `file-checklist.md` — File creation checklist
+- `file-checklist.md` — Sprint tasks và trạng thái theo file
+- `neo4j-schema.md` — Node/edge schema và Cypher migrations
+- `security-multiuser-roadmap.md` — Bảo mật hiện trạng + hướng multi-user
 - `deployment-plan.md` — Docker / domain / SSL / CI notes
 - `presentation.html` — Customer-facing overview (generated)
 

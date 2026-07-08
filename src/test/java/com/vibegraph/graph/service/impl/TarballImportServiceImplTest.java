@@ -100,10 +100,11 @@ class TarballImportServiceImplTest {
         verify(tarballClient).downloadTarball(eq(resolved), any(Path.class), eq(104857600L));
         verify(projectService).markAnalyzing("p1");
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZING), eq(0), any(String.class));
-        verify(analyzeService, never()).analyzeProject(any(), any());
+        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
         assertThat(backgroundTasks).hasSize(1);
 
-        when(analyzeService.analyzeProject("p1", "rp")).thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
+        when(analyzeService.analyzeProject(eq("p1"), eq("acme/demo"), eq("rp"), any()))
+                .thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
         backgroundTasks.get(0).run();
 
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
@@ -127,7 +128,7 @@ class TarballImportServiceImplTest {
         verify(archiveExtractor, never()).extract(any(), any(), any());
         verify(projectService, never()).createProjectFromWorkspace(any(), any());
         verify(graphUpdateController, never()).broadcastStatus(any(), any(ProjectStatus.class), any(Integer.class), any());
-        verify(analyzeService, never()).analyzeProject(any(), any());
+        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
         verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         assertThat(backgroundTasks).isEmpty();
     }

@@ -1,150 +1,117 @@
 # Module: mcp
 
-## Mục đích
-MCP (Model Context Protocol) Server cung cấp tools để AI coding assistants (Cursor, Kiro, Claude Code) đọc project context trước khi generate code, đảm bảo code AI sinh ra đúng architecture.
+## Purpose
 
-> **Scope 2-month:** 4 tools cốt lõi. `get_usecase_context` và `get_coding_rules` defer post-2-month.
+The MCP module exposes VibeGraph's analyzed Java project context to AI coding
+assistants over Spring AI MCP streamable HTTP at `/mcp`.
 
-## Cấu trúc
+MCP tools read two controlled data sources:
 
-```
+1. Neo4j graph data produced by import/analyze.
+2. Bounded source snippets from the project source root stored on the persisted
+   `Project` node.
+
+Tools do not scan arbitrary folders. Source access is restricted to imported and
+analyzed projects whose stored source root still exists and passes the allowed
+workspace/root guard.
+
+## Current Tool Surface
+
+The server currently registers 15 tools through `McpServerConfig`:
+
+| Tool | Class | Purpose |
+| --- | --- | --- |
+| `get_project_architecture` | `ArchitectureTool` | Layers, counts, conventions, warnings. |
+| `get_class_context` | `ClassContextTool` | Class match, methods, fields, incoming/outgoing relations. |
+| `get_impact_analysis` | `ImpactAnalysisTool` | Blast radius by profile/depth. |
+| `get_layer_pattern` | `LayerPatternTool` | Layer examples, conventions, dependency patterns. |
+| `trace_endpoint` | `TraceEndpointTool` | Route handler downstream flow. |
+| `find_references` | `FindReferencesTool` | Graph references to a symbol. |
+| `get_source_file` | `SourceFileTool` | Bounded, redacted source file content. |
+| `search_source` | `SearchSourceTool` | Source search mapped to graph symbols when possible. |
+| `get_method_source` | `MethodSourceTool` | Method source by id/query/signature. |
+| `get_method_cpg_context` | `MethodCpgTool` | Method signature, calls, flow, and deep CPG groups. |
+| `find_related_tests` | `FindRelatedTestsTool` | Related tests from graph links and heuristics. |
+| `suggest_test_plan` | `SuggestTestPlanTool` | Focused test plan for a described change. |
+| `plan_code_change` | `PlanCodeChangeTool` | Conservative change plan with risks and tests. |
+| `explain_failure_path` | `ExplainFailureTool` | Stacktrace-to-project mapping. |
+| `get_project_conventions` | `ProjectConventionsTool` | Durable repo conventions from `ai-memory.md`. |
+
+## Package Structure
+
+```text
 mcp/
-├── controller/
-│   └── McpEndpointController.java    — /mcp endpoint (Streamable HTTP)
-├── tool/                             — @Tool classes (exposed to AI)
-│   ├── ArchitectureTool.java         — get_project_architecture
-│   ├── ClassContextTool.java         — get_class_context
-│   ├── LayerPatternTool.java         — get_layer_pattern
-│   └── ImpactAnalysisTool.java       — get_impact_analysis
-├── service/
-│   ├── McpToolService.java           — Interface: orchestrate tool calls
-│   ├── ArchitectureAnalyzer.java     — Interface: detect patterns from graph
-│   └── impl/
-│       ├── McpToolServiceImpl.java
-│       └── ArchitectureAnalyzerImpl.java
-└── dto/
-    ├── request/
-    │   ├── ClassContextRequest.java   — {className, projectId}
-    │   └── LayerPatternRequest.java   — {layer: CONTROLLER|SERVICE|REPOSITORY}
-    └── response/
-        ├── ArchitectureContextResponse.java — {layers[], packages[], patterns[], rules[]}
-        ├── ClassContextResponse.java        — {class, related[], methods[], diagram}
-        └── LayerPatternResponse.java        — {layer, conventions[], examples[]}
+  dto/response/        Tool response DTOs
+  service/             Tool service interfaces
+  service/impl/        Graph/source analyzers and senior-tool implementations
+  source/              Shared source and graph access helpers
+  tool/                Spring AI `@Tool` classes exposed to clients
 ```
 
-## Yêu cầu chức năng
+## Core Helpers
 
-### MCP Tools (FR-10)
+| Helper | Responsibility |
+| --- | --- |
+| `GraphView` | Loads and resolves graph nodes/relations for a project. |
+| `SourceFileService` | Reads bounded source text from the validated project root. |
+| `SourceGraphSupport` | Shared source/graph helpers, path relativization, redaction. |
 
-#### `get_project_architecture`
-- [ ] Input: `projectId`
-- [ ] Output: ArchitectureContextResponse
-- [ ] Detect layers từ Spring annotations: Controller → Service → Repository
-- [ ] List packages và mục đích của từng package
-- [ ] Detect patterns: DI style, validation, error handling, pagination
-- [ ] Detect naming conventions: {Entity}Controller, {Entity}Service, etc.
-- [ ] Generate class diagram (Mermaid) overview
-- [ ] List warnings: large classes, missing tests, anti-patterns
+## Project Recovery After Restart
 
-#### `get_class_context`
-- [ ] Input: `className` (e.g., "UserService"), `projectId`
-- [ ] Output: ClassContextResponse
-- [ ] Return:
-  - Class info (fields, methods, annotations)
-  - Related classes (callers, callees, dependencies)
-  - Class diagram fragment (Mermaid)
-  - Layer assignment
+Project metadata is persisted in Neo4j. After backend restart:
 
-#### `get_layer_pattern`
-- [ ] Input: `layer` (CONTROLLER | SERVICE | REPOSITORY | COMPONENT), `projectId`
-- [ ] Output: LayerPatternResponse
-- [ ] Return:
-  - Naming convention cho layer này
-  - Annotations bắt buộc (@RestController, @Service, etc.)
-  - Conventions: constructor injection, validation, error handling
-  - Code examples từ existing classes trong project
-  - Anti-patterns to avoid
+- `ProjectServiceImpl.listProjects()` merges in-memory projects with persisted
+  `Project` nodes from Neo4j.
+- `ProjectServiceImpl.getProject()` can recover a project by id from persisted
+  metadata.
+- `ProjectServiceImpl.deleteProject()` can delete a recovered project and remove
+  all persisted nodes/relationships for that `projectId`.
+- Recovery is allowed only when the recorded root is under the archive workspace
+  root or configured allowed root.
 
-#### `get_impact_analysis`
-- [ ] Input: `projectId`, `target` (class hoặc method fullName)
-- [ ] Output: Impact analysis (delegate sang `graph.ImpactService`)
-- [ ] Return: affected nodes by depth (1-5 hops), risk level, recommendations
+This lets MCP source tools keep working across restarts without trusting arbitrary
+persisted paths.
 
-### MCP Endpoint (FR-10)
-- [ ] Transport: **Streamable HTTP** (chuẩn MCP mới nhất)
-- [ ] Endpoint: `POST /mcp`
-- [ ] Compatible với: Cursor, Kiro, Claude Code, GitHub Copilot
-- [ ] Server info: name "VibeGraph", version từ pom.xml
-- [ ] Configure qua Spring AI MCP Boot Starter
+## CPG Behavior
 
-### Architecture Analyzer
-- [ ] `detectLayers(projectId)`: Phân tích Spring annotations → layers
-- [ ] `detectPatterns(projectId)`:
-  - Constructor vs field injection (count tỷ lệ)
-  - Validation style (@Valid usage)
-  - Error handling pattern (GlobalExceptionHandler presence)
-  - Transaction usage
-- [ ] `detectNamingConventions(projectId)`: Phân tích tên classes
-- [ ] `detectWarnings(projectId)`:
-  - Classes > 500 LOC
-  - Methods > 50 LOC
-  - Missing tests (no corresponding test class)
-  - Cyclic dependencies
+- CPG-lite relation types are available in the graph generically.
+- Deep CPG (`LocalVariable`, `READS`, `WRITES`, `CATCHES`) is opt-in through
+  `VIBEGRAPH_PARSER_DEEP_CPG=true`.
+- `STEP_IN_FLOW` is inferred from resolved in-project `CALLS` reachable from
+  route handlers. It is a deterministic flow view, not runtime tracing.
+- If deep CPG is disabled, method CPG tools should report empty data-flow groups
+  as a limitation, not as a failure.
 
-## Configuration
+## Safety Rules
 
-### MCP Client Config Example
-```json
-{
-  "mcpServers": {
-    "vibegraph": {
-      "url": "http://localhost:8080/mcp",
-      "transport": "streamable-http"
-    }
-  }
-}
+1. Return project-relative paths only. Do not leak absolute server paths or usernames.
+2. Reject path traversal and refuse sensitive files (`.env`, keys, archives,
+   binaries, build output).
+3. Keep responses bounded with explicit truncation metadata.
+4. Resolve ambiguity to candidate lists instead of guessing.
+5. Validate all graph labels/relationship types before interpolating Cypher tokens.
+6. Keep MCP tools stateless; source of truth is Neo4j + the validated source root.
+
+## Testing
+
+Focused backend commands:
+
+```powershell
+.\mvnw.cmd -q "-Dtest=SeniorMcpToolsTest,McpToolsTest,ProjectConventionsServiceTest,ProjectRestartSourceTest" test
+.\mvnw.cmd -q "-Dtest=ProjectServicePersistenceTest" test
 ```
 
-### Spring AI MCP Setup
-```java
-@Bean
-public ToolCallbackProvider mcpTools(
-    ArchitectureTool architectureTool,
-    ClassContextTool classContextTool,
-    LayerPatternTool layerPatternTool,
-    ImpactAnalysisTool impactAnalysisTool) {
-    return MethodToolCallbackProvider.builder()
-        .toolObjects(architectureTool, classContextTool, layerPatternTool, impactAnalysisTool)
-        .build();
-}
+Full backend unit suite:
+
+```powershell
+.\mvnw.cmd -q -DskipITs test
 ```
 
-## Quy tắc code
+## Known Limitations
 
-1. **Stateless tools**: MCP tools không lưu state, mỗi call độc lập
-2. **Markdown-friendly**: Response chứa Markdown để AI render dễ đọc
-3. **Latency target**: Mỗi tool call < 1 second
-4. **Error handling**: Tool errors trả về structured error, không throw exception
-5. **Caching**: Cache architecture analysis (invalidate on graph change)
-
-## Performance Targets
-
-| Metric | Target |
-|--------|--------|
-| MCP tool call latency | < 1 second |
-| Architecture analysis | < 2 seconds |
-| Class context lookup | < 500ms |
-
-## Acceptance Criteria
-
-- [ ] MCP endpoint accessible tại `http://localhost:8080/mcp`
-- [ ] Cursor/Kiro/Claude Code có thể connect và list tools
-- [ ] Tất cả **4 tools** hoạt động và return valid response
-- [ ] Architecture detection chính xác cho Spring Boot project
-- [ ] Response format JSON với Markdown content
-- [ ] Integration test với MCP client
-
-## Deferred (post-2-month)
-
-- `get_usecase_context` — context theo use case/feature name
-- `get_coding_rules` — generate DO/DON'T rules dynamic
+- Realtime incremental re-parse is wired for CREATE/MODIFY/DELETE `.java`
+  (FileChangeBroadcaster broadcasts an `INCREMENTAL` delta); true realtime
+  applies to local-folder imports.
+- Production auth/rate limiting are deployment concerns.
+- Test and change-plan tools use graph evidence plus heuristics; agents should
+  verify before editing.

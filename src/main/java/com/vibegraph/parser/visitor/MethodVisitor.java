@@ -1,27 +1,47 @@
 package com.vibegraph.parser.visitor;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AnnotationExpr;
+import com.github.javaparser.ast.expr.AssignExpr;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
+import com.github.javaparser.ast.expr.ThisExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
+import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.stmt.CatchClause;
+import com.github.javaparser.ast.type.Type;
+import com.github.javaparser.ast.type.UnionType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
+import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
+import com.github.javaparser.resolution.types.ResolvedReferenceType;
 import com.github.javaparser.symbolsolver.javaparsermodel.declarations.JavaParserMethodDeclaration;
 import com.vibegraph.parser.Signatures;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Extracts Method nodes and method-related edges (CALLS, RETURNS, PARAMETER_TYPE, THROWS) from AST.
@@ -29,7 +49,18 @@ import java.util.stream.Collectors;
 public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private final List<NodeData> extractedMethods = new ArrayList<>();
+    private final List<NodeData> extractedVariables = new ArrayList<>();
     private final List<EdgeData> extractedEdges = new ArrayList<>();
+    /** When false (default), no LocalVariable nodes or READS/WRITES/CATCHES edges are emitted. */
+    private final boolean deepCpg;
+
+    public MethodVisitor() {
+        this(false);
+    }
+
+    public MethodVisitor(boolean deepCpg) {
+        this.deepCpg = deepCpg;
+    }
 
     @Override
     public void visit(MethodDeclaration n, Object arg) {
@@ -37,6 +68,12 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         extractedMethods.add(methodNode);
         extractMethodEdges(n, methodNode.fullName());
         extractCallEdges(n, methodNode.fullName());
+        extractInstantiations(n, methodNode.fullName());
+        extractOverrides(n, methodNode.fullName());
+        if (deepCpg) {
+            extractDataFlow(n, methodNode.fullName(), n.getParameters());
+            extractCatches(n, methodNode.fullName());
+        }
         super.visit(n, arg);
     }
 
@@ -45,11 +82,21 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         NodeData methodNode = toNodeData(n);
         extractedMethods.add(methodNode);
         extractConstructorEdges(n, methodNode.fullName());
+        extractInstantiations(n, methodNode.fullName());
+        if (deepCpg) {
+            extractDataFlow(n, methodNode.fullName(), n.getParameters());
+            extractCatches(n, methodNode.fullName());
+        }
         super.visit(n, arg);
     }
 
     public List<NodeData> getExtractedMethods() {
         return extractedMethods;
+    }
+
+    /** LocalVariable nodes (parameters + local declarations), only when deep CPG is enabled. */
+    public List<NodeData> getExtractedVariables() {
+        return extractedVariables;
     }
 
     public List<EdgeData> getExtractedEdges() {
@@ -142,6 +189,293 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         });
     }
 
+    private void extractInstantiations(com.github.javaparser.ast.Node body, String callerFullName) {
+        body.findAll(ObjectCreationExpr.class).forEach(creation -> {
+            int lineNumber = creation.getBegin().map(p -> p.line).orElse(0);
+            String targetFullName = resolveInstantiatedType(creation);
+            if (targetFullName != null && !targetFullName.isBlank()) {
+                extractedEdges.add(EdgeData.of("INSTANTIATES", callerFullName, targetFullName, Map.of(
+                        "lineNumber", lineNumber
+                )));
+            }
+        });
+    }
+
+    /**
+     * Resolve the instantiated type of a {@code new X(...)} expression. Best-effort:
+     * the symbol solver gives the qualified name when resolvable, otherwise we fall
+     * back to import/same-package resolution. Out-of-project targets become External
+     * stubs at persistence time.
+     */
+    private String resolveInstantiatedType(ObjectCreationExpr creation) {
+        try {
+            var resolved = creation.getType().resolve();
+            if (resolved.isReferenceType()) {
+                return resolved.asReferenceType().getQualifiedName();
+            }
+        } catch (Exception e) {
+            // Unresolvable — fall back to lexical resolution below.
+        }
+        return resolveTypeName(creation.getType().getNameAsString(), creation);
+    }
+
+    /**
+     * Conservatively emit an OVERRIDES edge (overriding method -> overridden method)
+     * ONLY when the overridden method can be resolved to an in-project
+     * (JavaParser-backed) method with a matching signature in an ancestor type.
+     * If the type hierarchy cannot be fully resolved (external/unsolved supertype),
+     * nothing is emitted — we never infer OVERRIDES from {@code @Override} alone.
+     */
+    private void extractOverrides(MethodDeclaration declaration, String methodFullName) {
+        if (declaration.isStatic() || declaration.isPrivate()) {
+            return;
+        }
+        try {
+            ResolvedMethodDeclaration resolved = declaration.resolve();
+            ResolvedReferenceTypeDeclaration declaringType = resolved.declaringType();
+            for (ResolvedReferenceType ancestor : declaringType.getAllAncestors()) {
+                Optional<ResolvedReferenceTypeDeclaration> ancestorDecl = ancestor.getTypeDeclaration();
+                if (ancestorDecl.isEmpty()) {
+                    continue;
+                }
+                for (ResolvedMethodDeclaration candidate : ancestorDecl.get().getDeclaredMethods()) {
+                    if (overrides(resolved, candidate) && candidate instanceof JavaParserMethodDeclaration jp) {
+                        MethodDeclaration target = jp.getWrappedNode();
+                        List<String> paramTypes = target.getParameters().stream()
+                                .map(parameter -> parameter.getType().asString())
+                                .toList();
+                        String targetFullName = Signatures.method(
+                                ancestorDecl.get().getQualifiedName(),
+                                target.getNameAsString(),
+                                paramTypes);
+                        extractedEdges.add(EdgeData.of("OVERRIDES", methodFullName, targetFullName));
+                        return; // one OVERRIDES edge per method is sufficient
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Unresolvable hierarchy — conservatively emit nothing.
+        }
+    }
+
+    private boolean overrides(ResolvedMethodDeclaration overriding, ResolvedMethodDeclaration candidate) {
+        if (!overriding.getName().equals(candidate.getName())) {
+            return false;
+        }
+        if (overriding.getNumberOfParams() != candidate.getNumberOfParams()) {
+            return false;
+        }
+        try {
+            for (int i = 0; i < overriding.getNumberOfParams(); i++) {
+                if (!overriding.getParam(i).describeType().equals(candidate.getParam(i).describeType())) {
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
+    }
+
+    // ---- Phase 3: body-level CPG (READS / WRITES / CATCHES + LocalVariable nodes) ----
+    // Only invoked when deepCpg is enabled. Conservative and intra-procedural: no
+    // cross-method data-flow, no execution order (STEP_IN_FLOW is future Phase 4).
+
+    private void extractDataFlow(Node owner, String ownerFullName, NodeList<Parameter> parameters) {
+        ClassOrInterfaceDeclaration enclosing = owner.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
+        String classFqcn = enclosing != null
+                ? enclosing.getFullyQualifiedName().orElse(enclosing.getNameAsString())
+                : null;
+        Set<String> fieldNames = declaredFieldNames(enclosing);
+
+        // Scope: parameters + local declarations -> LocalVariable node ids.
+        Map<String, String> scope = new LinkedHashMap<>();
+        for (Parameter parameter : parameters) {
+            String id = addVariableNode(ownerFullName, parameter.getNameAsString(),
+                    parameter.getType().asString(), "parameter",
+                    parameter.getBegin().map(p -> p.line).orElse(0));
+            scope.put(parameter.getNameAsString(), id);
+        }
+        for (VariableDeclarationExpr vde : owner.findAll(VariableDeclarationExpr.class)) {
+            if (!inOwner(vde, owner)) {
+                continue;
+            }
+            for (VariableDeclarator v : vde.getVariables()) {
+                String id = addVariableNode(ownerFullName, v.getNameAsString(),
+                        v.getType().asString(), "local",
+                        v.getBegin().map(p -> p.line).orElse(0));
+                scope.put(v.getNameAsString(), id);
+            }
+        }
+
+        Set<String> reads = new LinkedHashSet<>();
+        Set<String> writes = new LinkedHashSet<>();
+
+        // Declaration with initializer => the declared variable is written.
+        for (VariableDeclarationExpr vde : owner.findAll(VariableDeclarationExpr.class)) {
+            if (!inOwner(vde, owner)) {
+                continue;
+            }
+            for (VariableDeclarator v : vde.getVariables()) {
+                if (v.getInitializer().isPresent()) {
+                    String id = scope.get(v.getNameAsString());
+                    if (id != null) {
+                        writes.add(id);
+                    }
+                }
+            }
+        }
+
+        // Assignment targets are written (= / += / -= / ... ).
+        for (AssignExpr assign : owner.findAll(AssignExpr.class)) {
+            if (!inOwner(assign, owner)) {
+                continue;
+            }
+            String id = resolveTarget(assign.getTarget(), scope, fieldNames, classFqcn);
+            if (id != null) {
+                writes.add(id);
+            }
+        }
+
+        // ++ / -- operands are written (also read, via the general pass below).
+        for (UnaryExpr unary : owner.findAll(UnaryExpr.class)) {
+            if (!inOwner(unary, owner) || !isIncrementOrDecrement(unary)) {
+                continue;
+            }
+            String id = resolveTarget(unary.getExpression(), scope, fieldNames, classFqcn);
+            if (id != null) {
+                writes.add(id);
+            }
+        }
+
+        // Reads: every resolvable name/this-field that is NOT a plain `=` write target.
+        for (NameExpr name : owner.findAll(NameExpr.class)) {
+            if (!inOwner(name, owner) || isPlainAssignTarget(name)) {
+                continue;
+            }
+            String id = resolveName(name.getNameAsString(), scope, fieldNames, classFqcn);
+            if (id != null) {
+                reads.add(id);
+            }
+        }
+        for (FieldAccessExpr fieldAccess : owner.findAll(FieldAccessExpr.class)) {
+            if (!inOwner(fieldAccess, owner) || classFqcn == null) {
+                continue;
+            }
+            if (!(fieldAccess.getScope() instanceof ThisExpr) || isPlainAssignTarget(fieldAccess)) {
+                continue;
+            }
+            reads.add(classFqcn + "." + fieldAccess.getNameAsString());
+        }
+
+        // Emit deduped edges: at most one READS / one WRITES per target per method.
+        for (String target : reads) {
+            extractedEdges.add(EdgeData.of("READS", ownerFullName, target));
+        }
+        for (String target : writes) {
+            extractedEdges.add(EdgeData.of("WRITES", ownerFullName, target));
+        }
+    }
+
+    private void extractCatches(Node owner, String ownerFullName) {
+        for (CatchClause catchClause : owner.findAll(CatchClause.class)) {
+            if (!inOwner(catchClause, owner)) {
+                continue;
+            }
+            int line = catchClause.getBegin().map(p -> p.line).orElse(0);
+            Type type = catchClause.getParameter().getType();
+            List<Type> types = new ArrayList<>();
+            if (type instanceof UnionType union) {
+                union.getElements().forEach(types::add); // multi-catch -> one edge per type
+            } else {
+                types.add(type);
+            }
+            for (Type exceptionType : types) {
+                String resolved = resolveTypeName(exceptionType.asString(), catchClause);
+                extractedEdges.add(EdgeData.of("CATCHES", ownerFullName, resolved, Map.of(
+                        "lineNumber", line
+                )));
+            }
+        }
+    }
+
+    /** True when {@code node}'s nearest enclosing callable is {@code owner} (lambdas are transparent; nested type methods are not). */
+    private boolean inOwner(Node node, Node owner) {
+        Optional<Node> current = node.getParentNode();
+        while (current.isPresent()) {
+            Node candidate = current.get();
+            if (candidate == owner) {
+                return true;
+            }
+            if (candidate instanceof MethodDeclaration || candidate instanceof ConstructorDeclaration) {
+                return false;
+            }
+            current = candidate.getParentNode();
+        }
+        return false;
+    }
+
+    private Set<String> declaredFieldNames(ClassOrInterfaceDeclaration enclosing) {
+        Set<String> names = new LinkedHashSet<>();
+        if (enclosing != null) {
+            enclosing.getFields().forEach(field ->
+                    field.getVariables().forEach(v -> names.add(v.getNameAsString())));
+        }
+        return names;
+    }
+
+    /** Create (deduped) a LocalVariable node and return its stable id (methodId#name@line). */
+    private String addVariableNode(String ownerFullName, String name, String declaredType, String kind, int line) {
+        String id = ownerFullName + "#" + name + "@" + line;
+        boolean exists = extractedVariables.stream().anyMatch(v -> v.fullName().equals(id));
+        if (!exists) {
+            Map<String, Object> props = new HashMap<>();
+            props.put("declaredType", declaredType);
+            props.put("kind", kind);
+            // Empty filePath: a LocalVariable is connected via READS/WRITES, not via a
+            // File-[:DEFINES] edge, so it must not match fileDefinesEdges by path.
+            extractedVariables.add(NodeData.of("LocalVariable", name, id, "", line, line, props));
+        }
+        return id;
+    }
+
+    private boolean isIncrementOrDecrement(UnaryExpr unary) {
+        return switch (unary.getOperator()) {
+            case PREFIX_INCREMENT, POSTFIX_INCREMENT, PREFIX_DECREMENT, POSTFIX_DECREMENT -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isPlainAssignTarget(Expression expr) {
+        return expr.getParentNode()
+                .filter(AssignExpr.class::isInstance)
+                .map(AssignExpr.class::cast)
+                .filter(assign -> assign.getOperator() == AssignExpr.Operator.ASSIGN)
+                .map(assign -> assign.getTarget() == expr)
+                .orElse(false);
+    }
+
+    private String resolveTarget(Expression target, Map<String, String> scope, Set<String> fieldNames, String classFqcn) {
+        if (target instanceof NameExpr name) {
+            return resolveName(name.getNameAsString(), scope, fieldNames, classFqcn);
+        }
+        if (target instanceof FieldAccessExpr fieldAccess
+                && fieldAccess.getScope() instanceof ThisExpr && classFqcn != null) {
+            return classFqcn + "." + fieldAccess.getNameAsString();
+        }
+        return null; // arr[i], obj.field, etc. — ambiguous target, intentionally skipped
+    }
+
+    private String resolveName(String simpleName, Map<String, String> scope, Set<String> fieldNames, String classFqcn) {
+        if (scope.containsKey(simpleName)) {
+            return scope.get(simpleName);
+        }
+        if (classFqcn != null && fieldNames.contains(simpleName)) {
+            return classFqcn + "." + simpleName;
+        }
+        return null;
+    }
+
     private String resolveTypeName(String typeName, com.github.javaparser.ast.Node context) {
         // Strip generics for resolution
         String baseName = typeName.contains("<") ? typeName.substring(0, typeName.indexOf('<')) : typeName;
@@ -163,10 +497,17 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                         .filter(imp -> imp.getName().getIdentifier().equals(baseName))
                         .findFirst()
                         .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> context.findCompilationUnit()
-                        .flatMap(cu -> cu.getPackageDeclaration())
-                        .map(pkg -> pkg.getNameAsString() + "." + baseName)
-                        .orElse(baseName));
+                .orElseGet(() -> {
+                    // Implicitly-imported java.lang types must not be mis-qualified to the
+                    // current package (e.g. String -> com.app.String).
+                    if (JAVA_LANG_TYPES.contains(baseName)) {
+                        return "java.lang." + baseName;
+                    }
+                    return context.findCompilationUnit()
+                            .flatMap(cu -> cu.getPackageDeclaration())
+                            .map(pkg -> pkg.getNameAsString() + "." + baseName)
+                            .orElse(baseName);
+                });
     }
 
     private boolean isPrimitive(String type) {
@@ -175,6 +516,15 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
             default -> false;
         };
     }
+
+    /** Commonly-used implicitly-imported {@code java.lang} types, used to avoid mis-qualifying
+     * them to the current package when they appear unqualified and without an explicit import. */
+    private static final java.util.Set<String> JAVA_LANG_TYPES = java.util.Set.of(
+            "String", "Object", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
+            "Character", "Number", "CharSequence", "StringBuilder", "StringBuffer", "Math", "System",
+            "Thread", "Runnable", "Iterable", "Comparable", "Cloneable", "Class", "Enum", "Void",
+            "Throwable", "Exception", "RuntimeException", "Error", "IllegalArgumentException",
+            "IllegalStateException", "NullPointerException", "UnsupportedOperationException");
 
     private NodeData toNodeData(MethodDeclaration declaration) {
         List<String> paramTypes = declaration.getParameters().stream()

@@ -8,21 +8,24 @@ Parser engine sử dụng JavaParser để đọc Java source code, extract AST 
 ```
 parser/
 ├── service/
-│   ├── ParserService.java              — Interface: orchestrate parsing pipeline
-│   ├── SymbolResolverService.java      — Interface: resolve types, method calls
-│   ├── CallGraphBuilderService.java    — Interface: build CALLS edges
+│   ├── ParserService.java              — Interface: orchestrate parsing pipeline (+ ParseProgressListener overload)
+│   ├── ParseProgressListener.java      — Per-file progress callback (filesParsed/total)
 │   └── impl/
-│       ├── ParserServiceImpl.java      — Main parser orchestrator
-│       ├── SymbolResolverServiceImpl.java — JavaParser Symbol Solver wrapper
-│       └── CallGraphBuilderServiceImpl.java — Trace method invocations
+│       └── ParserServiceImpl.java      — Main parser orchestrator (resolve + call graph inline)
 ├── visitor/
 │   ├── ClassVisitor.java               — Extract Class/Interface/Enum nodes
 │   ├── MethodVisitor.java              — Extract Method nodes (params, return type)
 │   ├── FieldVisitor.java               — Extract Field nodes (type, visibility)
+│   ├── AnnotationVisitor.java          — Extract annotation metadata
 │   ├── SpringAnnotationVisitor.java    — Detect @Controller, @Service, @Repository, @RequestMapping
 │   └── ImportVisitor.java              — Extract IMPORTS edges
+├── flow/
+│   └── FlowAnalyzer.java               — Infer STEP_IN_FLOW edges from route handlers + CALLS graph
 ├── node/
-│   └── ParseResult.java               — Internal result model (nodes + edges extracted)
+│   ├── NodeData.java                   — Extracted node model
+│   ├── EdgeData.java                   — Extracted edge model
+│   └── ParseResult.java               — Internal result model (nodes + edges + warnings)
+├── Signatures.java                     — Method/field signature formatting
 └── dto/
     ├── request/
     │   └── ParseFileRequest.java       — {filePath, projectId}
@@ -35,7 +38,7 @@ parser/
 ### ParserService
 - [ ] `parseProject(Path projectDir)`: Scan tất cả .java files, parse từng file, trả về aggregated ParseResult
 - [ ] `parseFile(Path file)`: Parse single file → ParseResult (nodes + edges)
-- [ ] `parseIncremental(Path file, String previousChecksum)`: Chỉ parse nếu checksum thay đổi
+- [defer] `parseIncremental(Path file, String previousChecksum)`: Chỉ parse nếu checksum thay đổi *(deferred — CacheService chưa implement, file placeholder đã gỡ)*
 - [ ] Parallel parsing sử dụng virtual threads (Java 21)
 - [ ] Parse time < 30 seconds cho 500 files
 - [ ] Graceful error handling: skip unparseable files, log warnings, continue
@@ -67,19 +70,12 @@ parser/
   - @Scheduled, @KafkaListener → enrich method metadata
 - [ ] `ImportVisitor`: Extract IMPORTS edges (Class A imports Class B)
 
-### SymbolResolverService
-- [ ] Configure JavaParser Symbol Solver với project source paths
-- [ ] Resolve method call targets (>90% accuracy)
-- [ ] Resolve type references (field types, return types, parameter types)
-- [ ] Handle unresolved symbols gracefully (mark confidence = 0.5)
-
-### CallGraphBuilderService
-- [ ] Build CALLS edges từ method invocations
-- [ ] Handle: direct calls, constructor calls, static method calls
-- [ ] Handle: method references (Class::method)
-- [ ] Handle: chained calls (a.b().c())
-- [ ] Edge properties: {lineNumber, confidence (0.0-1.0)}
-- [ ] Skip lambda internal calls nếu không resolve được
+### Symbol resolution & call graph (trong ParserServiceImpl)
+Việc resolve type/method-call và dựng CALLS edges được làm **trực tiếp trong** `ParserServiceImpl`
+(qua JavaParser Symbol Solver) thay vì tách thành service riêng. Phạm vi:
+- [x] Resolve method call targets + type references (field/return/param types) trong khả năng Symbol Solver
+- [x] CALLS edges từ method invocation; symbol chưa resolve → gắn confidence thấp / External stub
+- [x] STEP_IN_FLOW (call chain từ route handler) do `flow/FlowAnalyzer` suy luận
 
 ### Relationship Extraction
 - [ ] EXTENDS: Class A extends Class B

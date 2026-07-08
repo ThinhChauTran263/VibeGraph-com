@@ -13,30 +13,40 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.vibegraph.common.exception.GithubImportException;
+import com.vibegraph.graph.importer.config.GitHubImportProperties;
 
 /** Downloads GitHub repository tarballs to a server-owned workspace file. */
 @Component
 public class GitHubTarballClient {
 
+    private final Duration tarballRequestTimeout;
     private final HttpClient httpClient;
 
-    public GitHubTarballClient() {
-        this(HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+    @Autowired
+    public GitHubTarballClient(GitHubImportProperties github) {
+        this(github, HttpClient.newBuilder()
+                .connectTimeout(github.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build());
     }
 
+    // Test seam (keeps the legacy single-HttpClient signature working): uses default timeouts.
     GitHubTarballClient(HttpClient httpClient) {
+        this(new GitHubImportProperties(), httpClient);
+    }
+
+    GitHubTarballClient(GitHubImportProperties github, HttpClient httpClient) {
+        this.tarballRequestTimeout = github.getTarballRequestTimeout();
         this.httpClient = httpClient;
     }
 
     public void downloadTarball(GitHubRepositoryRef ref, Path target, long maxBytes) {
         HttpRequest request = HttpRequest.newBuilder(tarballUri(ref))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(tarballRequestTimeout)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "VibeGraph")
                 .GET()

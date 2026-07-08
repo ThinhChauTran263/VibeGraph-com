@@ -1,9 +1,8 @@
 package com.vibegraph.graph.dto.response;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.Arrays;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +16,7 @@ class GraphTypeEnumTest {
                 .containsExactly(
                         "Project", "Package", "File", "Class", "Interface", "Enum",
                         "Record", "DBModel", "Method", "Constructor", "Field", "Annotation",
-                        "Route", "APIEndpoint", "External")
+                        "LocalVariable", "Route", "APIEndpoint", "External")
                 .doesNotHaveDuplicates();
     }
 
@@ -28,7 +27,9 @@ class GraphTypeEnumTest {
                 .containsExactly(
                         "OWNS", "CONTAINS", "DEFINES", "HAS_METHOD", "HAS_FIELD", "HAS_INNER",
                         "EXTENDS", "IMPLEMENTS", "OVERRIDES", "IMPORTS", "TYPE_OF", "RETURNS",
-                        "PARAMETER_TYPE", "THROWS", "CALLS", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY")
+                        "PARAMETER_TYPE", "THROWS", "CALLS", "INSTANTIATES", "INJECTS",
+                        "HANDLES_ROUTE", "ANNOTATED_BY", "READS", "WRITES", "CATCHES",
+                        "STEP_IN_FLOW")
                 .doesNotHaveDuplicates();
     }
 }

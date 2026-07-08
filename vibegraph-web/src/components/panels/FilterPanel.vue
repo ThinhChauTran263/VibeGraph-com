@@ -32,6 +32,11 @@ const edgeTypeItems = computed(() => {
     .map(([type, count]) => ({ type: type as EdgeType, count }))
     .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type))
 })
+
+// The full set of currently-present types, passed to the isolate toggle so it
+// knows which other types to close/restore.
+const nodeTypeList = computed(() => nodeTypeItems.value.map((item) => item.type))
+const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type))
 </script>
 
 <template>
@@ -60,7 +65,7 @@ const edgeTypeItems = computed(() => {
             type="button"
             :aria-label="`${item.type} nodes ${hiddenNodeTypes.has(item.type) ? 'hidden' : 'visible'}, ${item.count}`"
             :aria-pressed="!hiddenNodeTypes.has(item.type)"
-            @click="toggleNodeType(item.type)"
+            @click="toggleNodeType(item.type, nodeTypeList)"
           >
             <span class="filter-panel__swatch" :style="{ backgroundColor: NODE_COLORS[item.type] }" />
             <span class="filter-panel__name">{{ item.type }}</span>
@@ -86,7 +91,7 @@ const edgeTypeItems = computed(() => {
             type="button"
             :aria-label="`${item.type} edges ${hiddenEdgeTypes.has(item.type) ? 'hidden' : 'visible'}, ${item.count}`"
             :aria-pressed="!hiddenEdgeTypes.has(item.type)"
-            @click="toggleEdgeType(item.type)"
+            @click="toggleEdgeType(item.type, edgeTypeList)"
           >
             <span class="filter-panel__edge-swatch" :style="{ backgroundColor: EDGE_COLORS[item.type] }" />
             <span class="filter-panel__name">{{ item.type }}</span>

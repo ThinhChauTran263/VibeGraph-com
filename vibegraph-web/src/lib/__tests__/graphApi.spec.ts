@@ -4,7 +4,7 @@ import { graphApi, ApiError, type ImpactAnalysisResponse } from '../api'
 /**
  * Exercises `graphApi.getImpact` against a mocked global `fetch`, verifying
  * the exact URL + encoded query params per the backend contract:
- *   GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...
+ *   GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...&profile=...
  */
 
 function okJson(data: unknown): Response {
@@ -58,6 +58,16 @@ describe('graphApi.getImpact', () => {
     expect(url).toContain('/api/projects/p1/graph/impact?')
     expect(url).toContain('nodeId=com.example.OrderService')
     expect(url).toContain('depth=3')
+    expect(url).toContain('profile=dependency')
+  })
+
+  it('includes a selected impact profile query param', async () => {
+    fetchMock.mockResolvedValueOnce(okJson(fakeImpact()))
+
+    await graphApi.getImpact('p1', 'com.example.OrderService', 1, 'structural')
+
+    const url = String(fetchMock.mock.calls[0]![0])
+    expect(url).toContain('profile=structural')
   })
 
   it('URL-encodes node identifiers with special characters', async () => {

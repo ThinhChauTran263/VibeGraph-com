@@ -7,7 +7,8 @@
 
 import Graph from 'graphology'
 import type { GraphData, GraphNode, GraphEdge, NodeType, EdgeType } from '@/types/graph'
-import { NODE_COLORS, EDGE_COLORS, NODE_SIZES } from './constants'
+import { NODE_COLORS, EDGE_COLORS, NODE_SIZES, NODE_SIZE_BY_TYPE } from './constants'
+import { SIGMA_EDGE_SIZE } from './runtimeConfig'
 
 export interface SigmaNodeAttributes {
   label: string
@@ -34,31 +35,95 @@ export interface SigmaEdgeAttributes {
 }
 
 /**
+ * Priority used to pick the single representative edge type when several
+ * relationships connect the SAME pair of nodes. Between any two nodes the graph
+ * draws exactly ONE line in exactly ONE color, so when both (say) IMPORTS and
+ * EXTENDS exist we keep the more meaningful structural relationship. Types not
+ * listed here default to 0 (lowest). The Node Detail panel still lists every
+ * individual relationship — only the on-canvas line is collapsed.
+ */
+const EDGE_TYPE_PRIORITY: Partial<Record<EdgeType, number>> = {
+  // STEP_IN_FLOW shares (caller->callee) pairs with CALLS. It is hidden by default
+  // (filtered out before this adapter), so the default canvas shows CALLS. When the
+  // user reveals it via "Show all", the higher priority makes the pair render as the
+  // inferred flow step rather than the raw call.
+  STEP_IN_FLOW: 10,
+  CONTAINS: 9,
+  EXTENDS: 8,
+  IMPLEMENTS: 7,
+  OVERRIDES: 6,
+  DEFINES: 5,
+  HANDLES_ROUTE: 4,
+  HAS_METHOD: 3,
+  CALLS: 2,
+  IMPORTS: 1,
+}
+
+function edgeTypePriority(type: EdgeType): number {
+  return EDGE_TYPE_PRIORITY[type] ?? 0
+}
+
+/** Order-independent key for the pair of nodes an edge connects. */
+function nodePairKey(source: string, target: string): string {
+  return source < target ? `${source}\u0000${target}` : `${target}\u0000${source}`
+}
+
+/**
+ * Deterministic 32-bit FNV-1a hash → float in [0, 1). Used to seed a node's
+ * initial position from its stable id so the layout is REPRODUCIBLE: the same
+ * project always converges to the same picture instead of a different random
+ * hairball on every load (ForceAtlas2 is sensitive to its starting positions).
+ */
+function seededUnit(str: string): number {
+  let h = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0) / 4294967295
+}
+
+/**
+ * Deterministic initial position on a disc, derived from the node id. Replaces
+ * random seeding so ForceAtlas2 starts from the same layout every time.
+ */
+function seededPosition(id: string): { x: number; y: number } {
+  const angle = seededUnit(id) * 2 * Math.PI
+  const radius = seededUnit(`${id}#r`) * 500
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+}
+
+/**
  * Convert backend GraphData to a Graphology Graph instance.
- * Assigns random initial positions; ForceAtlas2 will handle layout.
+ * Assigns deterministic initial positions (seeded from node id) so ForceAtlas2
+ * converges to the same layout on every load.
  */
 export function apiToGraphology(data: GraphData): Graph {
-  const graph = new Graph({ multi: true, type: 'directed' })
+  const graph = new Graph({ multi: false, type: 'directed' })
 
   for (const node of data.nodes) {
     const attrs = getNodeAttributes(node)
     graph.addNode(node.id, attrs)
   }
 
+  // Collapse every relationship between a pair of nodes to a SINGLE edge. Two
+  // nodes are connected by at most one straight line; when multiple relationship
+  // types exist between the same pair (e.g. IMPORTS + EXTENDS, or A->B and B->A),
+  // the highest-priority type wins and defines the line's color/label. This keeps
+  // the canvas readable (no overlapping parallel labels) while the Node Detail
+  // panel still shows the full relationship list.
+  const bestByPair = new Map<string, GraphEdge>()
   for (const edge of data.edges) {
-    // Skip edges referencing nodes not in the graph
     if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
-    const attrs = getEdgeAttributes(edge)
-    // Edge ids are deterministic (`source|type|target`). Parallel edges of the
-    // same type between the same pair (e.g. two PARAMETER_TYPE edges) collapse to
-    // the same key, so suffix duplicates to keep the multigraph key unique.
-    let key = edge.id
-    if (graph.hasEdge(key)) {
-      let suffix = 2
-      while (graph.hasEdge(`${key}#${suffix}`)) suffix++
-      key = `${key}#${suffix}`
+    const key = nodePairKey(edge.source, edge.target)
+    const existing = bestByPair.get(key)
+    if (!existing || edgeTypePriority(edge.type) > edgeTypePriority(existing.type)) {
+      bestByPair.set(key, edge)
     }
-    graph.addEdgeWithKey(key, edge.source, edge.target, attrs)
+  }
+
+  for (const edge of bestByPair.values()) {
+    graph.addEdgeWithKey(edge.id, edge.source, edge.target, getEdgeAttributes(edge))
   }
 
   return graph
@@ -68,10 +133,11 @@ export function apiToGraphology(data: GraphData): Graph {
  * Build Sigma node attributes from a GraphNode.
  */
 function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
+  const { x, y } = seededPosition(node.id)
   return {
     label: node.name,
-    x: Math.random() * 1000 - 500,
-    y: Math.random() * 1000 - 500,
+    x,
+    y,
     size: getNodeSize(node.type),
     color: getNodeColor(node.type),
     type: 'circle',
@@ -85,13 +151,13 @@ function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
 /**
  * Build Sigma edge attributes from a GraphEdge.
  */
-function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
+export function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
   const color = getEdgeColor(edge.type)
   return {
     label: edge.type,
     color,
     labelColor: color,
-    size: 1,
+    size: SIGMA_EDGE_SIZE,
     edgeType: edge.type,
   }
 }
@@ -111,31 +177,11 @@ export function getEdgeColor(edgeType: EdgeType): string {
 }
 
 /**
- * Return node size based on type. Structural nodes are larger.
+ * Return node size based on type. Larger = wider structural scope (Project,
+ * Package, File), smaller = deeper / more numerous detail (Field, LocalVariable).
+ * Values come from {@link NODE_SIZE_BY_TYPE} (env-tunable via runtimeConfig); an
+ * unknown type falls back to the default radius.
  */
-function getNodeSize(nodeType: NodeType): number {
-  switch (nodeType) {
-    case 'File':
-      return 6.5
-    case 'Project':
-    case 'Package':
-      return 6
-    case 'Class':
-    case 'Interface':
-    case 'Enum':
-    case 'Record':
-    case 'DBModel':
-      return 5
-    case 'Method':
-    case 'Constructor':
-    case 'Route':
-    case 'APIEndpoint':
-      return 4
-    case 'Field':
-    case 'Annotation':
-    case 'External':
-      return NODE_SIZES.min
-    default:
-      return NODE_SIZES.default
-  }
+export function getNodeSize(nodeType: NodeType): number {
+  return NODE_SIZE_BY_TYPE[nodeType] ?? NODE_SIZES.default
 }

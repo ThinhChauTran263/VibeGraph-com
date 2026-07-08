@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
 import {
-  createFocusReducers,
   createSelectionFocusReducers,
   getDirectNeighbors,
-  getNeighborsWithinHops,
   ghostEdgeColor,
   ghostEdgeSize,
   ghostNodeColor,
   ghostNodeSize,
   NEIGHBOR_NODE_SIZE_MULTIPLIER,
-  normalizeFocusDepth,
   partitionFocusGraph,
   relatedEdgeLabelColor,
   resolveFocusLabelDensity,
@@ -30,91 +27,15 @@ function buildGraph(): Graph {
   return graph
 }
 
-describe('normalizeFocusDepth', () => {
-  it('allows only supported focus depths', () => {
-    expect(normalizeFocusDepth(-1)).toBe(-1)
-    expect(normalizeFocusDepth(0)).toBe(0)
-    expect(normalizeFocusDepth(5)).toBe(5)
-    expect(normalizeFocusDepth(999)).toBe(-1)
-    expect(normalizeFocusDepth(Number.POSITIVE_INFINITY)).toBe(-1)
-  })
-})
-
 describe('resolveFocusLabelDensity', () => {
   it('progressively reveals focus labels as the camera zooms in', () => {
     expect(resolveFocusLabelDensity(1.3)).toBe('minimal')
     expect(resolveFocusLabelDensity(0.9)).toBe('nodes')
-    expect(resolveFocusLabelDensity(0.5)).toBe('edges')
+    expect(resolveFocusLabelDensity(0.3)).toBe('edges')
   })
 
   it('falls back to node labels for invalid camera ratios', () => {
     expect(resolveFocusLabelDensity(Number.NaN)).toBe('nodes')
-  })
-})
-describe('getNeighborsWithinHops', () => {
-  it('returns the selected node and neighbors within the requested depth', () => {
-    const graph = buildGraph()
-
-    expect(getNeighborsWithinHops(graph, 'selected', 0)).toEqual(new Set(['selected']))
-    expect(getNeighborsWithinHops(graph, 'selected', 1)).toEqual(new Set(['selected', 'hop-1']))
-    expect(getNeighborsWithinHops(graph, 'selected', 2)).toEqual(
-      new Set(['selected', 'hop-1', 'hop-2']),
-    )
-  })
-
-  it('returns an empty set for missing selected nodes', () => {
-    expect(getNeighborsWithinHops(buildGraph(), 'missing', 2)).toEqual(new Set())
-  })
-
-  it('returns an empty set for unsupported depths', () => {
-    expect(getNeighborsWithinHops(buildGraph(), 'selected', 999)).toEqual(new Set())
-  })
-
-  it('caps traversal work on very large neighborhoods', () => {
-    const graph = new Graph({ type: 'directed', multi: true })
-    graph.addNode('root')
-    for (let index = 0; index < 2000; index += 1) {
-      const nodeId = `node-${index}`
-      graph.addNode(nodeId)
-      graph.addEdgeWithKey(`root->${nodeId}`, 'root', nodeId)
-    }
-
-    expect(getNeighborsWithinHops(graph, 'root', 1).size).toBeLessThanOrEqual(1500)
-  })
-})
-
-describe('createFocusReducers', () => {
-  it('does not change nodes or edges when focus mode is disabled', () => {
-    const graph = buildGraph()
-    const reducers = createFocusReducers('selected', -1, graph)
-
-    expect(reducers.nodeReducer?.('outside', { color: '#ffffff' })).toEqual({ color: '#ffffff' })
-    expect(reducers.edgeReducer?.('outside->hop-2', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-    })
-  })
-
-  it('highlights visible focus nodes and hides edges outside the focused neighborhood', () => {
-    const graph = buildGraph()
-    const reducers = createFocusReducers('selected', 1, graph)
-
-    expect(reducers.nodeReducer?.('selected', { color: '#ffffff', size: 8 })).toEqual({
-      color: '#ffffff',
-      size: 10,
-      highlighted: true,
-    })
-    expect(reducers.nodeReducer?.('outside', { color: '#ffffff', size: 8 })).toEqual({
-      color: '#313748',
-      size: 8,
-      label: '',
-    })
-    expect(reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-    })
-    expect(reducers.edgeReducer?.('hop-1->hop-2', { color: '#93c5fd' })).toEqual({
-      color: '#93c5fd',
-      hidden: true,
-    })
   })
 })
 
@@ -163,8 +84,7 @@ describe('createSelectionFocusReducers', () => {
     expect(reducers.nodeReducer?.('hop-1', { color: '#fff', size: 6 })).toEqual({
       color: '#fff',
       hidden: false,
-      label: undefined,
-      forceLabel: true,
+      forceLabel: false,
       size: 6,
       zIndex: 2,
     })
@@ -544,7 +464,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     })
     graph.addNode('create', { label: 'create', color: '#3B82F6', size: 6 })
     graph.addEdgeWithKey('route->create', 'route', 'create', {
-      color: '#059669',
+      color: '#65A30D',
       size: 1,
       label: 'HANDLES_ROUTE',
     })
@@ -607,8 +527,8 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     const related =
       reducers.edgeReducer?.('route->create', graph.getEdgeAttributes('route->create')) ?? {}
     expect(related.hidden).toBe(false)
-    expect(related.color).toBe('#059669') // keeps edge-type color, never white
-    expect(related.labelColor).toBe('#059669') // label text matches the edge-type hue
+    expect(related.color).toBe(EDGE_COLORS.HANDLES_ROUTE) // keeps edge-type color, never white
+    expect(related.labelColor).toBe(EDGE_COLORS.HANDLES_ROUTE) // label text matches the edge-type hue
     // related edges show their type label when zoom density allows edge labels
     expect(related.label).toBe('HANDLES_ROUTE')
     expect(related.forceLabel).toBe(true)
@@ -759,63 +679,38 @@ describe('related edge labels appear from graph interaction alone (Req B)', () =
 })
 
 describe('createSelectionFocusReducers label density', () => {
-  it('minimal density keeps only the focused node label and hides neighbor/edge labels', () => {
+  it('always forces the selected node label and never forces neighbor labels (neighbors reveal by zoom)', () => {
     const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'minimal')
 
-    expect(
-      reducers.nodeReducer?.('selected', { color: '#fff', label: 'Selected', size: 6 }),
-    ).toMatchObject({
-      label: 'Selected',
-      forceLabel: true,
-    })
-    expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
+    for (const density of ['minimal', 'nodes', 'edges'] as const) {
+      const reducers = createSelectionFocusReducers('selected', graph, null, density)
+
+      // Selected node label is always forced, regardless of zoom density.
+      expect(
+        reducers.nodeReducer?.('selected', { color: '#fff', label: 'Selected', size: 6 }),
+      ).toMatchObject({ label: 'Selected', forceLabel: true })
+
+      // Neighbor keeps its label text but is NEVER force-shown: Sigma's size
+      // threshold reveals it only when zoomed in enough (progressive reveal).
+      expect(
+        reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
+      ).toMatchObject({ label: 'Hop 1', forceLabel: false })
+    }
   })
 
-  it('node density shows neighbor node labels before edge labels', () => {
+  it('only shows related edge labels at the most zoomed-in (edges) density', () => {
     const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'nodes')
 
-    expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: 'Hop 1',
-      forceLabel: true,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: '',
-      forceLabel: false,
-    })
-  })
+    for (const density of ['minimal', 'nodes'] as const) {
+      const reducers = createSelectionFocusReducers('selected', graph, null, density)
+      expect(
+        reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+      ).toMatchObject({ label: '', forceLabel: false })
+    }
 
-  it('edge density shows related edge labels after node labels', () => {
-    const graph = buildGraph()
-    const reducers = createSelectionFocusReducers('selected', graph, null, 'edges')
-
+    const edgeReducers = createSelectionFocusReducers('selected', graph, null, 'edges')
     expect(
-      reducers.nodeReducer?.('hop-1', { color: '#fff', label: 'Hop 1', size: 6 }),
-    ).toMatchObject({
-      label: 'Hop 1',
-      forceLabel: true,
-    })
-    expect(
-      reducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
-    ).toMatchObject({
-      label: 'CALLS',
-      forceLabel: true,
-    })
+      edgeReducers.edgeReducer?.('selected->hop-1', { color: '#93c5fd', label: 'CALLS', size: 1 }),
+    ).toMatchObject({ label: 'CALLS', forceLabel: true })
   })
 })

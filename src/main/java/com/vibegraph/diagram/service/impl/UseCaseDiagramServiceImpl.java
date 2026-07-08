@@ -1,22 +1,17 @@
 package com.vibegraph.diagram.service.impl;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 
-import com.vibegraph.diagram.dto.response.UseCaseResponse;
-import com.vibegraph.diagram.service.MermaidGeneratorService;
+import com.vibegraph.diagram.dto.response.UmlUseCaseResponse;
 import com.vibegraph.diagram.service.UseCaseDiagramService;
-import com.vibegraph.graph.dto.response.EdgeDto;
+import com.vibegraph.diagram.service.impl.UseCaseInferenceEngine.InferenceResult;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
-import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.service.ProjectService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,151 +19,112 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * {@inheritDoc}
  *
- * <p>Reads the project graph through {@link GraphService#getFullGraph(String)}
- * (no direct Neo4j access) and derives the use case diagram from APIEndpoint/Route nodes
- * and {@code HANDLES_ROUTE} edges.
+ * <p>Reads the project graph through {@link GraphService#getFullGraph(String)} (no direct Neo4j
+ * access). The business UML Use Case diagram is produced by {@link UseCaseInferenceEngine},
+ * beautified by {@link BaLabelBeautifier}, enriched with generic shared-service includes by
+ * {@link GenericRelationInferer}, and rendered by {@link UmlUseCaseRenderer}.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UseCaseDiagramServiceImpl implements UseCaseDiagramService {
 
-    private static final String ROUTE_NODE_TYPE = "Route";
-    private static final String API_ENDPOINT_NODE_TYPE = "APIEndpoint";
-    private static final String HANDLES_ROUTE_EDGE = "HANDLES_ROUTE";
-    private static final String ACTOR_HTTP_CLIENT = "HTTP Client";
-    private static final String NL = "\n";
-    private static final String INDENT = "    ";
+    private static final String MODE_DETAILED = "detailed";
+    private static final String MODE_GROUPED = "grouped";
 
     private final GraphService graphService;
-    private final MermaidGeneratorService mermaid;
+    private final ProjectService projectService;
+    private final UseCaseInferenceEngine inferenceEngine;
+    private final UmlUseCaseRenderer renderer;
+    private final BaLabelBeautifier beautifier;
+    private final GenericRelationInferer relationInferer;
+    private final UseCaseViewProjector viewProjector;
+    private final UseCaseSemanticRefiner semanticRefiner;
 
     @Override
-    public UseCaseResponse generateUseCaseDiagram(String projectId) {
+    public UmlUseCaseResponse generateUmlUseCase(String projectId, String mode) {
+        String normalizedMode = normalizeMode(mode);
         GraphDataResponse graph = graphService.getFullGraph(projectId);
+        String systemName = beautifier.formatSystemName(resolveSystemName(projectId));
 
-        List<NodeDto> nodes = graph != null && graph.getNodes() != null ? graph.getNodes() : List.of();
-        List<EdgeDto> edges = graph != null && graph.getEdges() != null ? graph.getEdges() : List.of();
+        InferenceResult result = inferenceEngine.infer(graph, normalizedMode);
 
-        Map<String, NodeDto> nodesById = new HashMap<>();
-        for (NodeDto node : nodes) {
-            if (node != null && node.getId() != null) {
-                nodesById.put(node.getId(), node);
-            }
-        }
+        // Display-layer beautifier: rebuild human-readable labels (actors, use cases) into BA wording
+        // without touching stable ids or relations, so association/generalization/dedup are preserved.
+        List<UmlUseCaseResponse.Actor> actors = beautifier.beautifyActors(result.actors());
+        List<UmlUseCaseResponse.UseCaseElement> useCases = beautifier.beautifyUseCases(result.useCases());
+        List<UmlUseCaseResponse.Relation> relations = result.relations();
 
-        // Deterministic ordering: TreeMap keyed by the stable route identifier.
-        // Value is the display label shown in the diagram.
-        Map<String, String> useCasesByRoute = new TreeMap<>();
+        // Display-layer relation inference (generic, no per-domain hardcoding): promote a service
+        // shared by >= 2 business use cases into an included use case with <<include>> edges. Emits
+        // nothing for projects without shared business services, so it is safe for any import.
+        GenericRelationInferer.EnrichedModel enriched =
+                relationInferer.enrich(actors, useCases, relations, result.useCaseServices());
+        actors = enriched.actors();
+        useCases = enriched.useCases();
+        relations = enriched.relations();
 
-        // 1) Routes reachable via a handler method (the common case).
-        for (EdgeDto edge : edges) {
-            if (edge == null || !HANDLES_ROUTE_EDGE.equals(edge.getType())) {
-                continue;
-            }
-            String routeId = edge.getTarget();
-            if (routeId == null || routeId.isBlank()) {
-                continue;
-            }
-            useCasesByRoute.putIfAbsent(routeId, routeLabel(nodesById.get(routeId), routeId));
-        }
+        // Tier 2 (R5): optional LLM relabelling of awkward goal names, grounded to existing ids. No-op
+        // (deterministic) by default; never adds/removes elements, so relations/views stay valid.
+        useCases = semanticRefiner.refineLabels(systemName, useCases);
 
-        // 2) Orphan APIEndpoint/Route nodes with no HANDLES_ROUTE edge - still represent a
-        //    reachable endpoint, so include them rather than silently dropping.
-        for (NodeDto node : nodes) {
-            if (node == null || !isRouteNode(node) || node.getId() == null) {
-                continue;
-            }
-            useCasesByRoute.putIfAbsent(node.getId(), routeLabel(node, node.getId()));
-        }
+        // Honest limitation surfaced to the reader: <<extend>> models a conditional optional flow that
+        // static analysis cannot recover without guessing, so it is never auto-generated.
+        List<String> warnings = new java.util.ArrayList<>(result.warnings());
+        warnings.add("<<extend>> relationships are not inferred: an extend models an optional, "
+                + "condition-guarded flow at an extension point, which cannot be recovered reliably "
+                + "from static call/inject analysis. Add them manually where the business requires.");
 
-        // NOTE: job/listener actors (@Scheduled, @KafkaListener, @EventListener)
-        // are not yet represented in the graph data model - the parser only emits
-        // APIEndpoint/Route nodes + HANDLES_ROUTE edges. They are skipped here until that data
-        // exists (see T39 note in the sprint doc).
+        String plantUml = renderer.toPlantUml(systemName, actors, useCases, relations);
+        String mermaidSyntax = renderer.toMermaid(systemName, actors, useCases, relations);
 
-        List<String> useCaseLabels = new ArrayList<>(useCasesByRoute.values());
-        List<String> actors = useCaseLabels.isEmpty() ? List.of() : List.of(ACTOR_HTTP_CLIENT);
+        // Per-actor and per-domain projections of the same model (R4). Pure projection, so views can
+        // never disagree with the full diagram.
+        List<UmlUseCaseResponse.UseCaseView> views =
+                viewProjector.project(systemName, actors, useCases, relations);
 
-        String syntax = buildMermaid(useCasesByRoute);
-
-        return UseCaseResponse.builder()
+        return UmlUseCaseResponse.builder()
+                .diagramType("usecase")
+                .style("uml")
+                .mode(normalizedMode)
+                .systemName(systemName)
                 .actors(actors)
-                .useCases(useCaseLabels)
-                .mermaidSyntax(syntax)
+                .useCases(useCases)
+                .relations(relations)
+                .warnings(warnings)
+                .mermaidSyntax(mermaidSyntax)
+                .plantUmlSyntax(plantUml)
+                .views(views)
                 .build();
     }
 
-    private boolean isRouteNode(NodeDto node) {
-        return ROUTE_NODE_TYPE.equals(node.getType()) || API_ENDPOINT_NODE_TYPE.equals(node.getType());
+    private String normalizeMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            return MODE_DETAILED;
+        }
+        String m = mode.trim().toLowerCase(Locale.ROOT);
+        if ("flat".equals(m)) {
+            return MODE_DETAILED;
+        }
+        if ("summary".equals(m)) {
+            return MODE_GROUPED;
+        }
+        if (!MODE_DETAILED.equals(m) && !MODE_GROUPED.equals(m)) {
+            throw new IllegalArgumentException(
+                    "Invalid mode '" + mode + "'. Supported modes: detailed, grouped.");
+        }
+        return m;
     }
 
-    private String routeLabel(NodeDto routeNode, String fallback) {
-        if (routeNode != null && routeNode.getName() != null && !routeNode.getName().isBlank()) {
-            return routeNode.getName();
+    private String resolveSystemName(String projectId) {
+        try {
+            ProjectResponse project = projectService.getProject(projectId);
+            if (project != null && project.getName() != null && !project.getName().isBlank()) {
+                return project.getName();
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Could not resolve project name for system boundary: {}", ex.getMessage());
         }
-        return fallback;
-    }
-
-    private String buildMermaid(Map<String, String> useCasesByRoute) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("flowchart LR").append(NL);
-
-        if (useCasesByRoute.isEmpty()) {
-            sb.append(INDENT).append("%% No use cases detected for this project");
-            return sb.toString();
-        }
-
-        String actorId = "actor_" + mermaid.sanitizeId(ACTOR_HTTP_CLIENT);
-        sb.append(INDENT)
-                .append(actorId)
-                .append("((\"")
-                .append(mermaid.escapeLabel(ACTOR_HTTP_CLIENT))
-                .append("\"))")
-                .append(NL);
-
-        Set<String> usedIds = new HashSet<>();
-        usedIds.add(actorId);
-
-        // First pass: declare use case nodes (deterministic by route id).
-        // Second pass: declare edges. Keep node ids aligned across both passes.
-        Map<String, String> idByRoute = new TreeMap<>();
-        for (Map.Entry<String, String> entry : useCasesByRoute.entrySet()) {
-            String useCaseId = uniqueId("uc_" + mermaid.sanitizeId(entry.getKey()), usedIds);
-            idByRoute.put(entry.getKey(), useCaseId);
-            sb.append(INDENT)
-                    .append(useCaseId)
-                    .append("[\"")
-                    .append(mermaid.escapeLabel(entry.getValue()))
-                    .append("\"]")
-                    .append(NL);
-        }
-
-        for (Map.Entry<String, String> entry : idByRoute.entrySet()) {
-            sb.append(INDENT)
-                    .append(actorId)
-                    .append(" --> ")
-                    .append(entry.getValue())
-                    .append(NL);
-        }
-
-        // Drop the trailing newline for a clean, stable output.
-        if (sb.charAt(sb.length() - 1) == '\n') {
-            sb.setLength(sb.length() - 1);
-        }
-        return sb.toString();
-    }
-
-    private String uniqueId(String base, Set<String> used) {
-        if (used.add(base)) {
-            return base;
-        }
-        int suffix = 2;
-        String candidate = base + "_" + suffix;
-        while (!used.add(candidate)) {
-            suffix++;
-            candidate = base + "_" + suffix;
-        }
-        return candidate;
+        return "System";
     }
 }

@@ -7,8 +7,19 @@ import org.springframework.context.annotation.Configuration;
 
 import com.vibegraph.mcp.tool.ArchitectureTool;
 import com.vibegraph.mcp.tool.ClassContextTool;
+import com.vibegraph.mcp.tool.ExplainFailureTool;
+import com.vibegraph.mcp.tool.FindReferencesTool;
+import com.vibegraph.mcp.tool.FindRelatedTestsTool;
 import com.vibegraph.mcp.tool.ImpactAnalysisTool;
 import com.vibegraph.mcp.tool.LayerPatternTool;
+import com.vibegraph.mcp.tool.MethodCpgTool;
+import com.vibegraph.mcp.tool.MethodSourceTool;
+import com.vibegraph.mcp.tool.PlanCodeChangeTool;
+import com.vibegraph.mcp.tool.ProjectConventionsTool;
+import com.vibegraph.mcp.tool.SearchSourceTool;
+import com.vibegraph.mcp.tool.SourceFileTool;
+import com.vibegraph.mcp.tool.SuggestTestPlanTool;
+import com.vibegraph.mcp.tool.TraceEndpointTool;
 
 @Configuration
 public class McpServerConfig {
@@ -18,9 +29,35 @@ public class McpServerConfig {
             ArchitectureTool architectureTool,
             ClassContextTool classContextTool,
             ImpactAnalysisTool impactAnalysisTool,
-            LayerPatternTool layerPatternTool) {
+            LayerPatternTool layerPatternTool,
+            SourceFileTool sourceFileTool,
+            MethodSourceTool methodSourceTool,
+            SearchSourceTool searchSourceTool,
+            FindReferencesTool findReferencesTool,
+            TraceEndpointTool traceEndpointTool,
+            MethodCpgTool methodCpgTool,
+            FindRelatedTestsTool findRelatedTestsTool,
+            SuggestTestPlanTool suggestTestPlanTool,
+            PlanCodeChangeTool planCodeChangeTool,
+            ExplainFailureTool explainFailureTool,
+            ProjectConventionsTool projectConventionsTool) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(architectureTool, classContextTool, impactAnalysisTool, layerPatternTool)
+                .toolObjects(
+                        architectureTool,
+                        classContextTool,
+                        impactAnalysisTool,
+                        layerPatternTool,
+                        sourceFileTool,
+                        methodSourceTool,
+                        searchSourceTool,
+                        findReferencesTool,
+                        traceEndpointTool,
+                        methodCpgTool,
+                        findRelatedTestsTool,
+                        suggestTestPlanTool,
+                        planCodeChangeTool,
+                        explainFailureTool,
+                        projectConventionsTool)
                 .build();
     }
 }

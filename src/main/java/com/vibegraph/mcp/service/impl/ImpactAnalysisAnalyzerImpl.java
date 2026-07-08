@@ -11,6 +11,7 @@ import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ImpactAnalysisContextResponse;
 import com.vibegraph.mcp.service.ImpactAnalysisAnalyzer;
@@ -30,23 +31,32 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
     private final GraphService graphService;
 
     @Override
-    public ImpactAnalysisContextResponse analyzeImpact(String projectId, String nodeQuery, int depth) {
+    public ImpactAnalysisContextResponse analyzeImpact(String projectId, String nodeQuery, int depth, String profile) {
         String normalizedProjectId = validate(projectId, "projectId", MAX_PROJECT_ID_LENGTH);
         String normalizedNodeQuery = validate(nodeQuery, "nodeQuery", MAX_NODE_QUERY_LENGTH);
         validateDepth(depth);
+        ImpactProfile impactProfile = ImpactProfile.fromApiValue(profile);
         try {
-            ImpactAnalysisResponse impact = graphService.getImpactAnalysis(normalizedProjectId, normalizedNodeQuery, depth);
-            return toResponse(normalizedProjectId, normalizedNodeQuery, depth, impact);
+            ImpactAnalysisResponse impact = resolveImpact(normalizedProjectId, normalizedNodeQuery, depth, impactProfile);
+            return toResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile, impact);
         } catch (ProjectNotFoundException ex) {
             throw ex;
         } catch (NodeNotFoundException ex) {
-            return notFoundResponse(normalizedProjectId, normalizedNodeQuery, depth);
+            return notFoundResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile);
         } catch (RuntimeException ex) {
-            return unavailableResponse(normalizedProjectId, normalizedNodeQuery, depth);
+            return unavailableResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile);
         }
     }
 
-    private ImpactAnalysisContextResponse toResponse(String projectId, String nodeQuery, int depth, ImpactAnalysisResponse impact) {
+    private ImpactAnalysisResponse resolveImpact(String projectId, String nodeQuery, int depth, ImpactProfile profile) {
+        // Default dependency profile delegates through the existing 3-arg contract to preserve backward compatibility.
+        if (profile == ImpactProfile.DEPENDENCY) {
+            return graphService.getImpactAnalysis(projectId, nodeQuery, depth);
+        }
+        return graphService.getImpactAnalysis(projectId, nodeQuery, depth, profile);
+    }
+
+    private ImpactAnalysisContextResponse toResponse(String projectId, String nodeQuery, int depth, ImpactProfile profile, ImpactAnalysisResponse impact) {
         NodeDto target = impact.getTarget();
         List<ImpactAnalysisContextResponse.NodeImpact> directImpact = impactNodes(impact.getWillBreak(), "WILL_BREAK", 1, MAX_DIRECT_IMPACT);
         List<ImpactAnalysisContextResponse.NodeImpact> transitiveImpact = transitiveImpact(impact);
@@ -54,6 +64,7 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                 .projectId(projectId)
                 .nodeQuery(nodeQuery)
                 .depth(depth)
+                .profile(profile.apiValue())
                 .summary(ImpactAnalysisContextResponse.ImpactSummary.builder()
                         .targetId(target == null ? null : target.getId())
                         .targetType(target == null ? null : target.getType())
@@ -65,16 +76,17 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                 .directImpact(directImpact)
                 .transitiveImpact(transitiveImpact)
                 .riskLevel(impact.getRiskLevel())
-                .notes(notes(impact))
+                .notes(notes(profile))
                 .warnings(warnings(impact, directImpact, transitiveImpact))
                 .build();
     }
 
-    private ImpactAnalysisContextResponse notFoundResponse(String projectId, String nodeQuery, int depth) {
+    private ImpactAnalysisContextResponse notFoundResponse(String projectId, String nodeQuery, int depth, ImpactProfile profile) {
         return ImpactAnalysisContextResponse.builder()
                 .projectId(projectId)
                 .nodeQuery(nodeQuery)
                 .depth(depth)
+                .profile(profile.apiValue())
                 .directImpact(List.of())
                 .transitiveImpact(List.of())
                 .notes(List.of())
@@ -82,11 +94,12 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                 .build();
     }
 
-    private ImpactAnalysisContextResponse unavailableResponse(String projectId, String nodeQuery, int depth) {
+    private ImpactAnalysisContextResponse unavailableResponse(String projectId, String nodeQuery, int depth, ImpactProfile profile) {
         return ImpactAnalysisContextResponse.builder()
                 .projectId(projectId)
                 .nodeQuery(nodeQuery)
                 .depth(depth)
+                .profile(profile.apiValue())
                 .directImpact(List.of())
                 .transitiveImpact(List.of())
                 .notes(List.of())
@@ -141,19 +154,20 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
 
     private ImpactAnalysisContextResponse.NodeImpact toNodeImpact(NodeDto node, String impactLevel, int depth) {
         return ImpactAnalysisContextResponse.NodeImpact.builder()
-                .id(node.getId())
+                .id(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getId()))
                 .type(node.getType())
                 .name(node.getName())
-                .fullName(node.getFullName())
+                .fullName(com.vibegraph.mcp.source.SourceGraphSupport.relativizePath(node.getFullName()))
                 .impactLevel(impactLevel)
                 .depth(depth)
                 .lineNumber(node.getLineNumber())
                 .build();
     }
 
-    private List<String> notes(ImpactAnalysisResponse impact) {
+    private List<String> notes(ImpactProfile profile) {
         return List.of(
-                "Direct impact includes nodes that depend on the target at depth 1.",
+                "Impact profile: " + profile.apiValue() + " (relationships: " + profile.relationshipPattern() + ").",
+                "Direct impact includes nodes related to the target at depth 1 under this profile.",
                 "Transitive impact includes sampled nodes at depths 2 and 3.",
                 "Risk level is computed by the existing graph impact service.");
     }

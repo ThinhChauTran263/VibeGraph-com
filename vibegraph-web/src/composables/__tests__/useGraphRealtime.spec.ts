@@ -16,6 +16,7 @@ vi.mock('@/stores/graph', async () => {
   const { reactive: makeReactive } = await import('vue')
   const store = makeReactive({
     graphData: { nodes: [], edges: [], nodeStats: {}, edgeStats: {} },
+    payloadMeta: null as unknown,
   })
   storeHolder.store = store
   return { useGraphStore: () => store }
@@ -104,6 +105,7 @@ beforeEach(() => {
     nodeStats: {} as GraphData['nodeStats'],
     edgeStats: {} as GraphData['edgeStats'],
   }
+  ;(useGraphStore() as unknown as { payloadMeta: unknown }).payloadMeta = null
 })
 
 afterEach(() => {
@@ -156,6 +158,37 @@ describe('useGraphRealtime - applying updates', () => {
 
     expect(store.graphData.nodes.map((n) => n.id)).toEqual(['X'])
     expect(store.graphData.nodeStats).toEqual({ Class: 1 })
+  })
+
+  it('propagates FULL_UPDATE truncation meta into payloadMeta', () => {
+    const { ws, emit } = makeFakeWs()
+    const store = useGraphStore()
+    store.graphData = baseGraph()
+    runInScope(() => useGraphRealtime('p1', { ws }))
+
+    emit('/topic/projects/p1/updates', {
+      type: 'FULL_UPDATE',
+      projectId: 'p1',
+      graph: {
+        nodes: [node('X')],
+        edges: [],
+        nodeStats: {},
+        edgeStats: {},
+        meta: {
+          truncated: true,
+          totalNodes: 5000,
+          totalEdges: 9000,
+          returnedNodes: 1,
+          returnedEdges: 0,
+          nodeLimit: 1500,
+          edgeLimit: 4000,
+          reason: 'GRAPH_TOO_LARGE',
+        },
+      },
+    })
+
+    expect((store.payloadMeta as { truncated: boolean }).truncated).toBe(true)
+    expect((store.payloadMeta as { totalNodes: number }).totalNodes).toBe(5000)
   })
 
   it('patches the graph on an INCREMENTAL event', () => {

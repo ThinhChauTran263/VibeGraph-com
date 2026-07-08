@@ -35,7 +35,9 @@ spring:
       server:
         name: VibeGraph
         version: 1.0.0
-        protocol: streamable
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
 
 vibegraph:
   projects:
@@ -63,7 +65,7 @@ vibegraph:
       - ${FRONTEND_URL}
 
   parser:
-    use-cache: true
+    use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:/app/data/parse-cache}
 
 management:

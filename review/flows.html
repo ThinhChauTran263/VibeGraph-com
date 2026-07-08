@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review · Data Flows</title>
+<style>
+:root{--bg:#0b1120;--surface:#111a2e;--s2:#16213c;--bd:rgba(148,163,184,.18);--tx:#e2e8f0;--dim:#94a3b8;--ac:#60a5fa;--ac2:#22d3ee;--gn:#34d399;--am:#fbbf24;--mono:"Cascadia Code",Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,"Segoe UI",sans-serif;background:radial-gradient(1200px 600px at 80% -10%,rgba(37,99,235,.12),transparent 60%),var(--bg);color:var(--tx);line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+.bc{font-size:.8rem;color:var(--dim);margin-bottom:1rem}.bc a{color:var(--ac);text-decoration:none}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--bd);color:var(--ac);background:rgba(96,165,250,.1)}
+h1{font-size:1.9rem;margin:.5rem 0 .25rem;line-height:1.2}h2{font-size:1.2rem;margin:2rem 0 .7rem;padding-bottom:.4rem;border-bottom:1px solid var(--bd)}h3{font-size:1rem;margin:1.3rem 0 .5rem;color:#cbd5e1}
+.lead{color:var(--dim);font-size:1.02rem;margin:.5rem 0 1.4rem}a{color:var(--ac)}
+code{font-family:var(--mono);font-size:.85em;background:rgba(148,163,184,.14);padding:.1rem .4rem;border-radius:6px;color:#e0e7ff}
+.co{border-left:3px solid var(--ac);background:var(--s2);border-radius:0 10px 10px 0;padding:.8rem 1.1rem;margin:1rem 0}.co.warn{border-left-color:var(--am)}.co.tip{border-left-color:var(--gn)}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.88rem}th,td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--ac);font-size:.76rem;text-transform:uppercase;letter-spacing:.04em}
+.flow{list-style:none;padding:0}.flow li{position:relative;padding:.55rem 0 .55rem 1.6rem}.flow li::before{content:"→";position:absolute;left:0;top:.55rem;color:var(--ac2);font-weight:700}.flow b{color:#fff}
+.check{list-style:none;padding:0}.check li{padding:.35rem 0 .35rem 1.8rem;position:relative}.check li::before{content:"☐";position:absolute;left:0;top:.3rem;color:var(--ac);font-size:1.05rem}
+.foot{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bd);font-size:.9rem}.foot a{text-decoration:none;color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:.6rem 1rem}.foot a:hover{border-color:var(--ac);background:var(--s2)}
+.muted{color:var(--dim);font-size:.85rem}.mono{font-family:var(--mono);font-size:.82rem;color:#c7d2fe}
+.warnbox{border-left:3px solid var(--am);background:rgba(120,53,15,.25);border-radius:0 10px 10px 0;padding:.7rem 1rem;margin:.8rem 0;font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bc"><a href="index.html">← Mục lục</a> · C4 · Data Flows</div>
+  <span class="tag">Frontend · thuần client</span>
+  <h1>Data Flows — Truy vết luồng dữ liệu</h1>
+  <p class="lead">Tab "Flows" liệt kê các luồng truy vết từ endpoint HTTP → controller → service → repository → DBModel. <b>Toàn bộ là thuật toán BFS thuần client-side</b> (<code>lib/dataFlow.ts</code>), không gọi API — chỉ dùng quan hệ có sẵn trong graph đã tải.</p>
+
+  <h2>Bước 1 — Tìm endpoint có thể trace (<code>listTraceableEndpoints</code>)</h2>
+  <ul class="flow">
+    <li>Duyệt cạnh <code>HANDLES_ROUTE</code>: đầu là <code>Method</code>/<code>Constructor</code> = <b>handler</b>, đầu kia = endpoint. Bỏ nếu không có đầu nào là Method/Constructor.</li>
+    <li><code>method</code> = prop <code>httpMethod</code> của handler, else parse từ tên endpoint dạng <code>"GET /api/x"</code>; <code>path</code> = prop <code>routePath</code>, else phần sau verb.</li>
+    <li><b>Fallback</b> khi không có <code>HANDLES_ROUTE</code>: quét mọi node <code>Method</code> có prop <code>httpMethod</code> trực tiếp.</li>
+    <li>Sắp xếp theo path rồi method (deterministic).</li>
+  </ul>
+
+  <h2>Bước 2 — BFS trace tới database (<code>traceFromIndex</code>)</h2>
+  <p>Dựng adjacency <code>outByNode</code> gộp 3 nhóm cạnh, đi <b>bình đẳng</b> (không ưu tiên loại):</p>
+  <table>
+    <tr><th>Nhóm cạnh</th><th>Loại</th><th>Vai trò</th></tr>
+    <tr><td class="mono">CALL_EDGES</td><td>CALLS</td><td>Lời gọi phương thức.</td></tr>
+    <tr><td class="mono">RESOLVE_EDGES</td><td>IMPLEMENTS, OVERRIDES</td><td>Bắc cầu interface↔impl. <b>Thêm cả cạnh mirror ngược chiều</b> để đi được 2 chiều.</td></tr>
+    <tr><td class="mono">DB_LINK_EDGES</td><td>RETURNS, READS, WRITES, PARAMETER_TYPE</td><td>Nối method tới model dữ liệu.</td></tr>
+  </table>
+  <p>BFS từ handler; trong lúc duyệt ghi nhận 3 ứng viên terminal, chọn theo <b>thứ tự ưu tiên</b>:</p>
+  <ul class="flow">
+    <li><b>1. DBModel gần nhất</b> (gặp là break ngay) → <code>complete = true</code>.</li>
+    <li><b>2. repoFallback</b>: repository-method (springLayer='repository') gặp <b>đầu tiên</b>. Nếu nó có cạnh DB_LINK tới 1 DBModel thì append DBModel làm bước cuối &amp; set complete=true.</li>
+    <li><b>3. farthest</b>: node xa nhất reachable (khi không có DBModel/repo).</li>
+    <li>Không reachable gì → flow chỉ gồm handler, <code>complete=false</code>.</li>
+  </ul>
+  <p class="muted">Đường đi dựng lại bằng map <code>parents</code> (đường ngắn nhất terminal→start rồi đảo), mỗi bước kèm <code>relationFromPrev</code>. Chống cycle: <code>visited</code> Set; trần <code>MAX_STEPS = 200</code>.</p>
+
+  <div class="warnbox"><b>⚠ Ngóc ngách reviewer cần biết:</b><br>
+  • Vì DB_LINK gộp chung adjacency, một controller-method <code>RETURNS</code>/<code>PARAMETER_TYPE</code> thẳng tới DBModel sẽ cho flow 2 bước "complete" <b>bỏ qua service/repository</b> — "đường ngắn nhất" có thể là shortcut, không phải chuỗi gọi thực.<br>
+  • Cạnh RESOLVE mirror 2 chiều có thể tạo hop lạ (impl → interface → impl khác).<br>
+  • <b>Mâu thuẫn doc/code</b>: JSDoc nói complete khi "chạm repository-layer method HOẶC DBModel", nhưng code chỉ set <code>complete=true</code> khi <b>chạm DBModel</b> (repo mà không có DB_LINK → vẫn "Incomplete"). Panel hiển thị "⚠ Incomplete" cho các flow dừng ở repository.<br>
+  • <code>ambiguities</code> (bước interface nhiều implementation) ĐƯỢC tính nhưng <b>không được panel render</b> — hiện là "dead data" với người dùng.</div>
+
+  <h2>Bước 3 — Danh sách flow (<code>listFlows</code>, limit 80)</h2>
+  <ul class="flow">
+    <li><b>Endpoint flows</b>: mỗi endpoint (vòng này KHÔNG break theo limit).</li>
+    <li><b>Root method flows</b>: node Method có outgoing CALLS, <b>không</b> incoming CALLS, layer ∈ {controller, service, component}, flow ≥ 2 bước.</li>
+    <li>Cuối cùng sort (endpoint trước, rồi title) và <code>slice(0, 80)</code>.</li>
+    <li><b>domain</b> = tên class gốc bỏ hậu tố (<code>Controller|Service|ServiceImpl|Repository|Manager|Component|Handler…</code>) rồi humanize; <b>fileCount</b> = số filePath phân biệt; <b>title</b> = <code>method path → terminalName</code>.</li>
+  </ul>
+
+  <h2>Chọn flow — highlight (<code>flowFocus.ts</code>)</h2>
+  <ul class="flow">
+    <li><b>partition</b>: node ∈ flow = foreground; edge in-flow = có trong <code>edgeIds</code> HOẶC cả 2 đầu ∈ flow (giữ highlight liên tục dù edge-id lệch).</li>
+    <li><b>reducer</b>: node ngoài flow → <code>hidden</code>; trong flow → forceLabel, primary ×1.25 (zIndex 3), khác ×1.08; edge in-flow ×1.4 + màu theo loại; ngoài flow → hidden.</li>
+    <li>Panel <code>DataFlowDetailPanel</code>: các bước có index, màu theo loại node, springLayer badge, file rút gọn; bấm bước → center node.</li>
+  </ul>
+
+  <h2>Kịch bản thao tác</h2>
+  <table>
+    <tr><th>#</th><th>Thao tác</th><th>Kết quả kỳ vọng</th><th>P/F</th></tr>
+    <tr><td>1</td><td>Tab "Flows"</td><td>"N Flows"; mỗi flow có method/domain/số bước.</td><td></td></tr>
+    <tr><td>2</td><td>Chọn 1 flow endpoint điển hình</td><td>Chuỗi controller→service→repository→DBModel được highlight; panel liệt kê bước; "Steps/Files".</td><td></td></tr>
+    <tr><td>3</td><td>Kiểm 1 flow "Incomplete"</td><td>Panel hiện "⚠ Incomplete — trace stopped before reaching a database model."</td><td></td></tr>
+    <tr><td>4</td><td>Chọn flow có shortcut (controller RETURNS thẳng DBModel)</td><td>Xác nhận flow 2 bước — <b>đây là hành vi đã biết, không phải bug</b>.</td><td></td></tr>
+    <tr><td>5</td><td>Bấm 1 bước trong panel</td><td>Canvas center node, giữ highlight chuỗi.</td><td></td></tr>
+    <tr><td>6</td><td>Project không REST endpoint</td><td>Vẫn có root-method flows hoặc rỗng hợp lý (không lỗi).</td><td></td></tr>
+  </table>
+
+  <h2>Điểm cần soi</h2>
+  <ul class="check">
+    <li>Trace thuần client, tính lại khi <code>graphData</code> đổi tham chiếu (kể cả realtime) → cân nhắc chi phí O(flows·(V+E)).</li>
+    <li>Endpoint &gt; 80 → root flows bị loại &amp; list cắt ở 80.</li>
+    <li>"complete" chỉ dựa DBModel; flow dừng ở repository luôn hiện Incomplete (doc lệch).</li>
+    <li>ambiguities không hiển thị — nếu muốn dùng phải bổ sung UI.</li>
+  </ul>
+
+  <h2>File liên quan</h2>
+  <table>
+    <tr><th>Tầng</th><th>File</th></tr>
+    <tr><td>Thuật toán</td><td><code>lib/dataFlow.ts</code> (listTraceableEndpoints, traceFromIndex, listFlows), <code>lib/flowFocus.ts</code></td></tr>
+    <tr><td>UI</td><td><code>components/panels/FlowsPanel.vue</code>, <code>DataFlowDetailPanel.vue</code></td></tr>
+    <tr><td>Tích hợp</td><td><code>components/graph/GraphCanvas.vue</code> (<code>onFlowSelect/applyFlowFocus</code>), <code>lib/ghostLayer.ts</code></td></tr>
+    <tr><td>Nguồn cạnh (backend)</td><td>STEP_IN_FLOW/CALLS/HANDLES_ROUTE do <code>parser</code> + <code>FlowAnalyzer</code> sinh — xem <a href="graph-model.html">Graph Model</a></td></tr>
+  </table>
+
+  <div class="foot">
+    <a href="filters.html">← Filters</a>
+    <a href="node-detail.html">Node Detail →</a>
+  </div>
+</div>
+</body>
+</html>

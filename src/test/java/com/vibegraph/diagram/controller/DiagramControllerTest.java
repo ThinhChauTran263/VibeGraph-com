@@ -1,7 +1,5 @@
 package com.vibegraph.diagram.controller;
 
-import java.util.List;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,7 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.diagram.dto.response.DiagramResponse;
-import com.vibegraph.diagram.dto.response.UseCaseResponse;
+import com.vibegraph.diagram.dto.response.UmlUseCaseResponse;
 import com.vibegraph.diagram.service.ClassDiagramService;
 import com.vibegraph.diagram.service.UseCaseDiagramService;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -58,21 +56,76 @@ class DiagramControllerTest {
     }
 
     @Test
-    @DisplayName("GET /diagrams/usecase returns a valid Mermaid flowchart")
+    @DisplayName("GET /diagrams/usecase defaults to the UML style (API Map removed)")
     void getUseCaseDiagram() throws Exception {
         stubAnalyzed("p1");
-        when(useCaseDiagramService.generateUseCaseDiagram("p1")).thenReturn(
-                UseCaseResponse.builder()
-                        .actors(List.of("HTTP Client"))
-                        .useCases(List.of("GET /api/users"))
-                        .mermaidSyntax("flowchart LR\n    actor_HTTP_Client((\"HTTP Client\"))")
+        when(useCaseDiagramService.generateUmlUseCase(eq("p1"), isNull())).thenReturn(
+                UmlUseCaseResponse.builder()
+                        .diagramType("usecase")
+                        .style("uml")
+                        .systemName("Shop")
+                        .mermaidSyntax("flowchart TB\n    A_User(((User)))")
+                        .plantUmlSyntax("@startuml\n@enduml")
                         .build());
 
         mockMvc.perform(get("/api/projects/p1/diagrams/usecase"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.actors[0]").value("HTTP Client"))
-                .andExpect(jsonPath("$.data.mermaidSyntax").value(org.hamcrest.Matchers.startsWith("flowchart LR")));
+                .andExpect(jsonPath("$.data.style").value("uml"));
+
+        verify(useCaseDiagramService).generateUmlUseCase(eq("p1"), isNull());
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/usecase?style=uml routes to the UML inference path with the mode")
+    void getUmlUseCaseDiagram() throws Exception {
+        stubAnalyzed("p1");
+        when(useCaseDiagramService.generateUmlUseCase("p1", "grouped")).thenReturn(
+                UmlUseCaseResponse.builder()
+                        .diagramType("usecase")
+                        .style("uml")
+                        .mode("grouped")
+                        .systemName("Shop")
+                        .mermaidSyntax("flowchart LR\n    subgraph boundary")
+                        .plantUmlSyntax("@startuml\n@enduml")
+                        .build());
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/usecase")
+                        .param("style", "uml").param("mode", "grouped"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.style").value("uml"))
+                .andExpect(jsonPath("$.data.mode").value("grouped"))
+                .andExpect(jsonPath("$.data.plantUmlSyntax").value(org.hamcrest.Matchers.startsWith("@startuml")));
+
+        verify(useCaseDiagramService).generateUmlUseCase("p1", "grouped");
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/usecase returns 400 for an unsupported style")
+    void useCaseInvalidStyle() throws Exception {
+        stubAnalyzed("p1");
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/usecase").param("style", "bogus"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.message").exists());
+
+        verifyNoInteractions(useCaseDiagramService);
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/usecase?style=uml returns 400 for an invalid mode")
+    void useCaseInvalidMode() throws Exception {
+        stubAnalyzed("p1");
+        when(useCaseDiagramService.generateUmlUseCase(eq("p1"), eq("bogus")))
+                .thenThrow(new IllegalArgumentException("Invalid mode 'bogus'."));
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/usecase")
+                        .param("style", "uml").param("mode", "bogus"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.message").exists());
     }
 
     @Test

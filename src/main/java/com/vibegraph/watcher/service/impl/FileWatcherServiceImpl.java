@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.DebouncedEventHandler;
 import com.vibegraph.watcher.service.EventType;
@@ -43,15 +42,12 @@ import lombok.extern.slf4j.Slf4j;
  * root), filtered (ignored directories + watched extensions), buffered, then flushed once
  * per debounce window.
  *
- * <p>Dispatch policy:
- * <ul>
- *   <li>{@link EventType#DELETE} → {@link GraphRepository#deleteFile(String, String)}
- *       (graph pruning contract from T25).</li>
- *   <li>{@link EventType#CREATE}/{@link EventType#MODIFY} → emitted to registered handlers
- *       only. Incremental re-parse is not yet available
- *       ({@code ParserService.parseFileWithCache} is deferred to Sprint 2), so this watcher
- *       does not trigger a real re-analysis for additive changes.</li>
- * </ul>
+ * <p>Dispatch policy: every buffered change (create, modify, delete) is emitted to the
+ * registered {@link #onFileChange(Consumer) handlers} exactly once per debounce window. This
+ * watcher performs no graph mutation itself; turning a change into graph edits — pruning the
+ * deleted file's slice and re-parsing created/modified files — is the handler's responsibility
+ * (see {@code FileChangeBroadcaster}, which resolves the stored absolute path and broadcasts an
+ * incremental delta).
  */
 @Service
 @RequiredArgsConstructor
@@ -59,7 +55,6 @@ import lombok.extern.slf4j.Slf4j;
 public class FileWatcherServiceImpl implements FileWatcherService {
 
     private final WatcherProperties properties;
-    private final GraphRepository graphRepository;
     private final DebouncedEventHandler debouncer;
 
     private final Map<String, WatchRegistration> registrations = new ConcurrentHashMap<>();
@@ -205,27 +200,8 @@ public class FileWatcherServiceImpl implements FileWatcherService {
         }
         log.info("Dispatching {} change(s) for project={}", batch.size(), projectId);
         for (FileChangeEvent event : batch) {
-            dispatch(event);
+            notifyHandlers(event);
         }
-    }
-
-    private void dispatch(FileChangeEvent event) {
-        if (event.type() == EventType.DELETE) {
-            try {
-                graphRepository.deleteFile(event.projectId(), event.relativePath());
-                log.info("Removed deleted file from graph: project={} file={}",
-                        event.projectId(), event.relativePath());
-            } catch (RuntimeException e) {
-                log.error("Failed to prune deleted file project={} file={}: {}",
-                        event.projectId(), event.relativePath(), e.getMessage(), e);
-            }
-        } else {
-            // Incremental re-parse for CREATE/MODIFY is not yet available
-            // (ParserService.parseFileWithCache deferred to Sprint 2). Emit to handlers only.
-            log.info("Detected {} (incremental re-parse not yet wired): project={} file={}",
-                    event.type(), event.projectId(), event.relativePath());
-        }
-        notifyHandlers(event);
     }
 
     private void notifyHandlers(FileChangeEvent event) {

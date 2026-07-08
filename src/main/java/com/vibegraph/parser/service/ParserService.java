@@ -1,9 +1,9 @@
 package com.vibegraph.parser.service;
 
-import com.vibegraph.parser.node.ParseResult;
-
 import java.nio.file.Path;
 import java.util.List;
+
+import com.vibegraph.parser.node.ParseResult;
 
 /**
  * Java source code parser service.
@@ -23,13 +23,18 @@ public interface ParserService {
      * @param projectRoot root directory of the Java project
      * @return aggregated list of ParseResult (one per file)
      */
-    List<ParseResult> parseProject(Path projectRoot);
+    default List<ParseResult> parseProject(Path projectRoot) {
+        return parseProject(projectRoot, ParseProgressListener.NOOP);
+    }
 
     /**
-     * Parse a file, using SHA-256 checksum cache to skip unchanged files.
-     * @param filePath absolute path to the .java file
-     * @param projectId tenant identifier for cache scoping
-     * @return ParseResult (from cache if checksum matches, else fresh parse)
+     * Parse all .java files in a project directory (recursive), reporting per-file
+     * progress so callers can surface a smooth progress indicator.
+     *
+     * @param projectRoot      root directory of the Java project
+     * @param progressListener invoked after each file is parsed; never {@code null}
+     *                         (use {@link ParseProgressListener#NOOP})
+     * @return aggregated list of ParseResult (one per file)
      */
-    ParseResult parseFileWithCache(Path filePath, String projectId);
+    List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener);
 }

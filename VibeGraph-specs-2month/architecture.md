@@ -6,8 +6,9 @@
 ┌──────────────────────────────────────────────────────────┐
 │  Browser (Vue 3 + Sigma.js)                              │
 │  - Force Graph                                            │
-│  - Use Case + Class diagrams (Mermaid)                    │
-│  - Explorer + Filter + Node Detail panels                 │
+│  - Use Case (SVG UML 2.5) + Class diagrams (Mermaid)      │
+│  - Explorer + Filter + Node Detail + CodeViewerModal      │
+│  - ImpactAnalysisPanel (3 profiles) + FlowsPanel          │
 └────────────────────┬─────────────────────────────────────┘
                      │ HTTPS / WebSocket
 ┌────────────────────▼─────────────────────────────────────┐
@@ -16,29 +17,53 @@
 │  ┌────────────┐  ┌────────────┐  ┌────────────────────┐  │
 │  │REST + WS   │  │MCP Server  │  │File Watcher        │  │
 │  │Controllers │  │(Streamable │  │(Java WatchService) │  │
-│  │            │  │ HTTP)      │  │                    │  │
+│  │+ Source    │  │HTTP, 15    │  │+ FileChange        │  │
+│  │Controller  │  │tools)      │  │Broadcaster         │  │
 │  └─────┬──────┘  └─────┬──────┘  └─────┬──────────────┘  │
 │        │                │                │                │
 │  ┌─────▼────────────────▼────────────────▼──────────┐    │
-│  │ Service Layer (Parser, Analyze, Diagram, Import) │    │
-│  └───────────────────┬──────────────────────────────┘    │
-│                      │                                    │
-│  ┌───────────────────▼──────────────────────────────┐    │
-│  │ GraphRepository INTERFACE                         │    │
-│  │ → Neo4jGraphRepository impl                       │    │
-│  └───────────────────┬──────────────────────────────┘    │
-└──────────────────────┼───────────────────────────────────┘
-                       │ Bolt
-                ┌──────▼──────┐
-                │  Neo4j 5.x  │
-                │  (Docker)   │
-                └─────────────┘
+│  │ Service Layer                                     │    │
+│  │  - Parser (visitor + MethodVisitor deepCpg gate)  │    │
+│  │  - Analyze                                        │    │
+│  │  - Diagram (UseCase pipeline v2 + Class + Mermaid)│    │
+│  │  - Import (Archive/GitHub/Local)                  │    │
+│  │  - Source (SourceFileService + SourceGraphSupport)│    │
+│  └──────────┬───────────────────────────┬────────────┘    │
+│             │                            │                 │
+│  ┌──────────▼──────────┐        ┌───────▼────────────┐    │
+│  │ AI Layer            │        │ GraphRepository    │    │
+│  │  com.vibegraph.ai/* │        │ INTERFACE          │    │
+│  │  - Gemini failover  │        │ → Neo4jGraphRepo   │    │
+│  │  - LlmUseCaseRefiner│        │   (3 impact        │    │
+│  │  - Caffeine cache   │        │    profiles)       │    │
+│  └─────────────────────┘        └────────┬───────────┘    │
+└──────────────────────────────────────────┼────────────────┘
+                                           │ Bolt
+                                    ┌──────▼──────┐
+                                    │  Neo4j 5.x  │
+                                    │  (Docker)   │
+                                    │  + Deep CPG │
+                                    │  opt-in     │
+                                    └─────────────┘
 
          ┌──────────────────────┐
          │  AI Tools (Cursor,   │  ← MCP Streamable HTTP
-         │  Claude Code, Kiro)  │
+         │  Claude Code, Kiro)  │    /mcp (15 tools)
          └──────────────────────┘
 ```
+
+### Shadow features (đã ship sau Sprint 2)
+
+| Feature | Vị trí | Docs chi tiết |
+|---|---|---|
+| **Local folder import + realtime watcher** | `LocalProjectController`, `LocalImportService`, `FileWatcherServiceImpl`, `FileChangeBroadcaster` | `requirements-trimmed.md#fr-new-7`, `graph/MODULE-GUIDE.md`, `watcher/MODULE-GUIDE.md` |
+| **Source viewer (REST + MCP)** | `SourceController`, `mcp/source/*` (`GraphView`, `SourceFileService`, `SourceGraphSupport`), FE `CodeViewerModal.vue` | `requirements-trimmed.md#fr-new-3`, `mcp/MODULE-GUIDE.md` |
+| **AI/Gemini integration** | `com/vibegraph/ai/*` (`GeminiChatClientConfig`, `GeminiFailoverChatClient`, `GeminiRotationProperties`, `ResilientChatClient`), `LlmUseCaseRefiner` (diagram module) | `requirements-trimmed.md#fr-new-4`, `ai-memory.md` |
+| **Impact Analysis Profiles** | `ImpactProfile` enum, `GraphController /graph/impact`, `GraphServiceImpl.getImpactAnalysis`, `Neo4jGraphRepository.getImpact`, `ImpactAnalysisTool` (MCP), `ImpactAnalysisPanel.vue` (FE) | `requirements-trimmed.md#fr-new-6`, `graph/MODULE-GUIDE.md`, `mcp/MODULE-GUIDE.md` |
+| **Deep CPG opt-in** | `MethodVisitor(deepCpg)`, `LocalVariable` nodes + `READS`/`WRITES`/`CATCHES` edges, env `VIBEGRAPH_PARSER_DEEP_CPG` → property `vibegraph.parser.deep-cpg-enabled` | `requirements-trimmed.md#fr-new-5`, `neo4j-schema.md`, `ai-memory.md` |
+| **UseCase Pipeline v2** | 9 helper classes trong `diagram/service/impl/`: `BaLabelBeautifier`, `GenericRelationInferer`, `LlmUseCaseRefiner`, `NoopUseCaseRefiner`, `UmlUseCaseRenderer`, `UseCaseInferenceEngine`, `UseCaseRefinerConfig`, `UseCaseSemanticRefiner`, `UseCaseViewProjector` | `diagram/MODULE-GUIDE.md`, `.kiro/specs/usecase-gen-accuracy/` |
+| **Data Flow Analysis** | `FlowsPanel.vue` + `lib/dataFlow.ts` + `STEP_IN_FLOW` edges + `DataFlowDetailPanel.vue` | `.kiro/specs/data-flow-analysis/` |
+| **Evaluation harness** | `eval/structural-accuracy/` với PowerShell scripts + CSV/MD reports cho spring-petclinic + petclinic-rest | `eval/EVALUATION-CHAPTER.md`, `eval/CODE-WALKTHROUGH.md` |
 
 ## Cấu trúc module
 
@@ -91,7 +116,7 @@ vibegraph/
 │       │   ├── websocket/
 │       │   └── dto/
 │       ├── diagram/                 # Use Case + Class generators
-│       ├── mcp/                     # 4 MCP tools
+│       ├── mcp/                     # 15 MCP tools (Spring AI)
 │       ├── watcher/                 # File watcher service
 │       └── import/                  # GitHub tarball stream service (mới)
 │
@@ -190,9 +215,8 @@ public interface GraphRepository {
     int upsertEdges(String projectId, List<EdgeData> edges);
     void deleteFile(String projectId, String filePath);
     GraphDataResponse getFullGraph(String projectId);
-    GraphDataResponse getNeighborhood(String projectId, String nodeId, int hops);
     List<NodeDto> searchNodes(String projectId, String query);
-    List<NodeDto> getImpact(String projectId, String targetFullName, int maxDepth);
+    ImpactAnalysisResponse getImpact(String projectId, String targetFullName, int maxDepth, ImpactProfile profile);
 }
 ```
 
@@ -236,7 +260,7 @@ Frontend redirects to /projects/{id}/graph when READY
 
 ### 2. Người dùng dán URL GitHub (Tarball stream — không clone, không lưu disk)
 
-> **Luồng mục tiêu Sprint 2.** Code hiện có `ImportController` và route `POST /api/projects/import-github`, nhưng `TarballImportServiceImpl` vẫn ném `FeatureNotImplementedException`. `ParserService.parseString(content, relPath)` trong flow dưới đây là API cần bổ sung hoặc thay bằng cơ chế parse stream tương đương; hiện chỉ có `parseFile`/`parseProject` và `parseFileWithCache` chưa implement.
+> **Luồng Sprint 2 — ĐÃ IMPLEMENTED.** `TarballImportServiceImpl` đã hoàn chỉnh: download tarball → extract vào server workspace → dùng `ParserService.parseProject(workspacePath)` → upsert. Import GitHub public repo đã E2E tested.
 
 ```
 Browser → POST /api/projects/import-github {url}
@@ -299,7 +323,7 @@ Source code KHÔNG bao giờ r┐i máy user.
 
 ### 4. Người dùng chạy chế độ self-host cục bộ với server-side watcher (MVP)
 
-> **Luồng mục tiêu Sprint 2.** `WatcherProperties`, `FileWatcherServiceImpl` và `DebouncedEventHandler` đã có file, nhưng start/stop watch, debounce và incremental reparse/update còn TODO; WebSocket broadcast cũng chưa nối vào pipeline thật.
+> **Luồng Sprint 2 — ĐÃ IMPLEMENTED.** `FileWatcherServiceImpl` + `DebouncedEventHandler` + `FileChangeBroadcaster` đã hoàn tất: recursive WatchService, debounce 500ms, CREATE/MODIFY/DELETE → incremental re-parse → upsert/prune → broadcast `INCREMENTAL`. Đã test E2E.
 
 ```
 Java WatchService phát hiện UserService.java MODIFY
@@ -317,7 +341,7 @@ Frontend Sigma.js patch graph (không full reload)
 
 ### 5. AI tool gọi MCP
 
-> **Luồng mục tiêu Sprint 3.** MCP packages/classes đã có scaffold, nhưng chưa có `@Tool` methods và `ArchitectureAnalyzer`/`McpToolService` còn TODO. Tên method `ArchitectureTool.getProjectArchitecture` dưới đây mô tả contract mong muốn, không phải method đang tồn tại.
+> **Luồng Sprint 3 — ĐÃ IMPLEMENTED.** 15 MCP tools đã register qua `McpServerConfig` và hoạt động qua Spring AI Streamable HTTP tại `/mcp`. Xem `mcp/MODULE-GUIDE.md` và `MCP_INTEGRATION.md` cho danh sách đầy đủ.
 
 ```
 Cursor/Claude Code → http://localhost:8080/mcp

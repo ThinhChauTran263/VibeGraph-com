@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import DiagramPanel from '@/components/diagram/DiagramPanel.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import BrandMark from '@/components/ui/BrandMark.vue'
 
 const route = useRoute()
 const projectId = computed(() => (route.params.projectId as string) || 'default')
@@ -12,6 +13,11 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
 <template>
   <main class="graph-view">
     <nav class="graph-view__tabs" aria-label="Project visualization">
+      <RouterLink class="graph-view__home" :to="{ name: 'dashboard' }" aria-label="Back to dashboard">
+        <BrandMark :size="24" :show-wordmark="false" />
+        <span class="graph-view__home-label">Dashboard</span>
+      </RouterLink>
+      <span class="graph-view__divider" aria-hidden="true"></span>
       <button
         class="graph-view__tab"
         :class="{ 'graph-view__tab--active': activeView === 'graph' }"
@@ -30,8 +36,10 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
       </button>
     </nav>
 
-    <GraphCanvas v-if="activeView === 'graph'" :project-id="projectId" />
-    <DiagramPanel v-else :project-id="projectId" />
+    <KeepAlive>
+      <GraphCanvas v-if="activeView === 'graph'" :project-id="projectId" />
+      <DiagramPanel v-else :project-id="projectId" />
+    </KeepAlive>
   </main>
 </template>
 
@@ -45,9 +53,37 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
 
 .graph-view__tabs {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.graph-view__home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  color: #cbd5e1;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.graph-view__home:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: #fff;
+}
+
+.graph-view__home-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.graph-view__divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(148, 163, 184, 0.24);
+  margin: 0 0.25rem;
 }
 
 .graph-view__tab {

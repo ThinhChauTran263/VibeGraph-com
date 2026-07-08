@@ -1,38 +1,87 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { normalizeFocusDepth } from '@/lib/focusMode'
+import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes } from '@/lib/graphFilters'
 import type { NodeType, EdgeType } from '@/types/graph'
 
 const cloneSet = <T>(values: Set<T>): Set<T> => new Set(values)
 
-export const useFilterStore = defineStore('filter', () => {
-  const hiddenNodeTypes = ref<Set<NodeType>>(new Set())
-  const hiddenEdgeTypes = ref<Set<EdgeType>>(new Set())
-  const focusDepth = ref<number>(-1)
-  const searchQuery = ref('')
+/**
+ * Compute the next HIDDEN set for an "isolate with restore" toggle.
+ *
+ * Behaviour (per type group):
+ *  - All visible (nothing hidden): clicking a type ISOLATES it — hide every other
+ *    available type, leaving only the clicked one.
+ *  - Already isolating, clicking a hidden type: ADD it to the visible set (keep the
+ *    others that are open).
+ *  - Already isolating, clicking a visible type while others are also visible:
+ *    REMOVE it from the visible set (hide it).
+ *  - Already isolating, clicking the ONLY visible type: RESTORE — show everything
+ *    again.
+ */
+function nextIsolateHiddenSet<T>(hidden: Set<T>, type: T, available: readonly T[]): Set<T> {
+  const all = new Set<T>(available)
+  all.add(type)
 
-  const hasActiveFilters = computed(
-    () => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0,
-  )
+  const visibleCount = [...all].reduce((count, t) => count + (hidden.has(t) ? 0 : 1), 0)
+  const allVisible = visibleCount === all.size
 
-  function toggleNodeType(type: NodeType): void {
-    const next = cloneSet(hiddenNodeTypes.value)
-    if (next.has(type)) {
-      next.delete(type)
-    } else {
-      next.add(type)
-    }
-    hiddenNodeTypes.value = next
+  // All visible -> isolate the clicked type (hide every other available type).
+  if (allVisible) {
+    const next = new Set<T>(all)
+    next.delete(type)
+    return next
   }
 
-  function toggleEdgeType(type: EdgeType): void {
-    const next = cloneSet(hiddenEdgeTypes.value)
-    if (next.has(type)) {
-      next.delete(type)
-    } else {
-      next.add(type)
+  // Clicked type is currently hidden -> reveal it (keep what's already open).
+  if (hidden.has(type)) {
+    const next = cloneSet(hidden)
+    next.delete(type)
+    return next
+  }
+
+  // Clicked type is the only visible one -> restore all.
+  if (visibleCount === 1) {
+    return new Set<T>()
+  }
+
+  // Clicked type is visible alongside others -> hide just this one.
+  const next = cloneSet(hidden)
+  next.add(type)
+  return next
+}
+
+export const useFilterStore = defineStore('filter', () => {
+  // LocalVariable (deep CPG) starts HIDDEN so the default graph stays readable.
+  const hiddenNodeTypes = ref<Set<NodeType>>(defaultHiddenNodeTypes())
+  // CPG-lite edge types start HIDDEN so the default architecture graph stays
+  // readable. They remain in the data and are revealed via "Show all".
+  const hiddenEdgeTypes = ref<Set<EdgeType>>(defaultHiddenEdgeTypes())
+  const searchQuery = ref('')
+
+  /** True when a hidden set deviates from its default-hidden baseline. */
+  function deviatesFromDefault<T>(hidden: ReadonlySet<T>, defaults: ReadonlySet<T>): boolean {
+    if (hidden.size !== defaults.size) return true
+    for (const value of hidden) {
+      if (!defaults.has(value)) return true
     }
-    hiddenEdgeTypes.value = next
+    return false
+  }
+
+  // "Active filters" means the user deviated from the defaults (node or edge
+  // visibility). The default-hidden deep-CPG types alone do NOT count as active
+  // (otherwise Reset would always appear enabled).
+  const hasActiveFilters = computed(
+    () =>
+      deviatesFromDefault(hiddenNodeTypes.value, defaultHiddenNodeTypes()) ||
+      deviatesFromDefault(hiddenEdgeTypes.value, defaultHiddenEdgeTypes()),
+  )
+
+  function toggleNodeType(type: NodeType, available: readonly NodeType[] = []): void {
+    hiddenNodeTypes.value = nextIsolateHiddenSet(hiddenNodeTypes.value, type, available)
+  }
+
+  function toggleEdgeType(type: EdgeType, available: readonly EdgeType[] = []): void {
+    hiddenEdgeTypes.value = nextIsolateHiddenSet(hiddenEdgeTypes.value, type, available)
   }
 
   function showAllNodeTypes(): void {
@@ -43,14 +92,10 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenEdgeTypes.value = new Set()
   }
 
-  function setFocusDepth(depth: number): void {
-    focusDepth.value = normalizeFocusDepth(depth)
-  }
-
   function reset(): void {
-    hiddenNodeTypes.value = new Set()
-    hiddenEdgeTypes.value = new Set()
-    focusDepth.value = -1
+    hiddenNodeTypes.value = defaultHiddenNodeTypes()
+    // Reset returns to the readable DEFAULT (deep-CPG hidden), not "show all".
+    hiddenEdgeTypes.value = defaultHiddenEdgeTypes()
     searchQuery.value = ''
   }
 
@@ -58,13 +103,11 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenNodeTypes,
     hiddenEdgeTypes,
     hasActiveFilters,
-    focusDepth,
     searchQuery,
     toggleNodeType,
     toggleEdgeType,
     showAllNodeTypes,
     showAllEdgeTypes,
-    setFocusDepth,
     reset,
   }
 })

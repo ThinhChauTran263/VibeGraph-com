@@ -8,8 +8,8 @@
  *   immutably (it never mutates the input or its nested arrays/objects) and
  *   recomputes `nodeStats`/`edgeStats` so the store invariant holds.
  *
- * PROVISIONAL: the backend producer (T36/T25) is not implemented yet, so this
- * mirrors the spec-sketch contract and validates defensively.
+ * The backend producer (T36 broadcast + FileChangeBroadcaster, wired to the file watcher)
+ * is implemented; this mirrors that contract and still validates defensively at the boundary.
  */
 
 import type {

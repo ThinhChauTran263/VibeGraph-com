@@ -15,6 +15,7 @@ public class ImpactAnalysisContextResponse {
     private String projectId;
     private String nodeQuery;
     private int depth;
+    private String profile;
     private ImpactSummary summary;
     private List<NodeImpact> directImpact;
     private List<NodeImpact> transitiveImpact;

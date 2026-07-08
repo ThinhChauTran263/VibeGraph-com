@@ -35,10 +35,11 @@ Talking point:
 
 ### 2. Import a project
 
-Use either import path:
+Use one of three import paths:
 
-- Archive import: upload a Java project archive.
-- GitHub import: enter a public GitHub repository URL.
+- **Local folder** (dev/self-host): register a Java project directory that already exists on the backend host. Enables realtime graph updates as you edit files.
+- **Archive import**: upload a `.zip`/`.tar`/`.tar.gz` Java project archive.
+- **GitHub import**: enter a public GitHub repository URL.
 
 Expected result:
 
@@ -47,7 +48,20 @@ Expected result:
 
 Talking point:
 
-> The import flow stores source files, parses Java code, and builds graph nodes and relationships for classes, methods, fields, and dependencies.
+> Three import paths cover the developer journey: **local folder gives realtime feedback** as you edit; archive works when you just want a snapshot; GitHub imports a public repo without cloning.
+
+### 2b. Demo local realtime (recommended)
+
+After importing a local folder:
+
+1. Open the folder in your IDE (IntelliJ / VS Code).
+2. Modify a `.java` file — add a new class or method.
+3. Watch the graph update **in place** on Sigma (no page reload, no camera reset).
+4. Delete the file — the corresponding node disappears from the graph.
+
+Talking point:
+
+> Realtime is the differentiating feature vs. archive/GitHub imports. `FileChangeBroadcaster` re-parses only the changed file, computes a delta, and broadcasts `INCREMENTAL` over WebSocket/STOMP.
 
 ### 3. View graph and diagram
 
@@ -64,6 +78,19 @@ Talking point:
 
 > The graph is useful for human exploration, while the same indexed context also powers MCP tools for AI assistants.
 
+### 3b. Open source from Node Detail
+
+Click a class or method node, then open the source viewer:
+
+- The `CodeViewerModal` shows the file with **project-relative path** (no absolute server path leak).
+- Sensitive properties (`password`, `secret`, `token`) are redacted at render time.
+- The window is bounded (line-cap) — safe for large files.
+- Access is restricted to files under the project's registered source root.
+
+Talking point:
+
+> Source access uses the same guard as MCP source tools (`SourceGraphSupport` + `SourceFileService`). Path traversal, symlink escape, and workspace-root violations are rejected before any read.
+
 ### 4. Connect an MCP client
 
 Use this MCP client configuration:
@@ -79,16 +106,17 @@ Use this MCP client configuration:
 }
 ```
 
-Confirm the client can list these tools:
+Confirm the client can list the **15 available tools** (see `docs/mcp-integration.md` for full list). Highlights to demo:
 
-- `get_project_architecture`
-- `get_class_context`
-- `get_impact_analysis`
-- `get_layer_pattern`
+- `get_project_architecture`, `get_class_context`, `get_impact_analysis`, `get_layer_pattern` (4 core context tools)
+- `trace_endpoint`, `find_references`, `get_method_cpg_context` (deeper graph navigation)
+- `get_source_file`, `search_source`, `get_method_source` (source access with redaction)
+- `find_related_tests`, `suggest_test_plan`, `plan_code_change`, `explain_failure_path` (senior-agent tools)
+- `get_project_conventions` (durable repo conventions from `ai-memory.md`)
 
 Talking point:
 
-> MCP lets an AI assistant ask VibeGraph for repository-specific context instead of guessing architecture from a prompt alone.
+> MCP lets an AI assistant ask VibeGraph for repository-specific context instead of guessing architecture from a prompt alone. The tool surface grew from 4 planned tools (Sprint 2) to 15 shipped tools (Sprint 3), covering context lookup, source access, tests, and change planning.
 
 ### 5. Query project architecture
 
@@ -138,6 +166,24 @@ Talking point:
 
 > Impact analysis is the safety step before refactoring, renaming, or changing shared code.
 
+### 7b. Switch impact profile
+
+`get_impact_analysis` (and the FE `ImpactAnalysisPanel`) support three profiles that answer different questions:
+
+| Profile | Question it answers | Edges traversed |
+| --- | --- | --- |
+| `dependency` (default) | "What breaks if I change this?" | reverse `CALLS`/`IMPORTS`/`EXTENDS`/`IMPLEMENTS`/`INJECTS` |
+| `structural` | "What contains / is contained by this?" | `CONTAINS`/`DEFINES`/`HAS_METHOD`/`HAS_FIELD`/`HANDLES_ROUTE` |
+| `type-data-flow` | "How does data flow through this?" | type edges + deep CPG (`READS`/`WRITES`/`CATCHES`/`STEP_IN_FLOW`) |
+
+Prompt:
+
+> Re-run `get_impact_analysis` for the same node with `profile=structural`, then again with `profile=type-data-flow`. Compare the blast-radius shape across profiles.
+
+Talking point:
+
+> Different refactors need different lenses — renaming a class is a dependency question; moving a package is a structural question; changing a shared field type is a data-flow question.
+
 ### 8. Query layer pattern
 
 Prompt for the AI assistant:
@@ -154,23 +200,59 @@ Talking point:
 
 > Layer pattern context turns existing code into practical generation rules for new code.
 
+### 9. Explore the Code Property Graph (optional, advanced)
+
+VibeGraph indexes more than the architecture graph. The default canvas shows only
+the readable **structural** layer; deeper relationships are hidden until requested.
+
+In the graph view's Filter panel:
+
+1. Note the default canvas shows structural edges only — `DEFINES`, `CONTAINS`,
+   `HAS_METHOD`, `HAS_INNER`, `EXTENDS`, `IMPLEMENTS`, `OVERRIDES`, `IMPORTS`,
+   `CALLS`, `HANDLES_ROUTE` — so it stays readable.
+2. Click **Edge types → Show all** to reveal the CPG-lite + deep layer:
+   - CPG-lite: `TYPE_OF`, `PARAMETER_TYPE`, `RETURNS`, `HAS_FIELD`, `INJECTS`,
+     `INSTANTIATES`, `THROWS`, `ANNOTATED_BY`.
+   - Deep CPG (only when enabled, see below): `READS`, `WRITES`, `CATCHES`.
+   - Inferred flow: `STEP_IN_FLOW`.
+3. Click **Node types → Show all** to reveal `LocalVariable` nodes (deep CPG).
+4. Select a method node and inspect the **Node Detail** panel: incoming/outgoing
+   relations now list CPG-lite and deep relations (e.g. a service method that
+   `READS`/`WRITES` a field, `CATCHES` an exception, or is a `STEP_IN_FLOW` step).
+
+Talking points:
+
+> `STEP_IN_FLOW` is an **inferred** execution-flow view from each route handler
+> through in-project calls — it is NOT a copy of `CALLS`. It is reachability-filtered
+> and de-duplicated, so its count is strictly smaller than `CALLS`.
+
+> Body-level data-flow (`LocalVariable` + `READS`/`WRITES`/`CATCHES`) is **opt-in**.
+> It is OFF by default (`VIBEGRAPH_PARSER_DEEP_CPG=false`) because local variables
+> can multiply graph size; enable it only when you need data-flow detail.
+
 ## Success checklist
 
-- [ ] A Java project is imported successfully.
+- [ ] A Java project is imported successfully (local, archive, or GitHub).
+- [ ] Local realtime demo: editing a `.java` file updates the graph in place without reload.
 - [ ] The project reaches analyzed status.
 - [ ] Graph or diagram exploration works for the imported project.
-- [ ] MCP client connects to `http://localhost:8080/mcp` using streamable HTTP.
+- [ ] Node Detail → source viewer opens a redacted, project-relative file.
+- [ ] MCP client connects to `http://localhost:8080/mcp` using streamable HTTP and lists 15 tools.
 - [ ] `get_project_architecture` returns layer and pattern context.
 - [ ] `get_class_context` returns class details and relations.
-- [ ] `get_impact_analysis` returns direct/transitive impact and risk level.
+- [ ] `get_impact_analysis` runs across all 3 profiles (`dependency`, `structural`, `type-data-flow`) with differing blast-radius shapes.
 - [ ] `get_layer_pattern` returns examples and conventions for a layer.
+- [ ] At least one senior-agent tool (`suggest_test_plan` / `plan_code_change` / `explain_failure_path`) returns a useful response.
 
 ## Known limitations to mention during demo
 
-- Realtime DELETE handling is verified, but CREATE/MODIFY incremental re-parse is still pending.
+- Realtime updates handle CREATE/MODIFY/DELETE via incremental re-parse of the changed file. True realtime applies to local-folder imports (edited in place); GitHub/archive imports watch a server-side copy (snapshot).
 - Live Docker Compose and Testcontainers checks require Docker availability.
 - Production auth and rate-limit hardening should be reviewed before public deployment.
 - MCP output depends on completed analysis; use the correct `projectId` and rerun import/analysis if the graph is empty.
+- **Deep CPG is opt-in** (`VIBEGRAPH_PARSER_DEEP_CPG`, default `false`); with it off there are no `LocalVariable` nodes or `READS`/`WRITES`/`CATCHES` edges.
+- **CPG data-flow is conservative** and intentionally does NOT capture: collection mutation (`list.add(...)`), setter calls (`obj.setX(...)`), `obj.field`/`arr[i]` write targets, cross-method (inter-procedural) data-flow, and bare access to inherited fields (only `this.field` is certain).
+- **`STEP_IN_FLOW` metadata is first-flow-wins**: when one call participates in multiple route flows, the single persisted edge keeps the metadata of the first (sorted) entrypoint that reached it.
 
 ## Recovery notes
 

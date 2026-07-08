@@ -10,13 +10,22 @@ export function createViteConfig(mode: string) {
   const envDir = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
   const envPath = resolve(envDir, '.env')
   const isDockerBuild = process.env.VIBEGRAPH_DOCKER_BUILD === 'true'
+  const isCi = process.env.CI === 'true'
+  const ciDefaults: Record<string, string> = {
+    VITE_API_URL: 'http://localhost:8080',
+    VITE_WS_URL: 'http://localhost:8080/ws/graph-updates',
+  }
 
-  if (!existsSync(envPath) && !isDockerBuild) {
+  if (!existsSync(envPath) && !isDockerBuild && !isCi) {
     throw new Error('Missing root .env file. Copy .env.example to .env and configure it before running VibeGraph.')
   }
 
   const env = loadEnv(mode, envDir, '')
   for (const key of ['VITE_API_URL', 'VITE_WS_URL']) {
+    if (!env[key] && !process.env[key] && isCi) {
+      process.env[key] = ciDefaults[key]
+    }
+
     if (!env[key] && !process.env[key]) {
       throw new Error(`Missing ${key} in root .env.`)
     }

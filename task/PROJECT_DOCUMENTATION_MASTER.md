@@ -1,4 +1,11 @@
 # VibeGraph - Master Project Documentation
+
+> **Current status note (2026-06-18):** This file is a historical planning snapshot.
+> For current MCP/server behavior, use `MCP_INTEGRATION.md`,
+> `docs/mcp-integration.md`, `VibeGraph-specs-2month/ai-memory.md`, and
+> `src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md`. The current MCP surface has
+> 15 registered tools, project metadata recovery from Neo4j after restart, and
+> guarded project-relative source access.
 *Tài liệu tổng hợp dự án - Cập nhật: 2026-06-11*
 
 > **Mục đích:** Tổng hợp toàn bộ documentation về implementation status, sprint planning, task distribution, và hướng dẫn quản lý dự án VibeGraph.
@@ -103,8 +110,8 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | GraphSchema              | 80  | ✅ Complete  | Whitelist validation, injection prevention |
 | getFullGraph()           | -   | ✅ Done      | Stable IDs using fullName             |
 | upsertNodes/Edges()      | -   | ✅ Done      | Production-ready                      |
-| getNeighborhood()        | -   | 🚧 Sprint 2  | Interface defined, impl pending       |
-| getImpact()              | -   | 🚧 Sprint 2  | Interface defined, impl pending       |
+| getNeighborhood()        | -   | 🚧 Sprint 2  | Interface defined, impl pending (throws UnsupportedOperationException) |
+| getImpact()              | -   | ✅ Done      | Implemented; bounded blast-radius traversal, depth whitelist 1/2/3/5, profiles dependency/structural/type-data-flow |
 
 **Code Quality:** Enterprise-grade, production-ready
 
@@ -122,22 +129,22 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 | Component                | Status    | Note                    |
 | ------------------------ | --------- | ----------------------- |
-| DiagramController        | ❌ TODO    | No endpoints            |
-| UseCaseDiagramService    | ❌ TODO    | Empty with TODO         |
-| ClassDiagramService      | ❌ TODO    | Empty with TODO         |
+| DiagramController        | ✅ Done    | usecase + class endpoints |
+| UseCaseDiagramService    | ✅ Done    | Mermaid flowchart from routes |
+| ClassDiagramService      | ✅ Done    | Mermaid classDiagram, package filter |
 
 **Priority:** HIGH (Sprint 2)
 
-#### MCP Module ❌ 10% SKELETON
+#### MCP Module - COMPLETE / SENIOR CONTEXT TOOLS
 
-| Component            | Status    | Note                      |
-| -------------------- | --------- | ------------------------- |
-| ArchitectureTool     | ❌ Skeleton | No @Tool method           |
-| ClassContextTool     | ❌ Skeleton | No @Tool method           |
-| ImpactAnalysisTool   | ❌ Skeleton | No @Tool method           |
-| LayerPatternTool     | ❌ Skeleton | No @Tool method           |
+| Component | Status | Note |
+| --- | --- | --- |
+| Core context tools | Done | Architecture, class context, impact analysis, and layer pattern tools registered via Spring AI. |
+| Source tools | Done | Source file, source search, method source, endpoint trace, and references are bounded and project-root guarded. |
+| Senior MCP tools | Done | Method CPG context, related tests, suggested test plan, code-change plan, failure explanation, and project conventions are registered. |
+| Restart recovery | Done | Project list/get/delete can recover persisted Project metadata from Neo4j when source root passes the allowed workspace/root guard. |
 
-**Priority:** MEDIUM (Sprint 3)
+**Current source of truth:** `MCP_INTEGRATION.md` and `src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md`.
 
 ### Frontend Modules
 
@@ -227,11 +234,11 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 | -------------------- | ------ | ------------------------------ |
 | Archive upload sync  | ✅ Done | E2E working                    |
 | Archive upload async | ✅ Done | Backend async accepted flow + status topic support |
-| WebSocket status     | ✅ Partial | STOMP configured; status broadcast done, graph full/incremental update TODO |
-| File watcher         | ❌ TODO  | FileWatcherService empty / Pending       |
-| Diagram services     | ❌ 0%   | DiagramController empty        |
-| MCP tools            | ❌ 5%   | Tool classes exist, no @Tool   |
-| Frontend filters     | ❌ 20%  | UI scaffolds only              |
+| WebSocket status/update | ✅ Done | Status broadcast done; graph update topic + FE consumer done; CREATE/MODIFY/DELETE broadcast `INCREMENTAL`; FE patch Sigma tại chỗ (không reset camera) |
+| File watcher         | ✅ Done | Recursive watcher/debounce/lifecycle done; CREATE/MODIFY/DELETE đều incremental qua FileChangeBroadcaster (re-parse file đổi → upsert/prune → broadcast delta) |
+| Diagram services     | ✅ Done | UseCase + Class Mermaid via DiagramController + services; FE DiagramPanel renders, package filter |
+| MCP tools            | Done | 15 Spring AI MCP tools registered and documented; source access is bounded, path-safe, and recoverable after backend restart |
+| Frontend filters     | ✅ Done | FilterPanel + useFilters + graphFilters wired; Sigma re-renders filtered graph |
 | GitHub import        | ✅ Done | Backend `import-github` + FE `GitHubImportForm`/`useGitHubImport`; safe error mapping, tests, lint/type/unit/build/audit pass; E2E smoke tested (import-github 202 -> ANALYZED 47 files/310 nodes/1220 edges); backend DI bug in `GitHubPreFlightService` resolved |
 
 ### Critical Path (Must Complete This Week):
@@ -255,7 +262,7 @@ Fetch Graph Data → Convert Graphology → Render Sigma.js
 
 | Category              | Tasks   | Hours | Priority |
 | --------------------- | ------- | ----- | -------- |
-| MCP Tools             | T73-T77 | 26h   | High     |
+| MCP tools            | Done | 15 Spring AI MCP tools registered and documented; source access is bounded, path-safe, and recoverable after backend restart |
 | OpenAPI               | T78-T79 | 8h    | Medium   |
 | Parser Robustness     | T80-T83 | 21h   | High     |
 | Caching & Performance | T84-T88 | 29h   | High     |
@@ -561,7 +568,7 @@ Add team info at the top of `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`:
 
 ```markdown
 > **Cập nhật:** 2026-06-05
-> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented, realtime graph/watch vẫn chưa hoàn tất
+> **Trạng thái:** Sprint 1 hoàn thành 95%, Sprint 2 đang tiến hành; archive upload và GitHub import FE+BE đã implemented; realtime status/update channel hoàn tất — thêm/sửa/xóa file `.java` cập nhật graph tại chỗ qua incremental re-parse (import local-folder)
 >
 > **Team Members (5 người):**
 > - **Thái:** Business Analyst, Product Owner, Tester

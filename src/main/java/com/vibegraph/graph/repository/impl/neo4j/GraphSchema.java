@@ -23,7 +23,7 @@ public final class GraphSchema {
     private static final Set<String> NODE_LABELS = Set.of(
             "Project", "Package", "File", "Class", "Interface", "Enum",
             "Record", "DBModel", "Method", "Constructor", "Field", "Annotation",
-            "Route", "APIEndpoint", EXTERNAL_LABEL
+            "LocalVariable", "Route", "APIEndpoint", EXTERNAL_LABEL
     );
 
     private static final Set<String> RELATIONSHIP_TYPES = Set.of(
@@ -31,7 +31,8 @@ public final class GraphSchema {
             "HAS_METHOD", "HAS_FIELD", "HAS_INNER",
             "EXTENDS", "IMPLEMENTS", "OVERRIDES",
             "IMPORTS", "TYPE_OF", "RETURNS", "PARAMETER_TYPE", "THROWS",
-            "CALLS", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY"
+            "CALLS", "INSTANTIATES", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY",
+            "READS", "WRITES", "CATCHES", "STEP_IN_FLOW"
     );
 
     /** Safe Cypher identifier for property keys: letter/underscore then word chars. */

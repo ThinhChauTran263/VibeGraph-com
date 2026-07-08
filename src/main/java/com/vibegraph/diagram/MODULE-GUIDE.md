@@ -1,31 +1,39 @@
 # Module: diagram
 
 ## Mục đích
-Module generate UML diagrams từ knowledge graph, output dạng Mermaid.js syntax.
+Module generate sơ đồ kiến trúc từ knowledge graph. UML Use Case được suy luận thành mô hình
+nghiệp vụ (actor/use case/relations) và render thành **SVG UML 2.5 chuẩn** ở frontend; API Map và
+Class diagram dùng Mermaid.
 
-> **Scope 2-month:** Use Case + Class diagram. Sequence diagram defer post-2-month (FR-06 deferred).
+> **Scope 2-month:** Use Case + Class diagram + API Map. Sequence diagram defer post-2-month (FR-06 deferred).
 
 ## Cấu trúc
 
 ```
 diagram/
 ├── controller/
-│   └── DiagramController.java      — GET /api/projects/{id}/diagrams/*
+│   └── DiagramController.java        — GET /api/projects/{id}/diagrams/usecase?style=api-map|uml, /class
 ├── service/
-│   ├── UseCaseDiagramService.java  — Interface: generate use case diagram
-│   ├── ClassDiagramService.java    — Interface: generate class diagram
-│   ├── MermaidGeneratorService.java — Interface: convert to Mermaid syntax
+│   ├── UseCaseDiagramService.java    — Interface: API Map + UML Use Case
+│   ├── ClassDiagramService.java      — Interface: class diagram
+│   ├── MermaidGeneratorService.java  — Interface: Mermaid syntax helpers
 │   └── impl/
-│       ├── UseCaseDiagramServiceImpl.java
+│       ├── UseCaseDiagramServiceImpl.java — orchestrator: API Map + pipeline UML
+│       ├── UseCaseInferenceEngine.java    — suy luận model nghiệp vụ (1 goal/domain, không CRUD)
+│       ├── BaLabelBeautifier.java         — đặt lại nhãn actor/use case theo văn phong BA
+│       ├── SrsUseCaseEnricher.java        — phân rã domain (tracking) + include/extend + carrier actor
+│       ├── UmlUseCaseRenderer.java        — render model → PlantUML + Mermaid fallback
 │       ├── ClassDiagramServiceImpl.java
 │       └── MermaidGeneratorServiceImpl.java
-├── repository/
-│   └── DiagramQueryRepository.java — Custom Cypher queries for diagram data
 └── dto/
     └── response/
-        ├── DiagramResponse.java    — {mermaidSyntax, type, generatedAt}
-        └── UseCaseResponse.java    — {actors[], useCases[], relationships[]}
+        ├── DiagramResponse.java      — {diagramType, mermaidSyntax, plantUmlSyntax?}
+        └── UmlUseCaseResponse.java   — {systemName, actors[], useCases[], relations[], warnings[], mermaidSyntax, plantUmlSyntax}
 ```
+
+> Lưu ý: render UML Use Case cuối cùng (stick-figure actor, ellipse, boundary, «include»/«extend»,
+> generalization tam giác rỗng) do frontend vẽ SVG từ JSON model (`vibegraph-web/src/lib/umlUseCaseSvg.ts`).
+> Backend cung cấp model + PlantUML/Mermaid; frontend không còn render UML bằng Mermaid flowchart.
 
 ## Yêu cầu chức năng
 
@@ -45,7 +53,7 @@ diagram/
 - [ ] Detect **Relationships**:
   - `<<include>>`: Khi use case gọi shared service method
   - `<<extend>>`: Khi có optional flow (validation, notification)
-- [ ] Output: Mermaid flowchart LR syntax
+- [ ] Output: model JSON (actors/useCases/relations) + PlantUML; frontend vẽ SVG UML 2.5 chuẩn.
 
 ### Class Diagram (FR-05)
 - [ ] Show classes với:

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type ImpactAnalysisResponse } from '@/lib/api'
+import { ApiError, type ImpactAnalysisResponse, type ImpactProfile } from '@/lib/api'
 import { useImpactAnalysis } from '../useImpactAnalysis'
 
 /**
@@ -13,7 +13,12 @@ vi.mock('@/lib/api', async () => {
     graphApi: {
       ...actual.graphApi,
       getImpact:
-        vi.fn<(projectId: string, nodeId: string, depth: number) => Promise<ImpactAnalysisResponse>>(),
+        vi.fn<(
+          projectId: string,
+          nodeId: string,
+          depth: number,
+          profile?: ImpactProfile,
+        ) => Promise<ImpactAnalysisResponse>>(),
     },
   }
 })
@@ -56,6 +61,7 @@ describe('useImpactAnalysis - initial state', () => {
     expect(composable.result.value).toBeNull()
     expect(composable.errorMessage.value).toBeNull()
     expect(composable.selectedDepth.value).toBe(1)
+    expect(composable.selectedProfile.value).toBe('dependency')
   })
 })
 
@@ -96,7 +102,7 @@ describe('useImpactAnalysis - successful load', () => {
     await composable.loadImpact('  p1  ', '  com.example.OrderService  ', 2)
 
     expect(getImpactMock).toHaveBeenCalledTimes(1)
-    expect(getImpactMock).toHaveBeenCalledWith('p1', 'com.example.OrderService', 2)
+    expect(getImpactMock).toHaveBeenCalledWith('p1', 'com.example.OrderService', 2, 'dependency')
   })
 
   it('moves to success and exposes the result + selected depth', async () => {
@@ -111,6 +117,17 @@ describe('useImpactAnalysis - successful load', () => {
     expect(composable.result.value).toEqual(impact)
     expect(composable.errorMessage.value).toBeNull()
     expect(composable.selectedDepth.value).toBe(3)
+    expect(composable.selectedProfile.value).toBe('dependency')
+  })
+
+  it('forwards the selected impact profile to graphApi.getImpact', async () => {
+    getImpactMock.mockResolvedValueOnce(fakeImpact())
+    const composable = useImpactAnalysis()
+
+    await composable.loadImpact('p1', 'n1', 1, 'structural')
+
+    expect(getImpactMock).toHaveBeenCalledWith('p1', 'n1', 1, 'structural')
+    expect(composable.selectedProfile.value).toBe('structural')
   })
 
   it('uses selectedDepth when depth arg is omitted', async () => {
@@ -120,7 +137,7 @@ describe('useImpactAnalysis - successful load', () => {
 
     await composable.loadImpact('p1', 'n1')
 
-    expect(getImpactMock).toHaveBeenCalledWith('p1', 'n1', 5)
+    expect(getImpactMock).toHaveBeenCalledWith('p1', 'n1', 5, 'dependency')
   })
 })
 

@@ -24,6 +24,24 @@ export interface ImpactNode {
 /** Risk levels reported by the backend impact analysis. */
 export type ImpactRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
+/** One INCOMING/OUTGOING connection of a node. Mirrors `NodeDetailResponse.ConnectionDto`. */
+export interface NodeDetailConnection {
+  otherNode: ImpactNode
+  relationshipType: string
+  /** `INCOMING` or `OUTGOING`. */
+  direction: string
+}
+
+/**
+ * Node-with-neighbors detail. Mirrors the backend `NodeDetailResponse`. Used by the Node Detail
+ * panel and by lazy graph expansion (pull a node's neighbors on demand instead of the full graph).
+ */
+export interface NodeDetailResponse {
+  node: ImpactNode
+  incoming: NodeDetailConnection[]
+  outgoing: NodeDetailConnection[]
+}
+
 /**
  * Blast-radius analysis result.
  * Mirrors the backend `graph.dto.response.ImpactAnalysisResponse` record.
@@ -44,9 +62,34 @@ export interface ImpactAnalysisResponse {
   mayNeedTesting: ImpactNode[]
 }
 
+/**
+ * A bounded, redacted slice of a source file returned by the code viewer endpoint.
+ * Mirrors the backend `SourceFileService.SourceContent` record.
+ *
+ * `found=false` means the file exists in the graph but cannot be served as source
+ * (disallowed extension, missing on disk, binary, …) — `truncationReason` carries why.
+ * Paths are always project-relative; an absolute host path is never returned.
+ */
+export interface SourceContent {
+  found: boolean
+  relativePath: string
+  language: string
+  startLine: number
+  endLine: number
+  totalLines: number
+  content: string
+  truncated: boolean
+  truncationReason?: string | null
+  warnings: string[]
+}
+
 /** Traversal depths the backend accepts (see GraphServiceImpl ALLOWED_IMPACT_DEPTHS). */
 export const IMPACT_ALLOWED_DEPTHS = [1, 2, 3, 5] as const
 export type ImpactDepth = (typeof IMPACT_ALLOWED_DEPTHS)[number]
+
+/** Impact traversal profiles accepted by the backend. */
+export const IMPACT_PROFILES = ['dependency', 'structural', 'type-data-flow'] as const
+export type ImpactProfile = (typeof IMPACT_PROFILES)[number]
 
 export class ApiError extends Error {
   constructor(
@@ -181,6 +224,7 @@ export const projectApi = {
   list: () => api.get<Project[]>('/api/projects'),
   get: (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (data: unknown) => api.post<Project>('/api/projects', data),
+  remove: (id: string) => api.delete(`/api/projects/${encodeURIComponent(id)}`),
 }
 
 /**
@@ -219,44 +263,172 @@ export const importApi = {
   importGithub(url: string): Promise<Project> {
     return api.post<Project>('/api/projects/import-github', { url })
   },
+
+  /**
+   * Import an existing directory on the backend host in place (no upload). The backend
+   * analyzes it and starts a file watcher so later edits stream realtime graph updates.
+   */
+  importLocal(path: string, name?: string): Promise<Project> {
+    return api.post<Project>('/api/projects/import-local', { path, name: name?.trim() || undefined })
+  },
+}
+
+/** A sub-directory entry returned by the server-side directory browser. */
+export interface DirectoryEntry {
+  name: string
+  path: string
+  /** Best-effort hint that the directory holds `.java` sources. */
+  containsJava: boolean
+}
+
+/** Result of browsing a directory on the backend host. */
+export interface DirectoryListing {
+  path: string
+  /** Parent directory path, or `null` at the allowed base (cannot navigate above it). */
+  parent: string | null
+  entries: DirectoryEntry[]
+}
+
+/**
+ * Server-side directory picker. Browsing is confined to a base directory on the backend
+ * (the configured allowed-root, else the host user's home), so it never exposes the whole disk.
+ */
+export const browseApi = {
+  browse(path?: string): Promise<DirectoryListing> {
+    const query = path ? `?${new URLSearchParams({ path })}` : ''
+    return api.get<DirectoryListing>(`/api/projects/browse${query}`)
+  },
 }
 
 // Graph endpoints
 export const graphApi = {
   getGraph: (projectId: string) => fetchFullGraph(projectId),
   getNeighbors: (projectId: string, nodeId: string, hops: number) =>
-    api.get(`/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`),
+    api.get<NodeDetailResponse>(
+      `/api/projects/${projectId}/graph/neighbors?${new URLSearchParams({ nodeId, hops: String(hops) })}`,
+    ),
 
   /**
    * Fetch the blast radius (impact analysis) for a node.
-   * GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...
+   * GET /api/projects/{projectId}/graph/impact?nodeId=...&depth=...&profile=...
    *
    * `depth` must be one of {@link IMPACT_ALLOWED_DEPTHS}; the backend rejects
    * other values with a 400. Query params are encoded via URLSearchParams.
    */
-  getImpact: (projectId: string, nodeId: string, depth: number) => {
-    const query = new URLSearchParams({ nodeId, depth: String(depth) })
+  getImpact: (projectId: string, nodeId: string, depth: number, profile: ImpactProfile = 'dependency') => {
+    const query = new URLSearchParams({ nodeId, depth: String(depth), profile })
     return api.get<ImpactAnalysisResponse>(
       `/api/projects/${projectId}/graph/impact?${query}`,
     )
   },
-}
 
-export interface UseCaseResponse {
-  projectId: string
-  mermaid: string
+  /**
+   * Read a bounded slice of a source file for the in-app code viewer.
+   * GET /api/projects/{projectId}/source?path=...&startLine=...&endLine=...
+   *
+   * `path` is typically the selected node's absolute `filePath`; the backend confines it to the
+   * project source root and rejects traversal. `startLine`/`endLine` are 1-based; omit them to
+   * read from the top (the server caps the window size and reports truncation).
+   */
+  getSource: (projectId: string, path: string, startLine?: number, endLine?: number) => {
+    const params = new URLSearchParams({ path })
+    if (startLine != null) params.set('startLine', String(startLine))
+    if (endLine != null) params.set('endLine', String(endLine))
+    return api.get<SourceContent>(
+      `/api/projects/${encodeURIComponent(projectId)}/source?${params}`,
+    )
+  },
 }
 
 export interface DiagramResponse {
-  projectId: string
   diagramType: string
-  mermaid: string
+  mermaidSyntax: string
+  plantUmlSyntax?: string | null
+  /** Distinct packages containing classifiers; used to drive the class-diagram package filter. */
+  availablePackages?: string[]
+}
+
+/** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */
+export type UmlUseCaseMode = 'detailed' | 'grouped'
+
+/** Inferred business actor (e.g. `Admin`, `User`). Mirrors backend `UmlUseCaseResponse.Actor`. */
+export interface UmlActor {
+  id: string
+  name: string
+  source: string
+  confidence: number
+}
+
+/** Inferred business use case (verb phrase). Mirrors backend `UmlUseCaseResponse.UseCaseElement`. */
+export interface UmlUseCaseElement {
+  id: string
+  name: string
+  domain: string
+  /** `summary` (grouped) or `detail` (single CRUD action). */
+  level: string
+  source: string
+  /** Originating endpoint id (e.g. `POST /api/products`); null for summary use cases. */
+  sourceEndpoint?: string | null
+  confidence: number
+}
+
+/** Edge between elements: actor-to-usecase association or summary-to-detail include. */
+export interface UmlRelation {
+  from: string
+  to: string
+  /** `association` or `include`. */
+  type: string
+  label?: string | null
+  confidence: number
+}
+
+/**
+ * A per-actor or per-domain projection of the same canonical UML model (R4). Pure projection of
+ * the full diagram, so a view can never disagree with it. Mirrors backend `UseCaseView`.
+ */
+export interface UmlUseCaseView {
+  /** `actor` or `domain`. */
+  viewType: string
+  /** The actor name or domain this view is scoped to. */
+  title: string
+  actors: UmlActor[]
+  useCases: UmlUseCaseElement[]
+  relations: UmlRelation[]
+  mermaidSyntax?: string | null
+  plantUmlSyntax?: string | null
+}
+
+/**
+ * Business-level UML Use Case diagram. Mirrors the backend `UmlUseCaseResponse`.
+ * Holds inferred actors and verb-phrased use cases, plus a Mermaid fallback and
+ * a standard PlantUML source for proper UML render/copy.
+ */
+export interface UmlUseCaseResponse {
+  diagramType: string
+  style: string
+  mode: string
+  systemName: string
+  actors: UmlActor[]
+  useCases: UmlUseCaseElement[]
+  relations: UmlRelation[]
+  warnings: string[]
+  mermaidSyntax: string
+  plantUmlSyntax: string
+  /** Per-actor and per-domain projections of the same model; optional/empty for non-UML styles. */
+  views?: UmlUseCaseView[]
 }
 
 // Diagram endpoints
 export const diagramApi = {
-  useCase: (projectId: string) =>
-    api.get<UseCaseResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase`),
+  /**
+   * Inferred business UML Use Case diagram (`style=uml&mode=detailed|grouped`).
+   */
+  umlUseCase: (projectId: string, mode: UmlUseCaseMode = 'detailed') => {
+    const query = new URLSearchParams({ style: 'uml', mode })
+    return api.get<UmlUseCaseResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase?${query}`,
+    )
+  },
   classDiagram: (projectId: string, pkg?: string) => {
     const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
     return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`)

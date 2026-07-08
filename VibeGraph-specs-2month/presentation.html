@@ -1155,7 +1155,7 @@ footer {
           </li>
           <li class="what-bullet">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            <span><strong>Cập nhật real-time</strong> — lưu file, bản đồ thay đổi trong &lt;3 giây</span>
+            <span><strong>Cập nhật real-time</strong> — status/import live; sửa/thêm/xóa file Java → graph cập nhật tại chỗ (import local-folder)</span>
           </li>
           <li class="what-bullet">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1266,14 +1266,14 @@ footer {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <h3>Realtime Update</h3>
-        <p>Java WatchService + WebSocket STOMP. Save file &rarr; bản đồ thay đổi &lt; 3s. Không reload, chỉ patch diff.</p>
+        <p>Java WatchService + WebSocket STOMP. Status/import live và thêm/sửa/xóa file <span class="mono">.java</span> &rarr; graph cập nhật tại chỗ (broadcast <span class="mono">INCREMENTAL</span>), không reload, không reset camera. Realtime cho project import local-folder.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon pink">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
         </div>
         <h3>MCP Server</h3>
-        <p>Spring AI MCP Boot Starter. 4 tools: architecture, class context, layer pattern, impact. Streamable HTTP.</p>
+        <p>Spring AI MCP Boot Starter. 15 tools: architecture, class context, impact, layer pattern, source/search, method CPG, references, test plan, code-change plan... Streamable HTTP.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon blue">
@@ -1294,7 +1294,7 @@ footer {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </div>
         <h3>REST API + WebSocket</h3>
-        <p>9 endpoints chuẩn REST. WebSocket STOMP push diff incremental. OpenAPI doc auto-generate.</p>
+        <p>REST API + WebSocket STOMP cho status và graph update. Broadcast <span class="mono">INCREMENTAL</span> (added/removed) cho mọi thay đổi file (CREATE/MODIFY/DELETE); FE patch graph tại chỗ.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon yellow">
@@ -1692,7 +1692,7 @@ footer {
           <div>
             <div class="week-num mono">SPRINT 2 · TUẦN 4</div>
             <div class="week-title">UML + Live Update + GitHub Done</div>
-            <div class="week-summary">Use Case + Class Diagram tự sinh. Save file &lt; 3s graph cập nhật. GitHub import end-to-end.</div>
+            <div class="week-summary">Use Case + Class Diagram tự sinh. GitHub import end-to-end. Realtime thêm/sửa/xóa file cập nhật graph tại chỗ (import local-folder).</div>
           </div>
           <button class="week-toggle" aria-label="Mở/đóng chi tiết">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1779,7 +1779,7 @@ footer {
                 </div>
                 <div>
                   <div class="week-deliverable-label">🚀 Milestone Sprint 2</div>
-                  <div class="week-deliverable-text">Upload ZIP/TAR (hoặc paste GitHub URL Pet Clinic) &rarr; sau 30s thấy graph + Use Case + Class Diagram &middot; Save file &rarr; cả 3 cập nhật &lt; 3s &middot; Routes mapping đúng (mỗi @GetMapping = 1 endpoint node) &middot; <span class="mono" style="color:var(--cyan)">staging.vibegraph.com</span> sẵn sàng cho beta.</div>
+                  <div class="week-deliverable-text">Upload ZIP/TAR (hoặc paste GitHub URL Pet Clinic) &rarr; sau 30s thấy graph + Use Case + Class Diagram &middot; Realtime thêm/sửa/xóa file <span class="mono">.java</span> cập nhật graph tại chỗ (import local-folder) &middot; Routes mapping đúng (mỗi @GetMapping = 1 endpoint node) &middot; <span class="mono" style="color:var(--cyan)">staging.vibegraph.com</span> sẵn sàng cho beta.</div>
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,14 +27,11 @@ import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 import com.vibegraph.graph.websocket.GraphUpdateEvent;
+import com.vibegraph.parser.service.ParserService;
 import com.vibegraph.watcher.config.WatcherProperties;
 import com.vibegraph.watcher.service.DebouncedEventHandler;
 import com.vibegraph.watcher.service.FileWatcherService;
 import com.vibegraph.watcher.service.impl.FileWatcherServiceImpl;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @SpringJUnitConfig(classes = FileWatcherE2ETest.TestConfig.class)
 @DisplayName("T70 FileWatcher realtime DELETE path (Spring context, no Docker)")
@@ -67,7 +68,7 @@ class FileWatcherE2ETest {
     }
 
     @Test
-    @DisplayName("DELETE .java triggers watcher prune and FULL_UPDATE broadcast within 3 seconds")
+    @DisplayName("DELETE .java triggers a FULL_UPDATE broadcast within 3 seconds")
     void deleteJavaFileBroadcastsFullUpdateWithinThreeSeconds() throws Exception {
         Path sourceDir = Files.createDirectories(projectRoot.resolve("src"));
         Path sourceFile = sourceDir.resolve("Foo.java");
@@ -88,7 +89,6 @@ class FileWatcherE2ETest {
         Files.delete(sourceFile);
 
         awaitFullUpdate();
-        verify(graphRepository).deleteFile(PROJECT_ID, "src/Foo.java");
         verify(graphRepository).getFullGraph(PROJECT_ID);
     }
 
@@ -142,24 +142,31 @@ class FileWatcherE2ETest {
         @Bean
         FileWatcherService fileWatcherService(
                 WatcherProperties properties,
-                GraphRepository graphRepository,
                 DebouncedEventHandler debouncer
         ) {
-            return new FileWatcherServiceImpl(properties, graphRepository, debouncer);
+            return new FileWatcherServiceImpl(properties, debouncer);
         }
 
         @Bean
         GraphUpdateController graphUpdateController(SimpMessagingTemplate messagingTemplate) {
-            return new GraphUpdateController(messagingTemplate);
+            return new GraphUpdateController(messagingTemplate,
+                    new com.vibegraph.graph.service.impl.GraphPayloadGuard(),
+                    new com.vibegraph.graph.config.GraphPayloadProperties());
+        }
+
+        @Bean
+        ParserService parserService() {
+            return mock(ParserService.class);
         }
 
         @Bean
         FileChangeBroadcaster fileChangeBroadcaster(
                 FileWatcherService fileWatcherService,
                 GraphRepository graphRepository,
-                GraphUpdateController graphUpdateController
+                GraphUpdateController graphUpdateController,
+                ParserService parserService
         ) {
-            return new FileChangeBroadcaster(fileWatcherService, graphRepository, graphUpdateController);
+            return new FileChangeBroadcaster(fileWatcherService, graphRepository, graphUpdateController, parserService);
         }
     }
 }

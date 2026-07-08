@@ -13,7 +13,7 @@ Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, uploa
 
 Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
 
-> **Trạng thái sau audit 2026-05-30 và quyết định product 2026-05-31:** Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. Từ Sprint 2, UX chính chuyển sang `upload ZIP/TAR archive -> parse -> Neo4j -> graph`; local path giữ lại như dev/internal fallback. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` và `backlog.md` để biết trạng thái từng file.
+> **Trạng thái sau audit 2026-05-30 và quyết định product 2026-05-31:** Sprint 1 hiện đã hoàn tất lát cắt local `register project -> analyze -> Neo4j -> GET graph -> Sigma render`. Từ Sprint 2, UX chính chuyển sang `upload ZIP/TAR archive -> parse -> Neo4j -> graph`; local path giữ lại như dev/internal fallback. GitHub import, watcher/realtime, diagrams, MCP tools, nhiều panel frontend, auth/rate-limit và hardening public demo vẫn là Sprint 2/3; xem `file-checklist.md` để biết trạng thái từng file.
 
 ## Quyết định kiến trúc hiện tại
 
@@ -36,7 +36,7 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 - FR-07 cập nhật realtime
 - FR-08 file watcher phía server
 - FR-09 REST API
-- FR-10 MCP server với 4 tool
+- FR-10 MCP server voi 15 tools
 - FR-NEW nhập khẩu tarball từ GitHub
 - FR-NEW-2 upload project bằng ZIP/TAR archive (flow chính Sprint 2 thay cho nhập local path thủ công)
 
@@ -73,11 +73,13 @@ Lý do: repo đã build được như một ứng dụng Spring Boot đơn lẻ,
 | `README.md` | Chuẩn nền tảng thực thi này |
 | `requirements-trimmed.md` | Yêu cầu chức năng và phi chức năng của MVP |
 | `architecture.md` | Các quyết định về kiến trúc và luồng dữ liệu |
-| `task-breakdown-8week.md` | Thứ tự triển khai và các mốc kiểm tra theo sprint |
+| `neo4j-schema.md` | Lược đồ node/edge và Cypher của graph |
 | `file-checklist.md` | Các tệp hiện có và checklist hoàn thành MVP |
 | `deployment-plan.md` | Ghi chú triển khai Docker, domain, SSL, CI/CD |
+| `security-multiuser-roadmap.md` | Hiện trạng bảo mật + lỗ hổng đã nhận diện + hướng phát triển đa người dùng (auth, phân quyền, sandbox, quota, hardening) |
 | `presentation.html` | Bản trình bày phi kỹ thuật được sinh ra, không phải nguồn chân lý triển khai |
 | `project-structure.html` | Bản đồ dự án trực quan được sinh ra, không phải nguồn chân lý triển khai |
+| `team-setup-guide.html` | Hướng dẫn setup team-scope được sinh ra, không phải nguồn chân lý triển khai |
 
 ## Đường găng (critical path)
 

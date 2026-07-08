@@ -16,6 +16,7 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.impl.GraphServiceImpl;
 
@@ -121,12 +122,32 @@ class GraphServiceTest {
                 .likelyAffected(List.of())
                 .mayNeedTesting(List.of())
                 .build();
-        when(repository.getImpact("p1", "com.example.OrderService", 3)).thenReturn(expected);
+        when(repository.getImpact("p1", "com.example.OrderService", 3, ImpactProfile.DEPENDENCY)).thenReturn(expected);
 
         ImpactAnalysisResponse result = graphService.getImpactAnalysis("p1", "com.example.OrderService", 3);
 
         assertThat(result).isSameAs(expected);
-        verify(repository).getImpact("p1", "com.example.OrderService", 3);
+        verify(repository).getImpact("p1", "com.example.OrderService", 3, ImpactProfile.DEPENDENCY);
+    }
+
+    @Test
+    @DisplayName("getImpactAnalysis forwards the selected impact profile")
+    void getImpactAnalysisForwardsProfile() {
+        ImpactAnalysisResponse expected = ImpactAnalysisResponse.builder()
+                .target(NodeDto.builder().id("p").type("Package").name("p").fullName("p").build())
+                .riskLevel("LOW")
+                .directDependents(1)
+                .totalDependents(1)
+                .willBreak(List.of())
+                .likelyAffected(List.of())
+                .mayNeedTesting(List.of())
+                .build();
+        when(repository.getImpact("p1", "p", 1, ImpactProfile.STRUCTURAL)).thenReturn(expected);
+
+        ImpactAnalysisResponse result = graphService.getImpactAnalysis("p1", "p", 1, ImpactProfile.STRUCTURAL);
+
+        assertThat(result).isSameAs(expected);
+        verify(repository).getImpact("p1", "p", 1, ImpactProfile.STRUCTURAL);
     }
 
     @Test
