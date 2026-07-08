@@ -19,6 +19,31 @@ const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vi
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
 const CLI_VERSION = "0.1.0";
+const SHELL_COMPLETIONS = [
+  "/help",
+  "/exit",
+  "/quit",
+  "help",
+  "exit",
+  "quit",
+  "doctor",
+  "me",
+  "logout",
+  "config show",
+  "config set-url ",
+  "register --email ",
+  "login --email ",
+  "projects list",
+  "projects create --path ",
+  "projects import-local --path ",
+  "projects analyze ",
+  "projects delete ",
+  "projects push ",
+  "projects status ",
+  "watch ",
+  "ignore init",
+  "ignore init --root "
+];
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
@@ -157,6 +182,9 @@ async function startInteractiveShell() {
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer: completeShellLine,
+    historySize: 100,
+    removeHistoryDuplicates: true,
   });
 
   try {
@@ -210,6 +238,19 @@ function isShellExitCommand(command) {
 
 function isShellHelpCommand(command) {
   return ["/help", "help"].includes(command.trim().toLowerCase());
+}
+
+function completeShellLine(line) {
+  const normalized = line.trimStart();
+  const leadingWhitespace = line.slice(0, line.length - normalized.length);
+  const hits = SHELL_COMPLETIONS.filter((completion) => completion.startsWith(normalized));
+  if (hits.length) {
+    return [hits.map((hit) => `${leadingWhitespace}${hit}`), line];
+  }
+  if (normalized.startsWith("/")) {
+    return [SHELL_COMPLETIONS.filter((completion) => completion.startsWith("/")), line];
+  }
+  return [SHELL_COMPLETIONS, line];
 }
 
 function parseShellArgs(line) {
@@ -266,6 +307,7 @@ function parseShellArgs(line) {
 export {
   isShellExitCommand,
   isShellHelpCommand,
+  completeShellLine,
   parseShellArgs,
   renderInteractiveHeader,
 };

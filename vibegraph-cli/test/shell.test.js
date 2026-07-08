@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  completeShellLine,
   isShellExitCommand,
   isShellHelpCommand,
   parseShellArgs,
@@ -111,6 +112,28 @@ test("shell command helpers recognize help and exit aliases", () => {
   }
   assert.equal(isShellHelpCommand("projects"), false);
   assert.equal(isShellExitCommand("projects"), false);
+});
+
+test("shell completer suggests slash commands and command templates", () => {
+  assert.deepEqual(completeShellLine("/h"), [["/help"], "/h"]);
+  assert.deepEqual(completeShellLine("/"), [[
+    "/help",
+    "/exit",
+    "/quit",
+  ], "/"]);
+  assert.deepEqual(completeShellLine("projects "), [[
+    "projects list",
+    "projects create --path ",
+    "projects import-local --path ",
+    "projects analyze ",
+    "projects delete ",
+    "projects push ",
+    "projects status ",
+  ], "projects "]);
+  assert.deepEqual(completeShellLine("  config s"), [[
+    "  config show",
+    "  config set-url ",
+  ], "  config s"]);
 });
 
 test("parseShellArgs preserves quoted strings and Windows paths", () => {
