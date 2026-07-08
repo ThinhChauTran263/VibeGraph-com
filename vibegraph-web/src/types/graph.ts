@@ -1,41 +1,65 @@
 /**
  * Graph data types for VibeGraph frontend.
+ *
+ * Source of truth: VibeGraph-specs-2month/neo4j-schema.md
+ * Mirrors backend DTOs: graph/dto/response/{NodeDto, EdgeDto, GraphDataResponse}.java
+ *
+ * IMPORTANT: This file is the FE half of the BE/FE contract.
+ * Do not add fields here without adding them to the BE DTOs in the same change.
  */
 
 export type NodeType =
-  | 'Method'
+  | 'Project'
+  | 'Package'
   | 'File'
-  | 'APIEndpoint'
   | 'Class'
-  | 'DBModel'
   | 'Interface'
-  | 'Constructor'
   | 'Enum'
   | 'Record'
+  | 'DBModel'
+  | 'Method'
+  | 'Constructor'
+  | 'Field'
+  | 'Annotation'
+  | 'LocalVariable'
+  | 'Route'
+  | 'APIEndpoint'
+  | 'External'
 
 export type EdgeType =
+  | 'OWNS'
+  | 'CONTAINS'
   | 'DEFINES'
-  | 'CALLS'
-  | 'IMPORTS'
-  | 'EXTENDS'
-  | 'IMPLEMENTS'
   | 'HAS_METHOD'
   | 'HAS_FIELD'
-  | 'HANDLES_ROUTE'
-  | 'DEPENDS_ON'
-  | 'ANNOTATED_BY'
-  | 'INJECTS'
+  | 'HAS_INNER'
+  | 'EXTENDS'
+  | 'IMPLEMENTS'
+  | 'OVERRIDES'
+  | 'IMPORTS'
   | 'TYPE_OF'
+  | 'RETURNS'
+  | 'PARAMETER_TYPE'
+  | 'THROWS'
+  | 'CALLS'
+  | 'INSTANTIATES'
+  | 'INJECTS'
+  | 'HANDLES_ROUTE'
+  | 'ANNOTATED_BY'
+  | 'READS'
+  | 'WRITES'
+  | 'CATCHES'
+  | 'STEP_IN_FLOW'
 
 export interface GraphNode {
   id: string
-  name: string
   type: NodeType
+  name: string
   fullName: string
   filePath: string
   lineNumber: number
-  visibility?: string
-  springLayer?: string
+  /** Schema-specific fields (visibility, springLayer, kind, httpMethod, ...) — see neo4j-schema.md §2. */
+  properties: Record<string, unknown>
 }
 
 export interface GraphEdge {
@@ -50,4 +74,51 @@ export interface GraphEdge {
 export interface GraphData {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  nodeStats: Record<NodeType, number>
+  edgeStats: Record<EdgeType, number>
+  /**
+   * Server-side payload guardrail metadata (HTTP graph endpoint only). Present when the
+   * backend capped the payload; absent on internal/websocket snapshots. Mirrors the backend
+   * `GraphDataResponse.Meta`.
+   */
+  meta?: GraphMeta
 }
+
+/** Truncation metadata describing how the returned payload relates to the full backend graph. */
+export interface GraphMeta {
+  truncated: boolean
+  totalNodes: number
+  totalEdges: number
+  returnedNodes: number
+  returnedEdges: number
+  nodeLimit: number
+  edgeLimit: number
+  reason?: string | null
+}
+
+/**
+ * Realtime graph-update events delivered over the STOMP topic
+ * `/topic/projects/{projectId}/updates`.
+ *
+ * CONTRACT: kept in sync with the backend producer records
+ * `graph/websocket/{GraphUpdateEvent, GraphChangeSet, GraphRemoval}.java`
+ * (T36). Both the broadcast producer and the automatic file-change trigger
+ * (FileChangeBroadcaster wired to the file watcher) are implemented, so events
+ * are emitted on real source edits for locally-watched projects. The consumer
+ * validates payloads defensively at the boundary regardless.
+ */
+export interface GraphFullUpdateEvent {
+  type: 'FULL_UPDATE'
+  projectId: string
+  graph: GraphData
+}
+
+export interface GraphIncrementalEvent {
+  type: 'INCREMENTAL'
+  projectId: string
+  added?: { nodes?: GraphNode[]; edges?: GraphEdge[] }
+  modified?: { nodes?: GraphNode[]; edges?: GraphEdge[] }
+  removed?: { nodeIds?: string[]; edgeIds?: string[] }
+}
+
+export type GraphUpdateEvent = GraphFullUpdateEvent | GraphIncrementalEvent

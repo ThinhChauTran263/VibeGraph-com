@@ -1,7 +1,28 @@
-/**
- * Reactive filter state composable.
- * Handles: node type toggles, edge type toggles, package filter, search.
- */
+import { computed } from 'vue'
+import { useFilterStore } from '@/stores/filter'
+import { filterGraphData } from '@/lib/graphFilters'
+import type { GraphData } from '@/types/graph'
+
 export function useFilters() {
-  // TODO: Implement filter state management
+  const store = useFilterStore()
+
+  function applyFilters(data: GraphData): GraphData {
+    return filterGraphData(data, {
+      hiddenNodeTypes: store.hiddenNodeTypes,
+      hiddenEdgeTypes: store.hiddenEdgeTypes,
+    })
+  }
+
+  return {
+    hiddenNodeTypes: computed(() => store.hiddenNodeTypes),
+    hiddenEdgeTypes: computed(() => store.hiddenEdgeTypes),
+    searchQuery: computed(() => store.searchQuery),
+    hasActiveFilters: computed(() => store.hasActiveFilters),
+    toggleNodeType: store.toggleNodeType,
+    toggleEdgeType: store.toggleEdgeType,
+    showAllNodeTypes: store.showAllNodeTypes,
+    showAllEdgeTypes: store.showAllEdgeTypes,
+    reset: store.reset,
+    applyFilters,
+  }
 }

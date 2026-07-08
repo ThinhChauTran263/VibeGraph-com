@@ -1,11 +1,39 @@
+server:
+  port: ${SERVER_PORT:8080}
+
 spring:
   neo4j:
-    uri: bolt://localhost:7687
+    uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-      username: neo4j
-      password: vibegraph
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:}
+
+vibegraph:
+  projects:
+    allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
+  import:
+    archive:
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
+
+  watcher:
+    enabled: ${VIBEGRAPH_WATCHER_ENABLED:true}
+    debounce-ms: ${VIBEGRAPH_WATCHER_DEBOUNCE_MS:500}
+
+  cors:
+    # The Vite dev server origins are listed statically so they are ALWAYS allowed
+    # in dev, regardless of FRONTEND_URL. (FRONTEND_URL is an optional extra origin —
+    # e.g. a containerized frontend on :3000 — and must not be able to silently
+    # displace the local Vite origin, which previously caused 403 preflight failures.)
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+      - ${FRONTEND_URL:http://localhost:3000}
 
 logging:
   level:
-    com.vibegraph: TRACE
-    org.springframework.web: DEBUG
+    root: INFO
+    com.vibegraph: DEBUG
+    org.springframework.web: INFO
+    org.springframework.data.neo4j: INFO

@@ -1,21 +1,24 @@
 package com.vibegraph.mcp.tool;
 
-import com.vibegraph.mcp.service.McpToolService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-/**
- * MCP Tool: get_class_context
- *
- * Returns: related classes, class diagram, methods, dependencies for a given class.
- */
+import com.vibegraph.mcp.dto.response.ClassContextResponse;
+import com.vibegraph.mcp.service.ClassContextAnalyzer;
+
+import lombok.RequiredArgsConstructor;
+
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class ClassContextTool {
 
-    private final McpToolService mcpToolService;
+    private final ClassContextAnalyzer classContextAnalyzer;
 
-    // TODO: Add @Tool method getClassContext(@Param("className") String className)
+    @Tool(name = "get_class_context", description = "Return class details, methods, fields, incoming relations, outgoing relations, and warnings.")
+    public ClassContextResponse getClassContext(
+            @ToolParam(description = "Project identifier to inspect") String projectId,
+            @ToolParam(description = "Class id, full name, or simple name to inspect") String classQuery) {
+        return classContextAnalyzer.analyzeClass(projectId, classQuery);
+    }
 }

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review · Search node</title>
+<style>
+:root{--bg:#0b1120;--surface:#111a2e;--s2:#16213c;--bd:rgba(148,163,184,.18);--tx:#e2e8f0;--dim:#94a3b8;--ac:#60a5fa;--ac2:#22d3ee;--gn:#34d399;--am:#fbbf24;--mono:"Cascadia Code",Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,"Segoe UI",sans-serif;background:radial-gradient(1200px 600px at 80% -10%,rgba(37,99,235,.12),transparent 60%),var(--bg);color:var(--tx);line-height:1.6}
+.wrap{max-width:1040px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+.bc{font-size:.8rem;color:var(--dim);margin-bottom:1rem}.bc a{color:var(--ac);text-decoration:none}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--bd);color:var(--ac);background:rgba(96,165,250,.1)}
+h1{font-size:1.9rem;margin:.5rem 0 .25rem;line-height:1.2}h2{font-size:1.2rem;margin:2rem 0 .7rem;padding-bottom:.4rem;border-bottom:1px solid var(--bd)}h3{font-size:1rem;margin:1.3rem 0 .5rem;color:#cbd5e1}
+.lead{color:var(--dim);font-size:1.02rem;margin:.5rem 0 1.4rem}a{color:var(--ac)}
+code{font-family:var(--mono);font-size:.86em;background:rgba(148,163,184,.14);padding:.1rem .4rem;border-radius:6px;color:#e0e7ff}
+.co{border-left:3px solid var(--ac);background:var(--s2);border-radius:0 10px 10px 0;padding:.8rem 1.1rem;margin:1rem 0}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.9rem}th,td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--ac);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}td:first-child{white-space:nowrap;color:var(--dim)}
+.flow{list-style:none;padding:0}.flow li{position:relative;padding:.55rem 0 .55rem 1.6rem}.flow li::before{content:"→";position:absolute;left:0;top:.55rem;color:var(--ac2);font-weight:700}.flow b{color:#fff}
+.check{list-style:none;padding:0}.check li{padding:.35rem 0 .35rem 1.8rem;position:relative}.check li::before{content:"☐";position:absolute;left:0;top:.3rem;color:var(--ac);font-size:1.05rem}
+.foot{display:flex;justify-content:space-between;gap:1rem;margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--bd);font-size:.9rem}.foot a{text-decoration:none;color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:.6rem 1rem}.foot a:hover{border-color:var(--ac);background:var(--s2)}
+.muted{color:var(--dim);font-size:.85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bc"><a href="index.html">← Mục lục</a> · C8 · Search node</div>
+  <span class="tag">Frontend</span>
+  <h1>Search — Tìm node trong graph</h1>
+  <p class="lead">Ô tìm kiếm nổi trên canvas: gõ để tìm node theo tên, chọn kết quả để chọn &amp; điều hướng tới node đó.</p>
+
+  <h2>Cơ chế khớp (chính xác theo code)</h2>
+  <p>Ô search lọc <b>ngay trên client</b> bằng một <code>computed</code>, không gọi API. Với mỗi node trong prop <code>nodes</code>:</p>
+  <ul class="flow">
+    <li><b>Chuẩn hoá từ khoá</b>: <code>query.trim().toLowerCase()</code>; nếu rỗng → không có kết quả.</li>
+    <li><b>Khớp cả 2 trường</b>: giữ node nếu <code>name</code> HOẶC <code>fullName</code> (đều lowercase) <b>chứa</b> từ khoá (<code>includes</code> — khớp chuỗi con, không cần khớp đầu).</li>
+    <li><b>Cắt số lượng</b>: <code>.slice(0, SEARCH_SUGGESTIONS_LIMIT)</code>.</li>
+    <li><b>Thứ tự kết quả</b>: theo <b>thứ tự mảng <code>nodes</code></b> (không có xếp hạng theo độ liên quan/score — khác với search fulltext ở backend).</li>
+  </ul>
+  <p class="muted">Mỗi dòng gợi ý hiển thị <b>name</b> (đậm) + dòng phụ <code>type · fullName</code>. Node đang được chọn (<code>selectedNodeId</code>) được tô nền xanh trong danh sách.</p>
+
+  <h2>Tham số cụ thể</h2>
+  <p>Số gợi ý tối đa: <code>SEARCH_SUGGESTIONS_LIMIT</code> (mặc định <b>8</b>, cấu hình qua env <code>VITE_SEARCH_SUGGESTIONS_LIMIT</code> — đọc trong <code>lib/runtimeConfig.ts</code>). Tìm trên tập <code>nodes</code> mà GraphCanvas truyền vào (tập <b>đã lọc</b>).</p>
+
+  <h2>Kịch bản thao tác</h2>
+  <table>
+    <tr><th>#</th><th>Thao tác</th><th>Kết quả kỳ vọng</th><th>P/F</th></tr>
+    <tr><td>1</td><td>Gõ tên node (vd <code>UserService</code>)</td><td>Danh sách gợi ý khớp hiển thị (mở khi focus/nhập).</td><td></td></tr>
+    <tr><td>2</td><td>Gõ một phần <b>fullName</b> (vd <code>repository.User</code>)</td><td>Vẫn khớp — vì lọc cả <code>fullName</code>, không chỉ <code>name</code>.</td><td></td></tr>
+    <tr><td>3</td><td>Gõ hơn 8 node cùng khớp</td><td>Chỉ hiện tối đa 8 dòng đầu (theo thứ tự mảng).</td><td></td></tr>
+    <tr><td>4</td><td>Chọn 1 kết quả</td><td>Ô điền tên node, đóng dropdown, phát <code>select(node)</code> → node được chọn, panel chi tiết mở, canvas focus tới node.</td><td></td></tr>
+    <tr><td>5</td><td>Bấm Clear</td><td>Xóa ô, đóng dropdown, phát <code>clear</code> → bỏ chọn.</td><td></td></tr>
+    <tr><td>6</td><td>Tìm chuỗi không khớp</td><td>Hiện dòng "No matching nodes." (<code>role="status"</code>), không lỗi.</td><td></td></tr>
+    <tr><td>7</td><td>Tìm node đang bị filter ẩn</td><td>KHÔNG ra kết quả nếu node không nằm trong tập <code>nodes</code> đã lọc — xác nhận đây là hành vi mong muốn.</td><td></td></tr>
+  </table>
+
+  <h2>Điểm cần soi</h2>
+  <ul class="check">
+    <li><b>Phạm vi tìm = tập đã lọc.</b> Search chạy trên <code>nodes</code> (sau filter), KHÁC Explorer (duyệt cây file gốc) và KHÁC search fulltext backend (Neo4j <code>node_search</code>). Tìm không thấy có thể chỉ vì node đang bị filter ẩn — thống nhất kỳ vọng với team.</li>
+    <li><b>A11y — thiếu điều hướng bằng phím mũi tên.</b> Kết quả là loạt <code>&lt;button&gt;</code>: chỉ Tab/Enter hoạt động, chưa có roving tabindex/Arrow-Up-Down + <code>aria-activedescendant</code>. Nên bổ sung nếu muốn đạt combobox chuẩn.</li>
+    <li>Không có debounce — lọc chạy mỗi lần gõ; với graph rất lớn cần cân nhắc (hiện chấp nhận được vì chỉ <code>includes</code> + slice).</li>
+    <li>Không xếp hạng theo độ liên quan; node khớp đầu tên và khớp giữa <code>fullName</code> xếp ngang nhau theo thứ tự mảng.</li>
+  </ul>
+
+  <h2>Luồng hoạt động của code</h2>
+  <ul class="flow">
+    <li><b>UI</b>: <code>components/graph/SearchBar.vue</code> nhận prop <code>nodes</code> + <code>selectedNodeId</code>; <code>results</code> là <code>computed</code> lọc name/fullName; phát <code>select(node)</code> / <code>clear</code>.</li>
+    <li><b>Xử lý</b>: <code>GraphCanvas.vue</code> → <code>onSearchSelect</code> gọi <code>selectNode</code> + <code>applyFocusReducers</code>; <code>onSearchClear</code> → <code>clearSelection</code>.</li>
+    <li><b>Điều hướng canvas</b>: dùng <code>focusNode</code> của <code>useSigma.ts</code> để center camera về node.</li>
+  </ul>
+
+  <h2>File liên quan</h2>
+  <table>
+    <tr><th>Tầng</th><th>File</th></tr>
+    <tr><td>UI</td><td><code>components/graph/SearchBar.vue</code></td></tr>
+    <tr><td>Tích hợp</td><td><code>components/graph/GraphCanvas.vue</code>, <code>composables/useGraphData.ts</code>, <code>composables/useSigma.ts</code></td></tr>
+  </table>
+
+  <div class="foot">
+    <a href="code-viewer.html">← Code Viewer</a>
+    <a href="legend.html">Legend →</a>
+  </div>
+</div>
+</body>
+</html>

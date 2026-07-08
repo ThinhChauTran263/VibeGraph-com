@@ -1,0 +1,89 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024
+
+spring:
+  application:
+    name: VibeGraph
+
+  neo4j:
+    uri: ${NEO4J_URI}
+    authentication:
+      username: ${NEO4J_USERNAME}
+      password: ${NEO4J_PASSWORD}
+    pool:
+      max-connection-pool-size: ${NEO4J_MAX_CONNECTION_POOL_SIZE:100}
+      connection-acquisition-timeout: ${NEO4J_CONNECTION_ACQUISITION_TIMEOUT:60s}
+      max-connection-lifetime: ${NEO4J_MAX_CONNECTION_LIFETIME:1h}
+
+  data:
+    neo4j:
+      database: ${NEO4J_DATABASE:neo4j}
+
+  servlet:
+    multipart:
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+
+  ai:
+    mcp:
+      server:
+        name: VibeGraph
+        version: 1.0.0
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
+
+vibegraph:
+  projects:
+    allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
+  import:
+    archive:
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:/app/data/uploads}
+
+  watcher:
+    enabled: ${VIBEGRAPH_WATCHER_ENABLED:false}
+    debounce-ms: ${VIBEGRAPH_WATCHER_DEBOUNCE_MS:1000}
+    ignored-paths:
+      - target
+      - build
+      - .git
+      - .idea
+      - node_modules
+    watched-extensions:
+      - .java
+
+  cors:
+    allowed-origins:
+      - ${FRONTEND_URL}
+
+  parser:
+    use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
+    cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:/app/data/parse-cache}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.vibegraph: INFO
+    org.springframework.web: WARN
+    org.springframework.data.neo4j: WARN

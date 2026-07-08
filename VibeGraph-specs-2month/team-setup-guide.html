@@ -1,0 +1,1131 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>VibeGraph - Hướng dẫn setup nội bộ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ============ TOKENS ============ */
+    :root {
+      --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+      --maxw: 1240px;
+      --sidebar-w: 256px;
+      --header-h: 60px;
+
+      --radius-sm: 8px;
+      --radius: 12px;
+      --radius-lg: 16px;
+
+      --dur: 200ms;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+      --accent: #22c55e;       /* run / success green */
+      --accent-strong: #16a34a;
+      --primary: #38bdf8;      /* links / info */
+    }
+
+    /* ---- DARK (default) ---- */
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --bg-grid: rgba(56, 189, 248, 0.05);
+      --surface: #131d33;
+      --surface-2: #0e1729;
+      --surface-3: #1a2742;
+      --text: #f1f5f9;
+      --text-soft: #cbd5e1;
+      --muted: #94a3b8;
+      --line: rgba(148, 163, 184, 0.16);
+      --line-strong: rgba(148, 163, 184, 0.30);
+      --link: #56c6f9;
+      --code-bg: #060b16;
+      --code-head: #0d1424;
+      --code-text: #e6edf7;
+      --ok: #34d399;     --ok-bg: rgba(52, 211, 153, 0.12);   --ok-line: rgba(52, 211, 153, 0.35);
+      --warn: #fbbf24;   --warn-bg: rgba(251, 191, 36, 0.12); --warn-line: rgba(251, 191, 36, 0.35);
+      --danger: #f87171; --danger-bg: rgba(248, 113, 113, 0.12); --danger-line: rgba(248, 113, 113, 0.35);
+      --shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+      --hero-glow-1: rgba(34, 197, 94, 0.18);
+      --hero-glow-2: rgba(56, 189, 248, 0.18);
+    }
+
+    /* ---- LIGHT ---- */
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --bg-grid: rgba(15, 23, 42, 0.04);
+      --surface: #ffffff;
+      --surface-2: #f4f7fb;
+      --surface-3: #eaf0f7;
+      --text: #0f172a;
+      --text-soft: #1e293b;
+      --muted: #475569;
+      --line: #dde5ee;
+      --line-strong: #c5d0dd;
+      --link: #0369a1;
+      --code-bg: #0b1220;
+      --code-head: #131d33;
+      --code-text: #e6edf7;
+      --ok: #15803d;     --ok-bg: #ecfdf3;   --ok-line: #abefc6;
+      --warn: #b45309;   --warn-bg: #fffaeb; --warn-line: #fedf89;
+      --danger: #b42318; --danger-bg: #fef3f2; --danger-line: #fecdca;
+      --shadow: 0 18px 48px -24px rgba(15, 23, 42, 0.22);
+      --hero-glow-1: rgba(34, 197, 94, 0.16);
+      --hero-glow-2: rgba(56, 189, 248, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle at 12% -10%, var(--hero-glow-2), transparent 38%),
+        radial-gradient(circle at 92% 4%, var(--hero-glow-1), transparent 36%),
+        linear-gradient(var(--bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+      background-size: auto, auto, 44px 44px, 44px 44px;
+      background-attachment: fixed;
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--link); text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    .skip-link {
+      position: fixed;
+      top: -100px;
+      left: 16px;
+      z-index: 999;
+      background: var(--accent);
+      color: #04210f;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      transition: top var(--dur) var(--ease);
+    }
+    .skip-link:focus { top: 14px; text-decoration: none; outline: 3px solid #fff; }
+
+    /* ============ PROGRESS BAR ============ */
+    .progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      z-index: 80;
+      transition: width 80ms linear;
+    }
+
+    /* ============ HEADER ============ */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 70;
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      backdrop-filter: blur(14px);
+      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar .inner {
+      width: 100%;
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: -0.01em; }
+    .brand .logo {
+      width: 34px; height: 34px;
+      border-radius: 9px;
+      display: grid; place-items: center;
+      background: linear-gradient(140deg, var(--accent), var(--primary));
+      color: #04210f;
+      box-shadow: 0 6px 18px -6px var(--accent);
+      flex: none;
+    }
+    .brand .logo svg { width: 19px; height: 19px; }
+    .brand .name { font-family: var(--font-mono); font-size: 15px; }
+    .brand .name span { color: var(--accent); }
+    .brand .sub { display: block; font-size: 11px; font-weight: 600; color: var(--muted); font-family: var(--font-body); letter-spacing: 0.02em; }
+    .topbar .spacer { flex: 1; }
+    .topbar .ghost-link {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      padding: 7px 11px; border-radius: 999px;
+      border: 1px solid var(--line);
+      transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+    }
+    .topbar .ghost-link:hover { color: var(--text); border-color: var(--line-strong); background: var(--surface-2); text-decoration: none; }
+    .topbar .ghost-link svg { width: 15px; height: 15px; }
+
+    .theme-toggle {
+      cursor: pointer;
+      width: 38px; height: 38px;
+      display: grid; place-items: center;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--text);
+      transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .theme-toggle svg { width: 18px; height: 18px; }
+    .theme-toggle .icon-sun { display: none; }
+    [data-theme="light"] .theme-toggle .icon-sun { display: block; }
+    [data-theme="light"] .theme-toggle .icon-moon { display: none; }
+
+    /* ============ HERO ============ */
+    .hero {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 56px 24px 36px;
+    }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--accent);
+      padding: 6px 12px;
+      border: 1px solid var(--ok-line);
+      background: var(--ok-bg);
+      border-radius: 999px;
+    }
+    .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--ok-bg); animation: pulse 2.4s var(--ease) infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .hero h1 {
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: clamp(34px, 5.2vw, 60px);
+      line-height: 1.04;
+      letter-spacing: -0.02em;
+      margin: 20px 0 0;
+    }
+    .hero h1 .accent { color: var(--accent); }
+    .hero .lede {
+      margin: 18px 0 0;
+      max-width: 760px;
+      font-size: clamp(16px, 1.4vw, 18px);
+      color: var(--text-soft);
+    }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 26px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: var(--font-mono);
+      font-size: 12.5px; font-weight: 600;
+      padding: 7px 13px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text-soft);
+    }
+    .chip svg { width: 14px; height: 14px; color: var(--primary); }
+
+    /* ============ LAYOUT ============ */
+    .layout {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 8px 24px 80px;
+      display: grid;
+      grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+      gap: 40px;
+      align-items: start;
+    }
+
+    /* ---- SIDEBAR ---- */
+    .sidebar { position: sticky; top: calc(var(--header-h) + 18px); }
+    .sidebar .nav-title {
+      font-family: var(--font-mono);
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 12px 10px;
+    }
+    .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+    .sidebar nav a {
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 12px;
+      border-radius: 9px;
+      font-size: 14px; font-weight: 600;
+      color: var(--muted);
+      border-left: 2px solid transparent;
+      transition: color var(--dur) var(--ease), background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    .sidebar nav a .num {
+      font-family: var(--font-mono);
+      font-size: 11px; font-weight: 700;
+      width: 22px; height: 22px; flex: none;
+      display: grid; place-items: center;
+      border-radius: 6px;
+      background: var(--surface-2);
+      color: var(--muted);
+      border: 1px solid var(--line);
+      transition: all var(--dur) var(--ease);
+    }
+    .sidebar nav a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+    .sidebar nav a.active {
+      color: var(--text);
+      background: var(--surface);
+      border-left-color: var(--accent);
+    }
+    .sidebar nav a.active .num { background: var(--accent); color: #04210f; border-color: var(--accent); }
+
+    /* ============ CONTENT ============ */
+    main { min-width: 0; }
+    section.block {
+      scroll-margin-top: calc(var(--header-h) + 24px);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 30px 30px 26px;
+      margin: 0 0 24px;
+      box-shadow: var(--shadow);
+    }
+    .section-kicker {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11.5px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--primary);
+      margin-bottom: 10px;
+    }
+    .section-kicker .ix {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: var(--surface-3);
+      border: 1px solid var(--line);
+    }
+    h2 {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: clamp(21px, 2.4vw, 27px);
+      letter-spacing: -0.01em;
+      margin: 0 0 16px;
+      line-height: 1.2;
+    }
+    h3 {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+      margin: 26px 0 12px;
+      display: flex; align-items: center; gap: 9px;
+    }
+    h3 .h3-bar { width: 4px; height: 17px; border-radius: 2px; background: var(--accent); flex: none; }
+    p { margin: 0 0 12px; color: var(--text-soft); }
+    ul, ol { margin: 10px 0 0; padding-left: 22px; color: var(--text-soft); }
+    li { margin: 7px 0; }
+    li::marker { color: var(--accent); }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.86em;
+      background: var(--surface-3);
+      color: var(--text);
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+    }
+
+    /* ---- CODE BLOCK ---- */
+    .codeblock {
+      margin: 14px 0 18px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line-strong);
+      overflow: hidden;
+      background: var(--code-bg);
+      box-shadow: 0 10px 30px -16px rgba(0,0,0,0.5);
+    }
+    .codeblock .cb-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px;
+      background: var(--code-head);
+      border-bottom: 1px solid rgba(148,163,184,0.14);
+    }
+    .codeblock .dots { display: flex; gap: 6px; }
+    .codeblock .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+    .codeblock .dots i:nth-child(1) { background: #ff5f57; }
+    .codeblock .dots i:nth-child(2) { background: #febc2e; }
+    .codeblock .dots i:nth-child(3) { background: #28c840; }
+    .codeblock .lang {
+      font-family: var(--font-mono);
+      font-size: 11.5px; font-weight: 600;
+      color: #8da2c0;
+      letter-spacing: 0.04em;
+    }
+    .codeblock .cb-head .grow { flex: 1; }
+    .copy-btn {
+      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-body);
+      font-size: 12px; font-weight: 600;
+      color: #b9c6da;
+      background: rgba(148,163,184,0.10);
+      border: 1px solid rgba(148,163,184,0.18);
+      padding: 5px 10px;
+      border-radius: 7px;
+      transition: all var(--dur) var(--ease);
+    }
+    .copy-btn:hover { color: #fff; border-color: var(--accent); background: rgba(34,197,94,0.16); }
+    .copy-btn svg { width: 13px; height: 13px; }
+    .copy-btn.copied { color: var(--accent); border-color: var(--accent); }
+    .codeblock pre {
+      margin: 0;
+      padding: 16px 18px;
+      overflow-x: auto;
+      line-height: 1.55;
+    }
+    .codeblock pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--code-text);
+      font-size: 13px;
+    }
+    /* scrollbar */
+    .codeblock pre::-webkit-scrollbar { height: 9px; }
+    .codeblock pre::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 99px; }
+
+    /* ---- CARDS ---- */
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 4px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 20px;
+      background: var(--surface-2);
+      transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+    }
+    .card:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+    .card .step-badge {
+      font-family: var(--font-mono);
+      font-weight: 800; font-size: 13px;
+      width: 30px; height: 30px;
+      display: grid; place-items: center;
+      border-radius: 9px;
+      background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+      color: #04210f;
+      margin-bottom: 12px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 15px; }
+    .card p { margin: 0 0 10px; font-size: 14px; }
+    .card strong { color: var(--text); }
+
+    /* ---- CALLOUTS ---- */
+    .callout {
+      display: flex; gap: 13px;
+      padding: 15px 16px;
+      border-radius: var(--radius);
+      margin: 16px 0;
+      border: 1px solid;
+      font-size: 14.5px;
+    }
+    .callout .ico { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+    .callout p { margin: 0; color: var(--text); }
+    .callout.note { background: color-mix(in srgb, var(--primary) 8%, var(--surface)); border-color: color-mix(in srgb, var(--primary) 30%, transparent); }
+    .callout.note .ico { color: var(--primary); }
+    .callout.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+    .callout.warn .ico { color: var(--warn); }
+
+    /* ---- TABLE ---- */
+    .table-wrap { overflow-x: auto; margin: 14px 0 6px; border: 1px solid var(--line); border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th {
+      font-family: var(--font-mono);
+      text-align: left;
+      font-size: 11.5px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted);
+      background: var(--surface-2);
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--text-soft); }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr { transition: background var(--dur) var(--ease); }
+    tbody tr:hover td { background: var(--surface-2); }
+
+    /* ---- STATUS TAGS ---- */
+    .status-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; }
+    .status-list li { display: flex; align-items: flex-start; gap: 12px; margin: 0; }
+    .tag {
+      flex: none;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11.5px; font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      min-width: 92px;
+      justify-content: center;
+    }
+    .tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .tag.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
+    .tag.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+    .tag.todo { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-line); }
+    .status-list li span.txt { color: var(--text-soft); padding-top: 2px; }
+
+    .small { color: var(--muted); font-size: 13.5px; }
+
+    /* ---- FOOTER ---- */
+    footer {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center;
+    }
+    footer .fbrand { font-family: var(--font-mono); font-weight: 700; color: var(--text-soft); }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 1fr; gap: 8px; }
+      .sidebar { position: static; margin-bottom: 8px; }
+      .sidebar nav { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+      .sidebar nav a { border-left: 0; border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; }
+      .sidebar nav a.active { border-color: var(--accent); }
+      .sidebar nav a .num { display: none; }
+    }
+    @media (max-width: 640px) {
+      .hero { padding: 40px 18px 26px; }
+      .layout { padding: 8px 18px 64px; }
+      section.block { padding: 22px 18px; }
+      .grid, .grid.three { grid-template-columns: 1fr; }
+      .topbar .ghost-link { display: none; }
+      .brand .sub { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua, sang nội dung chính</a>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+
+  <!-- ============ TOPBAR ============ -->
+  <div class="topbar">
+    <div class="inner">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="7" r="2.4"/><circle cx="9" cy="18" r="2.4"/>
+            <path d="M8 7.2 15.6 7M7.4 8.1 8.6 15.6M11 17l5.2-7.6"/>
+          </svg>
+        </span>
+        <span>
+          <span class="name">Vibe<span>Graph</span></span>
+          <span class="sub">Runbook setup nội bộ</span>
+        </span>
+      </div>
+      <span class="spacer"></span>
+      <a class="ghost-link" href="#troubleshooting">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+        Xử lý lỗi
+      </a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Đổi giao diện sáng/tối">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <span class="eyebrow"><span class="dot"></span> Runbook nội bộ &middot; Sprint 2</span>
+    <h1>VibeGraph <span class="accent">setup</span><br/>hướng dẫn nội bộ</h1>
+    <p class="lede">File này dành cho thành viên mới trong team: cần cài gì, chạy database ra sao, chạy Docker/local như thế nào, và nếu gửi nội bộ không dùng Git thì cần copy những file/folder nào.</p>
+    <div class="hero-meta">
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5c0 2-4.5 3.5-10 3.5S2 14.5 2 12.5M22 7c0 2-4.5 3.5-10 3.5S2 9 2 7s4.5-3.5 10-3.5S22 5 22 7zM2 7v10c0 2 4.5 3.5 10 3.5s10-1.5 10-3.5V7"/></svg> Ưu tiên Docker Compose</span>
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg> Neo4j + Spring Boot + Vue</span>
+      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> Branch: develop</span>
+    </div>
+  </header>
+
+  <!-- ============ LAYOUT ============ -->
+  <div class="layout">
+    <aside class="sidebar" aria-label="Mục lục">
+      <div class="nav-title">// Mục lục</div>
+      <nav id="toc-nav">
+        <a href="#fastpath"><span class="num">0</span> Chạy nhanh 3 bước</a>
+        <a href="#requirements"><span class="num">1</span> Yêu cầu máy dev</a>
+        <a href="#recommended"><span class="num">2</span> Docker Compose</a>
+        <a href="#local-dev"><span class="num">3</span> Chạy local dev</a>
+        <a href="#database"><span class="num">4</span> Neo4j database</a>
+        <a href="#api-flow"><span class="num">5</span> Smoke test nhanh</a>
+        <a href="#copy-list"><span class="num">6</span> File cần gửi team</a>
+        <a href="#known-state"><span class="num">7</span> Trạng thái hiện tại</a>
+        <a href="#troubleshooting"><span class="num">8</span> Lỗi hay gặp</a>
+      </nav>
+    </aside>
+
+    <main id="main">
+      <!-- FAST PATH -->
+      <section class="block" id="fastpath">
+        <span class="section-kicker"><span class="ix">~$</span> Fast path</span>
+        <h2>Chạy nhanh trong 3 bước</h2>
+        <div class="grid three">
+          <div class="card">
+            <div class="step-badge">1</div>
+            <h3>Lấy branch đúng</h3>
+            <p>Team nên làm việc trên <strong>develop</strong> sau khi PR từ <code>poc</code> đã merge.</p>
+            <div class="codeblock" data-lang="bash">
+              <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+              <pre><code>git checkout develop
+git pull</code></pre>
+            </div>
+          </div>
+          <div class="card">
+            <div class="step-badge">2</div>
+            <h3>Tạo file env</h3>
+            <p>Dùng file nội bộ team gửi riêng, hoặc copy từ template trong repo.</p>
+            <div class="codeblock" data-lang="powershell">
+              <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+              <pre><code>Copy-Item .env.example .env</code></pre>
+            </div>
+          </div>
+          <div class="card">
+            <div class="step-badge">3</div>
+            <h3>Chạy stack</h3>
+            <p>Lệnh này build và chạy Neo4j, backend, frontend.</p>
+            <div class="codeblock" data-lang="bash">
+              <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+              <pre><code>docker compose up -d --build</code></pre>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Dịch vụ</th><th>URL</th><th>Mục đích</th></tr></thead>
+            <tbody>
+              <tr><td>Frontend</td><td><code>http://localhost:3000</code></td><td>Mở app VibeGraph khi chạy Docker</td></tr>
+              <tr><td>Backend</td><td><code>http://localhost:8080/actuator/health</code></td><td>Kiểm tra API đã lên</td></tr>
+              <tr><td>Neo4j</td><td><code>http://localhost:7474</code></td><td>Database browser, login <code>neo4j</code>/<code>vibegraph</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 1. REQUIREMENTS -->
+      <section class="block" id="requirements">
+        <span class="section-kicker"><span class="ix">01</span> Yêu cầu</span>
+        <h2>1. Yêu cầu máy dev</h2>
+        <div class="grid">
+          <div class="card">
+            <h3><span class="h3-bar"></span>Bắt buộc nếu chạy Docker</h3>
+            <ul>
+              <li>Git</li>
+              <li>Docker Desktop hoặc Docker Engine có Docker Compose v2</li>
+              <li>Port trong máy còn trống: <code>3000</code>, <code>8080</code>, <code>7474</code>, <code>7687</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3><span class="h3-bar"></span>Bắt buộc nếu chạy local dev</h3>
+            <ul>
+              <li>Java 21</li>
+              <li>Node.js <code>20.19+</code> hoặc <code>22.12+</code></li>
+              <li>Docker để chạy Neo4j local</li>
+              <li>Maven không bắt buộc nếu dùng <code>mvnw</code>/<code>mvnw.cmd</code></li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout note">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+          <p><strong>Khuyến nghị cho team:</strong> dùng Docker Compose trước để có Neo4j + backend + frontend cùng lúc. Local dev tách riêng chỉ dùng khi cần sửa code backend/frontend.</p>
+        </div>
+      </section>
+
+      <!-- 2. DOCKER COMPOSE -->
+      <section class="block" id="recommended">
+        <span class="section-kicker"><span class="ix">02</span> Khuyến nghị</span>
+        <h2>2. Cách chạy khuyến nghị bằng Docker Compose</h2>
+        <p>Chạy từ thư mục gốc repo <code>VibeGraph</code>.</p>
+
+        <h3><span class="h3-bar"></span>Bước 1 &mdash; Lấy code</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>git clone https://github.com/ThinhChauTran263/VibeGraph-com.git
+cd VibeGraph-com
+git checkout develop</code></pre>
+        </div>
+        <p class="small">Nếu branch develop chưa có thay đổi mới, merge PR từ <code>poc</code> vào <code>develop</code> trước rồi team clone/pull lại.</p>
+
+        <h3><span class="h3-bar"></span>Bước 2 &mdash; Tạo file .env</h3>
+        <p>Windows PowerShell:</p>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code>Copy-Item .env.example .env</code></pre>
+        </div>
+        <p>macOS/Linux/Git Bash:</p>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>cp .env.example .env</code></pre>
+        </div>
+        <p>Nội dung mặc định đủ để chạy local:</p>
+        <div class="codeblock" data-lang="env">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">.env</span><span class="grow"></span></div>
+          <pre><code>NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=vibegraph
+NEO4J_URI=bolt://localhost:7687
+SPRING_PROFILES_ACTIVE=dev
+BACKEND_PORT=8080
+FRONTEND_URL=http://localhost:3000
+VITE_API_URL=http://localhost:8080
+VITE_WS_URL=http://localhost:8080/ws</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Bước 3 &mdash; Build và chạy full stack</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose up -d --build</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Bước 4 &mdash; Kiểm tra container</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose ps</code></pre>
+        </div>
+        <p>Các service cần thấy:</p>
+        <ul>
+          <li><code>vibegraph-neo4j</code> &mdash; Neo4j database</li>
+          <li><code>vibegraph-backend</code> &mdash; Spring Boot API</li>
+          <li><code>vibegraph-frontend</code> &mdash; Vue app qua nginx</li>
+        </ul>
+
+        <h3><span class="h3-bar"></span>Bước 5 &mdash; Mở ứng dụng</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Dịch vụ</th><th>URL</th><th>Ghi chú</th></tr></thead>
+            <tbody>
+              <tr><td>Frontend</td><td><a href="http://localhost:3000">http://localhost:3000</a></td><td>Màn hình app chính khi chạy Docker</td></tr>
+              <tr><td>Backend health</td><td><a href="http://localhost:8080/actuator/health">http://localhost:8080/actuator/health</a></td><td>Trả về status health</td></tr>
+              <tr><td>Neo4j Browser</td><td><a href="http://localhost:7474">http://localhost:7474</a></td><td>User <code>neo4j</code>, password <code>vibegraph</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3><span class="h3-bar"></span>Dừng stack</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose down</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Xóa cả database volume nếu muốn reset sạch</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose down -v</code></pre>
+        </div>
+        <div class="callout warn">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+          <p><strong>Cẩn thận:</strong> lệnh <code>down -v</code> xóa data Neo4j local trong Docker volume.</p>
+        </div>
+      </section>
+
+      <!-- 3. LOCAL DEV -->
+      <section class="block" id="local-dev">
+        <span class="section-kicker"><span class="ix">03</span> Local dev</span>
+        <h2>3. Cách chạy local dev tách backend/frontend</h2>
+        <p>Dùng cách này khi cần hot reload frontend hoặc debug backend trong IDE.</p>
+
+        <h3><span class="h3-bar"></span>Bước 1 &mdash; Chỉ chạy Neo4j bằng Docker Compose</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose up -d neo4j</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Bước 2 &mdash; Chạy backend Spring Boot</h3>
+        <p>Windows PowerShell:</p>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code>$env:NEO4J_USERNAME="neo4j"
+$env:NEO4J_PASSWORD="vibegraph"
+$env:NEO4J_URI="bolt://localhost:7687"
+.\mvnw.cmd spring-boot:run</code></pre>
+        </div>
+        <p>macOS/Linux/Git Bash:</p>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>export NEO4J_USERNAME=neo4j
+export NEO4J_PASSWORD=vibegraph
+export NEO4J_URI=bolt://localhost:7687
+./mvnw spring-boot:run</code></pre>
+        </div>
+        <p>Backend chạy tại <a href="http://localhost:8080">http://localhost:8080</a>.</p>
+
+        <h3><span class="h3-bar"></span>Bước 3 &mdash; Chạy frontend Vite</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>cd vibegraph-web
+npm ci
+npm run dev</code></pre>
+        </div>
+        <p>Frontend dev chạy tại <a href="http://localhost:5173">http://localhost:5173</a>.</p>
+
+        <h3><span class="h3-bar"></span>Lệnh test/build nên biết</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Thành phần</th><th>Lệnh</th><th>Ghi chú</th></tr></thead>
+            <tbody>
+              <tr><td>Backend unit tests</td><td><code>.\mvnw.cmd test</code> hoặc <code>./mvnw test</code></td><td>Không cần Neo4j integration thật</td></tr>
+              <tr><td>Backend verify</td><td><code>.\mvnw.cmd verify</code> hoặc <code>./mvnw verify</code></td><td><code>*IT</code> có thể skip nếu Neo4j không reachable</td></tr>
+              <tr><td>Frontend type-check</td><td><code>npm run type-check</code></td><td>Chạy trong <code>vibegraph-web</code></td></tr>
+              <tr><td>Frontend unit test</td><td><code>npm run test:unit -- --run</code></td><td>Chạy trong <code>vibegraph-web</code></td></tr>
+              <tr><td>Frontend build</td><td><code>npm run build</code></td><td>Chạy trong <code>vibegraph-web</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+          <p><strong>Lưu ý lint:</strong> <code>npm run lint</code> hiện có <code>--fix</code>, nên có thể sửa file. Dùng cẩn thận khi chỉ muốn check.</p>
+        </div>
+      </section>
+
+      <!-- 4. DATABASE -->
+      <section class="block" id="database">
+        <span class="section-kicker"><span class="ix">04</span> Database</span>
+        <h2>4. Neo4j database và cách kiểm tra</h2>
+        <p>Neo4j được chạy bằng service <code>neo4j</code> trong <code>docker-compose.yml</code>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Thông tin</th><th>Giá trị mặc định</th></tr></thead>
+            <tbody>
+              <tr><td>HTTP Browser</td><td><code>http://localhost:7474</code></td></tr>
+              <tr><td>Bolt URI</td><td><code>bolt://localhost:7687</code></td></tr>
+              <tr><td>Username</td><td><code>neo4j</code></td></tr>
+              <tr><td>Password</td><td><code>vibegraph</code></td></tr>
+              <tr><td>Docker volume</td><td><code>neo4j-data</code>, <code>neo4j-logs</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3><span class="h3-bar"></span>Có cần chạy file init để import database không?</h3>
+        <div class="callout note">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+          <p><strong>Không cần.</strong> Khác với SQL (phải import <code>init.sql</code> thủ công), VibeGraph tạo schema <strong>tự động</strong>. Khi backend khởi động, <code>Neo4jMigrationRunner</code> đọc và chạy file <code>src/main/resources/db/migration/V1__init_schema.cypher</code>. Bạn chỉ cần chạy backend (qua Docker Compose hoặc local) là schema được áp dụng.</p>
+        </div>
+        <p>Cách hiểu nhanh nếu quen với MySQL:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Bên SQL</th><th>Bên VibeGraph (Neo4j)</th><th>Chạy lúc nào</th></tr></thead>
+            <tbody>
+              <tr><td><code>init.sql</code> &mdash; CREATE TABLE, INDEX, FK</td><td><code>V1__init_schema.cypher</code> &mdash; constraints + indexes</td><td>Tự động khi backend startup (không chạy tay)</td></tr>
+              <tr><td>INSERT data / import dump</td><td>Chạy analyze project &mdash; parser sinh node/relationship</td><td>Khi bạn gọi <code>POST /api/projects/PROJECT_ID/analyze</code> (xem mục 5)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+          <p>File <code>V1__init_schema.cypher</code> <strong>không chứa data</strong> &mdash; chỉ có constraints và indexes (giống phần DDL của <code>init.sql</code>). Mọi statement đều dùng <code>IF NOT EXISTS</code> nên chạy lại nhiều lần vẫn an toàn.</p>
+        </div>
+
+        <h3><span class="h3-bar"></span>Nếu muốn chạy file schema thủ công (tùy chọn)</h3>
+        <p>Bình thường không cần, vì backend đã tự chạy. Chỉ dùng khi muốn áp schema vào một Neo4j trống mà chưa chạy backend. Chạy bằng <code>cypher-shell</code> trong container Neo4j:</p>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code># Đẩy file cypher vào container rồi chạy bằng cypher-shell
+docker compose cp src/main/resources/db/migration/V1__init_schema.cypher neo4j:/tmp/init.cypher
+docker compose exec neo4j cypher-shell -u neo4j -p vibegraph -f /tmp/init.cypher</code></pre>
+        </div>
+        <p class="small">Trên Docker Compose v2 cũ có thể dùng <code>docker cp</code> / <code>docker exec</code> với tên container <code>vibegraph-neo4j</code> thay cho <code>docker compose cp/exec</code>.</p>
+
+        <h3><span class="h3-bar"></span>Cypher kiểm tra nhanh trong Neo4j Browser</h3>
+        <div class="codeblock" data-lang="cypher">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">cypher</span><span class="grow"></span></div>
+          <pre><code>SHOW CONSTRAINTS;
+SHOW INDEXES;
+MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY count DESC;</code></pre>
+        </div>
+      </section>
+
+      <!-- 5. SMOKE TEST -->
+      <section class="block" id="api-flow">
+        <span class="section-kicker"><span class="ix">05</span> Smoke test</span>
+        <h2>5. Smoke test nhanh sau khi chạy</h2>
+        <p>Sau khi backend và Neo4j đã lên, có thể test API bằng PowerShell.</p>
+        <h3><span class="h3-bar"></span>Flow mới: upload ZIP/TAR project</h3>
+        <p>Quyết định product ngày 2026-05-31: user sẽ chọn file <code>.zip</code>/<code>.tar</code>/<code>.tar.gz</code> của project Java từ file explorer, bấm Add, backend parse archive rồi mở graph. Flow này thay cho việc nhập local path thủ công.</p>
+        <div class="callout warn">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <p><strong>Trạng thái hiện tại:</strong> endpoint <code>POST /api/projects/import-archive</code> đã implement (sync <code>200</code>, async <code>202</code> qua <code>?async=true</code>, status qua <code>/topic/projects/{id}/status</code>). Ngoài ra còn có import GitHub URL và import local-folder (realtime).</p>
+        </div>
+        <div class="codeblock" data-lang="http">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">target api</span><span class="grow"></span></div>
+          <pre><code>POST /api/projects/import-archive
+Content-Type: multipart/form-data
+
+name = sample-java
+file = sample-java.zip</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Legacy fallback hiện tại: đăng ký local path</h3>
+        <p>Chỉ dùng tạm cho dev/internal smoke test trước khi archive upload được implement.</p>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code># Body khi project nằm trong ./projects/sample-java và được mount thành /projects/sample-java
+$body = @{ name = "sample-java"; rootPath = "/projects/sample-java" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/projects -ContentType "application/json" -Body $body</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Chạy analyze và lấy graph</h3>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code># Thay PROJECT_ID bằng id trả về ở bước đăng ký
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/projects/PROJECT_ID/analyze -ContentType "application/json" -Body "{}"
+Invoke-RestMethod -Method Get -Uri http://localhost:8080/api/projects/PROJECT_ID/graph</code></pre>
+        </div>
+        <p class="small">Sau khi archive upload hoàn tất, phần local-path fallback này không còn là UX chính cho user.</p>
+      </section>
+
+      <!-- 6. COPY LIST -->
+      <section class="block" id="copy-list">
+        <span class="section-kicker"><span class="ix">06</span> Bàn giao</span>
+        <h2>6. Cần copy/gửi những file nào cho team</h2>
+        <div class="callout note">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+          <p><strong>Khuyến nghị tốt nhất:</strong> không copy từng file. Hãy merge <code>poc</code> vào <code>develop</code>, rồi gửi team link repo + branch <code>develop</code>. Git sẽ đảm bảo không thiếu file, không sai line ending, không mất file ẩn.</p>
+        </div>
+
+        <h3><span class="h3-bar"></span>Nếu team clone bằng Git</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>git clone https://github.com/ThinhChauTran263/VibeGraph-com.git
+cd VibeGraph-com
+git checkout develop
+Copy-Item .env.example .env
+docker compose up -d --build</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Chỉ cần gửi riêng file bị Git ignore</h3>
+        <div class="callout note">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+          <p><strong>Quan trọng:</strong> hầu hết file đã được commit trong repo nên clone về là có sẵn &mdash; không cần gửi tay. Chỉ những file nằm trong <code>.gitignore</code> mới thật sự cần gửi riêng. Theo <code>.gitignore</code> hiện tại, đó là <code>.env</code> (và token nếu có).</p>
+        </div>
+        <p>Bảng dưới đây phân biệt rõ file nào đã ở trong Git và file nào phải gửi riêng:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>File/cấu hình</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
+            <tbody>
+              <tr><td><code>.env</code></td><td><span class="tag warn">Gửi riêng</span></td><td>Bị <code>.gitignore</code> chặn nên clone về <strong>không có</strong>. Gửi riêng cho team, hoặc để team tự copy từ <code>.env.example</code>. Chỉ chứa local/dev values như <code>NEO4J_USERNAME=neo4j</code>, <code>NEO4J_PASSWORD=vibegraph</code>, <code>NEO4J_URI=bolt://localhost:7687</code>, <code>FRONTEND_URL=http://localhost:3000</code>. Không đưa production secrets vào file gửi chung.</td></tr>
+              <tr><td>Secrets thật (<code>GITHUB_TOKEN</code>, password prod...)</td><td><span class="tag warn">Gửi riêng</span></td><td>Không commit, không đặt vào <code>.env</code> gửi chung. Chỉ gửi khi cần (ví dụ test GitHub import) qua kênh secret/password manager.</td></tr>
+              <tr><td><code>docker-compose.yml</code></td><td><span class="tag ok">Có trong Git</span></td><td>Đã commit, clone là có. Không cần gửi riêng.</td></tr>
+              <tr><td>Project mẫu dạng <code>.zip</code>/<code>.tar</code>/<code>.tar.gz</code></td><td><span class="tag warn">Gửi riêng nếu cần demo</span></td><td>Đây là artifact đúng với flow product mới: user upload archive thay vì nhập local path.</td></tr>
+              <tr><td><code>VibeGraph-specs-2month/team-setup-guide.html</code></td><td><span class="tag ok">Có trong Git</span></td><td>File hướng dẫn này, đã nằm trong repo.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3><span class="h3-bar"></span>Nếu bắt buộc gửi file ZIP nội bộ</h3>
+        <p>Hãy zip từ thư mục gốc repo và bao gồm các file/folder sau:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Cần gửi</th><th>Vì sao cần</th></tr></thead>
+            <tbody>
+              <tr><td><code>src/</code></td><td>Backend Spring Boot, parser, REST, Neo4j repository, resources/migration</td></tr>
+              <tr><td><code>vibegraph-web/</code></td><td>Frontend Vue/Vite và Dockerfile frontend</td></tr>
+              <tr><td><code>pom.xml</code></td><td>Khai báo dependency/build backend</td></tr>
+              <tr><td><code>mvnw</code>, <code>mvnw.cmd</code>, <code>.mvn/</code></td><td>Maven wrapper để team không cần cài Maven riêng</td></tr>
+              <tr><td><code>Dockerfile</code></td><td>Build backend container</td></tr>
+              <tr><td><code>docker-compose.yml</code></td><td>Chạy Neo4j + backend + frontend</td></tr>
+              <tr><td><code>.env.example</code></td><td>Mẫu biến môi trường cho Neo4j/backend/frontend</td></tr>
+              <tr><td><code>README.md</code></td><td>Hướng dẫn tổng quan ở root repo</td></tr>
+              <tr><td><code>VibeGraph-specs-2month/</code></td><td>Toàn bộ tài liệu Sprint, checklist, backlog và file hướng dẫn này</td></tr>
+              <tr><td><code>RULES.md</code>, <code>AGENTS.md</code> nếu có trong repo</td><td>Quy tắc làm việc cho team/agent</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3><span class="h3-bar"></span>Không nên gửi</h3>
+        <ul>
+          <li><code>target/</code> &mdash; build output backend</li>
+          <li><code>node_modules/</code> &mdash; dependency frontend, cài lại bằng <code>npm ci</code></li>
+          <li><code>dist/</code> &mdash; build output frontend</li>
+          <li><code>.env</code> có production secret, token cá nhân, password thật &mdash; chỉ gửi <code>.env</code> local/dev nếu team thống nhất dùng chung credential dev</li>
+          <li><code>.git/</code> nếu chỉ gửi source zip</li>
+          <li><code>.idea/</code>, <code>.vscode/</code> &mdash; setting cá nhân IDE</li>
+          <li><code>neo4j-data/</code> hoặc Docker volumes &mdash; data local</li>
+        </ul>
+
+        <h3><span class="h3-bar"></span>Lệnh tạo ZIP trên Windows PowerShell</h3>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code># Chạy từ thư mục cha của repo, không phải bên trong repo
+Compress-Archive -Path .\VibeGraph-com\src, .\VibeGraph-com\vibegraph-web, .\VibeGraph-com\VibeGraph-specs-2month, .\VibeGraph-com\pom.xml, .\VibeGraph-com\mvnw, .\VibeGraph-com\mvnw.cmd, .\VibeGraph-com\.mvn, .\VibeGraph-com\Dockerfile, .\VibeGraph-com\docker-compose.yml, .\VibeGraph-com\.env.example, .\VibeGraph-com\README.md -DestinationPath .\VibeGraph-com-team.zip -Force</code></pre>
+        </div>
+        <p class="small">Nếu repo của team có <code>RULES.md</code>/<code>AGENTS.md</code> ở root, thêm chúng vào lệnh zip.</p>
+      </section>
+
+      <!-- 7. KNOWN STATE -->
+      <section class="block" id="known-state">
+        <span class="section-kicker"><span class="ix">07</span> Trạng thái</span>
+        <h2>7. Trạng thái hiện tại cần nói rõ với team</h2>
+        <p>Các mục dưới đây giúp team không hiểu nhầm là Sprint 1 đã xong toàn bộ MVP.</p>
+        <ul class="status-list">
+          <li><span class="tag ok">Có</span><span class="txt">Local vertical slice: register project &rarr; analyze &rarr; Neo4j &rarr; GET graph &rarr; Sigma render.</span></li>
+          <li><span class="tag warn">Một phần</span><span class="txt">Parser có Class/Method/Field/Route/CALLS resolved in-project, nhưng chưa đầy đủ schema target.</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">GitHub import (route + service) đã implemented end-to-end: parse URL, pre-flight, stream tarball, extract, analyze async; FE <span class="mono">GitHubImportForm</span> đã có.</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">Watcher/realtime: STOMP endpoint, broadcast producer, FE consumer và file watcher đã wired đầy đủ; thêm/sửa/xóa file <span class="mono">.java</span> cập nhật graph tại chỗ (import local-folder).</span></li>
+          <li><span class="tag ok">Có</span><span class="txt">Diagram (Use Case + Class Mermaid) và MCP tools (15 tool Spring AI) đã implemented. Một số panel FE phụ (Explorer/Flows/Legend/CodeInspector) còn ở mức scaffold cho sprint sau.</span></li>
+          <li><span class="tag warn">Cần làm</span><span class="txt">Public demo cần auth/rate-limit/path validation/actuator hardening trước khi expose.</span></li>
+        </ul>
+      </section>
+
+      <!-- 8. TROUBLESHOOTING -->
+      <section class="block" id="troubleshooting">
+        <span class="section-kicker"><span class="ix">08</span> Xử lý lỗi</span>
+        <h2>8. Lỗi hay gặp</h2>
+        <h3><span class="h3-bar"></span>Port đã bị chiếm</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose ps
+docker compose down</code></pre>
+        </div>
+        <p>Nếu vẫn bị chiếm, kiểm tra app khác đang dùng <code>3000</code>, <code>8080</code>, <code>7474</code>, <code>7687</code>.</p>
+
+        <h3><span class="h3-bar"></span>Neo4j không healthy</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose logs -f neo4j</code></pre>
+        </div>
+        <p>Thử reset volume nếu đây là database local có thể xóa:</p>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose down -v
+docker compose up -d --build</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Backend không connect được Neo4j</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose logs -f backend</code></pre>
+        </div>
+        <p>Kiểm tra <code>.env</code> có <code>NEO4J_USERNAME=neo4j</code> và <code>NEO4J_PASSWORD=vibegraph</code>. Khi chạy backend local, cần set <code>NEO4J_URI=bolt://localhost:7687</code>.</p>
+
+        <h3><span class="h3-bar"></span>Frontend build lỗi dependency</h3>
+        <div class="codeblock" data-lang="powershell">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">powershell</span><span class="grow"></span></div>
+          <pre><code>cd vibegraph-web
+Remove-Item -Recurse -Force node_modules
+npm ci</code></pre>
+        </div>
+
+        <h3><span class="h3-bar"></span>Muốn xem log realtime</h3>
+        <div class="codeblock" data-lang="bash">
+          <div class="cb-head"><span class="dots"><i></i><i></i><i></i></span><span class="lang">bash</span><span class="grow"></span></div>
+          <pre><code>docker compose logs -f backend frontend neo4j</code></pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <span class="fbrand">VibeGraph</span>
+    <span>Runbook setup nội bộ &middot; Neo4j + Spring Boot + Vue</span>
+    <span class="spacer" style="flex:1"></span>
+    <span class="small">Đọc từ trên xuống nếu setup lần đầu; quay lại mục Xử lý lỗi khi cần.</span>
+  </footer>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // ---- Theme toggle (persisted) ----
+      var root = document.documentElement;
+      var toggle = document.getElementById("themeToggle");
+      try {
+        var saved = localStorage.getItem("vg-theme");
+        if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
+      } catch (e) {}
+      toggle.addEventListener("click", function () {
+        var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("vg-theme", next); } catch (e) {}
+      });
+
+      // ---- Copy buttons on code blocks ----
+      var COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      var CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      document.querySelectorAll(".codeblock").forEach(function (block) {
+        var head = block.querySelector(".cb-head");
+        var code = block.querySelector("pre code");
+        if (!head || !code) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "copy-btn";
+        btn.setAttribute("aria-label", "Sao chép lệnh");
+        btn.innerHTML = COPY_SVG + "<span>Copy</span>";
+        head.appendChild(btn);
+        btn.addEventListener("click", function () {
+          var text = code.innerText;
+          var done = function () {
+            btn.classList.add("copied");
+            btn.innerHTML = CHECK_SVG + "<span>Đã copy</span>";
+            setTimeout(function () {
+              btn.classList.remove("copied");
+              btn.innerHTML = COPY_SVG + "<span>Copy</span>";
+            }, 1600);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(function () { fallback(text, done); });
+          } else { fallback(text, done); }
+        });
+      });
+      function fallback(text, done) {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+
+      // ---- Reading progress bar ----
+      var progress = document.getElementById("progress");
+      function onScroll() {
+        var h = document.documentElement;
+        var max = h.scrollHeight - h.clientHeight;
+        var pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+        progress.style.width = pct + "%";
+      }
+      document.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+
+      // ---- Scroll-spy active section ----
+      var links = Array.prototype.slice.call(document.querySelectorAll("#toc-nav a"));
+      var map = {};
+      links.forEach(function (a) { map[a.getAttribute("href").slice(1)] = a; });
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            links.forEach(function (l) { l.classList.remove("active"); });
+            var active = map[entry.target.id];
+            if (active) active.classList.add("active");
+          }
+        });
+      }, { rootMargin: "-45% 0px -50% 0px", threshold: 0 });
+      document.querySelectorAll("section.block").forEach(function (s) { observer.observe(s); });
+    })();
+  </script>
+</body>
+</html>

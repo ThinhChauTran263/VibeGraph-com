@@ -1,38 +1,120 @@
 spring:
+  config:
+    # optional: so the app/tests start without a .env file (CI and Docker provide env vars directly).
+    import: optional:file:.env[.properties]
+
   application:
     name: VibeGraph
 
+  # Multipart limits for archive upload (POST /api/projects/import-archive).
+  # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
+  # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
+  servlet:
+    multipart:
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+
   # Neo4j connection
   neo4j:
-    uri: bolt://localhost:7687
+    uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-      username: neo4j
-      password: vibegraph
+      username: ${NEO4J_USERNAME}
+      password: ${NEO4J_PASSWORD}
     pool:
-      max-connection-pool-size: 50
+      max-connection-pool-size: ${NEO4J_MAX_CONNECTION_POOL_SIZE:50}
+      connection-acquisition-timeout: ${NEO4J_CONNECTION_ACQUISITION_TIMEOUT:60s}
+      max-connection-lifetime: ${NEO4J_MAX_CONNECTION_LIFETIME:1h}
 
   data:
     neo4j:
-      database: neo4j
+      database: ${NEO4J_DATABASE:neo4j}
 
-  # Spring AI MCP Server
+  # Spring AI
   ai:
+    # Chat model auto-config is OFF by default so the app/tests start with no API key and stay
+    # offline/deterministic. To enable Tier 2 use-case refinement, set GEMINI_API_KEY and
+    # spring.ai.model.chat=google-genai (plus vibegraph.usecase.llm.enabled=true).
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:none}
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            # Model mặc định của auto-config. Service "Manage Caffeines" sẽ override per-request
+            # bằng chuỗi model bên dưới (vibegraph.ai.caffeine.models.*), nên giá trị này chỉ là
+            # fallback cho các caller không dùng cơ chế xoay model.
+            model: ${GEMINI_CHAT_MODEL:gemini-3.1-flash-lite}
+            temperature: 0.0
     mcp:
       server:
         name: VibeGraph
         version: 1.0.0
-        type: streamable
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   servlet:
     context-path: /
 
 # VibeGraph custom properties
 vibegraph:
+  projects:
+    # Optional. When set, local project rootPath values must resolve inside this directory.
+    allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+
+  # Path to the AI memory / conventions file surfaced by the MCP conventions tool.
+  ai-memory:
+    path: ${VIBEGRAPH_AI_MEMORY_PATH:VibeGraph-specs-2month/ai-memory.md}
+
+  # ── "Manage Caffeines" / Tier 2 LLM — Gemini với xoay API key + xoay model (Failover Matrix) ──
+  # Service thử (key1 × model1→4), cạn key1 thì sang key2 × model1→4, ... Hết key mới báo lỗi.
+  # api-keys: danh sách key (CSV qua GEMINI_API_KEYS, hoặc fallback 1 key GEMINI_API_KEY).
+  # models: chuỗi model ưu tiên thử trên MỖI key.
+  # Vẫn cần vibegraph.usecase.llm.enabled=true để bật tầng LLM cho use-case refinement.
+  ai:
+    gemini:
+      api-keys: ${GEMINI_API_KEYS:}
+      timeout-ms: ${GEMINI_ROTATION_TIMEOUT_MS:12000}
+      models:
+        - ${GEMINI_MODEL_1:gemini-3.5-flash}
+        - ${GEMINI_MODEL_2:gemini-3-flash}
+        - ${GEMINI_MODEL_3:gemini-2.5-flash}
+        - ${GEMINI_MODEL_4:gemini-3.1-flash-lite}
+
+  # Tier 2 semantic refinement of use-case labels via LLM (Gemini). OFF by default: the deterministic
+  # pipeline is the source of truth and fallback. When enabled, the LLM may only RELABEL existing use
+  # cases (grounded to real ids); it can never add/remove nodes or edges. Requires a ChatModel bean
+  # (set GEMINI_API_KEY + spring.ai.model.chat=google-genai).
+  usecase:
+    llm:
+      enabled: ${VIBEGRAPH_USECASE_LLM_ENABLED:false}
+      # Max wait for the LLM relabel call before falling back to deterministic labels (ms).
+      timeout-ms: ${VIBEGRAPH_USECASE_LLM_TIMEOUT_MS:8000}
+
+  # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
+  import:
+    archive:
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      # Writable workspace for uploaded archives. Never the read-only /projects mount.
+      workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
+      ignored-paths:
+        - target
+        - build
+        - .git
+        - .idea
+        - node_modules
+    # GitHub import HTTP timeouts (bound by GitHubImportProperties).
+    github:
+      connect-timeout: ${VIBEGRAPH_GITHUB_CONNECT_TIMEOUT:10s}
+      preflight-request-timeout: ${VIBEGRAPH_GITHUB_PREFLIGHT_TIMEOUT:20s}
+      tarball-request-timeout: ${VIBEGRAPH_GITHUB_TARBALL_TIMEOUT:60s}
+
   watcher:
-    enabled: true
-    debounce-ms: 500
+    enabled: ${VIBEGRAPH_WATCHER_ENABLED:true}
+    debounce-ms: ${VIBEGRAPH_WATCHER_DEBOUNCE_MS:500}
     ignored-paths:
       - target
       - build
@@ -45,18 +127,43 @@ vibegraph:
   cors:
     allowed-origins:
       - http://localhost:5173
+      - http://127.0.0.1:5173
       - http://localhost:3000
 
-  parser:
-    use-cache: true
-    cache-dir: .vibegraph/parse-cache
+  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph). Caps what the
+  # browser receives by default so a huge project cannot freeze the tab during transfer
+  # /JSON.parse. Internal Java consumers still read the full graph directly.
+  graph:
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:1500}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:4000}
+    max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
+    max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 
-  steering:
-    auto-generate: true
-    enabled-tools:
-      - kiro
-      - cursor
-      - claude
+  parser:
+    use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
+    cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+    # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
+    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
+    # When enabled, the frontend still default-hides these deep types so the
+    # architecture graph stays readable (revealed via "Show all").
+    # NOTE: key MUST stay under `parser` — ParserServiceImpl reads
+    # ${vibegraph.parser.deep-cpg-enabled}.
+    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
+
+  # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
+  # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.
+  analyze:
+    max-nodes: ${VIBEGRAPH_ANALYZE_MAX_NODES:200000}
+    max-edges: ${VIBEGRAPH_ANALYZE_MAX_EDGES:600000}
+
+  # Bounded executor for future async analysis/import (bound by AnalysisExecutorProperties).
+  # Not yet wired into the currently-synchronous upload/analyze flow.
+  analysis:
+    executor:
+      core-pool-size: ${VIBEGRAPH_ANALYSIS_CORE_POOL_SIZE:2}
+      max-pool-size: ${VIBEGRAPH_ANALYSIS_MAX_POOL_SIZE:4}
+      queue-capacity: ${VIBEGRAPH_ANALYSIS_QUEUE_CAPACITY:50}
+      thread-name-prefix: ${VIBEGRAPH_ANALYSIS_THREAD_PREFIX:analysis-}
 
 logging:
   level:

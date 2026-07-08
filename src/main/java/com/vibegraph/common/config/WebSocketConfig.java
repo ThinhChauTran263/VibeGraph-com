@@ -1,5 +1,6 @@
 package com.vibegraph.common.config;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -11,25 +12,35 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * Endpoint: /ws/graph-updates
  * Topic prefix: /topic/projects/{id}/...
  *
+ * <p>Allowed origins come from {@code vibegraph.cors.allowed-origins} (the same
+ * {@link CorsProperties} the HTTP CORS layer uses), never a wildcard: the socket
+ * streams full/incremental graph payloads for any project id, so it must honour the
+ * same origin allow-list as the REST API to avoid cross-origin data exfiltration.
+ *
  * TODO:
- * - Configure SockJS fallback
- * - Set allowed origins from properties
  * - Configure heartbeat
  */
 @Configuration
+@EnableConfigurationProperties(CorsProperties.class)
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    private final String[] allowedOrigins;
+
+    public WebSocketConfig(CorsProperties properties) {
+        this.allowedOrigins = properties.getAllowedOrigins().toArray(String[]::new);
+    }
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // TODO: Configure broker
-        // config.enableSimpleBroker("/topic");
-        // config.setApplicationDestinationPrefixes("/app");
+        config.enableSimpleBroker("/topic");
+        config.setApplicationDestinationPrefixes("/app");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // TODO: Register /ws/graph-updates endpoint
-        // registry.addEndpoint("/ws/graph-updates").setAllowedOriginPatterns("*").withSockJS();
+        registry.addEndpoint("/ws/graph-updates")
+                .setAllowedOrigins(allowedOrigins)
+                .withSockJS();
     }
 }

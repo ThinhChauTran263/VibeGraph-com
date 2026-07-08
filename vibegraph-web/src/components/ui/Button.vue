@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'UiButton' })
+
 defineProps<{
   variant?: 'primary' | 'secondary' | 'ghost'
   size?: 'sm' | 'md' | 'lg'

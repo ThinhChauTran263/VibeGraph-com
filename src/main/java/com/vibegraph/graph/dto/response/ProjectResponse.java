@@ -1,5 +1,7 @@
 package com.vibegraph.graph.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,12 +10,18 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProjectResponse {
     private String id;
     private String name;
+    /**
+     * Absolute server-side path. Used internally by the analyze/import flows via
+     * {@code getRootPath()}, but excluded from API responses so the absolute server
+     * path is never leaked to clients.
+     */
+    @JsonIgnore
     private String rootPath;
     private Instant createdAt;
     private Instant lastAnalyzedAt;
@@ -21,4 +29,6 @@ public class ProjectResponse {
     private int totalNodes;
     private int totalEdges;
     private String status;
+    /** Analysis progress 0-100: 0 until analysis finishes, 100 when ANALYZED. */
+    private int progress;
 }

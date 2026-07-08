@@ -1,7 +1,836 @@
 /**
  * Sigma.js graph lifecycle, rendering, and interaction composable.
- * Handles: init, destroy, node/edge reducers, focus mode, zoom.
+ * Handles: init, destroy, node/edge reducers, ForceAtlas2 layout, zoom.
  */
-export function useSigma() {
-  // TODO: Implement Sigma.js integration
+
+import { shallowRef, onUnmounted, type Ref } from 'vue'
+import Sigma from 'sigma'
+import type Graph from 'graphology'
+import type { Settings } from 'sigma/settings'
+import FA2Layout from 'graphology-layout-forceatlas2/worker'
+import forceAtlas2 from 'graphology-layout-forceatlas2'
+import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
+import {
+  SIGMA_BASE_NODE_LABEL_SIZE,
+  SIGMA_BASE_EDGE_LABEL_SIZE,
+  SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+  FA2_GRAVITY,
+  FA2_SCALING_RATIO,
+  FA2_BARNES_HUT_MIN_NODES,
+  FA2_SLOW_DOWN,
+  FA2_ITERATIONS,
+  FA2_LINLOG_MODE,
+  FA2_OUTBOUND_ATTRACTION,
+  FA2_ADJUST_SIZES,
+  FA2_STRONG_GRAVITY_MODE,
+  FA2_OUTLIER_CLAMP_PERCENTILE,
+  FA2_LARGE_GRAPH_THRESHOLD,
+  FA2_GRAVITY_LARGE,
+  FA2_SCALING_RATIO_LARGE,
+  FA2_ITERATIONS_LARGE,
+  LAYOUT_NORMALIZE_SPAN,
+  NOVERLAP_ENABLED,
+  NOVERLAP_MARGIN,
+  NOVERLAP_MAX_ITERATIONS,
+  LAYOUT_AUTO_STOP_MS,
+  ZOOM_FIT_DURATION_MS,
+  SIGMA_MAX_EDGE_LABELS_PER_FRAME,
+  SIGMA_MIN_EDGE_THICKNESS,
+} from '@/lib/runtimeConfig'
+import {
+  drawDefaultNodeLabel,
+  drawHighlightNodeHover,
+  drawEdgeTypeLabel,
+  setLabelZoom,
+  resetEdgeLabelBudget,
+  setShowEdgeKind,
+} from '@/lib/sigmaRenderers'
+import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
+import type { FocusPartition } from '@/lib/focusMode'
+
+export interface UseSigmaOptions {
+  container: Ref<HTMLDivElement | null>
+  onNodeClick?: (nodeId: string) => void
+  onNodeDoubleClick?: (nodeId: string) => void
+  onStageClick?: () => void
+  onNodeHover?: (nodeId: string) => void
+  onNodeLeave?: () => void
+  onCameraRatioChange?: (ratio: number) => void
+}
+
+// Base label sizes (on-screen px) at the fit view. The actual per-zoom scaling is
+// applied live inside the label renderers (see setLabelZoom / sigmaRenderers), NOT
+// via sigma.setSetting — so zooming never triggers a full refresh (no "reload"
+// flash) and labels resize smoothly as the camera renders each frame.
+const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
+const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
+
+export function useSigma(options: UseSigmaOptions) {
+  const { container, onNodeClick, onNodeDoubleClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
+    options
+
+  const sigmaInstance = shallowRef<Sigma | null>(null)
+  const graphInstance = shallowRef<Graph | null>(null)
+  const layout = shallowRef<FA2Layout | null>(null)
+  const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
+  const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
+  // Cleanup for the manual right/middle-button canvas panning listeners.
+  const panCleanup = shallowRef<null | (() => void)>(null)
+  // Observes the canvas container so Sigma re-measures whenever its box changes
+  // (sidebar collapse, detail panel open/close, responsive grid reflow, or a
+  // first-paint mis-measure). Without this the WebGL surface keeps a stale size
+  // and the graph renders offset to one edge / squished. See attachResizeObserver.
+  const resizeObserver = shallowRef<ResizeObserver | null>(null)
+  // rAF handle that coalesces a burst of resize callbacks into a single refresh.
+  const resizeRaf = shallowRef<number | null>(null)
+
+  // Node currently being dragged (null when idle). While set, the camera pan is
+  // disabled and the layout worker is stopped so the node stays where dropped.
+  const draggedNode = shallowRef<string | null>(null)
+
+  // True once the pointer actually MOVED while holding a node. Sigma still fires  // `clickNode` on the mouse-up that ends a drag, which would wrongly select the
+  // node the user was just repositioning. We use this flag to swallow exactly
+  // that one click. A plain click (no movement) never sets it, so selecting by
+  // clicking still works.
+  const dragMoved = shallowRef(false)
+
+  // Last applied edge-label visibility, so setEdgeLabelsVisible can skip redundant
+  // setSetting + full refresh churn. Reset on each init (new Sigma defaults false).
+  let lastEdgeLabelsVisible: boolean | null = null
+
+  /**
+   * Initialize Sigma with a Graphology graph.
+   * Starts ForceAtlas2 layout in a web worker.
+   */
+  function init(graph: Graph) {
+    // Preserve the camera across a REBUILD (filter toggle / lazy expand) so
+    // re-showing a node type doesn't snap the view back to the default framing.
+    // On the very first init there is no prior Sigma → null → default framing
+    // (load() then calls zoomToFit once the canvas has its final box).
+    const prevCameraState = sigmaInstance.value?.getCamera().getState() ?? null
+
+    dispose()
+
+    if (!container.value) return
+
+    graphInstance.value = graph
+
+    // Seed node positions from the cache and run ForceAtlas2 only for nodes that
+    // have never been laid out. A pure filter toggle re-shows nodes that are all
+    // cached → the expensive layout pass is skipped entirely and positions are
+    // reused, which is what removes the freeze on re-showing a node type.
+    applyCachedLayout(graph)
+
+    const sigma = new Sigma(graph, container.value, {
+      allowInvalidContainer: true,
+      renderEdgeLabels: false,
+      defaultEdgeType: 'line',
+      zIndex: true,
+      // Edges render at a constant thin width regardless of zoom: SIGMA_EDGE_SIZE is
+      // tiny so this floor dominates, pinning line thickness instead of letting it
+      // balloon with the default size/√ratio zoom scaling.
+      minEdgeThickness: SIGMA_MIN_EDGE_THICKNESS,
+      // Keep edges + labels drawn during pan/zoom (no vanish-then-repaint "reload"
+      // flash). Label scaling is done live in the renderers without setSetting, so
+      // there is no refresh churn; a filtered few-hundred-node graph paints these
+      // cheaply every frame.
+      hideEdgesOnMove: false,
+      hideLabelsOnMove: false,
+      labelRenderedSizeThreshold: SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+      labelColor: { color: DEFAULT_LABEL_COLOR },
+      labelFont: 'Inter, system-ui, sans-serif',
+      labelSize: BASE_NODE_LABEL_SIZE,
+      labelWeight: '600',
+      // Edge labels render in their own edge-type color (per-edge `labelColor`
+      // attribute set by graphAdapter / focus reducer), matching the Edge Types
+      // legend. Sigma's edge label renderer draws text only (no white box). The
+      // `color` fallback applies when an edge has no labelColor attribute.
+      edgeLabelColor: { attribute: 'labelColor', color: '#cbd5e1' },
+      edgeLabelSize: BASE_EDGE_LABEL_SIZE,
+      // Override Sigma's default hover renderer (which paints a solid white
+      // label box) and label renderer with text-only variants. See
+      // lib/sigmaRenderers.ts.
+      defaultDrawNodeLabel: drawDefaultNodeLabel,
+      defaultDrawNodeHover: drawHighlightNodeHover,
+      // Edge labels: hide entirely when the full text doesn't fit the edge
+      // (no "DEFI…" truncation). See lib/sigmaRenderers.ts.
+      defaultDrawEdgeLabel: drawEdgeTypeLabel,
+    })
+
+    sigmaInstance.value = sigma
+    // A fresh Sigma starts with renderEdgeLabels:false (see settings above). Reset
+    // the visibility guard so the first setEdgeLabelsVisible after a rebuild always
+    // applies instead of being skipped as a false no-op.
+    lastEdgeLabelsVisible = false
+
+    // Refill the per-frame edge-label draw budget at the start of every frame so a
+    // zoom level with many visible edges can't stack hundreds of text draws.
+    sigma.on('beforeRender', () => resetEdgeLabelBudget(SIGMA_MAX_EDGE_LABELS_PER_FRAME))
+
+    // Ghost background canvas: a Sigma-managed 2D canvas inserted physically below
+    // the WebGL edges layer. Unrelated nodes/edges are hidden in this Sigma during
+    // focus and redrawn here, so a background node can never cover a foreground
+    // edge. Shares Sigma's camera, so pan/zoom/drag stay aligned automatically.
+    ghostLayer.value = attachGhostLayer(sigma, graph)
+
+    // Register node click handler
+    if (onNodeClick) {      sigma.on('clickNode', ({ node }) => {
+        // Swallow the click that ends a drag so repositioning a node does not
+        // also select / highlight it. See `dragMoved`.
+        if (dragMoved.value) {
+          dragMoved.value = false
+          return
+        }
+        onNodeClick(node)
+      })
+    }
+
+    // Background (stage) click deselects
+    if (onStageClick) {
+      sigma.on('clickStage', () => {
+        onStageClick()
+      })
+    }
+
+    // Double-click a node to lazily expand its neighborhood. We swallow Sigma's default
+    // double-click zoom so the gesture means "expand", not "zoom in".
+    if (onNodeDoubleClick) {
+      sigma.on('doubleClickNode', ({ node, event }) => {
+        event.preventSigmaDefault()
+        onNodeDoubleClick(node)
+      })
+    }
+
+    registerDragHandlers(sigma, graph)
+
+    // Right/middle-button drag panning (Sigma natively pans only with the left
+    // button). Suppress the context menu so a right-drag pans instead of opening
+    // the browser menu.
+    if (container.value) {
+      panCleanup.value = registerCanvasPanning(sigma, container.value)
+    }
+
+    // Re-measure on any container resize so the graph stays correctly framed.
+    attachResizeObserver(sigma)
+
+    const camera = sigma.getCamera()
+    // Restore the pre-rebuild camera (see prevCameraState) so filter toggles and
+    // expansions keep the user's current pan/zoom instead of resetting the view.
+    if (prevCameraState) camera.setState(prevCameraState)
+    let lastRatio = camera.getState().ratio
+    // zoom level relative to the fit view (ratio 1 = fit): 1/ratio grows as you zoom in.
+    // Feed it to the renderers (no setSetting → no refresh flash); Sigma repaints on
+    // camera move and the label renderers read this value to size text live.
+    setLabelZoom(1 / lastRatio)
+    onCameraRatioChange?.(lastRatio)
+    camera.on('updated', () => {
+      const ratio = camera.getState().ratio
+      if (ratio === lastRatio) return
+      lastRatio = ratio
+      setLabelZoom(1 / ratio)
+      onCameraRatioChange?.(ratio)
+    })
+
+    // Layout is precomputed synchronously (settleLayout) before paint, so there is
+    // no live worker animation. Node positions are static until the user drags.
+  }
+
+  /**
+   * Persistent node position cache. Survives graph rebuilds (filter toggles, lazy
+   * expansions) so re-showing nodes reuses their settled coordinates instead of
+   * recomputing the whole ForceAtlas2 layout — and re-seeding every node to a new
+   * random spot — on every rebuild. Cleared on project switch via resetLayout().
+   */
+  const positionCache = new Map<string, { x: number; y: number }>()
+
+  /** Drop all cached positions so the next init recomputes a fresh layout. */
+  function resetLayout(): void {
+    positionCache.clear()
+  }
+
+  /**
+   * Seed node positions from the cache and run ForceAtlas2 only for nodes that
+   * have no cached position yet (first load or a lazy expansion). When every node
+   * is already cached — the filter toggle case — the layout pass is skipped
+   * entirely, which removes the freeze on re-showing a node type. Resulting
+   * positions are written back so the next rebuild is just as cheap.
+   */
+  function applyCachedLayout(graph: Graph): void {
+    if (graph.order === 0) return
+
+    let uncached = 0
+    graph.forEachNode((id) => {
+      const cached = positionCache.get(id)
+      if (cached) {
+        graph.setNodeAttribute(id, 'x', cached.x)
+        graph.setNodeAttribute(id, 'y', cached.y)
+      } else {
+        uncached++
+      }
+    })
+
+    // Only pay for a global relayout when at least one node is new; a toggle that
+    // re-shows already-laid-out nodes hits none of this.
+    if (uncached > 0) {
+      settleLayout(graph)
+    }
+
+    graph.forEachNode((id) => {
+      positionCache.set(id, {
+        x: graph.getNodeAttribute(id, 'x') as number,
+        y: graph.getNodeAttribute(id, 'y') as number,
+      })
+    })
+  }
+
+  /**
+   * Compute the ForceAtlas2 layout synchronously (no worker, no animation) and
+   * write final x/y onto the graph before it is first rendered.
+   *
+   * Small graphs keep the base profile (already spread well). Large graphs switch
+   * to a cluster-separating profile — LinLog mode + dissuade-hubs + lower gravity
+   * and scaling + more iterations — which turns a dense hairball into visibly
+   * separated communities. An optional Noverlap pass then removes residual node
+   * overlap without collapsing the cluster structure FA2 produced.
+   */
+  function settleLayout(graph: Graph): void {
+    if (graph.order === 0) return
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
+    try {
+      forceAtlas2.assign(graph, {
+        iterations: isLarge ? FA2_ITERATIONS_LARGE : FA2_ITERATIONS,
+        settings: {
+          gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+          scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
+          barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
+          slowDown: FA2_SLOW_DOWN,
+          linLogMode: FA2_LINLOG_MODE,
+          outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+          adjustSizes: FA2_ADJUST_SIZES,
+          strongGravityMode: FA2_STRONG_GRAVITY_MODE,
+        },
+      })
+    } catch {
+      // Leave the random seed positions if the layout fails.
+    }
+
+    // Bound far-flung outliers first so the camera frames the main body, THEN run
+    // Noverlap as the final pass so it also resolves any pile-up the clamp creates
+    // on the bounding ring — guaranteeing no two nodes render touching.
+    if (isLarge) clampOutliers(graph, FA2_OUTLIER_CLAMP_PERCENTILE)
+
+    // Normalize the settled layout to a fixed span so node sizes (rendered in
+    // layout space, see Sigma `itemSizesReference`) map to a predictable pixel
+    // radius and the Noverlap margin becomes a consistent on-screen gap.
+    if (isLarge) normalizeSpan(graph, LAYOUT_NORMALIZE_SPAN)
+
+    if (isLarge && NOVERLAP_ENABLED) {
+      try {
+        resolveOverlaps(graph, NOVERLAP_MARGIN, NOVERLAP_MAX_ITERATIONS)
+      } catch {
+        // Keep the FA2 layout if the overlap-removal pass fails.
+      }
+    }
+  }
+
+  /**
+   * Guarantee no two nodes render overlapping by separating every pair closer than
+   * (radius_a + radius_b + margin), in the SAME layout-coordinate space Sigma uses
+   * for node sizes (`itemSizesReference: 'positions'`). Unlike graphology's noverlap
+   * — which nudges only one node of each pair by a small fixed step and plateaus
+   * with residual overlaps in dense clusters — this pushes BOTH nodes apart by the
+   * FULL half-overlap along their axis each pass, which converges reliably. A uniform
+   * spatial grid (cell = largest node diameter + margin) keeps it O(n) per pass.
+   */
+  function resolveOverlaps(graph: Graph, margin: number, maxIterations: number): void {
+    const ids = graph.nodes()
+    const n = ids.length
+    if (n < 2) return
+    const X = new Float64Array(n)
+    const Y = new Float64Array(n)
+    const S = new Float64Array(n)
+    let maxS = 0
+    for (let i = 0; i < n; i++) {
+      X[i] = graph.getNodeAttribute(ids[i]!, 'x') as number
+      Y[i] = graph.getNodeAttribute(ids[i]!, 'y') as number
+      const s = graph.getNodeAttribute(ids[i]!, 'size') as number
+      S[i] = s
+      if (s > maxS) maxS = s
+    }
+    const cell = 2 * maxS + margin + 1
+    const jitter = (seed: number) => {
+      // deterministic pseudo-random in [-0.5, 0.5] to split exactly-coincident nodes
+      const v = Math.sin(seed * 12.9898) * 43758.5453
+      return v - Math.floor(v) - 0.5
+    }
+    for (let it = 0; it < maxIterations; it++) {
+      let minX = Infinity
+      let minY = Infinity
+      for (let i = 0; i < n; i++) {
+        if (X[i]! < minX) minX = X[i]!
+        if (Y[i]! < minY) minY = Y[i]!
+      }
+      const grid = new Map<number, number[]>()
+      const cols = 1 << 15
+      const key = (cx: number, cy: number) => cx * cols + cy
+      for (let i = 0; i < n; i++) {
+        const cx = Math.floor((X[i]! - minX) / cell)
+        const cy = Math.floor((Y[i]! - minY) / cell)
+        const k = key(cx, cy)
+        const arr = grid.get(k)
+        if (arr) arr.push(i)
+        else grid.set(k, [i])
+      }
+      let moved = false
+      for (let i = 0; i < n; i++) {
+        const xi = X[i]!
+        const yi = Y[i]!
+        const si = S[i]!
+        const cx = Math.floor((xi - minX) / cell)
+        const cy = Math.floor((yi - minY) / cell)
+        for (let gx = cx - 1; gx <= cx + 1; gx++) {
+          for (let gy = cy - 1; gy <= cy + 1; gy++) {
+            const arr = grid.get(key(gx, gy))
+            if (!arr) continue
+            for (const j of arr) {
+              if (j <= i) continue
+              let dx = X[j]! - xi
+              let dy = Y[j]! - yi
+              let dist = Math.hypot(dx, dy)
+              const minDist = si + S[j]! + margin
+              if (dist < minDist) {
+                moved = true
+                if (dist < 1e-6) {
+                  dx = jitter(i + 1)
+                  dy = jitter(j + 1)
+                  dist = Math.hypot(dx, dy) || 1
+                }
+                const push = (minDist - dist) / 2
+                const ux = dx / dist
+                const uy = dy / dist
+                X[i] = X[i]! - ux * push
+                Y[i] = Y[i]! - uy * push
+                X[j] = X[j]! + ux * push
+                Y[j] = Y[j]! + uy * push
+              }
+            }
+          }
+        }
+      }
+      if (!moved) break
+    }
+    for (let i = 0; i < n; i++) {
+      graph.setNodeAttribute(ids[i]!, 'x', X[i]!)
+      graph.setNodeAttribute(ids[i]!, 'y', Y[i]!)
+    }
+  }
+
+  /**
+   * Uniformly rescale node positions about their centroid so the layout's larger
+   * bounding-box dimension equals `targetSpan` units. No-op when disabled (0) or
+   * the graph is degenerate.
+   */
+  function normalizeSpan(graph: Graph, targetSpan: number): void {
+    if (targetSpan <= 0 || graph.order === 0) return
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    graph.forEachNode((_id, attr) => {
+      const x = attr.x as number
+      const y = attr.y as number
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    })
+    const span = Math.max(maxX - minX, maxY - minY)
+    if (!(span > 0)) return
+    const k = targetSpan / span
+    if (Math.abs(k - 1) < 1e-3) return
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+    graph.forEachNode((id, attr) => {
+      graph.setNodeAttribute(id, 'x', cx + ((attr.x as number) - cx) * k)
+      graph.setNodeAttribute(id, 'y', cy + ((attr.y as number) - cy) * k)
+    })
+  }
+
+  /**
+   * Move every node whose distance from the centroid exceeds the given percentile
+   * radius onto that radius (keeping its direction). Disabled when percentile is
+   * 0 or ≥ 1. Operates in place on the graph's x/y attributes.
+   */
+  function clampOutliers(graph: Graph, percentile: number): void {
+    if (percentile <= 0 || percentile >= 1 || graph.order === 0) return
+    let sumX = 0
+    let sumY = 0
+    const nodes: string[] = []
+    graph.forEachNode((id, attr) => {
+      sumX += attr.x as number
+      sumY += attr.y as number
+      nodes.push(id)
+    })
+    const cx = sumX / nodes.length
+    const cy = sumY / nodes.length
+    const radii = nodes.map((id) => {
+      const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+      const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+      return Math.hypot(dx, dy)
+    })
+    const sorted = [...radii].sort((a, b) => a - b)
+    const maxR = sorted[Math.min(sorted.length - 1, Math.floor(percentile * sorted.length))] ?? 0
+    if (!(maxR > 0)) return
+    nodes.forEach((id, i) => {
+      const r = radii[i] ?? 0
+      if (r > maxR) {
+        const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
+        const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
+        const k = maxR / r
+        graph.setNodeAttribute(id, 'x', cx + dx * k)
+        graph.setNodeAttribute(id, 'y', cy + dy * k)
+      }
+    })
+  }
+
+  /**
+   * Re-measure and repaint Sigma whenever its container's box changes.
+   *
+   * Sigma only listens for *window* resizes, not container-only changes (sidebar
+   * collapse, right-hand detail panel opening, responsive grid reflow, or the
+   * canvas being laid out a frame after init). When the box changes underneath a
+   * stale WebGL surface the graph renders offset to one edge or squished. A
+   * ResizeObserver catches every such change; callbacks are coalesced through a
+   * single rAF so a burst of reflows triggers one refresh. refresh() is a no-op
+   * on container size, so observing the container can't loop.
+   */
+  function attachResizeObserver(sigma: Sigma): void {
+    const el = container.value
+    if (!el || typeof ResizeObserver === 'undefined') return
+
+    let lastW = el.clientWidth
+    let lastH = el.clientHeight
+
+    const observer = new ResizeObserver(() => {
+      const w = el.clientWidth
+      const h = el.clientHeight
+      // Ignore zero-size (detached) and no-op callbacks.
+      if (w === 0 || h === 0 || (w === lastW && h === lastH)) return
+      lastW = w
+      lastH = h
+      if (resizeRaf.value !== null) cancelAnimationFrame(resizeRaf.value)
+      resizeRaf.value = requestAnimationFrame(() => {
+        resizeRaf.value = null
+        if (sigmaInstance.value === sigma) sigma.refresh()
+      })
+    })
+
+    observer.observe(el)
+    resizeObserver.value = observer
+  }
+
+  /**
+   * Wire up manual node dragging. Sigma natively distinguishes a click from a
+   * drag (small pointer movement = click, larger = drag), so a real drag does
+   * NOT fire `clickNode` and the selected state is preserved. While dragging we
+   * stop the layout worker and disable camera panning so the node lands and
+   * stays exactly where it is dropped instead of snapping back.
+   */
+  function registerDragHandlers(sigma: Sigma, graph: Graph) {
+    sigma.on('downNode', ({ node }) => {
+      draggedNode.value = node
+      dragMoved.value = false
+      stopLayout()
+      sigma.setSetting('enableCameraPanning', false)
+      if (container.value) container.value.style.cursor = 'grabbing'
+    })
+
+    // Hover affordance: show a grab cursor over a draggable node when idle, and
+    // notify the host so it can drive a temporary hover focus on the graph. We do
+    // NOT emit hover focus mid-drag (the node is being moved, not inspected).
+    sigma.on('enterNode', ({ node }) => {
+      if (!draggedNode.value && container.value) container.value.style.cursor = 'grab'
+      if (!draggedNode.value) onNodeHover?.(node)
+    })
+
+    sigma.on('leaveNode', () => {
+      if (!draggedNode.value && container.value) container.value.style.cursor = ''
+      if (!draggedNode.value) onNodeLeave?.()
+    })
+
+    const mouseCaptor = sigma.getMouseCaptor()
+
+    mouseCaptor.on('mousemovebody', (event) => {
+      // Disable Sigma's native LEFT-drag stage panning entirely — panning is
+      // right/middle-button only (see registerCanvasPanning), matching the
+      // on-canvas Controls hint. Sigma checks `sigmaDefaultPrevented` before its
+      // pan block, so this blocks stage panning while leaving click-selection and
+      // hover intact. Node dragging is still handled below.
+      event.preventSigmaDefault()
+
+      const node = draggedNode.value
+      if (!node) return
+
+      // The pointer moved while holding the node: this is a real drag, so the
+      // click that ends it must not select the node.
+      dragMoved.value = true
+
+      const pos = sigma.viewportToGraph(event)
+      graph.setNodeAttribute(node, 'x', pos.x)
+      graph.setNodeAttribute(node, 'y', pos.y)
+
+      // Prevent the browser's default while a node is being dragged.
+      event.original.preventDefault()
+      event.original.stopPropagation()
+    })
+
+    const releaseDrag = () => {
+      if (!draggedNode.value) return
+      draggedNode.value = null
+      sigma.setSetting('enableCameraPanning', true)
+      if (container.value) container.value.style.cursor = ''
+    }
+
+    mouseCaptor.on('mouseup', releaseDrag)
+  }
+
+  /**
+   * Manual canvas panning with the RIGHT or MIDDLE mouse button.
+   *
+   * Sigma's built-in pan only responds to the left button; the on-canvas Controls
+   * hint promises "Right / Mid → Pan", so we implement it here. We reuse Sigma's
+   * own conversion ({@code viewportToFramedGraph}) to shift the camera by the same
+   * framed-graph delta its left-drag panning uses, and suppress the context menu
+   * so a right-drag pans instead of opening the browser menu.
+   *
+   * Returns a disposer that removes every listener.
+   */
+  function registerCanvasPanning(sigma: Sigma, el: HTMLDivElement): () => void {
+    let panning = false
+    let lastX = 0
+    let lastY = 0
+
+    const localPos = (event: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    }
+
+    const onContextMenu = (event: MouseEvent) => event.preventDefault()
+
+    const onDown = (event: MouseEvent) => {
+      if (event.button !== 1 && event.button !== 2) return
+      panning = true
+      const point = localPos(event)
+      lastX = point.x
+      lastY = point.y
+      el.style.cursor = 'grabbing'
+      event.preventDefault()
+    }
+
+    const onMove = (event: MouseEvent) => {
+      if (!panning) return
+      const point = localPos(event)
+      const last = sigma.viewportToFramedGraph({ x: lastX, y: lastY })
+      const curr = sigma.viewportToFramedGraph({ x: point.x, y: point.y })
+      const camera = sigma.getCamera()
+      const state = camera.getState()
+      camera.setState({ x: state.x + (last.x - curr.x), y: state.y + (last.y - curr.y) })
+      lastX = point.x
+      lastY = point.y
+    }
+
+    const onUp = () => {
+      if (!panning) return
+      panning = false
+      el.style.cursor = ''
+    }
+
+    el.addEventListener('contextmenu', onContextMenu)
+    el.addEventListener('mousedown', onDown)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+
+    return () => {
+      el.removeEventListener('contextmenu', onContextMenu)
+      el.removeEventListener('mousedown', onDown)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }
+
+  /**
+   * Start ForceAtlas2 layout. Stops automatically after a timeout.
+   */
+  function startLayout(graph: Graph) {
+    stopLayout()
+
+    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
+    const fa2 = new FA2Layout(graph, {
+      settings: {
+        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
+        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
+        barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
+        slowDown: FA2_SLOW_DOWN,
+        linLogMode: FA2_LINLOG_MODE,
+        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
+        adjustSizes: FA2_ADJUST_SIZES,
+        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
+      },
+    })
+
+    fa2.start()
+    layout.value = fa2
+
+    layoutStopTimer.value = setTimeout(() => {
+      if (layout.value === fa2) {
+        stopLayout()
+      }
+    }, LAYOUT_AUTO_STOP_MS)
+  }
+
+  /**
+   * Stop the running layout.
+   */
+  function stopLayout() {
+    if (layoutStopTimer.value) {
+      clearTimeout(layoutStopTimer.value)
+      layoutStopTimer.value = null
+    }
+
+    if (layout.value) {
+      layout.value.kill()
+      layout.value = null
+    }
+  }
+
+  /**
+   * Dispose Sigma instance and layout.
+   */
+  function dispose() {
+    stopLayout()
+    if (resizeObserver.value) {
+      resizeObserver.value.disconnect()
+      resizeObserver.value = null
+    }
+    if (resizeRaf.value !== null) {
+      cancelAnimationFrame(resizeRaf.value)
+      resizeRaf.value = null
+    }
+    if (panCleanup.value) {
+      panCleanup.value()
+      panCleanup.value = null
+    }
+    if (ghostLayer.value) {
+      ghostLayer.value.destroy()
+      ghostLayer.value = null
+    }
+    if (sigmaInstance.value) {
+      sigmaInstance.value.kill()
+      sigmaInstance.value = null
+    }
+    graphInstance.value = null
+  }
+
+  /**
+   * Feed the ghost background layer the focus partition (unrelated nodes/edges to
+   * draw below the foreground). Pass null to clear the ghost layer in normal mode.
+   */
+  function setGhostPartition(partition: FocusPartition | null): void {
+    ghostLayer.value?.setPartition(partition)
+  }
+
+  function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    sigma.setSetting('nodeReducer', reducers.nodeReducer)
+    sigma.setSetting('edgeReducer', reducers.edgeReducer)
+    sigma.refresh()
+  }
+
+  /**
+   * Toggle edge label rendering. Edge labels add clutter at the default view,
+   * so we only show them while a node is focused. Guarded against no-op churn:
+   * `applyFocusReducers` runs on every hover/leave/zoom-threshold event, but the
+   * edge-label visibility only actually flips at a couple of zoom thresholds. A
+   * redundant `setSetting` + `refresh` here reprocesses the whole graph into WebGL
+   * buffers for nothing — a real per-interaction stall — so skip when unchanged.
+   */
+  function setEdgeLabelsVisible(visible: boolean): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    if (visible === lastEdgeLabelsVisible) return
+    lastEdgeLabelsVisible = visible
+    sigma.setSetting('renderEdgeLabels', visible)
+    sigma.refresh()
+  }
+
+  /**
+   * Toggle the target-node kind suffix on edge labels (e.g. "IMPORTS Class"). A
+   * cheap repaint (no re-index) since it only changes label text/colors.
+   */
+  function setEdgeKindVisible(visible: boolean): void {
+    setShowEdgeKind(visible)
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+  }
+
+  /**
+   * Zoom to fit the entire graph in view.
+   */
+  function zoomToFit() {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    const camera = sigma.getCamera()
+    camera.animatedReset({ duration: ZOOM_FIT_DURATION_MS })
+  }
+
+  /**
+   * Animate the camera to center a node in the viewport (used when a Data Flow
+   * step is selected). No-op when the node is absent from the live graph.
+   */
+  function focusNode(nodeId: string): void {
+    const sigma = sigmaInstance.value
+    if (!sigma || !graphInstance.value?.hasNode(nodeId)) return
+    const display = sigma.getNodeDisplayData(nodeId)
+    if (!display) return
+    sigma.getCamera().animate(
+      { x: display.x, y: display.y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
+      { duration: ZOOM_FIT_DURATION_MS },
+    )
+  }
+
+  /**
+   * Re-measure the container and repaint. Needed after the canvas DOM is
+   * detached/re-attached (e.g. a {@code <KeepAlive>} tab switch), otherwise the
+   * WebGL surface can stay blank or keep a stale size.
+   */
+  function refresh(): void {
+    const sigma = sigmaInstance.value
+    if (!sigma) return
+    sigma.refresh()
+  }
+
+  // Cleanup on component unmount
+  onUnmounted(() => {
+    dispose()
+  })
+
+  return {
+    sigmaInstance,
+    graphInstance,
+    draggedNode,
+    init,
+    dispose,
+    refresh,
+    resetLayout,
+    zoomToFit,
+    focusNode,
+    startLayout: () => {
+      if (graphInstance.value) startLayout(graphInstance.value)
+    },
+    stopLayout,
+    setReducers,
+    setEdgeLabelsVisible,
+    setEdgeKindVisible,
+    setGhostPartition,
+  }
 }

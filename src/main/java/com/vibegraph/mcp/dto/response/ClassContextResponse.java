@@ -1,23 +1,74 @@
 package com.vibegraph.mcp.dto.response;
 
+import java.util.List;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ClassContextResponse {
-    private String className;
-    private String fullName;
-    private String layer;
-    private List<String> methods;
-    private List<String> fields;
-    private List<String> dependencies;
-    private List<String> usedBy;
-    private String classDiagramMermaid;
+    private String projectId;
+    private String query;
+    private ClassInfo classInfo;
+    private List<MemberInfo> methods;
+    private List<MemberInfo> fields;
+    private List<RelationInfo> incomingRelations;
+    private List<RelationInfo> outgoingRelations;
+    private List<String> warnings;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ClassInfo {
+        private String id;
+        private String type;
+        private String name;
+        private String fullName;
+        private String layer;
+        private Integer lineNumber;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MemberInfo {
+        private String id;
+        private String type;
+        private String name;
+        private String fullName;
+        private String signature;
+        private String visibility;
+        private Integer lineNumber;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RelationInfo {
+        private String id;
+        private String type;
+        private NodeRef source;
+        private NodeRef target;
+        private Double confidence;
+        private Integer lineNumber;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NodeRef {
+        private String id;
+        private String type;
+        private String name;
+        private String fullName;
+    }
 }

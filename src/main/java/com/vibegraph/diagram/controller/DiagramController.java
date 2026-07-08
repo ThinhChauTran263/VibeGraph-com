@@ -1,30 +1,88 @@
 package com.vibegraph.diagram.controller;
 
-import com.vibegraph.diagram.service.ClassDiagramService;
-import com.vibegraph.diagram.service.SequenceDiagramService;
-import com.vibegraph.diagram.service.UseCaseDiagramService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Locale;
+
+import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.exception.ProjectNotAnalyzedException;
+import com.vibegraph.diagram.dto.response.DiagramResponse;
+import com.vibegraph.diagram.service.ClassDiagramService;
+import com.vibegraph.diagram.service.UseCaseDiagramService;
+import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.service.ProjectService;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * Diagram REST controller.
  *
- * Endpoints:
- * - GET /api/projects/{id}/diagrams/usecase
- * - GET /api/projects/{id}/diagrams/class?package=...
- * - GET /api/projects/{id}/diagrams/sequence?entry=...
+ * <p>Endpoints:
+ * <ul>
+ *   <li>{@code GET /api/projects/{projectId}/diagrams/usecase?style=uml&mode=flat|grouped} —
+ *       inferred business UML use case diagram</li>
+ *   <li>{@code GET /api/projects/{projectId}/diagrams/class?package=...}</li>
+ * </ul>
  *
- * TODO: Implement endpoints
+ * <p>All endpoints first validate that the project exists and is fully analyzed,
+ * so callers get a clear {@code PROJECT_NOT_FOUND} (404) or
+ * {@code PROJECT_NOT_ANALYZED} (409) instead of a misleading empty diagram. Invalid
+ * {@code style}/{@code mode} values yield {@code BAD_REQUEST} (400).
+ *
+ * <p>Note: Sequence diagram deferred (FR-06 post-2-month scope).
  */
 @RestController
 @RequestMapping("/api/projects/{projectId}/diagrams")
 @RequiredArgsConstructor
 public class DiagramController {
 
+    private static final String STYLE_UML = "uml";
+
     private final UseCaseDiagramService useCaseDiagramService;
     private final ClassDiagramService classDiagramService;
-    private final SequenceDiagramService sequenceDiagramService;
+    private final ProjectService projectService;
 
-    // TODO: Add endpoint methods
+    @GetMapping("/usecase")
+    public ResponseEntity<ApiResponse<Object>> getUseCaseDiagram(
+            @PathVariable String projectId,
+            @RequestParam(name = "style", required = false, defaultValue = STYLE_UML) String style,
+            @RequestParam(name = "mode", required = false) String mode) {
+        requireAnalyzed(projectId);
+        String normalizedStyle = style == null ? STYLE_UML : style.trim().toLowerCase(Locale.ROOT);
+        if (!STYLE_UML.equals(normalizedStyle)) {
+            throw new IllegalArgumentException(
+                    "Invalid style '" + style + "'. Supported styles: uml.");
+        }
+        return ResponseEntity.ok(ApiResponse.success(useCaseDiagramService.generateUmlUseCase(projectId, mode)));
+    }
+
+    @GetMapping("/class")
+    public ResponseEntity<ApiResponse<DiagramResponse>> getClassDiagram(
+            @PathVariable String projectId,
+            @RequestParam(name = "package", required = false) String packageFilter) {
+        requireAnalyzed(projectId);
+        return ResponseEntity.ok(
+                ApiResponse.success(classDiagramService.generateClassDiagram(projectId, packageFilter)));
+    }
+
+    /**
+     * Validate that the project exists and has been analyzed.
+     *
+     * @throws com.vibegraph.common.exception.ProjectNotFoundException if unknown (→ 404)
+     * @throws ProjectNotAnalyzedException                             if not yet ANALYZED (→ 409)
+     */
+    private void requireAnalyzed(String projectId) {
+        ProjectResponse project = projectService.getProject(projectId);
+        if (!ProjectStatus.ANALYZED.name().equals(project.getStatus())) {
+            throw new ProjectNotAnalyzedException(
+                    "Project '" + projectId + "' is not analyzed yet (status: " + project.getStatus()
+                            + "). Run analysis before requesting diagrams.");
+        }
+    }
 }
