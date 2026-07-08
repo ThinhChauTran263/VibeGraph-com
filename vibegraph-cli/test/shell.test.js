@@ -8,10 +8,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   completeShellLine,
+  getShellSuggestions,
   isShellExitCommand,
   isShellHelpCommand,
   parseShellArgs,
   renderInteractiveHeader,
+  renderShellSuggestionPanel,
 } from "../bin/vibegraph.js";
 
 const cliPath = fileURLToPath(new URL("../bin/vibegraph.js", import.meta.url));
@@ -134,6 +136,27 @@ test("shell completer suggests slash commands and command templates", () => {
     "  config show",
     "  config set-url ",
   ], "  config s"]);
+});
+
+test("live shell suggestions filter as the user types", () => {
+  assert.deepEqual(
+    getShellSuggestions("/h").map(({ command }) => command),
+    ["/help"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("projects p").map(({ command }) => command),
+    ["projects push "],
+  );
+  assert.deepEqual(getShellSuggestions("").map(({ command }) => command), []);
+});
+
+test("live shell suggestion panel includes descriptions", () => {
+  const panel = renderShellSuggestionPanel("/");
+
+  assert.match(panel, /\/help/);
+  assert.match(panel, /Show help and available commands/);
+  assert.match(panel, /\/exit/);
+  assert.doesNotMatch(panel, /projects list/);
 });
 
 test("parseShellArgs preserves quoted strings and Windows paths", () => {

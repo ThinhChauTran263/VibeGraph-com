@@ -4,7 +4,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { createInterface } from "node:readline/promises";
+import { createInterface, emitKeypressEvents } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,30 +19,30 @@ const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vi
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
 const CLI_VERSION = "0.1.0";
-const SHELL_COMPLETIONS = [
-  "/help",
-  "/exit",
-  "/quit",
-  "help",
-  "exit",
-  "quit",
-  "doctor",
-  "me",
-  "logout",
-  "config show",
-  "config set-url ",
-  "register --email ",
-  "login --email ",
-  "projects list",
-  "projects create --path ",
-  "projects import-local --path ",
-  "projects analyze ",
-  "projects delete ",
-  "projects push ",
-  "projects status ",
-  "watch ",
-  "ignore init",
-  "ignore init --root "
+const SHELL_COMMANDS = [
+  { command: "/help", description: "Show help and available commands" },
+  { command: "/exit", description: "Exit the VibeGraph shell" },
+  { command: "/quit", description: "Exit the VibeGraph shell" },
+  { command: "help", description: "Show help and available commands" },
+  { command: "exit", description: "Exit the VibeGraph shell" },
+  { command: "quit", description: "Exit the VibeGraph shell" },
+  { command: "doctor", description: "Check backend health" },
+  { command: "me", description: "Show the current authenticated user" },
+  { command: "logout", description: "Clear local auth state" },
+  { command: "config show", description: "Show API URL and auth state" },
+  { command: "config set-url ", description: "Set backend API URL" },
+  { command: "register --email ", description: "Create an account and log in" },
+  { command: "login --email ", description: "Log in with email and password" },
+  { command: "projects list", description: "List your projects" },
+  { command: "projects create --path ", description: "Create a project from a backend path" },
+  { command: "projects import-local --path ", description: "Import a local Docker-mounted project" },
+  { command: "projects analyze ", description: "Analyze a project graph" },
+  { command: "projects delete ", description: "Delete a project" },
+  { command: "projects push ", description: "Push local file changes" },
+  { command: "projects status ", description: "Show project status" },
+  { command: "watch ", description: "Watch a local project and push changes" },
+  { command: "ignore init", description: "Create a .vibegraphignore file" },
+  { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
 ];
 const ANSI = {
   reset: "\x1b[0m",
@@ -182,34 +182,61 @@ async function startInteractiveShell() {
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
+    prompt: "vibegraph> ",
     completer: completeShellLine,
     historySize: 100,
     removeHistoryDuplicates: true,
   });
 
-  try {
-    while (true) {
-      const line = (await readline.question("vibegraph> ")).trim();
+  let processing = false;
+  const refreshSuggestions = () => {
+    if (!processing) {
+      renderLiveSuggestions(readline.line || "");
+    }
+  };
+
+  emitKeypressEvents(process.stdin, readline);
+  process.stdin.on("keypress", refreshSuggestions);
+
+  return new Promise((resolve) => {
+    readline.on("line", async (input) => {
+      processing = true;
+      clearLiveSuggestions();
+      const line = input.trim();
       if (!line) {
-        continue;
+        processing = false;
+        readline.prompt();
+        return;
       }
       if (isShellExitCommand(line)) {
+        readline.close();
         return;
       }
       if (isShellHelpCommand(line)) {
         printShellHelp();
-        continue;
+        processing = false;
+        readline.prompt();
+        return;
       }
 
       try {
         await dispatchCommand(parseShellArgs(line));
       } catch (error) {
         console.error(error instanceof CliError ? error.message : error?.stack || String(error));
+      } finally {
+        processing = false;
+        readline.prompt();
       }
-    }
-  } finally {
-    readline.close();
-  }
+    });
+
+    readline.on("close", () => {
+      process.stdin.off("keypress", refreshSuggestions);
+      clearLiveSuggestions();
+      resolve();
+    });
+
+    readline.prompt();
+  });
 }
 
 function renderInteractiveHeader(config = {}, cwd = process.cwd()) {
@@ -241,16 +268,54 @@ function isShellHelpCommand(command) {
 }
 
 function completeShellLine(line) {
-  const normalized = line.trimStart();
-  const leadingWhitespace = line.slice(0, line.length - normalized.length);
-  const hits = SHELL_COMPLETIONS.filter((completion) => completion.startsWith(normalized));
-  if (hits.length) {
-    return [hits.map((hit) => `${leadingWhitespace}${hit}`), line];
+  const leadingWhitespace = line.slice(0, line.length - line.trimStart().length);
+  const suggestions = getShellSuggestions(line);
+  return [suggestions.map(({ command }) => `${leadingWhitespace}${command}`), line];
+}
+
+function getShellSuggestions(line, limit = 8) {
+  const normalized = line.trimStart().toLowerCase();
+  if (!normalized) {
+    return [];
   }
-  if (normalized.startsWith("/")) {
-    return [SHELL_COMPLETIONS.filter((completion) => completion.startsWith("/")), line];
+  const candidates = normalized.startsWith("/")
+    ? SHELL_COMMANDS.filter(({ command }) => command.startsWith("/"))
+    : SHELL_COMMANDS;
+  return candidates
+    .filter(({ command }) => command.toLowerCase().startsWith(normalized))
+    .slice(0, limit);
+}
+
+function renderShellSuggestionPanel(line) {
+  const suggestions = getShellSuggestions(line, 6);
+  if (!suggestions.length) {
+    return "";
   }
-  return [SHELL_COMPLETIONS, line];
+  const width = Math.max(...suggestions.map(({ command }) => command.length));
+  return suggestions
+    .map(({ command, description }) => {
+      const padded = command.padEnd(width + 2, " ");
+      return `${colorize(padded, "brightCyan")}${colorize(description, "dim")}`;
+    })
+    .join("\n");
+}
+
+function renderLiveSuggestions(line) {
+  if (!process.stdout.isTTY) {
+    return;
+  }
+  const panel = renderShellSuggestionPanel(line);
+  process.stdout.write("\x1b[s\n\x1b[J");
+  if (panel) {
+    process.stdout.write(`${panel}\n`);
+  }
+  process.stdout.write("\x1b[u");
+}
+
+function clearLiveSuggestions() {
+  if (process.stdout.isTTY) {
+    process.stdout.write("\x1b[s\n\x1b[J\x1b[u");
+  }
 }
 
 function parseShellArgs(line) {
@@ -308,7 +373,9 @@ export {
   isShellExitCommand,
   isShellHelpCommand,
   completeShellLine,
+  getShellSuggestions,
   parseShellArgs,
+  renderShellSuggestionPanel,
   renderInteractiveHeader,
 };
 
