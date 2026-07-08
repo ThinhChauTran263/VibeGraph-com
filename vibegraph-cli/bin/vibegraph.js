@@ -16,6 +16,14 @@ function libImport(moduleName) {
 const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vibegraph");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
+const ANSI = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  magenta: "\x1b[35m",
+  dim: "\x1b[2m"
+};
 
 class CliError extends Error {
   constructor(message, exitCode = 1) {
@@ -77,15 +85,23 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`__     ___ _          ____                 _
-\\ \\   / (_) |__   ___ / ___|_ __ __ _ _ __ | |__
- \\ \\ / /| | '_ \\ / _ \\ |  _| '__/ _\` | '_ \\| '_ \\
-  \\ V / | | |_) |  __/ |_| | | | (_| | |_) | | | |
-   \\_/  |_|_.__/ \\___|\\____|_|  \\__,_| .__/|_| |_|
-                                     |_|
+  const logo = [
+    "__     ___ _          ____                 _",
+    "\\ \\   / (_) |__   ___ / ___|_ __ __ _ _ __ | |__",
+    " \\ \\ / /| | '_ \\ / _ \\ |  _| '__/ _` | '_ \\| '_ \\",
+    "  \\ V / | | |_) |  __/ |_| | | | (_| | |_) | | | |",
+    "   \\_/  |_|_.__/ \\___|\\____|_|  \\__,_| .__/|_| |_|",
+    "                                     |_|"
+  ];
+  const brandedLogo = logo.map((line, index) => {
+    const color = index < 2 ? "cyan" : index < 4 ? "magenta" : "green";
+    return colorize(line, color);
+  }).join("\n");
 
-VibeGraph CLI
-Local patch, graph analysis, and project workflows from your terminal.
+  console.log(`${brandedLogo}
+
+${colorize("VibeGraph CLI", "bold")}
+${colorize("Local patch, graph analysis, and project workflows from your terminal.", "dim")}
 
 Usage:
   vibegraph config show
@@ -111,7 +127,25 @@ Watch:
 Ignore:
   vibegraph ignore init [--root <path>]
 
+Aliases:
+  vibegraph
+  vibegraph-cli
+
 Default API URL: ${DEFAULT_API_URL}`);
+}
+
+function colorize(value, color) {
+  if (!supportsColor()) {
+    return value;
+  }
+  return `${ANSI[color]}${value}${ANSI.reset}`;
+}
+
+function supportsColor() {
+  if (process.env.NO_COLOR) {
+    return false;
+  }
+  return Boolean(process.stdout.isTTY || process.env.FORCE_COLOR);
 }
 
 async function handleConfig(args) {

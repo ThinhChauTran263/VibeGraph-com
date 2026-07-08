@@ -4,7 +4,8 @@
   "description": "Command-line client for VibeGraph local development workflows.",
   "type": "module",
   "bin": {
-    "vibegraph": "./bin/vibegraph.js"
+    "vibegraph": "./bin/vibegraph.js",
+    "vibegraph-cli": "./bin/vibegraph.js"
   },
   "engines": {
     "node": ">=20.0.0"
