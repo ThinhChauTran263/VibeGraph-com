@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,18 +39,34 @@ class CliError extends Error {
   }
 }
 
-main().catch((error) => {
-  if (error instanceof CliError) {
-    console.error(error.message);
-    process.exit(error.exitCode);
-  }
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+if (isDirectRun()) {
+  main().catch((error) => {
+    if (error instanceof CliError) {
+      console.error(error.message);
+      process.exit(error.exitCode);
+    }
+    console.error(error?.stack || String(error));
+    process.exit(1);
+  });
+}
 
 async function main() {
   const args = process.argv.slice(2);
-  const command = args.shift() || "help";
+
+  if (args.length === 0) {
+    if (process.stdin.isTTY) {
+      await startInteractiveShell();
+      return;
+    }
+    printHelp();
+    return;
+  }
+
+  await dispatchCommand(args);
+}
+
+async function dispatchCommand(args) {
+  const [command = "help", ...rest] = args;
 
   switch (command) {
     case "help":
@@ -57,13 +75,13 @@ async function main() {
       printHelp();
       return;
     case "config":
-      await handleConfig(args);
+      await handleConfig(rest);
       return;
     case "register":
-      await handleRegister(args);
+      await handleRegister(rest);
       return;
     case "login":
-      await handleLogin(args);
+      await handleLogin(rest);
       return;
     case "logout":
       await saveConfig({ ...(await loadConfig()), token: undefined, user: undefined });
@@ -73,13 +91,13 @@ async function main() {
       await handleMe();
       return;
     case "projects":
-      await handleProjects(args);
+      await handleProjects(rest);
       return;
     case "watch":
-      await handleWatch(args);
+      await handleWatch(rest);
       return;
     case "ignore":
-      await handleIgnore(args);
+      await handleIgnore(rest);
       return;
     case "doctor":
       await handleDoctor();
@@ -89,10 +107,25 @@ async function main() {
   }
 }
 
+function isDirectRun() {
+  if (!process.argv[1]) {
+    return false;
+  }
+  return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+}
+
 function printHelp() {
   console.log(`${renderHeader()}
 
-Usage:
+${renderHelpBody()}`);
+}
+
+function printShellHelp() {
+  console.log(renderHelpBody());
+}
+
+function renderHelpBody() {
+  return `Usage:
   vibegraph config show
   vibegraph config set-url <url>
   vibegraph register --email <email> --password <password> --name <displayName>
@@ -114,9 +147,128 @@ Watch:
   vibegraph watch <projectId> --root <localPath>
 
 Ignore:
-  vibegraph ignore init [--root <path>]
-`);
+  vibegraph ignore init [--root <path>]`;
 }
+
+async function startInteractiveShell() {
+  const config = await loadConfig();
+  console.log(renderInteractiveHeader(config));
+
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    while (true) {
+      const line = (await readline.question("vibegraph> ")).trim();
+      if (!line) {
+        continue;
+      }
+      if (isShellExitCommand(line)) {
+        return;
+      }
+      if (isShellHelpCommand(line)) {
+        printShellHelp();
+        continue;
+      }
+
+      try {
+        await dispatchCommand(parseShellArgs(line));
+      } catch (error) {
+        console.error(error instanceof CliError ? error.message : error?.stack || String(error));
+      }
+    }
+  } finally {
+    readline.close();
+  }
+}
+
+function renderInteractiveHeader(config = {}, cwd = process.cwd()) {
+  const line = (...parts) => parts.map(([text, color]) => colorize(text, color)).join("");
+  const icon = [
+    line(["    ", "dim"], ["●", "orange"], ["       ", "dim"], ["●", "brightCyan"], ["   ", "dim"]),
+    line(["   ╱ ╲     ╱", "purple"], ["│", "brightCyan"], ["   ", "dim"]),
+    line(["  ", "dim"], ["●", "blue"], ["───", "purple"], ["●", "brightCyan"], ["───", "brightCyan"], ["●", "brightCyan"], [" ", "dim"]),
+    line(["   ╲ ╱   ╱ ", "purple"], ["│", "brightCyan"], ["   ", "dim"]),
+    line(["    ", "dim"], ["●", "purple"], ["───", "brightCyan"], ["●", "brightCyan"], ["──", "brightCyan"], ["╱", "brightCyan"], ["   ", "dim"]),
+    line(["        ╲╱", "brightCyan"], ["      ", "dim"]),
+    line(["         ", "dim"], ["●", "blue"], ["      ", "dim"]),
+  ];
+  const text = [
+    `${colorize("VibeGraph CLI", "bold")} ${colorize(`v${CLI_VERSION}`, "dim")}`,
+    `${colorize("Path", "dim")}: ${cwd}`,
+    `${colorize("API", "dim")}: ${apiUrl(config)}`,
+    colorize("Type /help for commands, /exit to quit.", "dim"),
+  ];
+  return icon.map((row, index) => `${row}  ${text[index] || ""}`).join("\n");
+}
+
+function isShellExitCommand(command) {
+  return ["/exit", "exit", "/quit", "quit"].includes(command.trim().toLowerCase());
+}
+
+function isShellHelpCommand(command) {
+  return ["/help", "help"].includes(command.trim().toLowerCase());
+}
+
+function parseShellArgs(line) {
+  const args = [];
+  let current = "";
+  let quote = null;
+  const trimmed = line.trim();
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    const next = trimmed[index + 1];
+    const afterNext = trimmed[index + 2];
+
+    if (quote && char === "\\" && next === quote && afterNext && !/\s/.test(afterNext)) {
+      current += next;
+      index += 1;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (quote) {
+    throw new CliError("Unclosed quote in command", 2);
+  }
+  if (current) {
+    args.push(current);
+  }
+  return args;
+}
+
+export {
+  isShellExitCommand,
+  isShellHelpCommand,
+  parseShellArgs,
+  renderInteractiveHeader,
+};
 
 function renderHeader() {
   const line = (...parts) => parts.map(([text, color]) => colorize(text, color)).join("");
