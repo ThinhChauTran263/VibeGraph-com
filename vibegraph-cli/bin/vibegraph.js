@@ -19,7 +19,11 @@ const DEFAULT_API_URL = "http://localhost:8080";
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
+  orange: "\x1b[38;5;214m",
+  blue: "\x1b[38;5;63m",
+  purple: "\x1b[38;5;99m",
   cyan: "\x1b[36m",
+  brightCyan: "\x1b[96m",
   green: "\x1b[32m",
   magenta: "\x1b[35m",
   dim: "\x1b[2m"
@@ -85,7 +89,7 @@ async function main() {
 }
 
 function printHelp() {
-  const logo = [
+  const wordmark = [
     "__     ___ _          ____                 _",
     "\\ \\   / (_) |__   ___ / ___|_ __ __ _ _ __ | |__",
     " \\ \\ / /| | '_ \\ / _ \\ |  _| '__/ _` | '_ \\| '_ \\",
@@ -93,12 +97,14 @@ function printHelp() {
     "   \\_/  |_|_.__/ \\___|\\____|_|  \\__,_| .__/|_| |_|",
     "                                     |_|"
   ];
-  const brandedLogo = logo.map((line, index) => {
+  const brandedWordmark = wordmark.map((line, index) => {
     const color = index < 2 ? "cyan" : index < 4 ? "magenta" : "green";
     return colorize(line, color);
   }).join("\n");
 
-  console.log(`${brandedLogo}
+  console.log(`${renderGraphMark()}
+
+${brandedWordmark}
 
 ${colorize("VibeGraph CLI", "bold")}
 ${colorize("Local patch, graph analysis, and project workflows from your terminal.", "dim")}
@@ -132,6 +138,20 @@ Aliases:
   vibegraph-cli
 
 Default API URL: ${DEFAULT_API_URL}`);
+}
+
+function renderGraphMark() {
+  const line = (...parts) => parts.map(([text, color]) => colorize(text, color)).join("");
+  return [
+    line(["          ", "dim"], ["●", "orange"], ["                 ", "dim"], ["●", "brightCyan"]),
+    line(["        ╱ ", "purple"], ["╲", "purple"], ["             ", "brightCyan"], ["╱│", "brightCyan"]),
+    line(["       ╱   ", "purple"], ["●", "blue"], ["──────────", "brightCyan"], ["●", "brightCyan"], [" │", "brightCyan"]),
+    line(["      ", "dim"], ["●", "blue"], ["───", "purple"], ["╱ ╲", "brightCyan"], ["        ", "dim"], ["╱", "brightCyan"], ["│", "brightCyan"]),
+    line(["       ╲ ", "purple"], ["╱", "purple"], ["   ╲      ", "brightCyan"], ["●", "brightCyan"], [" │", "brightCyan"]),
+    line(["        ", "dim"], ["●", "purple"], ["─────", "brightCyan"], ["●", "brightCyan"], ["────╱", "brightCyan"], ["  │", "brightCyan"]),
+    line(["             ╲  ╱", "brightCyan"], ["   │", "brightCyan"]),
+    line(["               ", "dim"], ["●", "blue"], ["    ", "dim"])
+  ].join("\n");
 }
 
 function colorize(value, color) {
