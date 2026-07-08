@@ -16,6 +16,7 @@ function libImport(moduleName) {
 const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vibegraph");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
+const CLI_VERSION = "0.1.0";
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
@@ -89,25 +90,7 @@ async function main() {
 }
 
 function printHelp() {
-  const wordmark = [
-    "__     ___ _          ____                 _",
-    "\\ \\   / (_) |__   ___ / ___|_ __ __ _ _ __ | |__",
-    " \\ \\ / /| | '_ \\ / _ \\ |  _| '__/ _` | '_ \\| '_ \\",
-    "  \\ V / | | |_) |  __/ |_| | | | (_| | |_) | | | |",
-    "   \\_/  |_|_.__/ \\___|\\____|_|  \\__,_| .__/|_| |_|",
-    "                                     |_|"
-  ];
-  const brandedWordmark = wordmark.map((line, index) => {
-    const color = index < 2 ? "cyan" : index < 4 ? "magenta" : "green";
-    return colorize(line, color);
-  }).join("\n");
-
-  console.log(`${renderGraphMark()}
-
-${brandedWordmark}
-
-${colorize("VibeGraph CLI", "bold")}
-${colorize("Local patch, graph analysis, and project workflows from your terminal.", "dim")}
+  console.log(`${renderHeader()}
 
 Usage:
   vibegraph config show
@@ -132,26 +115,30 @@ Watch:
 
 Ignore:
   vibegraph ignore init [--root <path>]
-
-Aliases:
-  vibegraph
-  vibegraph-cli
-
-Default API URL: ${DEFAULT_API_URL}`);
+`);
 }
 
-function renderGraphMark() {
+function renderHeader() {
   const line = (...parts) => parts.map(([text, color]) => colorize(text, color)).join("");
-  return [
-    line(["          ", "dim"], ["●", "orange"], ["                 ", "dim"], ["●", "brightCyan"]),
-    line(["        ╱ ", "purple"], ["╲", "purple"], ["             ", "brightCyan"], ["╱│", "brightCyan"]),
-    line(["       ╱   ", "purple"], ["●", "blue"], ["──────────", "brightCyan"], ["●", "brightCyan"], [" │", "brightCyan"]),
-    line(["      ", "dim"], ["●", "blue"], ["───", "purple"], ["╱ ╲", "brightCyan"], ["        ", "dim"], ["╱", "brightCyan"], ["│", "brightCyan"]),
-    line(["       ╲ ", "purple"], ["╱", "purple"], ["   ╲      ", "brightCyan"], ["●", "brightCyan"], [" │", "brightCyan"]),
-    line(["        ", "dim"], ["●", "purple"], ["─────", "brightCyan"], ["●", "brightCyan"], ["────╱", "brightCyan"], ["  │", "brightCyan"]),
-    line(["             ╲  ╱", "brightCyan"], ["   │", "brightCyan"]),
-    line(["               ", "dim"], ["●", "blue"], ["    ", "dim"])
-  ].join("\n");
+  const icon = [
+    line(["    ", "dim"], ["●", "orange"], ["       ", "dim"], ["●", "brightCyan"], ["   ", "dim"]),
+    line(["   ╱ ╲     ╱", "purple"], ["│", "brightCyan"], ["   ", "dim"]),
+    line(["  ", "dim"], ["●", "blue"], ["───", "purple"], ["●", "brightCyan"], ["───", "brightCyan"], ["●", "brightCyan"], [" ", "dim"]),
+    line(["   ╲ ╱   ╱ ", "purple"], ["│", "brightCyan"], ["   ", "dim"]),
+    line(["    ", "dim"], ["●", "purple"], ["───", "brightCyan"], ["●", "brightCyan"], ["──", "brightCyan"], ["╱", "brightCyan"], ["   ", "dim"]),
+    line(["        ╲╱", "brightCyan"], ["      ", "dim"]),
+    line(["         ", "dim"], ["●", "blue"], ["      ", "dim"])
+  ];
+  const text = [
+    `${colorize("VibeGraph CLI", "bold")} ${colorize(`v${CLI_VERSION}`, "dim")}`,
+    colorize("Local Patch - Graph Intelligence", "dim"),
+    colorize(process.cwd(), "dim"),
+    "",
+    `${colorize("Aliases", "dim")}: vibegraph, vibegraph-cli`,
+    `${colorize("API", "dim")}: ${DEFAULT_API_URL}`,
+    ""
+  ];
+  return icon.map((row, index) => `${row}  ${text[index] || ""}`).join("\n");
 }
 
 function colorize(value, color) {
