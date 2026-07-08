@@ -77,7 +77,15 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`VibeGraph CLI
+  console.log(`__     ___ _          ____                 _
+\\ \\   / (_) |__   ___ / ___|_ __ __ _ _ __ | |__
+ \\ \\ / /| | '_ \\ / _ \\ |  _| '__/ _\` | '_ \\| '_ \\
+  \\ V / | | |_) |  __/ |_| | | | (_| | |_) | | | |
+   \\_/  |_|_.__/ \\___|\\____|_|  \\__,_| .__/|_| |_|
+                                     |_|
+
+VibeGraph CLI
+Local patch, graph analysis, and project workflows from your terminal.
 
 Usage:
   vibegraph config show
