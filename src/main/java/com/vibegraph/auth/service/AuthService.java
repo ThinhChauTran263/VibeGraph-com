@@ -31,10 +31,14 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2a$10$9lW1wQ/S7o6dmA9pYH9B6ewQnyEA6LGLJfGVkQGneSAdfobYsDfkC";
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final CurrentUser currentUser;
+    private final AccountSettingsService accountSettingsService;
 
     /**
      * Create a local account and return a fresh token + safe user projection.
@@ -55,6 +59,7 @@ public class AuthService {
                 .emailVerified(false)
                 .build();
         User saved = userRepository.save(user);
+        accountSettingsService.createDefaultSettings(saved);
         return toAuthResponse(saved);
     }
 
@@ -66,12 +71,15 @@ public class AuthService {
      */
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmailIgnoreCase(request.email().trim())
-                .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
-        if (user.getPasswordHash() == null
-                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        User user = userRepository.findByEmailIgnoreCase(request.email().trim()).orElse(null);
+        String passwordHash = user != null && user.getPasswordHash() != null
+                ? user.getPasswordHash()
+                : DUMMY_PASSWORD_HASH;
+        boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHash);
+        if (!passwordMatches || user == null || user.getPasswordHash() == null) {
             throw new InvalidCredentialsException("Invalid email or password");
         }
+        accountSettingsService.assertNotBlocked(user.getId());
         return toAuthResponse(user);
     }
 

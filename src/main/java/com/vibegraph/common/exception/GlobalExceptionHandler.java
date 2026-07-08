@@ -72,6 +72,51 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(AccountBlockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccountBlocked(AccountBlockedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getSafeReason())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleQuotaExceeded(QuotaExceededException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ApiKeysDisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiKeysDisabled(ApiKeysDisabledException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ApiKeyPlanLimitReachedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiKeyPlanLimitReached(ApiKeyPlanLimitReachedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(QuotaBelowCurrentUsageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleQuotaBelowCurrentUsage(QuotaBelowCurrentUsageException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
         // No resolvable authenticated user at the service layer — 401.

@@ -3,6 +3,7 @@ package com.vibegraph.auth.web;
 import java.io.IOException;
 import java.util.List;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -10,8 +11,13 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
+import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.dto.response.ErrorResponse;
+import com.vibegraph.common.exception.AccountBlockedException;
 
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -36,6 +42,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
+    private final AccountSettingsService accountSettingsService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -46,16 +54,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length()).trim();
             try {
                 AuthenticatedUser principal = jwtService.parse(token);
+                accountSettingsService.assertNotBlocked(principal.id());
                 var authority = new SimpleGrantedAuthority("ROLE_" + principal.role().name());
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal, null, List.of(authority));
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (AccountBlockedException ex) {
+                SecurityContextHolder.clearContext();
+                writeBlockedResponse(response, ex);
+                return;
             } catch (JwtException | IllegalArgumentException ex) {
                 // Invalid/expired/malformed token — stay unauthenticated; entry point returns 401.
                 SecurityContextHolder.clearContext();
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void writeBlockedResponse(HttpServletResponse response, AccountBlockedException ex)
+            throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getSafeReason())
+                .build();
+        objectMapper.writeValue(response.getWriter(), ApiResponse.error(error));
     }
 }

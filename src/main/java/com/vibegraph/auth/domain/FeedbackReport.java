@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -15,47 +17,41 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/**
- * CLI / MCP API key (table {@code api_keys}). Only the key HASH is stored, never the raw key.
- *
- * <p>The table and entity exist from Phase 1 so the schema is frozen; issue/rotate/revoke
- * behavior is Phase 3. No endpoints reference this entity yet.
- */
 @Entity
-@Table(name = "api_keys")
+@Table(name = "feedback_reports")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ApiKey {
+public class FeedbackReport {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private UUID userId;
 
-    @Column(name = "key_hash", nullable = false)
-    private String keyHash;
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private FeedbackReportStatus status = FeedbackReportStatus.OPEN;
 
-    @Column(name = "key_prefix", nullable = false, length = 16)
-    private String keyPrefix;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false, length = 20)
+    private FeedbackCategory category;
 
-    @Column(name = "name")
-    private String name;
+    @Column(name = "title", nullable = false)
+    private String title;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "last_used_at")
-    private Instant lastUsedAt;
+    @Column(name = "closed_at")
+    private Instant closedAt;
 
-    @Column(name = "expires_at")
-    private Instant expiresAt;
-
-    @Column(name = "disabled_at")
-    private Instant disabledAt;
+    @Column(name = "delete_after")
+    private Instant deleteAfter;
 }
