@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.source.SourceFileService;
 import com.vibegraph.mcp.source.SourceFileService.SourceContent;
 
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 public class SourceController {
 
     private final SourceFileService sourceFileService;
+    private final ProjectOwnershipGuard ownershipGuard;
 
     /**
      * Read a bounded slice of a single source file.
@@ -46,6 +48,7 @@ public class SourceController {
             @RequestParam String path,
             @RequestParam(required = false) Integer startLine,
             @RequestParam(required = false) Integer endLine) {
+        ownershipGuard.assertOwner(projectId);
         SourceContent content = sourceFileService.readRange(projectId, path, startLine, endLine);
         return ResponseEntity.ok(ApiResponse.success(content));
     }

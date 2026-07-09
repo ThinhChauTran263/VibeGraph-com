@@ -50,6 +50,26 @@ docker compose up -d
 
 Then open: http://localhost:3000
 
+### CLI first for local workflows
+
+Install the local CLI before using VibeGraph as a local patch/watch tool:
+
+```bash
+npm install -g ./vibegraph-cli
+vibegraph config set-url http://localhost:8080
+vibegraph register --email you@example.com --password "change-me-123" --name "Your Name"
+vibegraph projects list
+```
+
+When the backend runs in Docker Compose, pass backend-visible paths to local import. By default,
+`./projects` on the host is mounted as `/projects` in the backend container:
+
+```bash
+vibegraph projects import-local --path /projects/demo --name demo
+```
+
+For the full Local Patch workflow (push, watch, analyze), see **[docs/local-patch.md](docs/local-patch.md)**.
+
 ### Local development
 
 #### Backend

@@ -1,0 +1,24 @@
+{
+  "name": "@vibegraph/cli",
+  "version": "0.1.0",
+  "description": "Command-line client for VibeGraph local development workflows.",
+  "type": "module",
+  "bin": {
+    "vibegraph": "./bin/vibegraph.js",
+    "vibegraph-cli": "./bin/vibegraph.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "smoke": "node ./bin/vibegraph.js help && node ./bin/vibegraph.js config show",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

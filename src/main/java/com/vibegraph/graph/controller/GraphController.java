@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -26,6 +27,7 @@ public class GraphController {
     private final GraphService graphService;
     private final GraphPayloadGuard payloadGuard;
     private final GraphPayloadProperties payloadProperties;
+    private final ProjectOwnershipGuard ownershipGuard;
 
     /**
      * Full project graph, capped at the HTTP boundary so the browser never receives an
@@ -38,6 +40,7 @@ public class GraphController {
             @PathVariable String projectId,
             @RequestParam(required = false) Integer nodeLimit,
             @RequestParam(required = false) Integer edgeLimit) {
+        ownershipGuard.assertOwner(projectId);
         int effectiveNodeLimit = clamp(nodeLimit, payloadProperties.getNodeLimit(),
                 payloadProperties.getMaxNodeLimit());
         int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
@@ -64,6 +67,7 @@ public class GraphController {
             @RequestParam String nodeId,
             @RequestParam(defaultValue = "3") int depth,
             @RequestParam(defaultValue = "dependency") String profile) {
+        ownershipGuard.assertOwner(projectId);
         ImpactProfile impactProfile = ImpactProfile.fromApiValue(profile);
         return ResponseEntity.ok(ApiResponse.success(graphService.getImpactAnalysis(projectId, nodeId, depth, impactProfile)));
     }
@@ -73,6 +77,7 @@ public class GraphController {
             @PathVariable String projectId,
             @PathVariable String nodeId,
             @RequestParam(defaultValue = "1") int hops) {
+        ownershipGuard.assertOwner(projectId);
         return ResponseEntity.ok(ApiResponse.success(graphService.getNodeDetail(projectId, nodeId, hops)));
     }
 
@@ -81,6 +86,7 @@ public class GraphController {
             @PathVariable String projectId,
             @RequestParam String nodeId,
             @RequestParam(defaultValue = "1") int hops) {
+        ownershipGuard.assertOwner(projectId);
         return ResponseEntity.ok(ApiResponse.success(graphService.getNodeDetail(projectId, nodeId, hops)));
     }
 }
