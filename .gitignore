@@ -2,6 +2,8 @@
 # Environment & Secrets
 # ========================================
 .env
+quick-start-win.ps1
+quick-start-mac.sh
 
 # ========================================
 # Build Outputs
