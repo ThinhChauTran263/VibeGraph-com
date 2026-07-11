@@ -17,19 +17,19 @@
 
 | Task ID | Backlog | Task | Acceptance Criteria | Priority | State | Files / Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| D3-T001 | User workspace | Account layout/routes | Logged-in user has account/workspace navigation | 1 | New | router/layout/views |
-| D3-T002 | Profile | Profile page | Loads email/displayName/role; PATCH displayName works | 1 | New | profile view/store/tests |
-| D3-T003 | Usage | Plan/quota/credit meter | Shows plan, `used / limit used`, remaining, credits used/remaining; fixed-width meter/status | 1 | New | usage components/tests |
-| D3-T004 | Projects | My projects page | Lists imported projects with status/last analyzed date | 1 | New | projects view/store/tests |
-| D3-T005 | API keys | API key list/create/disable | One-time secret display; disable confirm; list never shows secret | 1 | New | API key view/store/tests |
-| D3-T006 | Error states | Blocked/quota/credit/API-key disabled states | Required copy renders; actions disabled not hidden | 1 | New | shared error/status components |
-| D3-T007 | Reports | User feedback UI | Create/list/thread/reply/close after Dev1 API lands | 2 | New | reports views/tests |
-| D3-T008 | Admin overview | Admin dashboard | Polls overview 15-30s; rolling online chart; responsive | 1 | New | admin overview view/tests |
-| D3-T009 | Admin users | User management UI | Dense table, filters, drawer actions, mobile stacked rows | 1 | New | admin users views/tests |
-| D3-T010 | Admin quota/plan | Plan/quota override UI | Storage override input is MB, displays converted capacity, prevents override below current usage with inline validation | 1 | New | admin user drawer/tests |
-| D3-T011 | Admin credits | Credit balance/ledger UI | Show current credit period, plan credits, override credits, ledger, and admin adjustment controls | 1 | New | admin user detail/tests |
-| D3-T012 | Admin API keys | Admin API-key controls UI | Disable key creation and individual keys when API exists | 1 | New | admin user detail/tests |
-| D3-T013 | Admin reports | Admin feedback UI | Thread reply/close; `Deletes after <date>` | 2 | New | admin reports views/tests |
+| D3-T001 | User workspace | Account layout/routes | Logged-in user has account/workspace navigation | 1 | Done | router/layout/views |
+| D3-T002 | Profile | Profile page | Loads email/displayName/role; PATCH displayName works | 1 | Done | profile view/store/tests |
+| D3-T003 | Usage | Plan/quota/credit meter | Shows plan, `used / limit used`, remaining, credits used/remaining; fixed-width meter/status | 1 | Done | usage components/tests |
+| D3-T004 | Projects | My projects page | Lists imported projects with status/last analyzed date | 1 | Done | projects view/store/tests |
+| D3-T005 | API keys | API key list/create/disable | One-time secret display; disable confirm; list never shows secret | 1 | Done | API key view/store/tests |
+| D3-T006 | Error states | Blocked/quota/credit/API-key disabled states | Required copy renders; actions disabled not hidden | 1 | Done | shared error/status components |
+| D3-T007 | Reports | User feedback UI | Create/list/thread/reply/close after Dev1 API lands | 2 | Done | reports views/tests |
+| D3-T008 | Admin overview | Admin dashboard | Polls overview 15-30s; rolling online chart; responsive | 1 | Done | admin overview view/tests |
+| D3-T009 | Admin users | User management UI | Dense table, filters, drawer actions, mobile stacked rows | 1 | Done | admin users views/tests |
+| D3-T010 | Admin quota/plan | Plan/quota override UI | Storage override input is MB, displays converted capacity, prevents override below current usage with inline validation | 1 | Done | admin user drawer/tests |
+| D3-T011 | Admin credits | Credit balance/ledger UI | Show current credit period, plan credits, override credits, ledger, and admin adjustment controls | 1 | Done | admin user detail/tests |
+| D3-T012 | Admin API keys | Admin API-key controls UI | Disable key creation and individual keys when API exists | 1 | Done | admin user detail/tests |
+| D3-T013 | Admin reports | Admin feedback UI | Thread reply/close; `Deletes after <date>` | 2 | Done | admin reports views/tests |
 
 ## Credit Pricing Explanation For UI
 
@@ -62,10 +62,10 @@ Do not present this as marketing copy. Put it in admin detail/status/help text o
 
 ## Handoff Checklist
 
-- [ ] Changed frontend files listed.
-- [ ] Routes/pages added listed.
-- [ ] API contracts consumed listed.
-- [ ] Tests and counts reported.
-- [ ] Responsive/browser smoke notes included.
-- [ ] No backend/CLI files touched.
-- [ ] No commit/push without Supervisor approval.
+- [x] Changed frontend files listed.
+- [x] Routes/pages added listed.
+- [x] API contracts consumed listed.
+- [x] Tests and counts reported.
+- [x] Responsive/browser smoke notes included.
+- [x] No backend/CLI files touched.
+- [x] No commit/push without Supervisor approval.
