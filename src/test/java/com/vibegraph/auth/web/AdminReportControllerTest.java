@@ -46,18 +46,21 @@ class AdminReportControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/admin/reports lists all reports")
+    @DisplayName("GET /api/admin/reports lists all reports with pagination wrapper")
     void getReports_succeeds() throws Exception {
         AdminFeedbackResponse report = new AdminFeedbackResponse(
                 UUID.randomUUID(), UUID.randomUUID(), "OPEN", "BUG", "UI error",
                 Instant.now(), null, null);
 
-        when(adminService.getFeedbackReports()).thenReturn(Collections.singletonList(report));
+        org.springframework.data.domain.Page<AdminFeedbackResponse> pageResult = 
+                new org.springframework.data.domain.PageImpl<>(Collections.singletonList(report));
+
+        when(adminService.getFeedbackReports(any(), any(), any())).thenReturn(pageResult);
 
         mockMvc.perform(get("/api/admin/reports"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].title").value("UI error"));
+                .andExpect(jsonPath("$.data.content[0].title").value("UI error"));
     }
 
     @Test

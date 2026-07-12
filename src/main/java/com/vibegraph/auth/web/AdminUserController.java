@@ -37,14 +37,30 @@ public class AdminUserController {
     private final AdminService adminService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<AdminUserResponse>>> list(
+    public ResponseEntity<ApiResponse<com.vibegraph.auth.dto.AdminPageResponse<AdminUserResponse>>> list(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String plan,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("email").ascending());
-        Page<AdminUserResponse> result = adminService.getUsers(search, pageable);
-        return ResponseEntity.ok(ApiResponse.success(result.getContent()));
+        Page<AdminUserResponse> result = adminService.getUsers(search, status, plan, pageable);
+        var pageResponse = new com.vibegraph.auth.dto.AdminPageResponse<>(
+                result.getContent(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+        return ResponseEntity.ok(ApiResponse.success(pageResponse));
+    }
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<ApiResponse<AdminUserResponse>> getDetail(
+            @PathVariable UUID userId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getUserDetail(userId)));
     }
 
     @PostMapping
@@ -91,5 +107,13 @@ public class AdminUserController {
             @Valid @RequestBody AdminUserUpdateQuotaRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(adminService.updateQuota(userId, request)));
+    }
+
+    @PatchMapping("/{userId}/api-key-creation")
+    public ResponseEntity<ApiResponse<AdminUserResponse>> updateApiKeyCreation(
+            @PathVariable UUID userId,
+            @Valid @RequestBody com.vibegraph.auth.dto.AdminApiKeyCreationToggleRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.updateApiKeyCreationDisabled(userId, request.disabled())));
     }
 }

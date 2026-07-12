@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.domain.CreditLedger;
 import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.FeedbackCategory;
 import com.vibegraph.auth.domain.FeedbackMessage;
 import com.vibegraph.auth.domain.FeedbackReport;
 import com.vibegraph.auth.domain.FeedbackReportStatus;
@@ -68,7 +69,7 @@ public class AdminService {
     @Transactional(readOnly = true)
     public AdminOverviewResponse getOverview() {
         long totalUsers = userRepository.count();
-        long onlineUsers = 5; // Polling/realtime mock
+        long onlineUsers = com.vibegraph.auth.web.JwtAuthFilter.getActiveUsersCount();
         long totalProjects = projectOwnershipRepository.count();
         long totalReports = feedbackReportRepository.count();
         long openReports = feedbackReportRepository.countByStatus(FeedbackReportStatus.OPEN);
@@ -85,16 +86,36 @@ public class AdminService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AdminUserResponse> getUsers(String search, Pageable pageable) {
-        Page<User> userPage;
-        if (search != null && !search.isBlank()) {
-            userPage = userRepository.findByEmailContainingIgnoreCaseOrDisplayNameContainingIgnoreCase(
-                    search, search, pageable);
-        } else {
-            userPage = userRepository.findAll(pageable);
-        }
+    public Page<AdminUserResponse> getUsers(String search, String status, String plan, Pageable pageable) {
+        List<User> allUsers = userRepository.findAll();
+        List<AdminUserResponse> filtered = allUsers.stream()
+                .map(this::toAdminUserResponse)
+                .filter(u -> {
+                    if (search != null && !search.isBlank()) {
+                        String s = search.toLowerCase();
+                        boolean matchEmail = u.email() != null && u.email().toLowerCase().contains(s);
+                        boolean matchName = u.displayName() != null && u.displayName().toLowerCase().contains(s);
+                        if (!matchEmail && !matchName) return false;
+                    }
+                    if (status != null && !status.isBlank()) {
+                        if ("BLOCKED".equalsIgnoreCase(status) && !u.blocked()) return false;
+                        if ("DEACTIVATED".equalsIgnoreCase(status) && !u.deactivated()) return false;
+                        if ("ACTIVE".equalsIgnoreCase(status) && (u.blocked() || u.deactivated())) return false;
+                    }
+                    if (plan != null && !plan.isBlank()) {
+                        if (u.planCode() == null || !u.planCode().equalsIgnoreCase(plan)) return false;
+                    }
+                    return true;
+                })
+                .toList();
 
-        return userPage.map(this::toAdminUserResponse);
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), filtered.size());
+        List<AdminUserResponse> pageContent = List.of();
+        if (start < filtered.size()) {
+            pageContent = filtered.subList(start, end);
+        }
+        return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, filtered.size());
     }
 
     @Transactional
@@ -261,7 +282,22 @@ public class AdminService {
         getUserOrThrow(userId);
 
         UserCreditBalance balance = creditBalanceRepository.findFirstByUserIdOrderByPeriodEndDesc(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Credit balance not found"));
+                .orElseGet(() -> {
+                    UserAccountSettings settings = settingsRepository.findById(userId).orElse(null);
+                    int limit = (settings != null && settings.getPlan() != null)
+                            ? settings.getPlan().getMonthlyCreditLimit()
+                            : 100;
+                    LocalDate now = LocalDate.now();
+                    UserCreditBalance newBal = UserCreditBalance.builder()
+                            .userId(userId)
+                            .periodStart(now)
+                            .periodEnd(now.plusMonths(1))
+                            .creditsLimitSnapshot(limit)
+                            .creditsUsed(0)
+                            .creditsAdjustment(0)
+                            .build();
+                    return creditBalanceRepository.save(newBal);
+                });
 
         balance.setCreditsAdjustment(balance.getCreditsAdjustment() + request.creditsDelta());
         creditBalanceRepository.save(balance);
@@ -283,10 +319,49 @@ public class AdminService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminFeedbackResponse> getFeedbackReports() {
-        return feedbackReportRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<Plan> getPlans() {
+        return planRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminUserResponse getUserDetail(UUID userId) {
+        return toAdminUserResponse(getUserOrThrow(userId));
+    }
+
+    @Transactional
+    public AdminUserResponse updateApiKeyCreationDisabled(UUID userId, boolean disabled) {
+        UserAccountSettings settings = settingsRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
+        settings.setApiKeyCreationDisabled(disabled);
+        settingsRepository.save(settings);
+        return toAdminUserResponse(getUserOrThrow(userId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AdminFeedbackResponse> getFeedbackReports(String status, String q, Pageable pageable) {
+        List<FeedbackReport> allReports = feedbackReportRepository.findAllByOrderByCreatedAtDesc();
+        List<AdminFeedbackResponse> filtered = allReports.stream()
+                .filter(r -> {
+                    if (status != null && !status.isBlank()) {
+                        if (!r.getStatus().name().equalsIgnoreCase(status)) return false;
+                    }
+                    if (q != null && !q.isBlank()) {
+                        String query = q.toLowerCase();
+                        boolean matchTitle = r.getTitle() != null && r.getTitle().toLowerCase().contains(query);
+                        if (!matchTitle) return false;
+                    }
+                    return true;
+                })
                 .map(this::toAdminFeedbackResponse)
                 .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), filtered.size());
+        List<AdminFeedbackResponse> pageContent = List.of();
+        if (start < filtered.size()) {
+            pageContent = filtered.subList(start, end);
+        }
+        return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, filtered.size());
     }
 
     @Transactional(readOnly = true)
@@ -324,6 +399,17 @@ public class AdminService {
         feedbackReportRepository.save(report);
     }
 
+    @Transactional
+    public UUID createTestReport(UUID userId) {
+        FeedbackReport report = FeedbackReport.builder()
+                .userId(userId)
+                .title("Lỗi giao diện canvas bị treo")
+                .status(FeedbackReportStatus.OPEN)
+                .category(FeedbackCategory.BUG)
+                .build();
+        return feedbackReportRepository.save(report).getId();
+    }
+
     private User getUserOrThrow(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
@@ -337,6 +423,7 @@ public class AdminService {
         boolean blocked = settings != null && settings.isBlocked();
         String blockedReason = settings != null ? settings.getBlockedReason() : null;
         String blockedReasonSafe = settings != null ? settings.getBlockedReasonSafe() : null;
+        boolean apiKeyCreationDisabled = settings != null && settings.isApiKeyCreationDisabled();
 
         return new AdminUserResponse(
                 user.getId(),
@@ -351,7 +438,8 @@ public class AdminService {
                 storageQuotaOverrideBytes,
                 creditQuotaOverride,
                 user.getQuotaBytes(),
-                user.getUsedBytes()
+                user.getUsedBytes(),
+                apiKeyCreationDisabled
         );
     }
 

@@ -40,6 +40,13 @@ import lombok.RequiredArgsConstructor;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final java.util.Map<java.util.UUID, Long> activeUsers = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static int getActiveUsersCount() {
+        long threshold = System.currentTimeMillis() - 5 * 60 * 1000; // 5 minutes
+        activeUsers.values().removeIf(t -> t < threshold);
+        return activeUsers.size();
+    }
 
     private final JwtService jwtService;
     private final AccountSettingsService accountSettingsService;
@@ -69,6 +76,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         principal, null, List.of(authority));
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+                activeUsers.put(principal.id(), System.currentTimeMillis());
             } catch (AccountBlockedException ex) {
                 SecurityContextHolder.clearContext();
                 writeBlockedResponse(response, ex);

@@ -15,5 +15,6 @@ public record AdminUserResponse(
         Long storageQuotaOverrideBytes,
         Integer creditQuotaOverride,
         long quotaBytes,
-        long usedBytes
+        long usedBytes,
+        boolean apiKeyCreationDisabled
 ) {}
