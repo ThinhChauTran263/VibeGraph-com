@@ -43,6 +43,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final AccountSettingsService accountSettingsService;
+    private final com.vibegraph.auth.repository.UserRepository userRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -55,6 +56,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 AuthenticatedUser principal = jwtService.parse(token);
                 accountSettingsService.assertNotBlocked(principal.id());
+                
+                var userOpt = userRepository.findById(principal.id());
+                if (userOpt.isEmpty() || userOpt.get().isDeactivated()) {
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    return;
+                }
+
                 var authority = new SimpleGrantedAuthority("ROLE_" + principal.role().name());
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal, null, List.of(authority));

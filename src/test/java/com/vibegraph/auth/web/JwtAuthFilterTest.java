@@ -14,6 +14,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.vibegraph.auth.domain.Role;
+import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
@@ -34,6 +36,9 @@ class JwtAuthFilterTest {
     @Mock
     private AccountSettingsService accountSettingsService;
 
+    @Mock
+    private UserRepository userRepository;
+
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
@@ -43,12 +48,14 @@ class JwtAuthFilterTest {
     @DisplayName("valid JWT for active account authenticates and continues")
     void doFilterInternal_activeUser_authenticatesAndContinues() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
         MockHttpServletRequest request = requestWithToken("valid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("valid-token"))
                 .thenReturn(new AuthenticatedUser(userId, "active@test.local", Role.USER));
+        when(userRepository.findById(userId))
+                .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
 
         filter.doFilter(request, response, chain);
 
@@ -61,7 +68,7 @@ class JwtAuthFilterTest {
     @DisplayName("valid JWT for blocked account returns ACCOUNT_BLOCKED and stops chain")
     void doFilterInternal_blockedUser_returnsForbidden() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
@@ -81,9 +88,28 @@ class JwtAuthFilterTest {
     }
 
     @Test
+    @DisplayName("valid JWT for deactivated account returns 401 and stops chain")
+    void doFilterInternal_deactivatedUser_returnsUnauthorized() throws Exception {
+        UUID userId = UUID.randomUUID();
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        MockHttpServletRequest request = requestWithToken("deactivated-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        when(jwtService.parse("deactivated-token"))
+                .thenReturn(new AuthenticatedUser(userId, "deactivated@test.local", Role.USER));
+        when(userRepository.findById(userId))
+                .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(true).build()));
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
     @DisplayName("invalid JWT remains unauthenticated and continues")
     void doFilterInternal_invalidToken_continuesUnauthenticated() throws Exception {
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
         MockHttpServletRequest request = requestWithToken("invalid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();

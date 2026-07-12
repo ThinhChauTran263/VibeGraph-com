@@ -20,4 +20,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     @Query("SELECT (count(u) > 0) FROM User u WHERE lower(u.email) = lower(:email)")
     boolean existsByEmailIgnoreCase(@Param("email") String email);
+
+    org.springframework.data.domain.Page<User> findByEmailContainingIgnoreCaseOrDisplayNameContainingIgnoreCase(
+            String email, String displayName, org.springframework.data.domain.Pageable pageable);
+
+    long countByDeactivated(boolean deactivated);
 }
