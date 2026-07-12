@@ -74,6 +74,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     auth.requestMatchers("/api/auth/**", "/actuator/health").permitAll();
+                    auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/ws/**", "/mcp/**").permitAll();
                     }
