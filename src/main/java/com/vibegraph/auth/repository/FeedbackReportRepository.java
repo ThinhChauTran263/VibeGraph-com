@@ -11,4 +11,8 @@ import com.vibegraph.auth.domain.FeedbackReport;
 public interface FeedbackReportRepository extends JpaRepository<FeedbackReport, UUID> {
 
     List<FeedbackReport> findByDeleteAfterLessThanEqual(Instant now);
+
+    long countByStatus(com.vibegraph.auth.domain.FeedbackReportStatus status);
+
+    List<FeedbackReport> findAllByOrderByCreatedAtDesc();
 }
