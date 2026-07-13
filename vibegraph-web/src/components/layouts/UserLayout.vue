@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 function handleLogout() {
   auth.logout()
@@ -46,7 +47,7 @@ function handleLogout() {
         </button>
       </div>
     </header>
-    <main class="main-content">
+    <main class="main-content" :class="{ 'main-content--full-width': route.name === 'graph' }">
       <RouterView />
     </main>
   </div>
@@ -172,6 +173,12 @@ function handleLogout() {
   width: 100%;
   max-width: var(--vg-maxw);
   margin: 0 auto;
+}
+
+.main-content--full-width {
+  max-width: none;
+  padding: 0;
+  margin: 0;
 }
 </style>
 
