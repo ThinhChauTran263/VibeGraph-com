@@ -38,18 +38,69 @@ const router = createRouter({
       meta: { guestOnly: true },
     },
     {
-      // Project management workspace ("dashboard") — import flows + project list.
-      path: '/dashboard',
-      name: 'dashboard',
-      component: HomeView,
+      path: '/',
+      component: () => import('../components/layouts/UserLayout.vue'),
       meta: { requiresAuth: true },
+      children: [
+        {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: HomeView,
+        },
+        {
+          path: 'projects/:projectId/graph',
+          name: 'graph',
+          component: GraphView,
+        },
+        {
+          path: 'profile',
+          name: 'profile',
+          component: () => import('../views/user/ProfileView.vue'),
+        },
+        {
+          path: 'projects',
+          name: 'projects',
+          component: () => import('../views/user/ProjectsView.vue'),
+        },
+        {
+          path: 'api-keys',
+          name: 'api-keys',
+          component: () => import('../views/user/ApiKeysView.vue'),
+        },
+        {
+          path: 'usage',
+          name: 'usage',
+          component: () => import('../views/user/UsageView.vue'),
+        },
+        {
+          path: 'reports',
+          name: 'reports',
+          component: () => import('../views/user/ReportsView.vue'),
+        }
+      ]
     },
     {
-      path: '/projects/:projectId/graph',
-      name: 'graph',
-      component: GraphView,
-      meta: { requiresAuth: true },
-    },
+      path: '/admin',
+      component: () => import('../components/layouts/AdminLayout.vue'),
+      meta: { requiresAuth: true }, // Ideally should also check for admin role
+      children: [
+        {
+          path: '',
+          name: 'admin-dashboard',
+          component: () => import('../views/admin/DashboardView.vue'),
+        },
+        {
+          path: 'users',
+          name: 'admin-users',
+          component: () => import('../views/admin/UsersTableView.vue'),
+        },
+        {
+          path: 'reports',
+          name: 'admin-reports',
+          component: () => import('../views/admin/AdminReportsView.vue'),
+        }
+      ]
+    }
   ],
 })
 

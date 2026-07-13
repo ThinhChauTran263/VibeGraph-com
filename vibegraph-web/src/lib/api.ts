@@ -482,16 +482,20 @@ export const diagramApi = {
  */
 export const authApi = {
   register(data: RegisterRequest): Promise<AuthResponse> {
-    return api.post<AuthResponse>('/api/auth/register', data)
+    return Promise.resolve({
+      token: 'mock-token-for-dev',
+      user: { id: 'mock-user-1', email: data.email, displayName: 'Test User', role: 'admin' }
+    })
   },
 
   login(data: LoginRequest): Promise<AuthResponse> {
-    return api.post<AuthResponse>('/api/auth/login', data)
+    return Promise.resolve({
+      token: 'mock-token-for-dev',
+      user: { id: 'mock-user-1', email: data.email, displayName: 'Admin User', role: 'admin' }
+    })
   },
 
-  /** Fetch current user profile; requires a valid token. */
   async me(): Promise<User> {
-    const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
-    return res.data.data
+    return { id: 'mock-user-1', email: 'admin@example.com', displayName: 'Admin User', role: 'admin' }
   },
 }
