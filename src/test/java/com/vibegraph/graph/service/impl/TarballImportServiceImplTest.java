@@ -11,6 +11,7 @@ import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -75,6 +76,7 @@ class TarballImportServiceImplTest {
     @Mock CreditPricingService creditPricingService;
     @Mock CreditBalanceService creditBalanceService;
     @Mock CurrentUser currentUser;
+    @Mock ProjectOwnershipRegistrar ownershipRegistrar;
 
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
@@ -89,7 +91,7 @@ class TarballImportServiceImplTest {
         lenient().when(currentUser.id()).thenReturn(userId);
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
-                backgroundTasks::add, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+                backgroundTasks::add, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
     }
 
     @Test

@@ -1,6 +1,6 @@
 package com.vibegraph.auth.service;
 
-import java.time.YearMonth;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -30,24 +30,32 @@ public class CreditBalanceService {
 
     @Transactional
     public UserCreditBalance findOrCreateCurrentPeriod(UUID userId) {
-        String currentMonth = YearMonth.now().toString(); // e.g. "2023-10"
+        LocalDate today = LocalDate.now();
         
-        return balanceRepository.findByUserIdAndPeriodMonth(userId, currentMonth)
+        return balanceRepository.findActiveBalance(userId, today)
                 .orElseGet(() -> {
                     // Get current plan to snapshot allocated credits
                     UserAccountSettings settings = accountSettingsService.findSettings(userId);
-                    long allocated = settings.getPlan() != null ? settings.getPlan().getMonthlyCredits() : 1000L;
+                    int allocated = settings.getPlan() != null ? settings.getPlan().getMonthlyCreditLimit() : 1000;
                     
+                    LocalDate start = today.withDayOfMonth(1);
+                    LocalDate end = today.withDayOfMonth(today.lengthOfMonth());
+
                     UserCreditBalance newBalance = UserCreditBalance.builder()
                             .userId(userId)
-                            .periodMonth(currentMonth)
-                            .planSnapshotCode(settings.getPlan() != null ? settings.getPlan().getCode() : "DEFAULT")
-                            .allocatedCredits(allocated)
-                            .usedCredits(0L)
+                            .periodStart(start)
+                            .periodEnd(end)
+                            .creditsLimitSnapshot(allocated)
+                            .creditsUsed(0)
+                            .creditsAdjustment(0)
                             .build();
-                    log.info("Created new credit balance period {} for user {}", currentMonth, userId);
+                    log.info("Created new credit balance period for user {}", userId);
                     return balanceRepository.save(newBalance);
                 });
+    }
+
+    private int getRemainingCredits(UserCreditBalance balance) {
+        return (balance.getCreditsLimitSnapshot() + balance.getCreditsAdjustment()) - balance.getCreditsUsed();
     }
 
     @Transactional(readOnly = true)
@@ -55,8 +63,8 @@ public class CreditBalanceService {
         if (required <= 0) return;
         
         UserCreditBalance balance = findOrCreateCurrentPeriod(userId);
-        if (balance.getRemainingCredits() < required) {
-            throw new InsufficientCreditsException("Insufficient credits to perform this operation. Required: " + required + ", Available: " + balance.getRemainingCredits());
+        if (getRemainingCredits(balance) < required) {
+            throw new InsufficientCreditsException("Insufficient credits to perform this operation. Required: " + required + ", Available: " + getRemainingCredits(balance));
         }
     }
 
@@ -67,20 +75,21 @@ public class CreditBalanceService {
         UserCreditBalance balance = findOrCreateCurrentPeriod(userId);
         
         // Assert again inside transaction to prevent race conditions
-        if (balance.getRemainingCredits() < amount) {
+        if (getRemainingCredits(balance) < amount) {
             throw new InsufficientCreditsException("Insufficient credits to perform this operation.");
         }
 
         // Update balance
-        balance.setUsedCredits(balance.getUsedCredits() + amount);
+        balance.setCreditsUsed(balance.getCreditsUsed() + (int)amount);
         balanceRepository.save(balance);
 
         // Write ledger entry
         ledgerRepository.save(CreditLedger.builder()
                 .userId(userId)
+                .balanceId(balance.getId())
                 .operationCode(operationCode)
-                .amount(-amount)
-                .referenceId(ref)
+                .source("SYSTEM") // or pass it as param if needed
+                .creditsDelta((int)-amount)
                 .build());
                 
         log.info("Deducted {} credits for user {}, operation {}", amount, userId, operationCode);

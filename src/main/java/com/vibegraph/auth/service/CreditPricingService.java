@@ -1,5 +1,7 @@
 package com.vibegraph.auth.service;
 
+import java.math.BigDecimal;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,19 +27,18 @@ public class CreditPricingService {
      */
     @Transactional(readOnly = true)
     public long calculateCredits(String operationCode, int fileCount, long sourceMb, long nodeCount) {
-        CreditPricingRule rule = pricingRuleRepository.findByOperationCodeAndActiveTrue(operationCode)
-                .orElse(null);
+        CreditPricingRule rule = pricingRuleRepository.findByOperationCode(operationCode).orElse(null);
                 
-        if (rule == null) {
+        if (rule == null || !rule.isActive()) {
             log.warn("No active pricing rule found for operation: {}", operationCode);
             return 0; // Or throw an exception depending on business rules, but returning 0 allows free operations if unconfigured.
         }
 
-        long calculated = rule.getBaseCredits()
-                + (fileCount * rule.getPerFileCredits())
-                + (sourceMb * rule.getPerMbCredits())
-                + ((long) Math.ceil(nodeCount / 1000.0) * rule.getPer1kNodesCredits());
+        BigDecimal calculated = rule.getBaseCredits()
+                .add(BigDecimal.valueOf(fileCount).multiply(rule.getPerFileCredits()))
+                .add(BigDecimal.valueOf(sourceMb).multiply(rule.getPerMbCredits()))
+                .add(BigDecimal.valueOf(Math.ceil(nodeCount / 1000.0)).multiply(rule.getPer1kNodesCredits()));
 
-        return Math.max(rule.getMinimumCredits(), calculated);
+        return Math.max(rule.getMinimumCredits(), calculated.longValue());
     }
 }

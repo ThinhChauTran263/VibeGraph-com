@@ -9,6 +9,7 @@ import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,6 +44,7 @@ class LocalImportServiceImplTest {
     private CreditPricingService creditPricingService;
     private CreditBalanceService creditBalanceService;
     private CurrentUser currentUser;
+    private ProjectOwnershipRegistrar ownershipRegistrar;
     private LocalImportServiceImpl service;
     private final UUID userId = UUID.randomUUID();
 
@@ -57,12 +59,13 @@ class LocalImportServiceImplTest {
         creditPricingService = Mockito.mock(CreditPricingService.class);
         creditBalanceService = Mockito.mock(CreditBalanceService.class);
         currentUser = Mockito.mock(CurrentUser.class);
+        ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         properties = new ProjectsProperties();
         Mockito.lenient().when(currentUser.id()).thenReturn(userId);
         // Run the "background" analysis inline so the async flow is deterministic in tests.
         service = new LocalImportServiceImpl(projectService, analyzeService, fileChangeBroadcaster,
                 properties, graphUpdateController, Runnable::run,
-                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
     }
 
     @Test

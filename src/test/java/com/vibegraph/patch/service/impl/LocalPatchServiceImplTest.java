@@ -1,5 +1,7 @@
 package com.vibegraph.patch.service.impl;
 
+import com.vibegraph.auth.CurrentUser;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +18,11 @@ import org.mockito.Mockito;
 import static org.mockito.Mockito.when;
 
 import com.vibegraph.mcp.source.SourceFileService;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import java.util.UUID;
 import com.vibegraph.patch.config.LocalPatchProperties;
 import com.vibegraph.patch.dto.request.PatchRequest;
 import com.vibegraph.patch.dto.request.PatchRequest.PatchDeletion;
@@ -40,13 +47,24 @@ class LocalPatchServiceImplTest {
     Path root;
 
     private SourceFileService sourceFileService;
+    private AccountSettingsService accountSettingsService;
+    private ProjectUsageService projectUsageService;
+    private CreditPricingService creditPricingService;
+    private CreditBalanceService creditBalanceService;
+    private CurrentUser currentUser;
     private LocalPatchServiceImpl service;
 
     @BeforeEach
     void setUp() {
         sourceFileService = Mockito.mock(SourceFileService.class);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        projectUsageService = Mockito.mock(ProjectUsageService.class);
+        creditPricingService = Mockito.mock(CreditPricingService.class);
+        creditBalanceService = Mockito.mock(CreditBalanceService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        
         when(sourceFileService.resolveProjectRoot(PROJECT_ID)).thenReturn(root);
-        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties());
+        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
     }
 
     private static String b64(String text) {
@@ -231,7 +249,7 @@ class LocalPatchServiceImplTest {
     void rejectsFileTooLarge() {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFileBytes(64);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
 
         String big = "a".repeat(128); // 128 raw bytes → decoded > 64
         PatchRequest request = new PatchRequest(
@@ -250,7 +268,7 @@ class LocalPatchServiceImplTest {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFileBytes(64);
         tight.setMaxTotalBytes(80);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
 
         String chunk = "a".repeat(50); // two files, 50 + 50 = 100 > 80 total
         PatchRequest request = new PatchRequest(
@@ -273,7 +291,7 @@ class LocalPatchServiceImplTest {
     void rejectsTooManyFiles() {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFiles(2);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
 
         PatchRequest request = new PatchRequest(
                 List.of(

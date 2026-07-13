@@ -1,5 +1,7 @@
 package com.vibegraph.patch.controller;
 
+import com.vibegraph.auth.CurrentUser;
+
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,8 @@ import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.UnauthorizedException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.auth.service.AccountSettingsService;
+import java.util.UUID;
 import com.vibegraph.patch.dto.request.PatchRequest;
 import com.vibegraph.patch.dto.response.PatchResult;
 import com.vibegraph.patch.exception.PatchExceptionHandler;
@@ -45,12 +49,16 @@ class LocalPatchControllerTest {
     private MockMvc mockMvc;
     private LocalPatchService localPatchService;
     private ProjectOwnershipGuard ownershipGuard;
+    private AccountSettingsService accountSettingsService;
+    private CurrentUser currentUser;
 
     @BeforeEach
     void setUp() {
         localPatchService = Mockito.mock(LocalPatchService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
-        LocalPatchController controller = new LocalPatchController(localPatchService, ownershipGuard);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        LocalPatchController controller = new LocalPatchController(localPatchService, ownershipGuard, accountSettingsService, currentUser);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler(), new PatchExceptionHandler())
                 .build();

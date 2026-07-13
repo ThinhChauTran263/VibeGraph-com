@@ -21,6 +21,7 @@ import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.importer.ArchiveExtractionResult;
@@ -61,6 +62,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final CreditPricingService creditPricingService;
     private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -73,7 +75,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     ProjectUsageService projectUsageService,
                                     CreditPricingService creditPricingService,
                                     CreditBalanceService creditBalanceService,
-                                    CurrentUser currentUser) {
+                                    CurrentUser currentUser,
+                                    ProjectOwnershipRegistrar ownershipRegistrar) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -86,6 +89,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.creditPricingService = creditPricingService;
         this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
     }
 
     @Override
@@ -171,10 +175,13 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             ProjectResponse project = projectService.createProjectFromWorkspace(name, extraction.extractedRoot());
             createdProjectId = project.getId();
 
+            // Register ownership first to satisfy FK constraint in usage
+            ownershipRegistrar.registerArchive(createdProjectId, project.getName());
+
             // Record storage usage synchronously
             projectUsageService.recordImport(createdProjectId, userId, totalSize);
 
-            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize);
+            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize, userId);
         } catch (ArchiveImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -208,7 +215,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             // Deduct credits async
             long sourceMb = Math.max(1, ctx.totalSize() / (1024 * 1024));
             long requiredCredits = creditPricingService.calculateCredits("IMPORT_ARCHIVE", 0, sourceMb, 0);
-            creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "IMPORT_ARCHIVE", ctx.projectId());
+            creditBalanceService.deductCredits(ctx.userId(), requiredCredits, "IMPORT_ARCHIVE", ctx.projectId());
 
             log.info("Async-imported archive '{}' as project {} ({} .java files, credits: {})",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount(), requiredCredits);
@@ -221,7 +228,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     }
 
     /** Synchronous import state handed to the background analysis task. */
-    private record ImportContext(Path workspace, String projectId, String rootPath, String name, int javaFileCount, long totalSize) {
+    private record ImportContext(Path workspace, String projectId, String rootPath, String name, int javaFileCount, long totalSize, UUID userId) {
     }
 
     private void cleanup(Path workspace, String projectId) {

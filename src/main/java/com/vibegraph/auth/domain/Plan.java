@@ -57,8 +57,6 @@ public class Plan {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
 
-    @Column(name = "monthly_credits", nullable = false)
-    private long monthlyCredits;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

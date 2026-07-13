@@ -24,6 +24,7 @@ import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.LocalImportRequest;
@@ -64,6 +65,7 @@ public class LocalImportServiceImpl implements LocalImportService {
     private final CreditPricingService creditPricingService;
     private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
 
     public LocalImportServiceImpl(ProjectService projectService,
             AnalyzeService analyzeService,
@@ -75,7 +77,8 @@ public class LocalImportServiceImpl implements LocalImportService {
             ProjectUsageService projectUsageService,
             CreditPricingService creditPricingService,
             CreditBalanceService creditBalanceService,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            ProjectOwnershipRegistrar ownershipRegistrar) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
@@ -87,6 +90,7 @@ public class LocalImportServiceImpl implements LocalImportService {
         this.creditPricingService = creditPricingService;
         this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
     }
 
     @Override
@@ -106,6 +110,9 @@ public class LocalImportServiceImpl implements LocalImportService {
                 .rootPath(request.path())
                 .build());
 
+        // Register ownership first to satisfy FK constraint in usage
+        ownershipRegistrar.registerLocal(created.getId(), created.getName());
+
         // Record usage synchronously so GET /api/account/usage is consistent immediately.
         projectUsageService.recordImport(created.getId(), userId, totalSize);
 
@@ -115,7 +122,7 @@ public class LocalImportServiceImpl implements LocalImportService {
         // response and a streamed progress bar (mirrors the archive/GitHub async flow).
         try {
             analysisExecutor
-                    .execute(() -> analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+                    .execute(() -> analyzeInBackground(created.getId(), created.getName(), created.getRootPath(), userId));
         } catch (RejectedExecutionException ex) {
             // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
@@ -126,7 +133,7 @@ public class LocalImportServiceImpl implements LocalImportService {
         return projectService.getProject(created.getId());
     }
 
-    private void analyzeInBackground(String projectId, String name, String rootPath) {
+    private void analyzeInBackground(String projectId, String name, String rootPath, UUID userId) {
         try {
             AnalysisProgressListener listener = (percent, phase) -> {
                 projectService.updateProgress(projectId, percent);
@@ -142,7 +149,7 @@ public class LocalImportServiceImpl implements LocalImportService {
 
             // Deduct credits for PROJECT_ANALYZE
             long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
-            creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "PROJECT_ANALYZE", projectId);
+            creditBalanceService.deductCredits(userId, requiredCredits, "PROJECT_ANALYZE", projectId);
 
             log.info("Local-imported project {} from {} ({} files, credits: {})", projectId, rootPath, result.filesParsed(), requiredCredits);
         } catch (RuntimeException e) {

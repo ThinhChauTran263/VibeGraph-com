@@ -18,6 +18,7 @@ import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -71,6 +72,7 @@ class ArchiveImportServiceImplTest {
     @Mock CreditPricingService creditPricingService;
     @Mock CreditBalanceService creditBalanceService;
     @Mock CurrentUser currentUser;
+    @Mock ProjectOwnershipRegistrar ownershipRegistrar;
 
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
@@ -86,7 +88,7 @@ class ArchiveImportServiceImplTest {
         lenient().when(currentUser.id()).thenReturn(userId);
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
-                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
     }
 
     @Test

@@ -18,6 +18,7 @@ import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -61,6 +62,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final CreditPricingService creditPricingService;
     private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
             GitHubPreFlightService preFlightService,
@@ -76,7 +78,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             ProjectUsageService projectUsageService,
             CreditPricingService creditPricingService,
             CreditBalanceService creditBalanceService,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            ProjectOwnershipRegistrar ownershipRegistrar) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -92,6 +95,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.creditPricingService = creditPricingService;
         this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
     }
 
     @Override
@@ -144,13 +148,16 @@ public class TarballImportServiceImpl implements TarballImportService {
                     extraction.extractedRoot());
             createdProjectId = project.getId();
 
+            // Register ownership first to satisfy FK constraint in usage
+            ownershipRegistrar.registerGithub(createdProjectId, project.getName());
+
             // Record storage usage synchronously.
             projectUsageService.recordImport(createdProjectId, userId, totalSize);
 
             log.info("Imported GitHub tarball {}@{} as project {} ({} .java files)",
                     ref.displayName(), ref.ref(), project.getId(), extraction.javaFiles().size());
             return new ImportContext(workspace, project.getId(), project.getRootPath(), ref.displayName(), ref.ref(),
-                    extraction.javaFiles().size(), totalSize);
+                    extraction.javaFiles().size(), totalSize, userId);
         } catch (GithubImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -180,7 +187,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             // Deduct credits async
             long sourceMb = Math.max(1, ctx.totalSize() / (1024 * 1024));
             long requiredCredits = creditPricingService.calculateCredits("IMPORT_GITHUB", 0, sourceMb, 0);
-            creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "IMPORT_GITHUB", ctx.projectId());
+            creditBalanceService.deductCredits(ctx.userId(), requiredCredits, "IMPORT_GITHUB", ctx.projectId());
 
             log.info("GitHub analysis complete for project {} from {}@{} ({} .java files, credits: {})",
                     ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount(), requiredCredits);
@@ -193,7 +200,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     }
 
     private record ImportContext(Path workspace, String projectId, String rootPath, String repository, String ref,
-            int javaFileCount, long totalSize) {
+            int javaFileCount, long totalSize, UUID userId) {
     }
 
     private void cleanup(Path workspace, String projectId) {

@@ -50,16 +50,16 @@ class CreditBalanceServiceTest {
     void shouldDeductCreditsSuccessfully() {
         UserCreditBalance balance = new UserCreditBalance();
         balance.setUserId(userId);
-        balance.setAllocatedCredits(5000L);
-        balance.setUsedCredits(0L);
+        balance.setCreditsLimitSnapshot(5000);
+        balance.setCreditsUsed(0);
         UserAccountSettings settings = new UserAccountSettings();
-        settings.setPlan(Plan.builder().monthlyCredits(5000L).build());
+        settings.setPlan(Plan.builder().monthlyCreditLimit(5000).build());
         
-        when(balanceRepository.findByUserIdAndPeriodMonth(eq(userId), any())).thenReturn(Optional.of(balance));
+        when(balanceRepository.findActiveBalance(eq(userId), any(java.time.LocalDate.class))).thenReturn(Optional.of(balance));
 
         service.deductCredits(userId, 200L, "IMPORT_GITHUB", "p1");
 
-        assertThat(balance.getUsedCredits()).isEqualTo(200L);
+        assertThat(balance.getCreditsUsed()).isEqualTo(200);
         verify(balanceRepository).save(balance);
         verify(ledgerRepository).save(any(CreditLedger.class));
     }
@@ -69,12 +69,12 @@ class CreditBalanceServiceTest {
     void shouldThrowWhenNotEnoughCredits() {
         UserCreditBalance balance = new UserCreditBalance();
         balance.setUserId(userId);
-        balance.setAllocatedCredits(100L);
-        balance.setUsedCredits(0L);
+        balance.setCreditsLimitSnapshot(100);
+        balance.setCreditsUsed(0);
         UserAccountSettings settings = new UserAccountSettings();
-        settings.setPlan(Plan.builder().monthlyCredits(100L).build());
+        settings.setPlan(Plan.builder().monthlyCreditLimit(100).build());
         
-        when(balanceRepository.findByUserIdAndPeriodMonth(eq(userId), any())).thenReturn(Optional.of(balance));
+        when(balanceRepository.findActiveBalance(eq(userId), any(java.time.LocalDate.class))).thenReturn(Optional.of(balance));
 
         assertThatThrownBy(() -> service.deductCredits(userId, 200L, "IMPORT_GITHUB", "p1"))
                 .isInstanceOf(InsufficientCreditsException.class)
@@ -89,12 +89,12 @@ class CreditBalanceServiceTest {
     void assertCreditsAvailableShouldThrow() {
         UserCreditBalance balance = new UserCreditBalance();
         balance.setUserId(userId);
-        balance.setAllocatedCredits(50L);
-        balance.setUsedCredits(0L);
+        balance.setCreditsLimitSnapshot(50);
+        balance.setCreditsUsed(0);
         UserAccountSettings settings = new UserAccountSettings();
-        settings.setPlan(Plan.builder().monthlyCredits(50L).build());
+        settings.setPlan(Plan.builder().monthlyCreditLimit(50).build());
         
-        when(balanceRepository.findByUserIdAndPeriodMonth(eq(userId), any())).thenReturn(Optional.of(balance));
+        when(balanceRepository.findActiveBalance(eq(userId), any(java.time.LocalDate.class))).thenReturn(Optional.of(balance));
 
         assertThatThrownBy(() -> service.assertCreditsAvailable(userId, 100L))
                 .isInstanceOf(InsufficientCreditsException.class);
