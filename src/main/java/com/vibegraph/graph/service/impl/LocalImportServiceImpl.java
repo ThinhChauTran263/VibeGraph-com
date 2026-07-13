@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
@@ -17,6 +18,11 @@ import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
@@ -35,7 +41,8 @@ import com.vibegraph.graph.websocket.GraphUpdateController;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Default {@link LocalImportService}: orchestrates {@code createProject → analyze → watch} for
+ * Default {@link LocalImportService}: orchestrates
+ * {@code createProject → analyze → watch} for
  * an in-place directory, and exposes a base-confined directory browser.
  */
 @Service
@@ -43,8 +50,8 @@ import lombok.extern.slf4j.Slf4j;
 public class LocalImportServiceImpl implements LocalImportService {
 
     /** Directories never offered by the browser (build output, VCS, deps). */
-    private static final Set<String> IGNORED_DIRS =
-            Set.of("target", "build", "out", ".git", ".idea", ".gradle", "node_modules", "dist", ".vibegraph");
+    private static final Set<String> IGNORED_DIRS = Set.of("target", "build", "out", ".git", ".idea", ".gradle",
+            "node_modules", "dist", ".vibegraph");
 
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
@@ -52,37 +59,63 @@ public class LocalImportServiceImpl implements LocalImportService {
     private final ProjectsProperties projectsProperties;
     private final GraphUpdateController graphUpdateController;
     private final Executor analysisExecutor;
+    private final AccountSettingsService accountSettingsService;
+    private final ProjectUsageService projectUsageService;
+    private final CreditPricingService creditPricingService;
+    private final CreditBalanceService creditBalanceService;
+    private final CurrentUser currentUser;
 
     public LocalImportServiceImpl(ProjectService projectService,
-                                  AnalyzeService analyzeService,
-                                  FileChangeBroadcaster fileChangeBroadcaster,
-                                  ProjectsProperties projectsProperties,
-                                  GraphUpdateController graphUpdateController,
-                                  @Qualifier("analysisExecutor") Executor analysisExecutor) {
+            AnalyzeService analyzeService,
+            FileChangeBroadcaster fileChangeBroadcaster,
+            ProjectsProperties projectsProperties,
+            GraphUpdateController graphUpdateController,
+            @Qualifier("analysisExecutor") Executor analysisExecutor,
+            AccountSettingsService accountSettingsService,
+            ProjectUsageService projectUsageService,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            CurrentUser currentUser) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.projectsProperties = projectsProperties;
         this.graphUpdateController = graphUpdateController;
         this.analysisExecutor = analysisExecutor;
+        this.accountSettingsService = accountSettingsService;
+        this.projectUsageService = projectUsageService;
+        this.creditPricingService = creditPricingService;
+        this.creditBalanceService = creditBalanceService;
+        this.currentUser = currentUser;
     }
 
     @Override
     public ProjectResponse importLocal(LocalImportRequest request) {
-        // createProject enforces the allowed-root guard + existence/dir checks synchronously, so a
-        // bad path is rejected with 400 before we accept the import.
+        // Blocked account must be checked BEFORE quota (returns ACCOUNT_BLOCKED, not QUOTA_EXCEEDED).
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+
+        // Measure size of the directory in-place before accepting the import.
+        long totalSize = measureDirectorySize(Path.of(request.path()));
+        accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
+
+        // createProject enforces the allowed-root guard + existence/dir checks
+        // synchronously, so a bad path is rejected with 400 before we accept the import.
         ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
                 .name(request.name())
                 .rootPath(request.path())
                 .build());
 
+        // Record usage synchronously so GET /api/account/usage is consistent immediately.
+        projectUsageService.recordImport(created.getId(), userId, totalSize);
+
         projectService.markAnalyzing(created.getId());
         graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
-        // Analyze off the request thread so the client gets an immediate ANALYZING response and a
-        // streamed progress bar (mirrors the archive/GitHub async flow).
+        // Analyze off the request thread so the client gets an immediate ANALYZING
+        // response and a streamed progress bar (mirrors the archive/GitHub async flow).
         try {
-            analysisExecutor.execute(() ->
-                    analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
+            analysisExecutor
+                    .execute(() -> analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
         } catch (RejectedExecutionException ex) {
             // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
@@ -103,9 +136,15 @@ public class LocalImportServiceImpl implements LocalImportService {
             projectService.markAnalyzed(projectId,
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.ANALYZED, 100);
-            // Watch the very directory we analyzed → edits there stream realtime graph updates.
+            // Watch the very directory we analyzed → edits there stream realtime graph
+            // updates.
             fileChangeBroadcaster.watchProject(projectId, rootPath);
-            log.info("Local-imported project {} from {} ({} files)", projectId, rootPath, result.filesParsed());
+
+            // Deduct credits for PROJECT_ANALYZE
+            long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
+            creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "PROJECT_ANALYZE", projectId);
+
+            log.info("Local-imported project {} from {} ({} files, credits: {})", projectId, rootPath, result.filesParsed(), requiredCredits);
         } catch (RuntimeException e) {
             projectService.markFailed(projectId, e.getMessage());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.FAILED.name(), 0, e.getMessage());
@@ -118,9 +157,12 @@ public class LocalImportServiceImpl implements LocalImportService {
         Path base = configuredBase(); // null = unconfined (no allowed-root): browse the whole host
         String trimmed = path == null ? "" : path.trim();
 
-        // Unconfined + top-level view → list the filesystem roots ("This PC": drive letters on
-        // Windows, "/" on Unix) so a developer can reach projects on any drive without a fixed
-        // root. Each team member's disk layout differs, so a hardcoded allowed-root would not fit.
+        // Unconfined + top-level view → list the filesystem roots ("This PC": drive
+        // letters on
+        // Windows, "/" on Unix) so a developer can reach projects on any drive without
+        // a fixed
+        // root. Each team member's disk layout differs, so a hardcoded allowed-root
+        // would not fit.
         if (base == null && trimmed.isEmpty()) {
             return listRoots();
         }
@@ -147,7 +189,10 @@ public class LocalImportServiceImpl implements LocalImportService {
         return new DirectoryListing(target.toString(), parentOf(target, base), entries);
     }
 
-    /** Configured allowed base, or {@code null} when browsing is unconfined (no allowed-root set). */
+    /**
+     * Configured allowed base, or {@code null} when browsing is unconfined (no
+     * allowed-root set).
+     */
     private Path configuredBase() {
         String allowedRoot = projectsProperties.getAllowedRoot();
         if (allowedRoot == null || allowedRoot.isBlank()) {
@@ -169,9 +214,12 @@ public class LocalImportServiceImpl implements LocalImportService {
     }
 
     /**
-     * Top-level "This PC" view for unconfined browsing: the filesystem roots — drive letters on
-     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are not accessible
-     * (empty removable/optical media) are skipped so one bad drive can't break the whole listing.
+     * Top-level "This PC" view for unconfined browsing: the filesystem roots —
+     * drive letters on
+     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are
+     * not accessible
+     * (empty removable/optical media) are skipped so one bad drive can't break the
+     * whole listing.
      * The parent is {@code null} because there is nothing above "This PC".
      */
     private DirectoryListing listRoots() {
@@ -193,12 +241,13 @@ public class LocalImportServiceImpl implements LocalImportService {
         return new DirectoryListing("", null, entries);
     }
 
-
     /**
      * Parent path for the Up control:
      * <ul>
-     *   <li>Confined: {@code null} at the base; otherwise the parent (still inside the base).</li>
-     *   <li>Unconfined: the parent path, or {@code ""} (the roots sentinel) when at a drive root.</li>
+     * <li>Confined: {@code null} at the base; otherwise the parent (still inside
+     * the base).</li>
+     * <li>Unconfined: the parent path, or {@code ""} (the roots sentinel) when at a
+     * drive root.</li>
      * </ul>
      */
     private String parentOf(Path target, Path base) {
@@ -212,16 +261,22 @@ public class LocalImportServiceImpl implements LocalImportService {
         return parent == null ? "" : parent.toString();
     }
 
-    /** A sub-directory is offered only if it is not hidden (dot-prefixed) and not an ignored build/VCS dir. */
+    /**
+     * A sub-directory is offered only if it is not hidden (dot-prefixed) and not an
+     * ignored build/VCS dir.
+     */
     private static boolean isBrowsable(Path dir) {
         String name = fileName(dir);
         return !name.isEmpty() && !name.startsWith(".") && !IGNORED_DIRS.contains(name);
     }
 
     /**
-     * Cheap best-effort hint of whether {@code dir} looks like a Java project root: presence of a
-     * {@code src} dir / Maven / Gradle build file, or a {@code .java} file directly inside. Bounded
-     * (one directory listing + a few existence checks) so it stays fast even at drive-root level.
+     * Cheap best-effort hint of whether {@code dir} looks like a Java project root:
+     * presence of a
+     * {@code src} dir / Maven / Gradle build file, or a {@code .java} file directly
+     * inside. Bounded
+     * (one directory listing + a few existence checks) so it stays fast even at
+     * drive-root level.
      */
     private static boolean looksLikeJava(Path dir) {
         try {
@@ -245,5 +300,31 @@ public class LocalImportServiceImpl implements LocalImportService {
     private static String fileName(Path p) {
         Path name = p.getFileName();
         return name == null ? "" : name.toString();
+    }
+
+    /**
+     * Walk the directory tree and sum all regular file sizes.
+     * Used to estimate storage quota before accepting a local import.
+     * Returns 0 on any I/O error so quota check falls through rather than blocking
+     * a valid import due to permission issues on unrelated files.
+     */
+    private static long measureDirectorySize(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return 0L;
+        }
+        try (Stream<Path> walk = Files.walk(dir)) {
+            return walk
+                    .filter(Files::isRegularFile)
+                    .mapToLong(p -> {
+                        try {
+                            return Files.size(p);
+                        } catch (IOException e) {
+                            return 0L;
+                        }
+                    })
+                    .sum();
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 }

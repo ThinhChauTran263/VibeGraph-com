@@ -2,6 +2,13 @@ package com.vibegraph.graph.service.impl;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
+
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.ProjectUsageService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,7 +38,13 @@ class LocalImportServiceImplTest {
     private FileChangeBroadcaster fileChangeBroadcaster;
     private GraphUpdateController graphUpdateController;
     private ProjectsProperties properties;
+    private AccountSettingsService accountSettingsService;
+    private ProjectUsageService projectUsageService;
+    private CreditPricingService creditPricingService;
+    private CreditBalanceService creditBalanceService;
+    private CurrentUser currentUser;
     private LocalImportServiceImpl service;
+    private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -39,10 +52,17 @@ class LocalImportServiceImplTest {
         analyzeService = Mockito.mock(AnalyzeService.class);
         fileChangeBroadcaster = Mockito.mock(FileChangeBroadcaster.class);
         graphUpdateController = Mockito.mock(GraphUpdateController.class);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        projectUsageService = Mockito.mock(ProjectUsageService.class);
+        creditPricingService = Mockito.mock(CreditPricingService.class);
+        creditBalanceService = Mockito.mock(CreditBalanceService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
         properties = new ProjectsProperties();
+        Mockito.lenient().when(currentUser.id()).thenReturn(userId);
         // Run the "background" analysis inline so the async flow is deterministic in tests.
         service = new LocalImportServiceImpl(projectService, analyzeService, fileChangeBroadcaster,
-                properties, graphUpdateController, Runnable::run);
+                properties, graphUpdateController, Runnable::run,
+                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
     }
 
     @Test

@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
@@ -37,6 +40,9 @@ public class ProjectController {
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
     private final ProjectDeletionOrchestrator deletionOrchestrator;
+    private final CreditPricingService creditPricingService;
+    private final CreditBalanceService creditBalanceService;
+    private final CurrentUser currentUser;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -73,6 +79,10 @@ public class ProjectController {
 
         // Persist analysis stats through the interface contract — no impl downcast.
         projectService.updateProjectStats(id, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
+
+        // Deduct credits for PROJECT_ANALYZE
+        long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
+        creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "PROJECT_ANALYZE", id);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }

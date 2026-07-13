@@ -30,6 +30,9 @@ import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
@@ -52,6 +55,9 @@ class ProjectControllerTest {
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
     private ProjectDeletionOrchestrator deletionOrchestrator;
+    private CreditPricingService creditPricingService;
+    private CreditBalanceService creditBalanceService;
+    private CurrentUser currentUser;
 
     @BeforeEach
     void setUp() {
@@ -61,9 +67,12 @@ class ProjectControllerTest {
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
+        creditPricingService = Mockito.mock(CreditPricingService.class);
+        creditBalanceService = Mockito.mock(CreditBalanceService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator);
+                deletionOrchestrator, creditPricingService, creditBalanceService, currentUser);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

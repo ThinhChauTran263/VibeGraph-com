@@ -11,6 +11,13 @@ import java.util.Map;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.UUID;
+
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.ProjectUsageService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +31,7 @@ import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,18 +66,27 @@ class ArchiveImportServiceImplTest {
     @Mock
     FileChangeBroadcaster fileChangeBroadcaster;
 
+    @Mock AccountSettingsService accountSettingsService;
+    @Mock ProjectUsageService projectUsageService;
+    @Mock CreditPricingService creditPricingService;
+    @Mock CreditBalanceService creditBalanceService;
+    @Mock CurrentUser currentUser;
+
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
     private ArchiveImportServiceImpl service;
+    private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         workspaceRoot = tempDir.resolve("uploads");
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
+        lenient().when(currentUser.id()).thenReturn(userId);
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
-                projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add);
+                projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
+                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
     }
 
     @Test

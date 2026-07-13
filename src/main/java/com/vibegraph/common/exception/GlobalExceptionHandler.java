@@ -74,6 +74,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(InsufficientCreditsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientCredits(InsufficientCreditsException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(AccountBlockedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccountBlocked(AccountBlockedException ex) {
         ErrorResponse error = ErrorResponse.builder()

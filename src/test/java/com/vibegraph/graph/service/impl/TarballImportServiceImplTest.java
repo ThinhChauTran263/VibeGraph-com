@@ -4,6 +4,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.ProjectUsageService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,18 +70,26 @@ class TarballImportServiceImplTest {
     @Mock
     FileChangeBroadcaster fileChangeBroadcaster;
 
+    @Mock AccountSettingsService accountSettingsService;
+    @Mock ProjectUsageService projectUsageService;
+    @Mock CreditPricingService creditPricingService;
+    @Mock CreditBalanceService creditBalanceService;
+    @Mock CurrentUser currentUser;
+
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
     private TarballImportServiceImpl service;
+    private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         workspaceRoot = tempDir.resolve("uploads");
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
+        lenient().when(currentUser.id()).thenReturn(userId);
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
-                backgroundTasks::add);
+                backgroundTasks::add, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
     }
 
     @Test
