@@ -32,7 +32,7 @@ export type ArchiveImportStatus = 'idle' | 'uploading' | 'analyzing' | 'success'
 /** Default cadence for the polling fallback (ms). */
 const DEFAULT_POLL_INTERVAL_MS = 2000
 /** Default watchdog: give up waiting for a terminal status after this long (ms). */
-const DEFAULT_ANALYSIS_TIMEOUT_MS = 3_600_000 // 1 hour
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 600_000 // 10 minutes
 
 export interface UseArchiveImportOptions {
   /**
