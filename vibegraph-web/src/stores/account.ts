@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { UserProfile, UserUsage, Project, ApiKey } from '../types/api'
 import { useAuthStore } from './auth'
+import { accountApi } from '../lib/api'
 
 export const useAccountStore = defineStore('account', () => {
   const profile = ref<UserProfile | null>(null)
@@ -31,8 +32,14 @@ export const useAccountStore = defineStore('account', () => {
   }
 
   async function updateDisplayName(newName: string) {
+    const updated = await accountApi.updateProfile(newName)
     if (profile.value) {
-      profile.value.displayName = newName
+      profile.value.displayName = updated.displayName
+    }
+    const authStore = useAuthStore()
+    if (authStore.user) {
+      authStore.user.displayName = updated.displayName
+      localStorage.setItem('vg_user', JSON.stringify(authStore.user))
     }
   }
 

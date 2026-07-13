@@ -214,6 +214,15 @@ export const api = {
     return unwrap<T>(res)
   },
 
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    return unwrap<T>(res)
+  },
+
   /**
    * POST a `multipart/form-data` request. Do NOT set `Content-Type` manually -
    * the browser must compute the multipart boundary. Setting it explicitly
@@ -507,4 +516,18 @@ export const authApi = {
     }
     return api.get<User>('/api/auth/me')
   },
+}
+
+export const accountApi = {
+  updateProfile(displayName: string): Promise<{ id: string; email: string; displayName: string; role: string }> {
+    if (import.meta.env.VITE_USE_MOCK_AUTH === 'true') {
+      return Promise.resolve({
+        id: 'usr-1',
+        email: 'user@example.com',
+        displayName,
+        role: 'ADMIN'
+      })
+    }
+    return api.patch<{ id: string; email: string; displayName: string; role: string }>('/api/account/profile', { displayName })
+  }
 }
