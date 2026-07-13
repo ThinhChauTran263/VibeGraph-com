@@ -482,20 +482,29 @@ export const diagramApi = {
  */
 export const authApi = {
   register(data: RegisterRequest): Promise<AuthResponse> {
-    return Promise.resolve({
-      token: 'mock-token-for-dev',
-      user: { id: 'mock-user-1', email: data.email, displayName: 'Test User', role: 'admin' }
-    })
+    if (import.meta.env.VITE_USE_MOCK_AUTH === 'true') {
+      return Promise.resolve({
+        token: 'mock-token-for-dev',
+        user: { id: 'mock-user-1', email: data.email, displayName: 'Test User', role: 'ADMIN' }
+      })
+    }
+    return api.post<AuthResponse>('/api/auth/register', data)
   },
 
   login(data: LoginRequest): Promise<AuthResponse> {
-    return Promise.resolve({
-      token: 'mock-token-for-dev',
-      user: { id: 'mock-user-1', email: data.email, displayName: 'Admin User', role: 'admin' }
-    })
+    if (import.meta.env.VITE_USE_MOCK_AUTH === 'true') {
+      return Promise.resolve({
+        token: 'mock-token-for-dev',
+        user: { id: 'mock-user-1', email: data.email, displayName: 'Admin User', role: 'ADMIN' }
+      })
+    }
+    return api.post<AuthResponse>('/api/auth/login', data)
   },
 
   async me(): Promise<User> {
-    return { id: 'mock-user-1', email: 'admin@example.com', displayName: 'Admin User', role: 'admin' }
+    if (import.meta.env.VITE_USE_MOCK_AUTH === 'true') {
+      return { id: 'mock-user-1', email: 'admin@example.com', displayName: 'Admin User', role: 'ADMIN' }
+    }
+    return api.get<User>('/api/auth/me')
   },
 }
