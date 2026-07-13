@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { UserProfile, UserUsage, Project, ApiKey } from '../types/api'
+import { useAuthStore } from './auth'
 
 export const useAccountStore = defineStore('account', () => {
   const profile = ref<UserProfile | null>(null)
@@ -9,13 +10,23 @@ export const useAccountStore = defineStore('account', () => {
   const apiKeys = ref<ApiKey[]>([])
 
   async function fetchProfile() {
-    // API mock placeholder
-    profile.value = {
-      id: 'usr-1',
-      email: 'user@example.com',
-      displayName: 'Test User',
-      role: 'user',
-      status: 'active'
+    const authStore = useAuthStore()
+    if (authStore.user) {
+      profile.value = {
+        id: authStore.user.id,
+        email: authStore.user.email,
+        displayName: authStore.user.displayName,
+        role: authStore.user.role,
+        status: 'active'
+      }
+    } else {
+      profile.value = {
+        id: 'usr-1',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'USER',
+        status: 'active'
+      }
     }
   }
 
