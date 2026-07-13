@@ -30,4 +30,17 @@ public interface FeedbackReportRepository extends JpaRepository<FeedbackReport, 
 
     /** Còn lại để phòng khi cần load entity (ví dụ: admin review). */
     List<FeedbackReport> findByDeleteAfterLessThanEqual(Instant now);
+
+    long countByStatus(com.vibegraph.auth.domain.FeedbackReportStatus status);
+
+    List<FeedbackReport> findAllByOrderByCreatedAtDesc();
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT r FROM FeedbackReport r WHERE " +
+        "(:status IS NULL OR r.status = :status) AND " +
+        "(:query IS NULL OR :query = '' OR lower(r.title) LIKE lower(concat('%', :query, '%')))")
+    org.springframework.data.domain.Page<FeedbackReport> findAllWithFilters(
+            @org.springframework.data.repository.query.Param("status") com.vibegraph.auth.domain.FeedbackReportStatus status,
+            @org.springframework.data.repository.query.Param("query") String query,
+            org.springframework.data.domain.Pageable pageable);
 }

@@ -71,6 +71,10 @@ public class User {
     @Column(name = "used_bytes", nullable = false)
     private long usedBytes = 0L;
 
+    @Builder.Default
+    @Column(name = "deactivated", nullable = false)
+    private boolean deactivated = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

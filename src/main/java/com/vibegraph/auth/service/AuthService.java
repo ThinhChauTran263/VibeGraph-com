@@ -79,6 +79,9 @@ public class AuthService {
         if (!passwordMatches || user == null || user.getPasswordHash() == null) {
             throw new InvalidCredentialsException("Invalid email or password");
         }
+        if (user.isDeactivated()) {
+            throw new InvalidCredentialsException("Account is deactivated");
+        }
         accountSettingsService.assertNotBlocked(user.getId());
         return toAuthResponse(user);
     }
