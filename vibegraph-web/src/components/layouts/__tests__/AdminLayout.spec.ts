@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AdminLayout from '../AdminLayout.vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { createTestingPinia } from '@pinia/testing'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,7 +15,7 @@ describe('AdminLayout', () => {
     await router.isReady()
     const wrapper = mount(AdminLayout, {
       global: {
-        plugins: [router]
+        plugins: [router, createTestingPinia({ createSpy: vi.fn })]
       }
     })
     // Expect to have a nav element specific for admin
