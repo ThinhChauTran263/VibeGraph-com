@@ -41,6 +41,9 @@ public class Plan {
     @Column(name = "api_key_limit", nullable = false)
     private int apiKeyLimit;
 
+    @Column(name = "monthly_credits", nullable = false)
+    private long monthlyCredits;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
