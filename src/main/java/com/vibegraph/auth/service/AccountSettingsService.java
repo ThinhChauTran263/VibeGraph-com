@@ -12,6 +12,7 @@ import com.vibegraph.auth.repository.PlanRepository;
 import com.vibegraph.auth.repository.ProjectUsageRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.common.exception.AccountBlockedException;
+import com.vibegraph.common.exception.QuotaExceededException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,6 +22,8 @@ public class AccountSettingsService {
 
     private static final String FREE_PLAN_CODE = "FREE";
     private static final String DEFAULT_BLOCKED_REASON = "Account is blocked";
+    static final String QUOTA_EXCEEDED_MESSAGE =
+            "Source storage quota exceeded. Free up storage or ask an admin for a quota override.";
 
     private final PlanRepository planRepository;
     private final UserAccountSettingsRepository settingsRepository;
@@ -64,6 +67,31 @@ public class AccountSettingsService {
                             : settings.getBlockedReasonSafe();
                     throw new AccountBlockedException("Account is blocked", reason);
                 });
+    }
+
+    /**
+     * Assert that adding {@code additionalBytes} would not exceed the effective storage quota for
+     * the given user. The effective limit is the plan's storage limit, unless the admin has set a
+     * higher override on the account settings.
+     *
+     * <p>Call this <em>before</em> any import or patch that writes source files to disk.
+     * Always call {@link #assertNotBlocked(UUID)} first so that a blocked account receives
+     * {@code ACCOUNT_BLOCKED}, not {@code QUOTA_EXCEEDED}.
+     *
+     * @param userId          the user whose quota to check
+     * @param additionalBytes the net byte increase that the operation would cause
+     * @throws QuotaExceededException if {@code usedBytes + additionalBytes > limitBytes}
+     */
+    @Transactional(readOnly = true)
+    public void assertQuotaNotExceeded(UUID userId, long additionalBytes) {
+        if (additionalBytes <= 0) {
+            // Deletions or zero-byte deltas never exceed quota.
+            return;
+        }
+        AccountQuotaSnapshot snapshot = quotaSnapshot(userId);
+        if (snapshot.usedBytes() + additionalBytes > snapshot.limitBytes()) {
+            throw new QuotaExceededException(QUOTA_EXCEEDED_MESSAGE);
+        }
     }
 
     @Transactional(readOnly = true)

@@ -33,7 +33,10 @@ import com.vibegraph.graph.websocket.GraphUpdateController;
 
 import lombok.extern.slf4j.Slf4j;
 
-/** Default implementation importing public GitHub repositories through their tarball API. */
+/**
+ * Default implementation importing public GitHub repositories through their
+ * tarball API.
+ */
 @Service
 @Slf4j
 public class TarballImportServiceImpl implements TarballImportService {
@@ -50,15 +53,15 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final Executor analysisExecutor;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
-                                    GitHubPreFlightService preFlightService,
-                                    GitHubTarballClient tarballClient,
-                                    ArchiveImportProperties properties,
-                                    ArchiveExtractor archiveExtractor,
-                                    ProjectService projectService,
-                                    AnalyzeService analyzeService,
-                                    GraphUpdateController graphUpdateController,
-                                    FileChangeBroadcaster fileChangeBroadcaster,
-                                    @Qualifier("analysisExecutor") Executor analysisExecutor) {
+            GitHubPreFlightService preFlightService,
+            GitHubTarballClient tarballClient,
+            ArchiveImportProperties properties,
+            ArchiveExtractor archiveExtractor,
+            ProjectService projectService,
+            AnalyzeService analyzeService,
+            GraphUpdateController graphUpdateController,
+            FileChangeBroadcaster fileChangeBroadcaster,
+            @Qualifier("analysisExecutor") Executor analysisExecutor) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -84,7 +87,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             analysisExecutor.execute(() -> analyzeInBackground(ctx));
             return projectService.getProject(ctx.projectId());
         } catch (RejectedExecutionException ex) {
-            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the
+            // request thread.
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
             projectService.markFailed(ctx.projectId(), reason);
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
@@ -108,7 +112,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             ArchiveExtractionResult extraction = archiveExtractor.extract(tarball, ArchiveType.TAR_GZ, source);
             deleteRecursively(tarball);
 
-            ProjectResponse project = projectService.createProjectFromWorkspace(ref.displayName(), extraction.extractedRoot());
+            ProjectResponse project = projectService.createProjectFromWorkspace(ref.displayName(),
+                    extraction.extractedRoot());
             createdProjectId = project.getId();
             log.info("Imported GitHub tarball {}@{} as project {} ({} .java files)",
                     ref.displayName(), ref.ref(), project.getId(), extraction.javaFiles().size());
@@ -132,8 +137,8 @@ public class TarballImportServiceImpl implements TarballImportService {
                 projectService.updateProgress(ctx.projectId(), percent);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
             };
-            AnalyzeService.AnalysisResult result =
-                    analyzeService.analyzeProject(ctx.projectId(), ctx.repository(), ctx.rootPath(), listener);
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.repository(),
+                    ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100,
@@ -150,7 +155,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     }
 
     private record ImportContext(Path workspace, String projectId, String rootPath, String repository, String ref,
-                                 int javaFileCount) {
+            int javaFileCount) {
     }
 
     private void cleanup(Path workspace, String projectId) {
