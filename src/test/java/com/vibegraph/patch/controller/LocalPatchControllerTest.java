@@ -1,6 +1,10 @@
 package com.vibegraph.patch.controller;
 
 import java.util.List;
+import java.util.UUID;
+
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,12 +49,18 @@ class LocalPatchControllerTest {
     private MockMvc mockMvc;
     private LocalPatchService localPatchService;
     private ProjectOwnershipGuard ownershipGuard;
+    private AccountSettingsService accountSettingsService;
+    private CurrentUser currentUser;
+    private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         localPatchService = Mockito.mock(LocalPatchService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
-        LocalPatchController controller = new LocalPatchController(localPatchService, ownershipGuard);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        when(currentUser.id()).thenReturn(userId);
+        LocalPatchController controller = new LocalPatchController(localPatchService, ownershipGuard, accountSettingsService, currentUser);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler(), new PatchExceptionHandler())
                 .build();
