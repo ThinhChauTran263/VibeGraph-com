@@ -1,11 +1,28 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import BrandMark from '@/components/ui/BrandMark.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+function handleLogout() {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
   <div class="user-layout">
     <header class="header">
-      <div class="logo">VibeGraph User</div>
+      <div class="header__brand-group">
+        <RouterLink to="/dashboard" class="header__logo-link">
+          <BrandMark :size="24" />
+        </RouterLink>
+        <span class="header__separator">|</span>
+        <span class="header__title">User Panel</span>
+      </div>
+
       <nav class="nav-links">
         <RouterLink to="/profile">Profile</RouterLink>
         <RouterLink to="/projects">Projects</RouterLink>
@@ -13,6 +30,20 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/usage">Usage</RouterLink>
         <RouterLink to="/reports">Reports</RouterLink>
       </nav>
+
+      <div class="header__user-actions" v-if="auth.isAuthenticated">
+        <span class="header__email" :title="auth.userEmail">
+          {{ auth.userDisplayName || auth.userEmail }}
+        </span>
+        <button
+          class="header__logout-btn"
+          type="button"
+          @click="handleLogout"
+          aria-label="Sign out"
+        >
+          Logout
+        </button>
+      </div>
     </header>
     <main class="main-content">
       <RouterView />
@@ -32,7 +63,7 @@ import { RouterLink, RouterView } from 'vue-router'
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--vg-space-4) var(--vg-space-6);
+  padding: var(--vg-space-3) var(--vg-space-6);
   background: var(--vg-surface);
   border-bottom: 1px solid var(--vg-border);
   backdrop-filter: blur(16px);
@@ -40,18 +71,30 @@ import { RouterLink, RouterView } from 'vue-router'
   position: sticky;
   top: 0;
   z-index: 100;
+  gap: var(--vg-space-4);
 }
 
-.logo {
-  font-family: var(--vg-font-display);
-  font-weight: 700;
-  font-size: var(--vg-text-lg);
-  background: var(--vg-grad-brand);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.02em;
-  user-select: none;
+.header__brand-group {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
+}
+
+.header__logo-link {
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.header__separator {
+  color: var(--vg-border);
+  font-weight: 300;
+}
+
+.header__title {
+  font-family: var(--vg-font-body);
+  font-weight: 500;
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
 }
 
 .nav-links {
@@ -84,6 +127,43 @@ import { RouterLink, RouterView } from 'vue-router'
   font-weight: 600;
 }
 
+.header__user-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
+}
+
+.header__email {
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header__logout-btn {
+  padding: 0.3rem 0.65rem;
+  font-size: var(--vg-text-sm);
+  font-weight: 500;
+  font-family: var(--vg-font-body);
+  color: var(--vg-text-muted);
+  background: transparent;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--vg-dur-fast),
+    border-color var(--vg-dur-fast),
+    background var(--vg-dur-fast);
+}
+
+.header__logout-btn:hover {
+  color: var(--vg-danger);
+  border-color: var(--vg-danger);
+  background: rgba(239, 68, 68, 0.06);
+}
+
 .main-content {
   flex: 1;
   padding: var(--vg-space-6);
@@ -93,3 +173,4 @@ import { RouterLink, RouterView } from 'vue-router'
   margin: 0 auto;
 }
 </style>
+

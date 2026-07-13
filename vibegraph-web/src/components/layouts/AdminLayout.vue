@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import BrandMark from '@/components/ui/BrandMark.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+function handleLogout() {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
   <div class="admin-layout">
     <aside class="sidebar">
-      <div class="logo">VibeGraph Admin</div>
+      <div class="sidebar__brand-group">
+        <RouterLink to="/dashboard" class="sidebar__logo-link">
+          <BrandMark :size="22" />
+        </RouterLink>
+        <span class="sidebar__badge">Admin</span>
+      </div>
       <nav class="nav-links">
         <RouterLink to="/admin">Dashboard</RouterLink>
         <RouterLink to="/admin/users">Users</RouterLink>
@@ -15,6 +30,19 @@ import { RouterLink, RouterView } from 'vue-router'
     <main class="main-content">
       <header class="admin-header">
         <div class="header-title">Admin Console</div>
+        <div class="header__user-actions" v-if="auth.isAuthenticated">
+          <span class="header__email" :title="auth.userEmail">
+            {{ auth.userDisplayName || auth.userEmail }}
+          </span>
+          <button
+            class="header__logout-btn"
+            type="button"
+            @click="handleLogout"
+            aria-label="Sign out"
+          >
+            Logout
+          </button>
+        </div>
       </header>
       <div class="content">
         <RouterView />
@@ -42,18 +70,29 @@ import { RouterLink, RouterView } from 'vue-router'
   overflow-y: auto;
 }
 
-.logo {
-  font-family: var(--vg-font-display);
-  font-weight: 700;
-  font-size: var(--vg-text-lg);
-  padding: var(--vg-space-5) var(--vg-space-5);
+.sidebar__brand-group {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-2);
+  padding: var(--vg-space-4) var(--vg-space-5);
   border-bottom: 1px solid var(--vg-border);
-  background: var(--vg-grad-brand);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.02em;
-  user-select: none;
+}
+
+.sidebar__logo-link {
+  text-decoration: none;
+  display: inline-flex;
+}
+
+.sidebar__badge {
+  font-family: var(--vg-font-body);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vg-orange);
+  background: rgba(245, 158, 11, 0.12);
+  padding: var(--vg-space-0-5) var(--vg-space-1-5);
+  border-radius: var(--vg-radius-sm);
+  letter-spacing: 0.05em;
 }
 
 .nav-links {
@@ -100,10 +139,13 @@ import { RouterLink, RouterView } from 'vue-router'
 
 .admin-header {
   background: var(--vg-surface);
-  padding: var(--vg-space-4) var(--vg-space-6);
+  padding: var(--vg-space-3) var(--vg-space-6);
   border-bottom: 1px solid var(--vg-border);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .header-title {
@@ -112,6 +154,43 @@ import { RouterLink, RouterView } from 'vue-router'
   font-size: var(--vg-text-base);
   color: var(--vg-text);
   letter-spacing: -0.01em;
+}
+
+.header__user-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
+}
+
+.header__email {
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header__logout-btn {
+  padding: 0.3rem 0.65rem;
+  font-size: var(--vg-text-sm);
+  font-weight: 500;
+  font-family: var(--vg-font-body);
+  color: var(--vg-text-muted);
+  background: transparent;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--vg-dur-fast),
+    border-color var(--vg-dur-fast),
+    background var(--vg-dur-fast);
+}
+
+.header__logout-btn:hover {
+  color: var(--vg-danger);
+  border-color: var(--vg-danger);
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .content {
