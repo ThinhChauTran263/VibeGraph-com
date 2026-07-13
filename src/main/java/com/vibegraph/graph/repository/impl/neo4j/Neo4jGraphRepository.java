@@ -26,6 +26,7 @@ import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,6 +40,18 @@ public class Neo4jGraphRepository implements GraphRepository {
 
     private final Driver neo4jDriver;
 
+    @PostConstruct
+    public void initIndexes() {
+        try (Session session = neo4jDriver.session()) {
+            log.info("Ensuring Neo4j schema constraints and indexes...");
+            session.run("CREATE CONSTRAINT unique_project_id IF NOT EXISTS FOR (p:Project) REQUIRE p.id IS UNIQUE");
+            session.run("CREATE INDEX idx_vgnode_project_fullname IF NOT EXISTS FOR (n:VgNode) ON (n.projectId, n.fullName)");
+            log.info("Neo4j indexes initialized successfully.");
+        } catch (Exception e) {
+            log.error("Failed to initialize Neo4j indexes: {}", e.getMessage(), e);
+        }
+    }
+
     @Override
     public void upsertProject(String projectId, String name, String path) {
         try (Session session = neo4jDriver.session()) {
@@ -46,7 +59,7 @@ public class Neo4jGraphRepository implements GraphRepository {
             // The Project node gets fullName = projectId so it participates in the
             // same stable-id scheme as every other node.
             session.run(
-                    "MERGE (p:Project {id: $projectId}) " +
+                    "MERGE (p:Project:VgNode {id: $projectId}) " +
                     "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId",
                     Map.of("projectId", projectId, "name", name, "path", path)
             );
@@ -97,7 +110,7 @@ public class Neo4jGraphRepository implements GraphRepository {
         // Identity is {projectId, fullName} — label-agnostic — so upserting a node
         // ENRICHES any pre-existing `External` stub with the same fullName (created
         // on demand by upsertEdges for unparsed targets) instead of creating a
-        // duplicate: MERGE without a label, then SET the real label and REMOVE
+        // duplicate: MERGE on VgNode label, then SET the real label and REMOVE
         // :External. Neo4j cannot parameterize labels, so we group by label and run
         // one UNWIND batch per label; the validated label is interpolated into SET n:%s.
         // Dynamic properties are bulk-applied with `SET n += item.props`.
@@ -127,7 +140,7 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byLabel.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (n {projectId: $projectId, fullName: item.fullName}) " +
+                        "MERGE (n:VgNode {projectId: $projectId, fullName: item.fullName}) " +
                         "SET n:%s " +
                         "REMOVE n:External " +
                         "SET n.name = item.name, n.filePath = item.filePath, " +
@@ -172,9 +185,9 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byRelType.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (a {projectId: $projectId, fullName: item.sourceFullName}) " +
+                        "MERGE (a:VgNode {projectId: $projectId, fullName: item.sourceFullName}) " +
                         "ON CREATE SET a:%s, a.name = item.sourceFullName " +
-                        "MERGE (b {projectId: $projectId, fullName: item.targetFullName}) " +
+                        "MERGE (b:VgNode {projectId: $projectId, fullName: item.targetFullName}) " +
                         "ON CREATE SET b:%s, b.name = item.targetFullName " +
                         "MERGE (a)-[r:%s]->(b) " +
                         "SET r += item.props",
