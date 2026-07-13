@@ -133,15 +133,6 @@ onUnmounted(stopAutoRefresh)
 
 <template>
   <div class="dash">
-    <nav class="dash-nav" aria-label="Dashboard">
-      <RouterLink class="dash-nav__brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
-        <BrandMark :size="28" />
-      </RouterLink>
-      <RouterLink class="dash-nav__back" :to="{ name: 'home' }">
-        <span aria-hidden="true">←</span> Home
-      </RouterLink>
-    </nav>
-
     <main class="home">
       <header class="home__header">
         <span class="home__eyebrow">Dashboard</span>
