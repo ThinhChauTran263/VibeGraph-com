@@ -24,6 +24,7 @@ function handleLogout() {
       </div>
 
       <nav class="nav-links">
+        <RouterLink to="/dashboard">Home</RouterLink>
         <RouterLink to="/profile">Profile</RouterLink>
         <RouterLink to="/projects">Projects</RouterLink>
         <RouterLink to="/api-keys">API Keys</RouterLink>
