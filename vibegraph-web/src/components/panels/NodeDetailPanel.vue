@@ -19,7 +19,8 @@ export interface RelationHoverPayload {
 
 const MAX_VISIBLE_PROPERTIES = NODE_DETAIL_MAX_PROPERTIES
 const MAX_VISIBLE_CONNECTIONS = NODE_DETAIL_MAX_CONNECTIONS
-const SENSITIVE_PROPERTY_KEY_PATTERN = /(secret|token|password|credential|auth|api[_-]?key|private[_-]?key)/i
+const SENSITIVE_PROPERTY_KEY_PATTERN =
+  /(secret|token|password|credential|auth|api[_-]?key|private[_-]?key)/i
 
 const { selectedNode, filteredGraphData, clearSelection } = useGraphData()
 
@@ -57,7 +58,9 @@ function onRelationSelect(connection: NodeConnection): void {
   emit('relationSelect', { edgeId: connection.edge.id, counterpartNodeId: connection.node.id })
 }
 
-const nodeById = computed(() => new Map(filteredGraphData.value.nodes.map((node) => [node.id, node])))
+const nodeById = computed(
+  () => new Map(filteredGraphData.value.nodes.map((node) => [node.id, node])),
+)
 
 // File nodes carry their path as BOTH fullName and filePath, which would render the
 // same path twice in the meta block. Only show fullName when it adds information
@@ -106,7 +109,10 @@ const propertyEntries = computed(() => {
   if (!selectedNode.value) return []
   return Object.entries(selectedNode.value.properties)
     .filter(([key, value]) => {
-      return !SENSITIVE_PROPERTY_KEY_PATTERN.test(key) && (value === null || ['string', 'number', 'boolean'].includes(typeof value))
+      return (
+        !SENSITIVE_PROPERTY_KEY_PATTERN.test(key) &&
+        (value === null || ['string', 'number', 'boolean'].includes(typeof value))
+      )
     })
     .slice(0, MAX_VISIBLE_PROPERTIES)
 })
@@ -135,14 +141,22 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 </script>
 
 <template>
-  <aside class="node-detail-panel" :aria-labelledby="selectedNode ? 'node-detail-heading' : 'node-detail-empty-heading'">
+  <aside
+    class="node-detail-panel"
+    :aria-labelledby="selectedNode ? 'node-detail-heading' : 'node-detail-empty-heading'"
+  >
     <template v-if="selectedNode">
       <header class="node-detail-panel__header">
         <div>
           <p class="node-detail-panel__eyebrow">Node detail</p>
           <h2 id="node-detail-heading">{{ selectedNode.name }}</h2>
         </div>
-        <button class="node-detail-panel__close" type="button" aria-label="Close node details" @click="onClose">
+        <button
+          class="node-detail-panel__close"
+          type="button"
+          aria-label="Close node details"
+          @click="onClose"
+        >
           ×
         </button>
       </header>
@@ -163,7 +177,11 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
         View source code
       </button>
 
-      <section v-if="propertyEntries.length > 0" class="node-detail-panel__section" aria-labelledby="node-properties-heading">
+      <section
+        v-if="propertyEntries.length > 0"
+        class="node-detail-panel__section"
+        aria-labelledby="node-properties-heading"
+      >
         <h3 id="node-properties-heading">Properties</h3>
         <dl class="node-detail-panel__properties">
           <template v-for="[key, value] in propertyEntries" :key="key">
@@ -184,7 +202,9 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
             <button
               type="button"
               class="node-detail-panel__connection"
-              :class="{ 'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId }"
+              :class="{
+                'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId,
+              }"
               :aria-pressed="connection.edge.id === props.pinnedEdgeId"
               @mouseenter="onRelationHover(connection)"
               @mouseleave="onRelationLeave"
@@ -199,7 +219,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
               />
               <span class="node-detail-panel__connection-body">
                 <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
-                <span class="node-detail-panel__connection-type" :style="{ color: getEdgeColor(connection.edge.type) }">
+                <span
+                  class="node-detail-panel__connection-type"
+                  :style="{ color: getEdgeColor(connection.edge.type) }"
+                >
                   ← {{ connection.edge.type }}
                 </span>
               </span>
@@ -230,7 +253,9 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
             <button
               type="button"
               class="node-detail-panel__connection"
-              :class="{ 'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId }"
+              :class="{
+                'node-detail-panel__connection--pinned': connection.edge.id === props.pinnedEdgeId,
+              }"
               :aria-pressed="connection.edge.id === props.pinnedEdgeId"
               @mouseenter="onRelationHover(connection)"
               @mouseleave="onRelationLeave"
@@ -245,7 +270,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
               />
               <span class="node-detail-panel__connection-body">
                 <span class="node-detail-panel__connection-name">{{ connection.node.name }}</span>
-                <span class="node-detail-panel__connection-type" :style="{ color: getEdgeColor(connection.edge.type) }">
+                <span
+                  class="node-detail-panel__connection-type"
+                  :style="{ color: getEdgeColor(connection.edge.type) }"
+                >
                   → {{ connection.edge.type }}
                 </span>
               </span>
@@ -371,7 +399,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
 .node-detail-panel__view-source:hover,
@@ -445,7 +476,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .node-detail-panel__connection-code:hover,
@@ -474,7 +508,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
 }
 
 .node-detail-panel__connection:hover,

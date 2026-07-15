@@ -13,9 +13,14 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.importer.ArchiveExtractionResult;
@@ -51,6 +56,11 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final GraphUpdateController graphUpdateController;
     private final FileChangeBroadcaster fileChangeBroadcaster;
     private final Executor analysisExecutor;
+    private final AccountSettingsService accountSettingsService;
+    private final ProjectUsageService projectUsageService;
+    private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final FeatureGateService featureGateService;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -58,7 +68,12 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     AnalyzeService analyzeService,
                                     GraphUpdateController graphUpdateController,
                                     FileChangeBroadcaster fileChangeBroadcaster,
-                                    @Qualifier("analysisExecutor") Executor analysisExecutor) {
+                                    @Qualifier("analysisExecutor") Executor analysisExecutor,
+                                    AccountSettingsService accountSettingsService,
+                                    ProjectUsageService projectUsageService,
+                                    CurrentUser currentUser,
+                                    ProjectOwnershipRegistrar ownershipRegistrar,
+                                    FeatureGateService featureGateService) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -66,6 +81,11 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.graphUpdateController = graphUpdateController;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.analysisExecutor = analysisExecutor;
+        this.accountSettingsService = accountSettingsService;
+        this.projectUsageService = projectUsageService;
+        this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
+        this.featureGateService = featureGateService;
     }
 
     @Override
@@ -76,6 +96,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             projectService.updateProjectStats(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
+
             log.info("Imported archive '{}' as project {} ({} .java files)",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount());
             return projectService.getProject(ctx.projectId());
@@ -119,7 +140,13 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      * errors surface immediately to the caller even on the async path.
      */
     private ImportContext prepare(String name, MultipartFile file) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_IMPORT_ARCHIVE);
         validate(name, file);
+
+        // Blocked account check before we consume any server resources (extract, etc.).
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+
         ArchiveType type = ArchiveTypeDetector.detect(file.getOriginalFilename());
         Path workspace = properties.getWorkspaceRoot().resolve(UUID.randomUUID().toString());
         Path uploaded = workspace.resolve("upload");
@@ -132,10 +159,21 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             }
             ArchiveExtractionResult extraction = archiveExtractor.extract(uploaded, type, source);
             deleteRecursively(uploaded); // the raw archive is no longer needed once .java files are materialized
+
+            // Quota check after extraction
+            long totalSize = measureExtractedSize(source);
+            accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
+
             ProjectResponse project = projectService.createProjectFromWorkspace(name, extraction.extractedRoot());
             createdProjectId = project.getId();
-            return new ImportContext(workspace, project.getId(), project.getRootPath(),
-                    name, extraction.javaFiles().size());
+
+            // Register ownership first to satisfy FK constraint in usage
+            ownershipRegistrar.registerArchive(createdProjectId, project.getName());
+
+            // Record storage usage synchronously
+            projectUsageService.recordImport(createdProjectId, userId, totalSize);
+
+            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize, userId);
         } catch (ArchiveImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -165,6 +203,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
+
             log.info("Async-imported archive '{}' as project {} ({} .java files)",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount());
         } catch (RuntimeException e) {
@@ -176,7 +215,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     }
 
     /** Synchronous import state handed to the background analysis task. */
-    private record ImportContext(Path workspace, String projectId, String rootPath, String name, int javaFileCount) {
+    private record ImportContext(Path workspace, String projectId, String rootPath, String name, int javaFileCount, long totalSize, UUID userId) {
     }
 
     private void cleanup(Path workspace, String projectId) {
@@ -205,6 +244,21 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             });
         } catch (IOException ex) {
             log.warn("Failed to clean workspace {}: {}", path, ex.getMessage());
+        }
+    }
+
+    /**
+     * Sum the sizes of all regular files under the extracted source directory.
+     * Used to verify quota before registering the project.
+     */
+    private long measureExtractedSize(Path dir) {
+        try (var walk = Files.walk(dir)) {
+            return walk.filter(Files::isRegularFile)
+                    .mapToLong(p -> {
+                        try { return Files.size(p); } catch (IOException e) { return 0L; }
+                    }).sum();
+        } catch (IOException e) {
+            return 0L;
         }
     }
 }

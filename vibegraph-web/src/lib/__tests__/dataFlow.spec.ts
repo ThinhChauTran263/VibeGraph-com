@@ -47,13 +47,32 @@ function graphOf(nodes: GraphNode[], edges: GraphEdge[]): GraphData {
 function completeGraph(): GraphData {
   const nodes: GraphNode[] = [
     node('ep', 'APIEndpoint', { name: 'GET /api/orders' }),
-    node('ctrl', 'Class', { name: 'OrderController', props: { springLayer: 'Controller' }, filePath: 'web/OrderController.java' }),
-    node('getOrders', 'Method', { name: 'getOrders', props: { httpMethod: 'GET', routePath: '/api/orders' }, filePath: 'web/OrderController.java' }),
-    node('svc', 'Class', { name: 'OrderService', props: { springLayer: 'Service' }, filePath: 'svc/OrderService.java' }),
+    node('ctrl', 'Class', {
+      name: 'OrderController',
+      props: { springLayer: 'Controller' },
+      filePath: 'web/OrderController.java',
+    }),
+    node('getOrders', 'Method', {
+      name: 'getOrders',
+      props: { httpMethod: 'GET', routePath: '/api/orders' },
+      filePath: 'web/OrderController.java',
+    }),
+    node('svc', 'Class', {
+      name: 'OrderService',
+      props: { springLayer: 'Service' },
+      filePath: 'svc/OrderService.java',
+    }),
     node('findOrders', 'Method', { name: 'findOrders', filePath: 'svc/OrderService.java' }),
-    node('repoIface', 'Interface', { name: 'OrderRepository', filePath: 'repo/OrderRepository.java' }),
+    node('repoIface', 'Interface', {
+      name: 'OrderRepository',
+      filePath: 'repo/OrderRepository.java',
+    }),
     node('findAllIface', 'Method', { name: 'findAll', filePath: 'repo/OrderRepository.java' }),
-    node('repoImpl', 'Class', { name: 'OrderRepositoryImpl', props: { springLayer: 'Repository' }, filePath: 'repo/OrderRepositoryImpl.java' }),
+    node('repoImpl', 'Class', {
+      name: 'OrderRepositoryImpl',
+      props: { springLayer: 'Repository' },
+      filePath: 'repo/OrderRepositoryImpl.java',
+    }),
     node('findAllImpl', 'Method', { name: 'findAll', filePath: 'repo/OrderRepositoryImpl.java' }),
     node('order', 'DBModel', { name: 'Order', filePath: 'model/Order.java' }),
   ]
@@ -75,7 +94,11 @@ describe('listTraceableEndpoints', () => {
   it('discovers endpoints from HANDLES_ROUTE with method + path from the handler', () => {
     const endpoints = listTraceableEndpoints(completeGraph())
     expect(endpoints).toHaveLength(1)
-    expect(endpoints[0]).toMatchObject({ handlerId: 'getOrders', method: 'GET', path: '/api/orders' })
+    expect(endpoints[0]).toMatchObject({
+      handlerId: 'getOrders',
+      method: 'GET',
+      path: '/api/orders',
+    })
   })
 
   it('falls back to handler methods carrying HTTP metadata when no HANDLES_ROUTE exists', () => {
@@ -178,7 +201,10 @@ describe('traceDataFlow', () => {
       flow.steps.some((step) => step.index === item.stepIndex && step.nodeId === 'ifaceFind'),
     )
     expect(ambiguous).toBeDefined()
-    expect(ambiguous!.candidates.map((candidate) => candidate.nodeId).sort()).toEqual(['find1', 'find2'])
+    expect(ambiguous!.candidates.map((candidate) => candidate.nodeId).sort()).toEqual([
+      'find1',
+      'find2',
+    ])
   })
 })
 

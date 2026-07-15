@@ -216,11 +216,26 @@ function methodClass(method: string): string {
   color: #cbd5e1;
 }
 
-.flows-panel__method--get { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; }
-.flows-panel__method--post { background: rgba(59, 130, 246, 0.22); color: #93c5fd; }
-.flows-panel__method--put { background: rgba(245, 158, 11, 0.22); color: #fcd34d; }
-.flows-panel__method--patch { background: rgba(168, 85, 247, 0.22); color: #d8b4fe; }
-.flows-panel__method--delete { background: rgba(239, 68, 68, 0.22); color: #fca5a5; }
+.flows-panel__method--get {
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+}
+.flows-panel__method--post {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+.flows-panel__method--put {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
+.flows-panel__method--patch {
+  background: rgba(168, 85, 247, 0.22);
+  color: #d8b4fe;
+}
+.flows-panel__method--delete {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+}
 
 .flows-panel__title-text {
   overflow: hidden;

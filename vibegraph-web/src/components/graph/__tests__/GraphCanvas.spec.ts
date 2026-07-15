@@ -128,16 +128,14 @@ describe('GraphCanvas', () => {
 
     // Pinning keeps the current selection anchored; it must NOT navigate to the
     // counterpart node or emit a new nodeSelected event.
-    expect(selectNode).not.toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'counterpart' }),
-    )
+    expect(selectNode).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'counterpart' }))
     expect(wrapper.emitted('nodeSelected')).toBeUndefined()
 
     // The pinned edge id is forwarded to NodeDetailPanel so the chosen relation
     // item keeps its selected styling after the pointer leaves.
-    expect(
-      wrapper.findComponent({ name: 'NodeDetailPanel' }).props('pinnedEdgeId'),
-    ).toBe('counterpart|CALLS|selected')
+    expect(wrapper.findComponent({ name: 'NodeDetailPanel' }).props('pinnedEdgeId')).toBe(
+      'counterpart|CALLS|selected',
+    )
   })
 
   it('clears pinned relation focus when the detail panel closes (Req C)', async () => {

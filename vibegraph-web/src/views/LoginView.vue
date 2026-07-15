@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
  * LoginView — email + password authentication.
- * On success, navigates to /dashboard. Shows inline error on failure.
+ * On success, navigates to the role-appropriate dashboard. Shows inline error on failure.
  */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import BrandMark from '@/components/ui/BrandMark.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/lib/api'
 
@@ -28,8 +29,7 @@ async function handleLogin() {
   try {
     await auth.login({ email: email.value.trim(), password: password.value })
     const raw = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-    const redirectTo = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard'
-    router.push(redirectTo)
+    router.push(resolvePostLoginRedirect(raw, auth.user?.role))
   } catch (e) {
     if (e instanceof ApiError) {
       error.value = e.message
@@ -40,10 +40,25 @@ async function handleLogin() {
     loading.value = false
   }
 }
+
+function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
+  const isAdmin = role?.toUpperCase() === 'ADMIN'
+  const fallback = isAdmin ? '/admin' : '/dashboard'
+  if (!rawRedirect.startsWith('/') || rawRedirect.startsWith('//')) return fallback
+  if (isAdmin)
+    return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? rawRedirect : fallback
+  return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? fallback : rawRedirect
+}
 </script>
 
 <template>
   <main class="auth-page">
+    <header class="auth-page__header">
+      <RouterLink class="auth-brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
+        <BrandMark :size="30" />
+      </RouterLink>
+    </header>
+
     <div class="auth-card">
       <h1 class="auth-card__title">Sign in to VibeGraph</h1>
       <p class="auth-card__subtitle">Analyze and visualize your Java codebase</p>
@@ -79,11 +94,7 @@ async function handleLogin() {
           {{ error }}
         </div>
 
-        <button
-          type="submit"
-          class="auth-form__submit"
-          :disabled="loading"
-        >
+        <button type="submit" class="auth-form__submit" :disabled="loading">
           {{ loading ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>
@@ -99,20 +110,38 @@ async function handleLogin() {
 <style scoped>
 .auth-page {
   min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: var(--vg-space-5);
+  background: var(--vg-bg);
+  overflow-x: hidden;
+}
+
+.auth-page__header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--vg-space-4);
-  background: var(--vg-bg);
+  min-height: 44px;
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--vg-space-2);
+  text-decoration: none;
+  border-radius: var(--vg-radius-sm);
 }
 
 .auth-card {
-  width: 100%;
+  align-self: center;
+  justify-self: center;
+  box-sizing: border-box;
+  width: min(100%, 400px);
   max-width: 400px;
   padding: var(--vg-space-8);
   background: var(--vg-surface);
   border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius-lg);
+  border-radius: var(--vg-radius);
   box-shadow: var(--vg-shadow-lg);
 }
 
@@ -151,6 +180,8 @@ async function handleLogin() {
 }
 
 .auth-form__input {
+  box-sizing: border-box;
+  width: 100%;
   padding: 0.6rem 0.75rem;
   font-size: var(--vg-text-base);
   font-family: var(--vg-font-body);
@@ -181,6 +212,8 @@ async function handleLogin() {
 }
 
 .auth-form__submit {
+  box-sizing: border-box;
+  width: 100%;
   padding: 0.65rem 1rem;
   font-size: var(--vg-text-base);
   font-weight: 600;
@@ -224,5 +257,21 @@ async function handleLogin() {
 
 .auth-link:hover {
   color: var(--vg-cyan);
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: var(--vg-space-4);
+  }
+
+  .auth-card {
+    align-self: start;
+    margin-top: var(--vg-space-6);
+    padding: var(--vg-space-5);
+  }
+
+  .auth-card__title {
+    font-size: var(--vg-text-lg);
+  }
 }
 </style>

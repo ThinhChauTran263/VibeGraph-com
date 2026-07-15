@@ -17,12 +17,14 @@ vi.mock('@/lib/api', async () => {
     graphApi: {
       ...actual.graphApi,
       getImpact:
-        vi.fn<(
-          projectId: string,
-          nodeId: string,
-          depth: number,
-          profile?: ImpactProfile,
-        ) => Promise<ImpactAnalysisResponse>>(),
+        vi.fn<
+          (
+            projectId: string,
+            nodeId: string,
+            depth: number,
+            profile?: ImpactProfile,
+          ) => Promise<ImpactAnalysisResponse>
+        >(),
     },
   }
 })
@@ -98,7 +100,10 @@ describe('ImpactAnalysisPanel', () => {
     const select = wrapper.get('#impact-depth')
     const options = select.findAll('option').map((o) => o.text())
     expect(options).toEqual(['1', '2', '3', '5'])
-    const profiles = wrapper.get('#impact-profile').findAll('option').map((o) => o.text())
+    const profiles = wrapper
+      .get('#impact-profile')
+      .findAll('option')
+      .map((o) => o.text())
     expect(profiles).toEqual(['Dependency', 'Structural', 'Type/Data-flow'])
   })
 
@@ -226,7 +231,13 @@ describe('ImpactAnalysisPanel', () => {
         willBreak: [],
         likelyAffected: [],
         mayNeedTesting: [],
-        target: { id: 'poly.pkg', type: 'Package', name: 'pkg', fullName: 'poly.pkg', filePath: '' },
+        target: {
+          id: 'poly.pkg',
+          type: 'Package',
+          name: 'pkg',
+          fullName: 'poly.pkg',
+          filePath: '',
+        },
       }),
     )
     const wrapper = mount(ImpactAnalysisPanel, {
@@ -255,14 +266,18 @@ describe('ImpactAnalysisPanel', () => {
       },
     })
     await nextTick()
-    expect((fileWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe('structural')
+    expect((fileWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe(
+      'structural',
+    )
 
     // Dependency-target types keep the dependency blast radius as the default.
     const classWrapper = mount(ImpactAnalysisPanel, {
       props: { projectId: 'p1', node: fakeNode({ type: 'Class' }) },
     })
     await nextTick()
-    expect((classWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe('dependency')
+    expect((classWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe(
+      'dependency',
+    )
   })
 
   it('frames an empty result on a supported type as a likely entrypoint', async () => {

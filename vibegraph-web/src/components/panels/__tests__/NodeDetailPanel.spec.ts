@@ -126,7 +126,9 @@ describe('NodeDetailPanel', () => {
   it('caps rendered connection lists', () => {
     const selected = node({ id: 'service', name: 'OrderService' })
     selectedNode.value = selected
-    const callers = Array.from({ length: 60 }, (_, index) => node({ id: `caller-${index}`, name: `Caller${index}` }))
+    const callers = Array.from({ length: 60 }, (_, index) =>
+      node({ id: `caller-${index}`, name: `Caller${index}` }),
+    )
     graphData.value = {
       nodes: [selected, ...callers],
       edges: callers.map((caller) => ({
@@ -161,7 +163,9 @@ describe('NodeDetailPanel', () => {
     selectedNode.value = selected
     graphData.value = {
       nodes: [selected, controller],
-      edges: [{ id: 'controller|CALLS|service', source: 'controller', target: 'service', type: 'CALLS' }],
+      edges: [
+        { id: 'controller|CALLS|service', source: 'controller', target: 'service', type: 'CALLS' },
+      ],
       nodeStats: {} as GraphData['nodeStats'],
       edgeStats: {} as GraphData['edgeStats'],
     }

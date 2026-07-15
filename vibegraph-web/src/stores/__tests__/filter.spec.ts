@@ -5,10 +5,7 @@ import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes } from '@/lib/graphFilte
 import { useFilterStore } from '@/stores/filter'
 import type { EdgeType, NodeType } from '@/types/graph'
 
-const ALL_EDGE_TYPES: readonly EdgeType[] = [
-  ...STRUCTURAL_EDGE_TYPES,
-  ...CPG_LITE_EDGE_TYPES,
-]
+const ALL_EDGE_TYPES: readonly EdgeType[] = [...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES]
 
 const sortedTypes = (set: ReadonlySet<EdgeType>): EdgeType[] => [...set].sort()
 

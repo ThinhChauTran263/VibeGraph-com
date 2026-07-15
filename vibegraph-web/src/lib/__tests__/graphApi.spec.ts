@@ -96,7 +96,8 @@ describe('graphApi.getImpact', () => {
       ok: false,
       status: 400,
       statusText: 'Bad Request',
-      text: async () => JSON.stringify({ success: false, error: { message: 'depth must be one of 1, 2, 3, 5' } }),
+      text: async () =>
+        JSON.stringify({ success: false, error: { message: 'depth must be one of 1, 2, 3, 5' } }),
     } as unknown as Response)
 
     await expect(graphApi.getImpact('p1', 'n1', 99)).rejects.toBeInstanceOf(ApiError)

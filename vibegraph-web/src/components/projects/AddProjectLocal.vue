@@ -49,10 +49,23 @@ function clearForm(): void {
 </script>
 
 <template>
-  <section class="local-import" :class="{ 'local-import--embedded': embedded }" aria-labelledby="local-import-heading">
+  <section
+    class="local-import"
+    :class="{ 'local-import--embedded': embedded }"
+    aria-labelledby="local-import-heading"
+  >
     <header v-if="!embedded" class="local-import__header">
       <span class="local-import__icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         </svg>
       </span>
@@ -105,14 +118,23 @@ function clearForm(): void {
       </label>
 
       <div class="local-import__actions">
-        <button type="submit" class="local-import__btn local-import__btn--primary" :disabled="!canSubmit">
+        <button
+          type="submit"
+          class="local-import__btn local-import__btn--primary"
+          :disabled="!canSubmit"
+        >
           <span v-if="isImporting" class="local-import__submitting">
             <Spinner size="sm" aria-hidden="true" />
             <span>{{ submitLabel }}</span>
           </span>
           <span v-else>Import folder</span>
         </button>
-        <button type="button" class="local-import__btn local-import__btn--ghost" :disabled="isImporting" @click="clearForm">
+        <button
+          type="button"
+          class="local-import__btn local-import__btn--ghost"
+          :disabled="isImporting"
+          @click="clearForm"
+        >
           Reset
         </button>
       </div>
@@ -135,10 +157,16 @@ function clearForm(): void {
         </div>
       </div>
 
-      <p v-if="status === 'error' && errorMessage" class="local-import__error" role="alert">{{ errorMessage }}</p>
+      <p v-if="status === 'error' && errorMessage" class="local-import__error" role="alert">
+        {{ errorMessage }}
+      </p>
     </form>
 
-    <DirectoryBrowserModal :open="browserOpen" @select="onBrowseSelect" @close="browserOpen = false" />
+    <DirectoryBrowserModal
+      :open="browserOpen"
+      @select="onBrowseSelect"
+      @close="browserOpen = false"
+    />
   </section>
 </template>
 
@@ -157,8 +185,10 @@ function clearForm(): void {
   background: var(--vg-grad-surface);
   color: var(--vg-text);
   box-shadow: var(--vg-shadow);
-  transition: border-color var(--vg-dur) var(--vg-ease-out),
-    transform var(--vg-dur) var(--vg-ease-out), box-shadow var(--vg-dur) var(--vg-ease-out);
+  transition:
+    border-color var(--vg-dur) var(--vg-ease-out),
+    transform var(--vg-dur) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 /* Accent shine along the top edge — gives each card a distinct identity. */
@@ -290,8 +320,10 @@ function clearForm(): void {
   border: 1px solid var(--vg-border-strong);
   border-radius: var(--vg-radius-sm);
   background: rgba(7, 11, 22, 0.55);
-  transition: border-color var(--vg-dur-fast) var(--vg-ease-out),
-    box-shadow var(--vg-dur-fast) var(--vg-ease-out), background-color var(--vg-dur-fast);
+  transition:
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur-fast) var(--vg-ease-out),
+    background-color var(--vg-dur-fast);
 }
 
 .local-import__text-input::placeholder {
@@ -332,8 +364,10 @@ function clearForm(): void {
   background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   cursor: pointer;
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
-    border-color var(--vg-dur-fast) var(--vg-ease-out), transform var(--vg-dur-fast) var(--vg-ease-out),
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    transform var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -351,7 +385,9 @@ function clearForm(): void {
 
 .local-import__btn--primary:not(:disabled):hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.5), 0 18px 40px -14px rgba(59, 130, 246, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.5),
+    0 18px 40px -14px rgba(59, 130, 246, 0.8);
 }
 .local-import__btn--primary:not(:disabled):active {
   transform: translateY(0);

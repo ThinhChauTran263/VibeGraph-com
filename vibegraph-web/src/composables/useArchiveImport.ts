@@ -17,13 +17,7 @@
  */
 
 import { computed, ref } from 'vue'
-import {
-  ApiError,
-  importApi,
-  projectApi,
-  type Project,
-  type ProjectStatusEvent,
-} from '@/lib/api'
+import { ApiError, importApi, projectApi, type Project, type ProjectStatusEvent } from '@/lib/api'
 import { validateArchiveFile } from '@/lib/archiveUpload'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
 
@@ -222,7 +216,11 @@ export function useArchiveImport(options: UseArchiveImportOptions = {}) {
 
       // Apply a status snapshot from either channel (WS event or poll result).
       // Returns true if a terminal state was reached.
-      const applyStatus = (statusValue: string, progressValue: number | undefined, message: string | null): boolean => {
+      const applyStatus = (
+        statusValue: string,
+        progressValue: number | undefined,
+        message: string | null,
+      ): boolean => {
         if (typeof progressValue === 'number') {
           progress.value = progressValue
         }

@@ -66,8 +66,15 @@ const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
 const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
 
 export function useSigma(options: UseSigmaOptions) {
-  const { container, onNodeClick, onNodeDoubleClick, onStageClick, onNodeHover, onNodeLeave, onCameraRatioChange } =
-    options
+  const {
+    container,
+    onNodeClick,
+    onNodeDoubleClick,
+    onStageClick,
+    onNodeHover,
+    onNodeLeave,
+    onCameraRatioChange,
+  } = options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
@@ -174,7 +181,8 @@ export function useSigma(options: UseSigmaOptions) {
     ghostLayer.value = attachGhostLayer(sigma, graph)
 
     // Register node click handler
-    if (onNodeClick) {      sigma.on('clickNode', ({ node }) => {
+    if (onNodeClick) {
+      sigma.on('clickNode', ({ node }) => {
         // Swallow the click that ends a drag so repositioning a node does not
         // also select / highlight it. See `dragMoved`.
         if (dragMoved.value) {
@@ -792,10 +800,12 @@ export function useSigma(options: UseSigmaOptions) {
     if (!sigma || !graphInstance.value?.hasNode(nodeId)) return
     const display = sigma.getNodeDisplayData(nodeId)
     if (!display) return
-    sigma.getCamera().animate(
-      { x: display.x, y: display.y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
-      { duration: ZOOM_FIT_DURATION_MS },
-    )
+    sigma
+      .getCamera()
+      .animate(
+        { x: display.x, y: display.y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
+        { duration: ZOOM_FIT_DURATION_MS },
+      )
   }
 
   /**

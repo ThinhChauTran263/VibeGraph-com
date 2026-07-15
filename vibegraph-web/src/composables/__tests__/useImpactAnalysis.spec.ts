@@ -13,12 +13,14 @@ vi.mock('@/lib/api', async () => {
     graphApi: {
       ...actual.graphApi,
       getImpact:
-        vi.fn<(
-          projectId: string,
-          nodeId: string,
-          depth: number,
-          profile?: ImpactProfile,
-        ) => Promise<ImpactAnalysisResponse>>(),
+        vi.fn<
+          (
+            projectId: string,
+            nodeId: string,
+            depth: number,
+            profile?: ImpactProfile,
+          ) => Promise<ImpactAnalysisResponse>
+        >(),
     },
   }
 })

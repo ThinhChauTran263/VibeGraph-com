@@ -35,6 +35,8 @@ import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.type.UnionType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.github.javaparser.ast.expr.LambdaExpr;
+import com.github.javaparser.ast.expr.MethodReferenceExpr;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
 import com.github.javaparser.resolution.types.ResolvedReferenceType;
@@ -70,6 +72,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         extractCallEdges(n, methodNode.fullName());
         extractInstantiations(n, methodNode.fullName());
         extractOverrides(n, methodNode.fullName());
+        extractMethodReferenceEdges(n, methodNode.fullName());
         if (deepCpg) {
             extractDataFlow(n, methodNode.fullName(), n.getParameters());
             extractCatches(n, methodNode.fullName());
@@ -83,10 +86,17 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         extractedMethods.add(methodNode);
         extractConstructorEdges(n, methodNode.fullName());
         extractInstantiations(n, methodNode.fullName());
+        extractCallEdges(n, methodNode.fullName());
+        extractMethodReferenceEdges(n, methodNode.fullName());
         if (deepCpg) {
             extractDataFlow(n, methodNode.fullName(), n.getParameters());
             extractCatches(n, methodNode.fullName());
         }
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(LambdaExpr n, Object arg) {
         super.visit(n, arg);
     }
 
@@ -156,7 +166,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                         extractedEdges.add(EdgeData.of("HAS_METHOD", ownerFullName, methodFullName)));
     }
 
-    private void extractCallEdges(MethodDeclaration declaration, String callerFullName) {
+    private void extractCallEdges(com.github.javaparser.ast.Node declaration, String callerFullName) {
         declaration.findAll(MethodCallExpr.class).forEach(call -> {
             int lineNumber = call.getBegin().map(p -> p.line).orElse(0);
 
@@ -177,14 +187,106 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                     props.put("lineNumber", lineNumber);
                     props.put("targetType", "resolved");
                     props.put("confidence", 1.0);
-                    props.put("callKind", "method");
+                    props.put("callKind", jpMethod.isStatic() ? "static" : "method");
 
                     extractedEdges.add(EdgeData.of("CALLS", callerFullName, targetFullName, props));
                 }
                 // Resolved library/JDK calls are intentionally skipped — no target node exists.
             } catch (Exception e) {
-                // Unresolvable symbol (missing dependency, dynamic type, etc.) — skip silently.
-                // A second-pass resolver in Sprint 2 can revisit these.
+                // Unresolvable symbol (missing dependency, dynamic type, etc.) — emit low-confidence unresolved stub.
+                String rawTarget = call.getScope().map(s -> s.toString() + ".").orElse("") + call.getNameAsString();
+
+                String ownerName = "<unresolved>";
+                if (call.getScope().isPresent()) {
+                    Expression scope = call.getScope().get();
+                    try {
+                        var resolvedType = scope.calculateResolvedType();
+                        if (resolvedType.isReferenceType()) {
+                            ownerName = resolvedType.asReferenceType().getQualifiedName();
+                        }
+                    } catch (Exception ex) {
+                        ownerName = resolveTypeName(scope.toString(), call);
+                    }
+                } else {
+                    ownerName = declaration.findAncestor(ClassOrInterfaceDeclaration.class)
+                            .flatMap(ClassOrInterfaceDeclaration::getFullyQualifiedName)
+                            .orElse("<unknown>");
+                }
+
+                List<String> paramTypes = new ArrayList<>();
+                for (Expression argExpr : call.getArguments()) {
+                    try {
+                        var resolvedType = argExpr.calculateResolvedType();
+                        paramTypes.add(resolvedType.describe());
+                    } catch (Exception ex) {
+                        paramTypes.add("?");
+                    }
+                }
+
+                String targetFullName = Signatures.method(ownerName, call.getNameAsString(), paramTypes);
+
+                Map<String, Object> props = new HashMap<>();
+                props.put("lineNumber", lineNumber);
+                props.put("targetType", "unresolved");
+                props.put("confidence", 0.3);
+                props.put("rawTarget", rawTarget);
+                props.put("callKind", "method");
+
+                extractedEdges.add(EdgeData.of("CALLS", callerFullName, targetFullName, props));
+            }
+        });
+    }
+
+    private void extractMethodReferenceEdges(com.github.javaparser.ast.Node declaration, String callerFullName) {
+        declaration.findAll(MethodReferenceExpr.class).forEach(ref -> {
+            int lineNumber = ref.getBegin().map(p -> p.line).orElse(0);
+            String identifier = ref.getIdentifier();
+            String callKind = "new".equals(identifier) ? "constructor" : "method";
+
+            try {
+                var resolved = ref.resolve();
+                if (resolved instanceof JavaParserMethodDeclaration jpMethod) {
+                    MethodDeclaration target = jpMethod.getWrappedNode();
+                    List<String> paramTypes = target.getParameters().stream()
+                            .map(parameter -> parameter.getType().asString())
+                            .toList();
+                    String targetFullName = fullName(
+                            target.getNameAsString(),
+                            target.findAncestor(ClassOrInterfaceDeclaration.class),
+                            paramTypes);
+
+                    Map<String, Object> props = new HashMap<>();
+                    props.put("lineNumber", lineNumber);
+                    props.put("targetType", "resolved");
+                    props.put("confidence", 1.0);
+                    props.put("callKind", callKind);
+
+                    extractedEdges.add(EdgeData.of("CALLS", callerFullName, targetFullName, props));
+                }
+            } catch (Exception e) {
+                // Unresolved method reference — emit low-confidence stub.
+                String rawTarget = ref.getScope().toString() + "::" + identifier;
+
+                String ownerName = "<unresolved>";
+                try {
+                    var resolvedType = ref.getScope().calculateResolvedType();
+                    if (resolvedType.isReferenceType()) {
+                        ownerName = resolvedType.asReferenceType().getQualifiedName();
+                    }
+                } catch (Exception ex) {
+                    ownerName = resolveTypeName(ref.getScope().toString(), ref);
+                }
+
+                String targetFullName = Signatures.method(ownerName, identifier, List.of());
+
+                Map<String, Object> props = new HashMap<>();
+                props.put("lineNumber", lineNumber);
+                props.put("targetType", "unresolved");
+                props.put("confidence", 0.3);
+                props.put("rawTarget", rawTarget);
+                props.put("callKind", callKind);
+
+                extractedEdges.add(EdgeData.of("CALLS", callerFullName, targetFullName, props));
             }
         });
     }

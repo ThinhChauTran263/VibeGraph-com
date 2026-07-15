@@ -21,4 +21,10 @@ public class ProjectsProperties {
 
     /** When set, user-supplied project paths and directory browsing must resolve inside this directory. */
     private String allowedRoot = "";
+
+    /** Explicit development/test opt-in for browsing outside a configured root. */
+    private boolean allowUnconfinedBrowse = false;
+
+    /** Explicit development/test opt-in for importing outside a configured root. */
+    private boolean allowUnconfinedImport = false;
 }

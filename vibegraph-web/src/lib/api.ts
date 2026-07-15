@@ -214,6 +214,24 @@ export const api = {
     return unwrap<T>(res)
   },
 
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    return unwrap<T>(res)
+  },
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    return unwrap<T>(res)
+  },
+
   /**
    * POST a `multipart/form-data` request. Do NOT set `Content-Type` manually -
    * the browser must compute the multipart boundary. Setting it explicitly
@@ -303,7 +321,10 @@ export const importApi = {
    * analyzes it and starts a file watcher so later edits stream realtime graph updates.
    */
   importLocal(path: string, name?: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-local', { path, name: name?.trim() || undefined })
+    return api.post<Project>('/api/projects/import-local', {
+      path,
+      name: name?.trim() || undefined,
+    })
   },
 }
 
@@ -349,11 +370,14 @@ export const graphApi = {
    * `depth` must be one of {@link IMPACT_ALLOWED_DEPTHS}; the backend rejects
    * other values with a 400. Query params are encoded via URLSearchParams.
    */
-  getImpact: (projectId: string, nodeId: string, depth: number, profile: ImpactProfile = 'dependency') => {
+  getImpact: (
+    projectId: string,
+    nodeId: string,
+    depth: number,
+    profile: ImpactProfile = 'dependency',
+  ) => {
     const query = new URLSearchParams({ nodeId, depth: String(depth), profile })
-    return api.get<ImpactAnalysisResponse>(
-      `/api/projects/${projectId}/graph/impact?${query}`,
-    )
+    return api.get<ImpactAnalysisResponse>(`/api/projects/${projectId}/graph/impact?${query}`)
   },
 
   /**
@@ -368,9 +392,7 @@ export const graphApi = {
     const params = new URLSearchParams({ path })
     if (startLine != null) params.set('startLine', String(startLine))
     if (endLine != null) params.set('endLine', String(endLine))
-    return api.get<SourceContent>(
-      `/api/projects/${encodeURIComponent(projectId)}/source?${params}`,
-    )
+    return api.get<SourceContent>(`/api/projects/${encodeURIComponent(projectId)}/source?${params}`)
   },
 }
 
@@ -465,14 +487,17 @@ export const diagramApi = {
   },
   classDiagram: (projectId: string, pkg?: string) => {
     const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
-    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`)
+    return api.get<DiagramResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`,
+    )
   },
   sequence: (projectId: string, entry: string) => {
     const query = new URLSearchParams({ entry })
-    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`)
+    return api.get<DiagramResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`,
+    )
   },
 }
-
 
 // ─── Auth API ──────────────────────────────────────────────────────────────────
 
@@ -489,9 +514,263 @@ export const authApi = {
     return api.post<AuthResponse>('/api/auth/login', data)
   },
 
-  /** Fetch current user profile; requires a valid token. */
   async me(): Promise<User> {
     const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
+    // Tùy thuộc vào cấu trúc trả về của backend, có thể là res.data hoặc res.data.data
     return res.data.data
+  },
+}
+
+// --- Account (user-side) API ---
+
+import type {
+  UserProfile,
+  UserUsage,
+  CreditLedgerEntry,
+  Project as AccountProject,
+  ApiKey,
+  ApiKeyCreated,
+  Report,
+  ReportMessage,
+  PagedResponse,
+  FeedbackCategory,
+  AdminOverview,
+  AdminPlan,
+  AdminPlanRequest,
+  AdminPricingRule,
+  AdminPricingRuleRequest,
+  AdminUserResponse,
+  AdminReport,
+  AdminFeatureFlag,
+  AdminFeatureFlagRequest,
+  AdminAnnouncement,
+  AdminAnnouncementRequest,
+  AdminSecurityEvent,
+} from '@/types/api'
+
+/**
+ * All user-facing account endpoints under `/api/account/`.
+ * Every method returns the unwrapped `data` payload from `ApiResponse<T>`.
+ */
+export const accountApi = {
+  getProfile(): Promise<UserProfile> {
+    return api.get<UserProfile>('/api/account/profile')
+  },
+  updateProfile(displayName: string): Promise<UserProfile> {
+    return api.patch<UserProfile>('/api/account/profile', { displayName })
+  },
+  changePassword(oldPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
+    return api.patch<void>('/api/account/password', { oldPassword, newPassword, confirmPassword })
+  },
+  getUsage(): Promise<UserUsage> {
+    return api.get<UserUsage>('/api/account/usage')
+  },
+  getCreditLedger(limit = 10): Promise<CreditLedgerEntry[]> {
+    return api.get<CreditLedgerEntry[]>(`/api/account/usage/ledger?limit=${limit}`)
+  },
+  getProjects(page = 0, size = 20): Promise<PagedResponse<AccountProject>> {
+    return api.get<PagedResponse<AccountProject>>(`/api/account/projects?page=${page}&size=${size}`)
+  },
+  listApiKeys(): Promise<ApiKey[]> {
+    return api.get<ApiKey[]>('/api/account/api-keys')
+  },
+  createApiKey(name: string, projectId?: string): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>(
+      '/api/account/api-keys',
+      projectId ? { name, projectId } : { name },
+    )
+  },
+  disableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  listReports(): Promise<Report[]> {
+    return api.get<Report[]>('/api/account/reports')
+  },
+  createReport(category: FeedbackCategory, title: string, body: string): Promise<Report> {
+    return api.post<Report>('/api/account/reports', { category, title, body })
+  },
+  getReportDetail(reportId: string): Promise<{ report: Report; messages: ReportMessage[] }> {
+    return api.get<{ report: Report; messages: ReportMessage[] }>(
+      `/api/account/reports/${encodeURIComponent(reportId)}`,
+    )
+  },
+  addMessage(reportId: string, body: string): Promise<ReportMessage> {
+    return api.post<ReportMessage>(
+      `/api/account/reports/${encodeURIComponent(reportId)}/messages`,
+      { body },
+    )
+  },
+  closeReport(reportId: string): Promise<Report> {
+    return api.patch<Report>(
+      `/api/account/reports/${encodeURIComponent(reportId)}/close`,
+      undefined,
+    )
+  },
+}
+
+// --- Admin API ---
+
+/**
+ * All admin endpoints under `/api/admin/`.
+ * Every method returns the unwrapped `data` payload from `ApiResponse<T>`.
+ */
+export const adminApi = {
+  getOverview(): Promise<AdminOverview> {
+    return api.get<AdminOverview>('/api/admin/overview')
+  },
+  listPlans(): Promise<AdminPlan[]> {
+    return api.get<AdminPlan[]>('/api/admin/plans')
+  },
+  createPlan(data: AdminPlanRequest): Promise<AdminPlan> {
+    return api.post<AdminPlan>('/api/admin/plans', data)
+  },
+  updateCatalogPlan(code: string, data: AdminPlanRequest): Promise<AdminPlan> {
+    return api.put<AdminPlan>(`/api/admin/plans/${encodeURIComponent(code)}`, data)
+  },
+  deleteCatalogPlan(code: string): Promise<void> {
+    return api.delete(`/api/admin/plans/${encodeURIComponent(code)}`)
+  },
+  listPricingRules(): Promise<AdminPricingRule[]> {
+    return api.get<AdminPricingRule[]>('/api/admin/pricing-rules')
+  },
+  createPricingRule(data: AdminPricingRuleRequest): Promise<AdminPricingRule> {
+    return api.post<AdminPricingRule>('/api/admin/pricing-rules', data)
+  },
+  updatePricingRule(
+    operationCode: string,
+    data: AdminPricingRuleRequest,
+  ): Promise<AdminPricingRule> {
+    return api.put<AdminPricingRule>(
+      `/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`,
+      data,
+    )
+  },
+  deletePricingRule(operationCode: string): Promise<void> {
+    return api.delete(`/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`)
+  },
+  listUsers(
+    params: { search?: string; status?: string; plan?: string; page?: number; size?: number } = {},
+  ): Promise<PagedResponse<AdminUserResponse>> {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.status) q.set('status', params.status)
+    if (params.plan) q.set('plan', params.plan)
+    q.set('page', String(params.page ?? 0))
+    q.set('size', String(params.size ?? 20))
+    return api.get<PagedResponse<AdminUserResponse>>(`/api/admin/users?${q}`)
+  },
+  getUserDetail(userId: string): Promise<AdminUserResponse> {
+    return api.get<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}`)
+  },
+  createUser(data: {
+    email: string
+    displayName: string
+    role: string
+    planCode: string
+    temporaryPassword: string
+  }): Promise<AdminUserResponse> {
+    return api.post<AdminUserResponse>('/api/admin/users', data)
+  },
+  blockUser(userId: string, reason: string, safeReason: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/block`, {
+      reason,
+      safeReason,
+    })
+  },
+  unblockUser(userId: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/unblock`,
+      undefined,
+    )
+  },
+  deactivateUser(userId: string, reason: string, safeReason: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/deactivate`,
+      { reason, safeReason },
+    )
+  },
+  updatePlan(userId: string, planCode: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+      planCode,
+    })
+  },
+  updateQuota(
+    userId: string,
+    storageQuotaOverrideMb: number | null,
+    creditQuotaOverride: number | null,
+  ): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/quota`, {
+      storageQuotaOverrideMb,
+      creditQuotaOverride,
+    })
+  },
+  updateApiKeyCreation(userId: string, disabled: boolean): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/api-key-creation`,
+      { disabled },
+    )
+  },
+  listApiKeysForUser(userId: string): Promise<ApiKey[]> {
+    return api.get<ApiKey[]>(`/api/admin/api-keys?userId=${encodeURIComponent(userId)}`)
+  },
+  createApiKeyForUser(userId: string, name: string): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>('/api/admin/api-keys', { userId, name })
+  },
+  disableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  listReports(
+    params: { status?: string; q?: string; page?: number; size?: number } = {},
+  ): Promise<PagedResponse<AdminReport>> {
+    const qs = new URLSearchParams()
+    if (params.status) qs.set('status', params.status)
+    if (params.q) qs.set('q', params.q)
+    qs.set('page', String(params.page ?? 0))
+    qs.set('size', String(params.size ?? 20))
+    return api.get<PagedResponse<AdminReport>>(`/api/admin/reports?${qs}`)
+  },
+  getReportDetail(reportId: string): Promise<{ report: AdminReport; messages: ReportMessage[] }> {
+    return api.get<{ report: AdminReport; messages: ReportMessage[] }>(
+      `/api/admin/reports/${encodeURIComponent(reportId)}`,
+    )
+  },
+  replyToReport(reportId: string, body: string): Promise<void> {
+    return api.post<void>(`/api/admin/reports/${encodeURIComponent(reportId)}/reply`, { body })
+  },
+  closeReport(reportId: string): Promise<void> {
+    return api.patch<void>(`/api/admin/reports/${encodeURIComponent(reportId)}/close`, undefined)
+  },
+  listFeatureFlags(): Promise<AdminFeatureFlag[]> {
+    return api.get<AdminFeatureFlag[]>('/api/admin/feature-flags')
+  },
+  createFeatureFlag(data: AdminFeatureFlagRequest): Promise<AdminFeatureFlag> {
+    return api.post<AdminFeatureFlag>('/api/admin/feature-flags', data)
+  },
+  updateFeatureFlag(key: string, data: AdminFeatureFlagRequest): Promise<AdminFeatureFlag> {
+    return api.put<AdminFeatureFlag>(`/api/admin/feature-flags/${encodeURIComponent(key)}`, data)
+  },
+  deleteFeatureFlag(key: string): Promise<void> {
+    return api.delete(`/api/admin/feature-flags/${encodeURIComponent(key)}`)
+  },
+  listAnnouncements(): Promise<AdminAnnouncement[]> {
+    return api.get<AdminAnnouncement[]>('/api/admin/announcements')
+  },
+  createAnnouncement(data: AdminAnnouncementRequest): Promise<AdminAnnouncement> {
+    return api.post<AdminAnnouncement>('/api/admin/announcements', data)
+  },
+  updateAnnouncement(id: string, data: AdminAnnouncementRequest): Promise<AdminAnnouncement> {
+    return api.put<AdminAnnouncement>(`/api/admin/announcements/${encodeURIComponent(id)}`, data)
+  },
+  disableAnnouncement(id: string): Promise<AdminAnnouncement> {
+    return api.patch<AdminAnnouncement>(
+      `/api/admin/announcements/${encodeURIComponent(id)}/disable`,
+      undefined,
+    )
+  },
+  deleteAnnouncement(id: string): Promise<void> {
+    return api.delete(`/api/admin/announcements/${encodeURIComponent(id)}`)
+  },
+  listSecurityEvents(limit = 50): Promise<AdminSecurityEvent[]> {
+    return api.get<AdminSecurityEvent[]>(`/api/admin/security/events?limit=${limit}`)
   },
 }

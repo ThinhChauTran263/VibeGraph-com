@@ -18,7 +18,12 @@ function node(overrides: Partial<GraphNode>): GraphNode {
 
 const nodes: GraphNode[] = [
   node({ id: 'class-1', name: 'OrderService', fullName: 'com.example.OrderService' }),
-  node({ id: 'method-1', type: 'Method', name: 'placeOrder', fullName: 'com.example.OrderService.placeOrder' }),
+  node({
+    id: 'method-1',
+    type: 'Method',
+    name: 'placeOrder',
+    fullName: 'com.example.OrderService.placeOrder',
+  }),
 ]
 
 describe('SearchBar', () => {
@@ -47,7 +52,9 @@ describe('SearchBar', () => {
     await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
 
     expect(wrapper.find('.search-bar__results').exists()).toBe(false)
-    expect((wrapper.get('input[type="search"]').element as HTMLInputElement).value).toBe('OrderService')
+    expect((wrapper.get('input[type="search"]').element as HTMLInputElement).value).toBe(
+      'OrderService',
+    )
     expect(wrapper.emitted('clear')).toBeUndefined()
   })
 

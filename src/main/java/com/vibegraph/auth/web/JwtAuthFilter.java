@@ -40,9 +40,17 @@ import lombok.RequiredArgsConstructor;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final java.util.Map<java.util.UUID, Long> activeUsers = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static int getActiveUsersCount() {
+        long threshold = System.currentTimeMillis() - 5 * 60 * 1000; // 5 minutes
+        activeUsers.values().removeIf(t -> t < threshold);
+        return activeUsers.size();
+    }
 
     private final JwtService jwtService;
     private final AccountSettingsService accountSettingsService;
+    private final com.vibegraph.auth.repository.UserRepository userRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -54,16 +62,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length()).trim();
             try {
                 AuthenticatedUser principal = jwtService.parse(token);
-                accountSettingsService.assertNotBlocked(principal.id());
+                AccountBlockedException blocked = blockedException(principal.id());
+                if (blocked != null && !isRestrictedAccountRoute(request)) {
+                    SecurityContextHolder.clearContext();
+                    writeRestrictedResponse(response, blocked.getSafeReason());
+                    return;
+                }
+
+                var userOpt = userRepository.findById(principal.id());
+                if (userOpt.isEmpty()) {
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    return;
+                }
+                var user = userOpt.get();
+                if (user.isDeactivated() && !isRestrictedAccountRoute(request)) {
+                    SecurityContextHolder.clearContext();
+                    writeRestrictedResponse(response, safeDeactivationReason(user.getDeactivationReasonSafe()));
+                    return;
+                }
+
                 var authority = new SimpleGrantedAuthority("ROLE_" + principal.role().name());
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal, null, List.of(authority));
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-            } catch (AccountBlockedException ex) {
-                SecurityContextHolder.clearContext();
-                writeBlockedResponse(response, ex);
-                return;
+                activeUsers.put(principal.id(), System.currentTimeMillis());
             } catch (JwtException | IllegalArgumentException ex) {
                 // Invalid/expired/malformed token — stay unauthenticated; entry point returns 401.
                 SecurityContextHolder.clearContext();
@@ -72,13 +96,50 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private void writeBlockedResponse(HttpServletResponse response, AccountBlockedException ex)
+    private AccountBlockedException blockedException(java.util.UUID userId) {
+        try {
+            accountSettingsService.assertNotBlocked(userId);
+            return null;
+        } catch (AccountBlockedException ex) {
+            return ex;
+        }
+    }
+
+    private boolean isRestrictedAccountRoute(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        if ("GET".equals(method) && "/api/auth/me".equals(path)) {
+            return true;
+        }
+        if ("GET".equals(method) && "/api/account/session-state".equals(path)) {
+            return true;
+        }
+        if ("/api/account/reports".equals(path)) {
+            return "GET".equals(method) || "POST".equals(method);
+        }
+        if (!path.matches("^/api/account/reports/[0-9a-fA-F-]{36}(/messages|/close)?$")) {
+            return false;
+        }
+        if (path.endsWith("/messages")) {
+            return "POST".equals(method);
+        }
+        if (path.endsWith("/close")) {
+            return "PATCH".equals(method);
+        }
+        return "GET".equals(method);
+    }
+
+    private String safeDeactivationReason(String reason) {
+        return reason == null || reason.isBlank() ? "Account closed by administrator" : reason;
+    }
+
+    private void writeRestrictedResponse(HttpServletResponse response, String safeReason)
             throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         ErrorResponse error = ErrorResponse.builder()
-                .code(ex.getCode())
-                .message(ex.getSafeReason())
+                .code("ACCOUNT_BLOCKED")
+                .message(safeReason)
                 .build();
         objectMapper.writeValue(response.getWriter(), ApiResponse.error(error));
     }

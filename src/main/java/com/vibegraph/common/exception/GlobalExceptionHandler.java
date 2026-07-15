@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.dto.response.ErrorResponse;
@@ -74,6 +75,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(InsufficientCreditsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientCredits(InsufficientCreditsException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(AccountBlockedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccountBlocked(AccountBlockedException ex) {
         ErrorResponse error = ErrorResponse.builder()
@@ -110,11 +120,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(FeatureDisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFeatureDisabled(FeatureDisabledException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(QuotaBelowCurrentUsageException.class)
     public ResponseEntity<ApiResponse<Void>> handleQuotaBelowCurrentUsage(QuotaBelowCurrentUsageException ex) {
         ErrorResponse error = ErrorResponse.builder()
                 .code(ex.getCode())
                 .message(ex.getMessage())
+                .details("currentUsageBytes=" + ex.getCurrentUsageBytes()
+                        + "; requestedQuotaBytes=" + ex.getRequestedQuotaBytes())
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
     }
@@ -260,6 +281,15 @@ public class GlobalExceptionHandler {
                 .message("Uploaded archive exceeds the maximum allowed size")
                 .build();
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code("NOT_FOUND")
+                .message("Resource not found")
+                .build();
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(error));
     }
 
     @ExceptionHandler(Exception.class)

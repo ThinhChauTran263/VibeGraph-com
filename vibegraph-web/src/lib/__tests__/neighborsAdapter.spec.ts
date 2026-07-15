@@ -4,7 +4,14 @@ import { neighborsToFragment, EXPAND_MAX_NEIGHBORS } from '../neighborsAdapter'
 import type { NodeDetailResponse } from '../api'
 
 function nodeDto(id: string, type = 'Class'): NodeDetailResponse['node'] {
-  return { id, type, name: id, fullName: `com.example.${id}`, filePath: `${id}.java`, lineNumber: 3 }
+  return {
+    id,
+    type,
+    name: id,
+    fullName: `com.example.${id}`,
+    filePath: `${id}.java`,
+    lineNumber: 3,
+  }
 }
 
 function detail(overrides: Partial<NodeDetailResponse> = {}): NodeDetailResponse {
@@ -20,8 +27,12 @@ describe('neighborsToFragment', () => {
   it('includes the center node plus each connected node', () => {
     const fragment = neighborsToFragment(
       detail({
-        incoming: [{ otherNode: nodeDto('Caller'), relationshipType: 'CALLS', direction: 'INCOMING' }],
-        outgoing: [{ otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' }],
+        incoming: [
+          { otherNode: nodeDto('Caller'), relationshipType: 'CALLS', direction: 'INCOMING' },
+        ],
+        outgoing: [
+          { otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' },
+        ],
       }),
     )
 
@@ -30,7 +41,11 @@ describe('neighborsToFragment', () => {
 
   it('orients an INCOMING edge from the other node into the center', () => {
     const fragment = neighborsToFragment(
-      detail({ incoming: [{ otherNode: nodeDto('Caller'), relationshipType: 'CALLS', direction: 'INCOMING' }] }),
+      detail({
+        incoming: [
+          { otherNode: nodeDto('Caller'), relationshipType: 'CALLS', direction: 'INCOMING' },
+        ],
+      }),
     )
 
     expect(fragment.edges).toHaveLength(1)
@@ -40,7 +55,11 @@ describe('neighborsToFragment', () => {
 
   it('orients an OUTGOING edge from the center to the other node', () => {
     const fragment = neighborsToFragment(
-      detail({ outgoing: [{ otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' }] }),
+      detail({
+        outgoing: [
+          { otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' },
+        ],
+      }),
     )
 
     expect(fragment.edges[0]).toMatchObject({ source: 'Center', target: 'Dep', type: 'INJECTS' })
@@ -48,7 +67,9 @@ describe('neighborsToFragment', () => {
   })
 
   it('produces stable edge ids so re-expansion does not duplicate edges', () => {
-    const d = detail({ outgoing: [{ otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' }] })
+    const d = detail({
+      outgoing: [{ otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' }],
+    })
     expect(neighborsToFragment(d).edges[0]!.id).toBe(neighborsToFragment(d).edges[0]!.id)
   })
 
@@ -65,7 +86,11 @@ describe('neighborsToFragment', () => {
     const fragment = neighborsToFragment(
       detail({
         outgoing: [
-          { otherNode: { id: '', type: 'Class', name: '', fullName: '', filePath: '' }, relationshipType: 'CALLS', direction: 'OUTGOING' },
+          {
+            otherNode: { id: '', type: 'Class', name: '', fullName: '', filePath: '' },
+            relationshipType: 'CALLS',
+            direction: 'OUTGOING',
+          },
         ],
       }),
     )
@@ -75,7 +100,11 @@ describe('neighborsToFragment', () => {
 
   it('does not truncate a small neighborhood', () => {
     const fragment = neighborsToFragment(
-      detail({ outgoing: [{ otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' }] }),
+      detail({
+        outgoing: [
+          { otherNode: nodeDto('Dep'), relationshipType: 'INJECTS', direction: 'OUTGOING' },
+        ],
+      }),
     )
     expect(fragment.truncated).toBe(false)
     expect(fragment.totalNeighbors).toBe(1)

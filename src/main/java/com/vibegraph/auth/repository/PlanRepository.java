@@ -10,4 +10,6 @@ import com.vibegraph.auth.domain.Plan;
 public interface PlanRepository extends JpaRepository<Plan, UUID> {
 
     Optional<Plan> findByCode(String code);
+
+    boolean existsByCode(String code);
 }

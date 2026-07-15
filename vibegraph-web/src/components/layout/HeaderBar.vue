@@ -28,12 +28,7 @@ function handleLogout() {
       <span class="header-bar__email" :title="auth.userEmail">
         {{ auth.userDisplayName || auth.userEmail }}
       </span>
-      <button
-        class="header-bar__logout"
-        type="button"
-        @click="handleLogout"
-        aria-label="Sign out"
-      >
+      <button class="header-bar__logout" type="button" @click="handleLogout" aria-label="Sign out">
         Logout
       </button>
     </div>

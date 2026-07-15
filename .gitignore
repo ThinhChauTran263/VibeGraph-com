@@ -104,6 +104,8 @@ task/final/
 # ========================================
 # Temp / debug artifacts (root-level scratch JSON)
 # ========================================
+/qa-artifacts/
+/scratch.diff
 /graph_check.json
 /uc_check.json
 /uc_new*.json

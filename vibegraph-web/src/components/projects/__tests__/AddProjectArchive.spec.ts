@@ -44,10 +44,12 @@ vi.mock('@/composables/useWebSocket', () => {
       error: { value: null },
       connect: vi.fn<() => Promise<void>>(() => wsController.connectImpl()),
       disconnect: vi.fn<() => Promise<void>>(async () => {}),
-      subscribe: vi.fn<(topic: string, cb: (e: unknown) => void) => { unsubscribe: () => void }>((topic, cb) => {
-        wsController.captured = { topic, cb }
-        return { unsubscribe: vi.fn<() => void>() }
-      }),
+      subscribe: vi.fn<(topic: string, cb: (e: unknown) => void) => { unsubscribe: () => void }>(
+        (topic, cb) => {
+          wsController.captured = { topic, cb }
+          return { unsubscribe: vi.fn<() => void>() }
+        },
+      ),
     }),
   }
 })

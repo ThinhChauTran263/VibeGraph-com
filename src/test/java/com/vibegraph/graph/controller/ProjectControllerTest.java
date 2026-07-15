@@ -1,6 +1,7 @@
 package com.vibegraph.graph.controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.PartialDeletionException;
@@ -52,6 +58,10 @@ class ProjectControllerTest {
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
     private ProjectDeletionOrchestrator deletionOrchestrator;
+    private CurrentUser currentUser;
+    private AccountSettingsService accountSettingsService;
+    private CreditPricingService creditPricingService;
+    private CreditBalanceService creditBalanceService;
 
     @BeforeEach
     void setUp() {
@@ -61,9 +71,14 @@ class ProjectControllerTest {
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        creditPricingService = Mockito.mock(CreditPricingService.class);
+        creditBalanceService = Mockito.mock(CreditBalanceService.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator);
+                deletionOrchestrator, currentUser, accountSettingsService, creditPricingService,
+                creditBalanceService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -142,11 +157,15 @@ class ProjectControllerTest {
     @Test
     @DisplayName("POST /api/projects/{id}/analyze persists stats via the service contract")
     void shouldPersistStatsThroughInterface() throws Exception {
+        UUID userId = UUID.randomUUID();
         ProjectResponse project = ProjectResponse.builder()
                 .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
+        when(currentUser.id()).thenReturn(userId);
+        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0)).thenReturn(1L);
         when(projectService.getProject("p1")).thenReturn(project);
         when(analyzeService.analyzeProject("p1", "p1", "/tmp/p1"))
                 .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
+        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 3, 0, 10)).thenReturn(5L);
 
         mockMvc.perform(post("/api/projects/p1/analyze"))
                 .andExpect(status().isOk())
@@ -156,6 +175,47 @@ class ProjectControllerTest {
         // The key regression guard for the removed downcast: stats must be pushed
         // through the interface method, which a plain mock honors.
         verify(projectService, times(1)).updateProjectStats("p1", 3, 10, 7);
+        verify(creditBalanceService).assertCreditsAvailable(userId, 1L);
+        verify(creditBalanceService).deductCredits(
+                userId, 5L, "PROJECT_ANALYZE", "PROJECT_ANALYZE", "p1");
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/analyze rejects insufficient credits before analysis work")
+    void shouldRejectInsufficientCreditsBeforeAnalyzeWork() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(userId);
+        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0)).thenReturn(1L);
+        doThrow(new com.vibegraph.common.exception.InsufficientCreditsException("Insufficient credits"))
+                .when(creditBalanceService).assertCreditsAvailable(userId, 1L);
+
+        mockMvc.perform(post("/api/projects/p1/analyze"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.error.code").value("INSUFFICIENT_CREDITS"));
+
+        verify(projectService, never()).getProject("p1");
+        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        verify(projectService, never()).updateProjectStats(
+                eq("p1"), any(Integer.class), any(Integer.class), any(Integer.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/analyze rejects a blocked account before analysis work")
+    void shouldRejectBlockedAccountBeforeAnalyzeWork() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(userId);
+        doThrow(new AccountBlockedException("internal risk note", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        mockMvc.perform(post("/api/projects/p1/analyze"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_BLOCKED"))
+                .andExpect(jsonPath("$.error.message").value("Policy review"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verify(projectService, never()).getProject("p1");
+        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        verify(projectService, never()).updateProjectStats(eq("p1"), any(Integer.class), any(Integer.class), any(Integer.class));
     }
 
     @Test

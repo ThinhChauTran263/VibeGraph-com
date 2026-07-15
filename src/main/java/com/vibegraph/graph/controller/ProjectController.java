@@ -2,6 +2,7 @@ package com.vibegraph.graph.controller;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,6 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
@@ -37,6 +42,10 @@ public class ProjectController {
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
     private final ProjectDeletionOrchestrator deletionOrchestrator;
+    private final CurrentUser currentUser;
+    private final AccountSettingsService accountSettingsService;
+    private final CreditPricingService creditPricingService;
+    private final CreditBalanceService creditBalanceService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -68,11 +77,21 @@ public class ProjectController {
     @PostMapping("/{id}/analyze")
     public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
         ownershipGuard.assertOwner(id);
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+        long minimumCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0);
+        creditBalanceService.assertCreditsAvailable(userId, minimumCredits);
+
         ProjectResponse project = projectService.getProject(id);
         AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
 
         // Persist analysis stats through the interface contract — no impl downcast.
         projectService.updateProjectStats(id, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
+
+        long requiredCredits = creditPricingService.calculateCredits(
+                "PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
+        creditBalanceService.deductCredits(
+                userId, requiredCredits, "PROJECT_ANALYZE", "PROJECT_ANALYZE", id);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }

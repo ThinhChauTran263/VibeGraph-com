@@ -111,7 +111,12 @@ function onSelect(nodeId: string): void {
         <button type="button" :disabled="!hasNodes" title="Expand all folders" @click="expandAll">
           Expand
         </button>
-        <button type="button" :disabled="!hasNodes" title="Collapse all folders" @click="collapseAll">
+        <button
+          type="button"
+          :disabled="!hasNodes"
+          title="Collapse all folders"
+          @click="collapseAll"
+        >
           Collapse
         </button>
       </div>
@@ -155,9 +160,19 @@ function onSelect(nodeId: string): void {
         @click="showLegend = !showLegend"
       >
         <span>Legend</span>
-        <span class="explorer-panel__legend-chevron" :class="{ 'explorer-panel__legend-chevron--open': showLegend }" aria-hidden="true">›</span>
+        <span
+          class="explorer-panel__legend-chevron"
+          :class="{ 'explorer-panel__legend-chevron--open': showLegend }"
+          aria-hidden="true"
+          >›</span
+        >
       </button>
-      <LegendPanel v-show="showLegend" :node-stats="nodeTypeCounts" :highlighted-types="highlightedTypes" title="" />
+      <LegendPanel
+        v-show="showLegend"
+        :node-stats="nodeTypeCounts"
+        :highlighted-types="highlightedTypes"
+        title=""
+      />
     </div>
 
     <footer v-if="hasNodes" class="explorer-panel__footer">{{ fileCount }} files</footer>

@@ -65,7 +65,8 @@ withDefaults(
   overflow: hidden;
   /* Elevation + accent only on hover — no transform, so neighbouring tiles and
      the cursor hit-box never shift (stable interaction state). */
-  transition: border-color var(--vg-dur) var(--vg-ease-out),
+  transition:
+    border-color var(--vg-dur) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -81,7 +82,9 @@ withDefaults(
 
 .logo-tile:hover .logo-tile__coin {
   border-color: var(--vg-border-strong);
-  box-shadow: var(--vg-shadow-lg), 0 0 0 1px rgba(96, 165, 250, 0.28);
+  box-shadow:
+    var(--vg-shadow-lg),
+    0 0 0 1px rgba(96, 165, 250, 0.28);
 }
 
 /* Inner chip — the brand mark on its own rounded badge. */

@@ -13,7 +13,11 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
 <template>
   <main class="graph-view">
     <nav class="graph-view__tabs" aria-label="Project visualization">
-      <RouterLink class="graph-view__home" :to="{ name: 'dashboard' }" aria-label="Back to dashboard">
+      <RouterLink
+        class="graph-view__home"
+        :to="{ name: 'dashboard' }"
+        aria-label="Back to dashboard"
+      >
         <BrandMark :size="24" :show-wordmark="false" />
         <span class="graph-view__home-label">Dashboard</span>
       </RouterLink>
@@ -66,7 +70,9 @@ const activeView = ref<'graph' | 'diagrams'>('graph')
   padding: 0.4rem 0.7rem;
   border-radius: 999px;
   color: #cbd5e1;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
 .graph-view__home:hover {

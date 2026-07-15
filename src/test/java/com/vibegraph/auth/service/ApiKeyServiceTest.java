@@ -25,6 +25,7 @@ import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ApiKeyPlanLimitReachedException;
 import com.vibegraph.common.exception.ApiKeysDisabledException;
+import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.ForbiddenException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,6 +52,9 @@ class ApiKeyServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private FeatureGateService featureGateService;
+
     private ApiKeyService apiKeyService;
 
     private UUID userId;
@@ -66,7 +70,8 @@ class ApiKeyServiceTest {
                 apiKeyRepository,
                 userRepository,
                 accountSettingsService,
-                passwordEncoder);
+                passwordEncoder,
+                featureGateService);
 
         userId = UUID.randomUUID();
         user = User.builder()
@@ -137,6 +142,18 @@ class ApiKeyServiceTest {
         verify(apiKeyRepository).save(argThat(apiKey ->
                 apiKey.getKeyHash().equals("$2a$10$hashedValue") &&
                 !apiKey.getKeyHash().contains("vbg_")));
+    }
+
+    @Test
+    @DisplayName("createForCurrentUser is blocked by the global API key feature flag before user lookup")
+    void createForCurrentUser_globalFeatureDisabled_throws() {
+        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_API_KEYS))
+                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
+
+        assertThrows(FeatureDisabledException.class,
+                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
+
+        verifyNoInteractions(currentUser, userRepository, accountSettingsService, passwordEncoder, apiKeyRepository);
     }
 
     @Test

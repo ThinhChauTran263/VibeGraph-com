@@ -17,6 +17,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
@@ -56,7 +60,8 @@ class ProjectApiIT {
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator);
+                deletionOrchestrator, Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
+                Mockito.mock(CreditPricingService.class), Mockito.mock(CreditBalanceService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

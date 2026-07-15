@@ -164,7 +164,10 @@ function sortTree(nodes: FileTreeNode[]): FileTreeNode[] {
  * sorted with folders before files and case-insensitive alphabetical ordering
  * within each level — matching a typical IDE explorer.
  */
-export function buildFileTree(nodes: GraphNode[], options: BuildFileTreeOptions = {}): FileTreeNode[] {
+export function buildFileTree(
+  nodes: GraphNode[],
+  options: BuildFileTreeOptions = {},
+): FileTreeNode[] {
   const files = collectFiles(nodes)
   if (files.size === 0) return []
 
@@ -240,7 +243,10 @@ export function deriveTreeRoot(nodes: GraphNode[]): BuildFileTreeOptions {
 }
 
 /** Collect every folder path in the tree (used to expand-all). */
-export function collectFolderPaths(nodes: FileTreeNode[], acc: Set<string> = new Set()): Set<string> {
+export function collectFolderPaths(
+  nodes: FileTreeNode[],
+  acc: Set<string> = new Set(),
+): Set<string> {
   for (const node of nodes) {
     if (node.kind === 'folder') {
       acc.add(node.path)

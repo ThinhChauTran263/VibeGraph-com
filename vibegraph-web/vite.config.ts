@@ -21,6 +21,7 @@ export function createViteConfig(mode: string) {
   }
 
   const env = loadEnv(mode, envDir, '')
+  const enableVueDevTools = (env.VITE_ENABLE_VUE_DEVTOOLS ?? process.env.VITE_ENABLE_VUE_DEVTOOLS) === 'true'
   for (const key of ['VITE_API_URL', 'VITE_WS_URL']) {
     if (!env[key] && !process.env[key] && isCi) {
       process.env[key] = ciDefaults[key]
@@ -35,7 +36,7 @@ export function createViteConfig(mode: string) {
     envDir,
     plugins: [
       vue(),
-      vueDevTools(),
+      enableVueDevTools ? vueDevTools() : null,
     ],
     // `sockjs-client` (used by the STOMP WebSocket transport) is a CommonJS lib
     // that references the Node-style `global`. In the browser there is no

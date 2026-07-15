@@ -49,7 +49,13 @@ function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUse
       },
     ],
     relations: [
-      { from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 },
+      {
+        from: 'A_Admin',
+        to: 'UC_ManageProduct',
+        type: 'association',
+        label: null,
+        confidence: 0.8,
+      },
     ],
     warnings: ['Role for POST /api/products inferred from HTTP method.'],
     mermaidSyntax: 'flowchart TB\n  subgraph Orders\n    uc([Manage products])\n  end',
@@ -109,7 +115,9 @@ describe('DiagramPanel', () => {
     const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
     await flushAsync()
 
-    expect(wrapper.get('[data-test="diagram-warnings"]').text()).toContain('inferred from HTTP method')
+    expect(wrapper.get('[data-test="diagram-warnings"]').text()).toContain(
+      'inferred from HTTP method',
+    )
     expect(wrapper.find('[data-test="diagram-plantuml-source"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="diagram-copy-plantuml"]').exists()).toBe(false)
     expect(wrapper.html()).toContain('Manage products')
@@ -148,7 +156,13 @@ describe('DiagramPanel', () => {
               },
             ],
             relations: [
-              { from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 },
+              {
+                from: 'A_Admin',
+                to: 'UC_ManageProduct',
+                type: 'association',
+                label: null,
+                confidence: 0.8,
+              },
             ],
             mermaidSyntax: '',
             plantUmlSyntax: '',
@@ -169,7 +183,13 @@ describe('DiagramPanel', () => {
               },
             ],
             relations: [
-              { from: 'A_User', to: 'UC_TrackShipments', type: 'association', label: null, confidence: 0.8 },
+              {
+                from: 'A_User',
+                to: 'UC_TrackShipments',
+                type: 'association',
+                label: null,
+                confidence: 0.8,
+              },
             ],
             mermaidSyntax: '',
             plantUmlSyntax: '',
@@ -224,7 +244,9 @@ describe('DiagramPanel', () => {
     expect(document.body.querySelector('[data-test="diagram-fullscreen"]')).not.toBeNull()
     expect(document.body.textContent).toContain('Diagram viewer')
 
-    const close = document.body.querySelector('[data-test="diagram-fullscreen-close"]') as HTMLButtonElement
+    const close = document.body.querySelector(
+      '[data-test="diagram-fullscreen-close"]',
+    ) as HTMLButtonElement
     close.click()
     await flushAsync()
     expect(document.body.querySelector('[data-test="diagram-fullscreen"]')).toBeNull()
