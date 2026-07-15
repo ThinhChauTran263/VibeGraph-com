@@ -6,6 +6,25 @@ spring:
   application:
     name: VibeGraph
 
+  # ── Control plane (Postgres) — auth / ownership. Data plane stays Neo4j. ──
+  # Flyway owns the schema (V1__init_auth_schema.sql); JPA only VALIDATES it, never
+  # generates DDL (ddl-auto=validate). Connection comes from POSTGRES_* env; a local
+  # default is provided so `docker compose up` + a running Postgres just works.
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:vibegraph}
+    username: ${POSTGRES_USER:vibegraph}
+    password: ${POSTGRES_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
   # Multipart limits for archive upload (POST /api/projects/import-archive).
   # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
   # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
@@ -61,6 +80,25 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  # ── Auth (Phase 1) ──────────────────────────────────────────────────────────
+  # JWT is HS256; the secret MUST be >=32 chars or the app fails fast at startup.
+  # realtime.demo-permit defaults false = /ws and /mcp require auth (fail closed);
+  # setting it true permits those routes for demo/local only and logs a startup WARN.
+  auth:
+    jwt:
+      secret: ${JWT_SECRET:}
+      expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+    realtime:
+      demo-permit: ${VIBEGRAPH_REALTIME_DEMO_PERMIT:false}
+    # Explicit, opt-in admin bootstrap. Default disabled — normal startup never creates an admin.
+    # Enable deliberately (one-shot) to create the admin account; requires ADMIN_EMAIL and one of
+    # ADMIN_PASSWORD / ADMIN_PASSWORD_HASH or the app fails fast at startup.
+    bootstrap:
+      enabled: ${VIBEGRAPH_AUTH_BOOTSTRAP_ENABLED:false}
+      admin-email: ${ADMIN_EMAIL:}
+      admin-password: ${ADMIN_PASSWORD:}
+      admin-password-hash: ${ADMIN_PASSWORD_HASH:}
+
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
@@ -138,6 +176,13 @@ vibegraph:
     edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:4000}
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
+
+  # Local Patch endpoint guardrails (POST /api/projects/{id}/patch). Bounds a single CLI
+  # patch so it cannot exhaust disk/memory: max entries, per-file size, and total size.
+  patch:
+    max-files: ${VIBEGRAPH_PATCH_MAX_FILES:200}
+    max-file-bytes: ${VIBEGRAPH_PATCH_MAX_FILE_BYTES:1048576}
+    max-total-bytes: ${VIBEGRAPH_PATCH_MAX_TOTAL_BYTES:5242880}
 
   parser:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}

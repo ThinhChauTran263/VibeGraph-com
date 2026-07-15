@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,8 +18,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
@@ -40,15 +44,29 @@ class GraphControllerTest {
 
     private MockMvc mockMvc;
     private GraphService graphService;
+    private ProjectOwnershipGuard ownershipGuard;
 
     @BeforeEach
     void setUp() {
         graphService = Mockito.mock(GraphService.class);
+        ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         GraphController controller = new GraphController(
-                graphService, new GraphPayloadGuard(), new GraphPayloadProperties());
+                graphService, new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph returns 403 when the ownership guard rejects a non-owner")
+    void shouldReturn403WhenNotOwner() throws Exception {
+        doThrow(new ForbiddenException("Access denied")).when(ownershipGuard).assertOwner("p1");
+
+        mockMvc.perform(get("/api/projects/p1/graph"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        verify(graphService, never()).getFullGraph("p1");
     }
 
     @Test

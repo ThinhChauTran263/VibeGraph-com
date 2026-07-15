@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -42,6 +44,104 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailAlreadyExists(EmailAlreadyExistsException ex) {
+        // Registration with an email that already exists (case-insensitive) — 409.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("EMAIL_TAKEN")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        // Authenticated but not the owner — 403 with a generic message (no project/owner leak).
+        ErrorResponse error = ErrorResponse.builder()
+                .code("FORBIDDEN")
+                .message("Access denied")
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        // Unknown email or wrong password — generic 401, no user enumeration.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("INVALID_CREDENTIALS")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(AccountBlockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccountBlocked(AccountBlockedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getSafeReason())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleQuotaExceeded(QuotaExceededException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ApiKeysDisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiKeysDisabled(ApiKeysDisabledException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ApiKeyPlanLimitReachedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApiKeyPlanLimitReached(ApiKeyPlanLimitReachedException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(QuotaBelowCurrentUsageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleQuotaBelowCurrentUsage(QuotaBelowCurrentUsageException ex) {
+        ErrorResponse error = ErrorResponse.builder()
+                .code(ex.getCode())
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
+        // No resolvable authenticated user at the service layer — 401.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("UNAUTHORIZED")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(PartialDeletionException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePartialDeletion(PartialDeletionException ex) {
+        // A delete removed one plane but failed on another — inconsistent state, cleanup needed.
+        // Never a 204: report 500 with a stable code. Details already logged at the orchestrator
+        // with projectId/userId/plane; the client body stays generic.
+        log.error("Partial project deletion (failedPlane={}): {}", ex.getFailedPlane(), ex.getMessage());
+        ErrorResponse error = ErrorResponse.builder()
+                .code("DELETE_PARTIAL_FAILED")
+                .message("Project deletion did not fully complete; please retry")
+                .build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(ProjectNotAnalyzedException.class)
     public ResponseEntity<ApiResponse<Void>> handleProjectNotAnalyzed(ProjectNotAnalyzedException ex) {
         // Project exists but its graph has not been built yet — surface a clear 409 so
@@ -57,6 +157,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         String details = ex.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        ErrorResponse error = ErrorResponse.builder()
+                .code("VALIDATION_ERROR")
+                .message("Request validation failed")
+                .details(details)
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+        String details = ex.getConstraintViolations().stream()
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
                 .collect(Collectors.joining("; "));
         ErrorResponse error = ErrorResponse.builder()
                 .code("VALIDATION_ERROR")

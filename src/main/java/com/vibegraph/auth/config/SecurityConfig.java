@@ -1,0 +1,107 @@
+package com.vibegraph.auth.config;
+
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import com.vibegraph.auth.web.JwtAuthFilter;
+import com.vibegraph.auth.web.RestAccessDeniedHandler;
+import com.vibegraph.auth.web.RestAuthEntryPoint;
+import com.vibegraph.common.config.CorsProperties;
+
+import lombok.RequiredArgsConstructor;
+
+/**
+ * Explicit, stateless security policy (Phase 1). No HTTP session, no CSRF (token-based,
+ * no cookies), JWT bearer auth via {@link JwtAuthFilter}.
+ *
+ * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, and CORS
+ * preflight. {@code /ws/**} and {@code /mcp/**} require authentication (fail closed) unless the
+ * explicit {@code vibegraph.auth.realtime.demo-permit} flag is set, in which case they are permitted
+ * for demo/local use only and a startup WARNING is logged. Everything else requires authentication.
+ *
+ * <p>CORS is driven from the same {@link CorsProperties} allow-list the app already uses (no
+ * wildcard with credentials), wired into the security chain so preflight is handled before authz.
+ *
+ * <p>This slice does not touch project/ownership endpoints; the ownership guard lands separately.
+ */
+@Configuration
+@EnableWebSecurity
+@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class})
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    private final JwtAuthFilter jwtAuthFilter;
+    private final RestAuthEntryPoint authEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
+    private final RealtimeSecurityProperties realtimeProperties;
+    private final CorsProperties corsProperties;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean demoPermit = realtimeProperties.isDemoPermit();
+        if (demoPermit) {
+            log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /ws/** and /mcp/** are "
+                    + "PERMITTED WITHOUT AUTHENTICATION. This is for demo/local only and is NOT "
+                    + "multi-user safe. Per-connection realtime/MCP auth is deferred to Phase 3.");
+        }
+
+        http
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(eh -> eh
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+                    auth.requestMatchers("/api/auth/**", "/actuator/health").permitAll();
+                    if (demoPermit) {
+                        auth.requestMatchers("/ws/**", "/mcp/**").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * CORS from the shared {@link CorsProperties} allow-list. {@code allowCredentials(true)}
+     * with an explicit origin list (never "*", which {@code CorsConfig} already rejects at startup).
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+}

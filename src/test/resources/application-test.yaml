@@ -1,0 +1,109 @@
+# =====================================================================
+# VibeGraph — Test profile (Phase 1)
+# =====================================================================
+# Kích hoạt qua `-Dspring.profiles.active=test` hoặc `@ActiveProfiles("test")`.
+# File này chủ động OFF các auto-config nặng để IT chỉ khởi động phần cần:
+#   * DataSource + Flyway → sẽ được override bởi @DynamicPropertySource
+#     trong AbstractPostgresIT (Testcontainers).
+#   * Neo4j URI/username/password → override trong AbstractPostgresNeo4jIT.
+#   * Spring AI + MCP server → OFF hoàn toàn để không cần API key/port.
+#   * File watcher → OFF để test không bám vào filesystem.
+#
+# Ghi chú: File này KHÔNG chứa secret. JWT test secret được set random per
+# run qua @DynamicPropertySource (xem AbstractPostgresIT).
+# =====================================================================
+
+spring:
+  # KHÔNG import .env trong test — CI/Testcontainers cung cấp env trực tiếp.
+  config:
+    import: []
+
+  application:
+    name: VibeGraph-test
+
+  # DataSource sẽ được ghi đè bởi Testcontainers.
+  # Giữ placeholder ở đây để Spring context không kêu missing url khi
+  # AbstractPostgresIT chưa set (thực tế IT luôn set — placeholder chỉ để
+  # non-IT test có datasource=none không nổ NPE trên startup).
+  datasource:
+    url: jdbc:postgresql://placeholder:5432/placeholder
+    username: placeholder
+    password: placeholder
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    # Flyway giữ schema. JPA chỉ validate. TUYỆT ĐỐI không để 'update' hay
+    # 'create-drop' — vì như thế Hibernate sẽ đè schema Flyway trong IT.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Tắt open-in-view để tránh session leak trong IT.
+        jdbc:
+          lob:
+            non_contextual_creation: true
+    open-in-view: false
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    # Test dùng migration runtime từ src/main/resources/db/migration/ qua
+    # classpath:db/migration (KHÔNG có bản copy riêng trong test — bản copy đó
+    # trùng version V1 với main nên không được commit). Nếu một IT tương lai
+    # cần schema riêng, IT đó phải tự override `spring.flyway.locations`.
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  # Neo4j: giá trị placeholder. Test nào cần Neo4j thật phải override các giá
+  # trị này qua Testcontainers (@DynamicPropertySource trong IT base class).
+  neo4j:
+    uri: bolt://placeholder:7687
+    authentication:
+      username: neo4j
+      password: placeholder
+
+  data:
+    neo4j:
+      database: neo4j
+
+  # Tắt Spring AI + MCP để test không require API key/port ngoài.
+  ai:
+    model:
+      chat: none
+
+# VibeGraph custom config — dùng default an toàn cho test.
+vibegraph:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+
+  watcher:
+    enabled: false
+
+  parser:
+    use-cache: false
+    deep-cpg-enabled: false
+
+  # JWT test config — secret được ghi đè per-run trong AbstractPostgresIT
+  # (random ≥ 32 ký tự) để không có secret hardcoded trong repo.
+  # Prefix phải khớp JwtProperties (@ConfigurationProperties "vibegraph.auth.jwt").
+  auth:
+    jwt:
+      secret: overridden-per-run-by-DynamicPropertySource
+      expiration-ms: 3600000
+
+# Chỉ expose health cho actuator IT (nếu có).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  level:
+    root: WARN
+    com.vibegraph: INFO
+    org.testcontainers: INFO
+    org.flywaydb: INFO

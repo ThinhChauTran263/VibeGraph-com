@@ -119,4 +119,47 @@ class ExceptionsTest {
         assertFalse(body.isSuccess());
         assertEquals("ARCHIVE_OVERSIZE", body.getError().getCode());
     }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler maps AccountBlockedException to 403")
+    void globalHandlerMapsAccountBlockedToForbidden() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleAccountBlocked(new AccountBlockedException("Account is blocked", "policy violation"));
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
+        assertNotNull(body);
+        assertFalse(body.isSuccess());
+        assertEquals("ACCOUNT_BLOCKED", body.getError().getCode());
+        assertEquals("policy violation", body.getError().getMessage());
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler maps quota and API key contract errors")
+    void globalHandlerMapsPhase4ContractErrors() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        assertError(handler.handleQuotaExceeded(new QuotaExceededException("storage quota exceeded")),
+                HttpStatus.PAYLOAD_TOO_LARGE, "QUOTA_EXCEEDED", "storage quota exceeded");
+        assertError(handler.handleApiKeysDisabled(new ApiKeysDisabledException("API key creation is disabled")),
+                HttpStatus.FORBIDDEN, "API_KEYS_DISABLED", "API key creation is disabled");
+        assertError(handler.handleApiKeyPlanLimitReached(
+                        new ApiKeyPlanLimitReachedException("API key plan limit reached")),
+                HttpStatus.CONFLICT, "API_KEY_PLAN_LIMIT_REACHED", "API key plan limit reached");
+        assertError(handler.handleQuotaBelowCurrentUsage(
+                        new QuotaBelowCurrentUsageException("Quota cannot be below current usage")),
+                HttpStatus.BAD_REQUEST, "QUOTA_BELOW_CURRENT_USAGE", "Quota cannot be below current usage");
+    }
+
+    private void assertError(ResponseEntity<ApiResponse<Void>> response, HttpStatus status,
+                             String code, String message) {
+        assertEquals(status, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
+        assertNotNull(body);
+        assertFalse(body.isSuccess());
+        assertEquals(code, body.getError().getCode());
+        assertEquals(message, body.getError().getMessage());
+    }
 }
