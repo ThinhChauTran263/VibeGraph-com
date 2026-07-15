@@ -51,7 +51,7 @@ Dựa trên kết quả chạy lệnh `gitnexus detect-changes`:
 ## 4. Tóm tắt Mô hình Quota Accounting
 - **`usedBytes`**: Tổng dung lượng file của dự án (tính bằng Bytes).
 - **`limitBytes`**: Mức giới hạn trần, lấy từ `Plan` hiện tại của user, hoặc lấy từ `quotaOverrideBytes` nếu Admin thiết lập (ưu tiên override).
-- **`deltaBytes`**: Trong quá trình cập nhật (Patch), `deltaBytes` = kích thước mới - kích thước cũ. 
+- **`deltaBytes`**: Trong quá trình cập nhật (Patch), `deltaBytes` = kích thước mới - kích thước cũ.
 - **Clamp về 0**: Hàm tính toán lưu trữ đảm bảo tổng `usedBytes` không bao giờ rơi xuống giá trị âm (luôn dùng hàm clamp chặn dưới tại mức `0`).
 
 ## 5. Quy tắc làm tròn Credit
