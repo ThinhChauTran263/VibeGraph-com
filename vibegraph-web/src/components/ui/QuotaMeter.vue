@@ -21,8 +21,8 @@ const percentage = computed(() => {
       <span class="quota-remaining">{{ remaining }}{{ unit }} remaining</span>
     </div>
     <div class="progress-track">
-      <div 
-        class="progress-fill" 
+      <div
+        class="progress-fill"
         :class="{ 'progress-warning': percentage >= 80, 'progress-danger': percentage >= 100 }"
         :style="{ width: `${percentage}%` }"
       ></div>

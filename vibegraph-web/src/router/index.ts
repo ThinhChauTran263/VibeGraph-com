@@ -8,11 +8,13 @@ import RegisterView from '@/views/RegisterView.vue'
 /**
  * Route meta:
  * - requiresAuth: route requires a valid token (redirect to /login otherwise)
- * - guestOnly: route is only for unauthenticated users (redirect to /dashboard if logged in)
+ * - requiresAdmin: route requires the stored session user to have ADMIN role
+ * - guestOnly: route is only for unauthenticated users (redirect to the role dashboard if logged in)
  */
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
+    requiresAdmin?: boolean
     guestOnly?: boolean
   }
 }
@@ -55,6 +57,11 @@ const router = createRouter({
         {
           path: 'profile',
           name: 'profile',
+          redirect: { name: 'settings' },
+        },
+        {
+          path: 'settings',
+          name: 'settings',
           component: () => import('../views/user/ProfileView.vue'),
         },
         {
@@ -73,16 +80,31 @@ const router = createRouter({
           component: () => import('../views/user/UsageView.vue'),
         },
         {
+          path: 'subscription',
+          name: 'subscription',
+          component: () => import('../views/user/SubscriptionView.vue'),
+        },
+        {
           path: 'reports',
           name: 'reports',
           component: () => import('../views/user/ReportsView.vue'),
-        }
-      ]
+        },
+        {
+          path: 'notifications',
+          name: 'notifications',
+          component: () => import('../views/user/NotificationsView.vue'),
+        },
+        {
+          path: 'tutorial',
+          name: 'tutorial',
+          component: () => import('../views/user/TutorialView.vue'),
+        },
+      ],
     },
     {
       path: '/admin',
       component: () => import('../components/layouts/AdminLayout.vue'),
-      meta: { requiresAuth: true }, // Ideally should also check for admin role
+      meta: { requiresAuth: true, requiresAdmin: true },
       children: [
         {
           path: '',
@@ -98,9 +120,38 @@ const router = createRouter({
           path: 'reports',
           name: 'admin-reports',
           component: () => import('../views/admin/AdminReportsView.vue'),
-        }
-      ]
-    }
+        },
+        {
+          path: 'plans-credits',
+          name: 'admin-plans-credits',
+          component: () => import('../views/admin/PlansCreditsView.vue'),
+        },
+        {
+          path: 'security',
+          name: 'admin-security',
+          component: () => import('../views/admin/SecurityView.vue'),
+        },
+        {
+          path: 'system',
+          name: 'admin-feature-flags',
+          component: () => import('../views/admin/FeatureFlagsView.vue'),
+        },
+        {
+          path: 'feature-flags',
+          redirect: { name: 'admin-feature-flags' },
+        },
+        {
+          path: 'announcements',
+          name: 'admin-announcements',
+          component: () => import('../views/admin/AnnouncementsView.vue'),
+        },
+        {
+          path: 'settings',
+          name: 'admin-settings',
+          component: () => import('../views/admin/SettingsView.vue'),
+        },
+      ],
+    },
   ],
 })
 
@@ -113,9 +164,24 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.guestOnly && isAuthenticated) {
+  if (to.meta.requiresAdmin && getStoredUserRole() !== 'ADMIN') {
     return { name: 'dashboard' }
   }
+
+  if (to.meta.guestOnly && isAuthenticated) {
+    return getStoredUserRole() === 'ADMIN' ? { name: 'admin-dashboard' } : { name: 'dashboard' }
+  }
 })
+
+function getStoredUserRole(): string {
+  const raw = localStorage.getItem('vg_user')
+  if (!raw) return ''
+  try {
+    const parsed = JSON.parse(raw) as { role?: unknown }
+    return typeof parsed.role === 'string' ? parsed.role.toUpperCase() : ''
+  } catch {
+    return ''
+  }
+}
 
 export default router

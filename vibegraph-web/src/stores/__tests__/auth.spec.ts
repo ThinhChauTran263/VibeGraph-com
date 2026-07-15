@@ -109,7 +109,9 @@ describe('useAuthStore', () => {
       mockAuthApi.login.mockRejectedValue(new Error('Invalid credentials'))
       const store = useAuthStore()
 
-      await expect(store.login({ email: 'x', password: 'y' })).rejects.toThrow('Invalid credentials')
+      await expect(store.login({ email: 'x', password: 'y' })).rejects.toThrow(
+        'Invalid credentials',
+      )
       expect(store.isAuthenticated).toBe(false)
     })
   })

@@ -87,17 +87,26 @@ export const FOCUS_OPACITY_DIMMED = envFloat('VITE_FOCUS_OPACITY_DIMMED', 0.1, {
 /** How often the import flows poll project status. */
 export const IMPORT_POLL_INTERVAL_MS = envInt('VITE_IMPORT_POLL_INTERVAL_MS', 1000, { min: 100 })
 /** Give up only after this long with NO progress (genuine backend stall). */
-export const IMPORT_STALL_TIMEOUT_MS = envInt('VITE_IMPORT_STALL_TIMEOUT_MS', 300_000, { min: 1000 })
+export const IMPORT_STALL_TIMEOUT_MS = envInt('VITE_IMPORT_STALL_TIMEOUT_MS', 300_000, {
+  min: 1000,
+})
 /** Absolute safety ceiling so a pathological backend can't be polled forever. */
-export const IMPORT_ABSOLUTE_TIMEOUT_MS = envInt('VITE_IMPORT_ABSOLUTE_TIMEOUT_MS', 3_600_000, { min: 1000 })
+export const IMPORT_ABSOLUTE_TIMEOUT_MS = envInt('VITE_IMPORT_ABSOLUTE_TIMEOUT_MS', 3_600_000, {
+  min: 1000,
+})
 
 // ── Project list ─────────────────────────────────────────────────────────────
 /** Background refresh cadence for the "Your projects" list on the home page. */
-export const PROJECTS_AUTO_REFRESH_INTERVAL_MS = envInt('VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS', 5000, { min: 1000 })
+export const PROJECTS_AUTO_REFRESH_INTERVAL_MS = envInt(
+  'VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS',
+  5000,
+  { min: 1000 },
+)
 
 // ── Archive upload ───────────────────────────────────────────────────────────
 /** Client-side max archive size. Backend remains the authority and must re-validate. */
-export const ARCHIVE_MAX_SIZE_BYTES = envInt('VITE_ARCHIVE_MAX_SIZE_MB', 100, { min: 1 }) * 1024 * 1024
+export const ARCHIVE_MAX_SIZE_BYTES =
+  envInt('VITE_ARCHIVE_MAX_SIZE_MB', 100, { min: 1 }) * 1024 * 1024
 
 // ── WebSocket (STOMP/SockJS) ─────────────────────────────────────────────────
 /** Reconnect delay after a dropped socket. */
@@ -111,22 +120,34 @@ export const WS_HEARTBEAT_OUTGOING_MS = envInt('VITE_WS_HEARTBEAT_OUTGOING_MS', 
 export const SIGMA_BASE_NODE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_NODE_LABEL_SIZE', 7, { min: 1 })
 export const SIGMA_BASE_EDGE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_EDGE_LABEL_SIZE', 8, { min: 1 })
 /** Node label zoom-scale floor / cap. */
-export const SIGMA_MIN_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_LABEL_ZOOM_SCALE', 0.5, { min: 0 })
-export const SIGMA_MAX_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_LABEL_ZOOM_SCALE', 2.25, { min: 0 })
+export const SIGMA_MIN_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_LABEL_ZOOM_SCALE', 0.5, {
+  min: 0,
+})
+export const SIGMA_MAX_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_LABEL_ZOOM_SCALE', 2.25, {
+  min: 0,
+})
 /**
  * Edge label zoom-scale floor / cap. Edge type labels hold a FIXED size across the
  * normal zoom range (see SIGMA_EDGE_LABEL_GROW_ZOOM) and only enlarge once you zoom
  * deep past that threshold, then scale with 1/ratio up to this cap. Lower the cap to
  * stop growth sooner; raise it to allow larger labels under extreme magnification.
  */
-export const SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE', 1, { min: 0 })
-export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE', 5, { min: 0 })
+export const SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MIN_EDGE_LABEL_ZOOM_SCALE', 1, {
+  min: 0,
+})
+export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE', 5, {
+  min: 0,
+})
 /**
  * Min on-screen node size (px) before Sigma draws its label. Lower = labels appear
  * sooner / at a more zoomed-out view. Kept modest so names show without deep zoom
  * while still hiding under a heavy zoom-out where everything would overlap.
  */
-export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt('VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD', 6, { min: 0 })
+export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt(
+  'VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD',
+  6,
+  { min: 0 },
+)
 
 /**
  * Zoom-in factor (relative to the initial fit view = 1×) past which labels START
@@ -146,7 +167,9 @@ export const SIGMA_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_LABEL_GROW_ZOOM', 1.5,
  * them to the fixed size. This is separate from the node grow factor so node labels
  * can grow early for readability while edge labels stay calm until deep zoom.
  */
-export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, { min: 1 })
+export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, {
+  min: 1,
+})
 
 /** Rendered edge thickness (screen px, constant across zoom). Lower = thinner lines. */
 export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.15, { min: 0.05 })
@@ -168,7 +191,9 @@ export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS'
  * magnified enough that few edges remain on screen — that, plus viewport culling in
  * the edge-label renderer, keeps zooming smooth while still drawing every frame.
  */
-export const SIGMA_MINIMAL_LABEL_RATIO = envFloat('VITE_SIGMA_MINIMAL_LABEL_RATIO', 1.05, { min: 0 })
+export const SIGMA_MINIMAL_LABEL_RATIO = envFloat('VITE_SIGMA_MINIMAL_LABEL_RATIO', 1.05, {
+  min: 0,
+})
 export const SIGMA_EDGE_LABEL_RATIO = envFloat('VITE_SIGMA_EDGE_LABEL_RATIO', 0.45, { min: 0 })
 
 /**
@@ -266,7 +291,9 @@ export const ZOOM_FIT_DURATION_MS = envInt('VITE_ZOOM_FIT_DURATION_MS', 300, { m
 // ── Node detail panel ────────────────────────────────────────────────────────
 /** Max properties / connections (per direction) shown in the node detail panel. */
 export const NODE_DETAIL_MAX_PROPERTIES = envInt('VITE_NODE_DETAIL_MAX_PROPERTIES', 12, { min: 1 })
-export const NODE_DETAIL_MAX_CONNECTIONS = envInt('VITE_NODE_DETAIL_MAX_CONNECTIONS', 50, { min: 1 })
+export const NODE_DETAIL_MAX_CONNECTIONS = envInt('VITE_NODE_DETAIL_MAX_CONNECTIONS', 50, {
+  min: 1,
+})
 
 // ── Search ───────────────────────────────────────────────────────────────────
 /** Max suggestions shown in the graph search bar. */

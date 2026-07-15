@@ -64,7 +64,9 @@ export function useDiagrams() {
   // graphVersion the currently-shown diagram was built from; drives staleness checks.
   const currentVersion = ref(-1)
   /** True when the shown diagram predates the latest graph change (should revalidate). */
-  const isStale = computed(() => status.value === 'success' && currentVersion.value < graphVersion.value)
+  const isStale = computed(
+    () => status.value === 'success' && currentVersion.value < graphVersion.value,
+  )
   let requestSeq = 0
 
   async function runWithCache(

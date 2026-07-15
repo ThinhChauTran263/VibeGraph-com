@@ -1,11 +1,5 @@
 import { computed, ref } from 'vue'
-import {
-  ApiError,
-  importApi,
-  projectApi,
-  type Project,
-  type ProjectStatusEvent,
-} from '@/lib/api'
+import { ApiError, importApi, projectApi, type Project, type ProjectStatusEvent } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
 import {
   IMPORT_POLL_INTERVAL_MS,
@@ -50,7 +44,9 @@ function getLocalImportError(error: unknown): string {
   if (!message) {
     return GENERIC_LOCAL_IMPORT_ERROR
   }
-  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message)) ? message : GENERIC_LOCAL_IMPORT_ERROR
+  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message))
+    ? message
+    : GENERIC_LOCAL_IMPORT_ERROR
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -63,7 +59,10 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
+async function waitForAnalysis(
+  project: Project,
+  onProgress: (value: number) => void,
+): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
   if (project.status !== 'ANALYZING') {
@@ -97,7 +96,11 @@ async function waitForAnalysis(project: Project, onProgress: (value: number) => 
     }
 
     if (latestProject.status === 'FAILED') {
-      throw new ApiError(400, 'Import Failed', 'Analysis failed. Check the folder contents and try again.')
+      throw new ApiError(
+        400,
+        'Import Failed',
+        'Analysis failed. Check the folder contents and try again.',
+      )
     }
 
     // Only surface a timeout on a genuine stall or the absolute ceiling — never on a fixed timer.

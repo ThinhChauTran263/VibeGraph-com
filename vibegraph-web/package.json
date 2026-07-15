@@ -19,6 +19,7 @@
     "@sigma/edge-curve": "^3.1.0",
     "@stomp/stompjs": "^7.3.0",
     "axios": "^1.16.1",
+    "echarts": "^6.1.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",
@@ -28,6 +29,7 @@
     "sigma": "^3.0.3",
     "sockjs-client": "^1.6.1",
     "vue": "^3.5.32",
+    "vue-echarts": "^8.0.1",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {

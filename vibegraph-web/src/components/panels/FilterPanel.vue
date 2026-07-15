@@ -46,7 +46,12 @@ const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type)
         <h2 id="filter-panel-heading">Graph filters</h2>
         <p>Toggle node and edge types in the current graph.</p>
       </div>
-      <button class="filter-panel__reset" type="button" :disabled="!hasActiveFilters" @click="reset">
+      <button
+        class="filter-panel__reset"
+        type="button"
+        :disabled="!hasActiveFilters"
+        @click="reset"
+      >
         Reset all
       </button>
     </header>
@@ -67,7 +72,10 @@ const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type)
             :aria-pressed="!hiddenNodeTypes.has(item.type)"
             @click="toggleNodeType(item.type, nodeTypeList)"
           >
-            <span class="filter-panel__swatch" :style="{ backgroundColor: NODE_COLORS[item.type] }" />
+            <span
+              class="filter-panel__swatch"
+              :style="{ backgroundColor: NODE_COLORS[item.type] }"
+            />
             <span class="filter-panel__name">{{ item.type }}</span>
             <span class="filter-panel__count">{{ item.count }}</span>
           </button>
@@ -93,7 +101,10 @@ const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type)
             :aria-pressed="!hiddenEdgeTypes.has(item.type)"
             @click="toggleEdgeType(item.type, edgeTypeList)"
           >
-            <span class="filter-panel__edge-swatch" :style="{ backgroundColor: EDGE_COLORS[item.type] }" />
+            <span
+              class="filter-panel__edge-swatch"
+              :style="{ backgroundColor: EDGE_COLORS[item.type] }"
+            />
             <span class="filter-panel__name">{{ item.type }}</span>
             <span class="filter-panel__count">{{ item.count }}</span>
           </button>

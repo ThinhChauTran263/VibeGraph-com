@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { apiToGraphology } from '../graphAdapter'
-import { NODE_COLORS, EDGE_COLORS, STRUCTURAL_EDGE_TYPES, CPG_LITE_EDGE_TYPES, NODE_SIZE_BY_TYPE } from '../constants'
+import {
+  NODE_COLORS,
+  EDGE_COLORS,
+  STRUCTURAL_EDGE_TYPES,
+  CPG_LITE_EDGE_TYPES,
+  NODE_SIZE_BY_TYPE,
+} from '../constants'
 import type { EdgeType, GraphData } from '@/types/graph'
 
 /**
@@ -202,8 +208,12 @@ describe('apiToGraphology', () => {
     expect(graph.getNodeAttribute('com.example.UserRecord', 'size')).toBe(NODE_SIZE_BY_TYPE.Record)
     expect(graph.getNodeAttribute('com.example.UserEntity', 'color')).toBe(NODE_COLORS.DBModel)
     expect(graph.getNodeAttribute('com.example.UserEntity', 'size')).toBe(NODE_SIZE_BY_TYPE.DBModel)
-    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'color')).toBe(NODE_COLORS.Constructor)
-    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(NODE_SIZE_BY_TYPE.Constructor)
+    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'color')).toBe(
+      NODE_COLORS.Constructor,
+    )
+    expect(graph.getNodeAttribute('com.example.UserService.<init>()', 'size')).toBe(
+      NODE_SIZE_BY_TYPE.Constructor,
+    )
     expect(graph.getNodeAttribute('GET /api/users', 'color')).toBe(NODE_COLORS.APIEndpoint)
     expect(graph.getNodeAttribute('GET /api/users', 'size')).toBe(NODE_SIZE_BY_TYPE.APIEndpoint)
   })
@@ -246,8 +256,24 @@ describe('graphAdapter supports every backend-emitted edge type', () => {
       const source = `n${index}a`
       const target = `n${index}b`
       nodes.push(
-        { id: source, type: 'Class', name: source, fullName: source, filePath: '', lineNumber: 1, properties: {} },
-        { id: target, type: 'Class', name: target, fullName: target, filePath: '', lineNumber: 1, properties: {} },
+        {
+          id: source,
+          type: 'Class',
+          name: source,
+          fullName: source,
+          filePath: '',
+          lineNumber: 1,
+          properties: {},
+        },
+        {
+          id: target,
+          type: 'Class',
+          name: target,
+          fullName: target,
+          filePath: '',
+          lineNumber: 1,
+          properties: {},
+        },
       )
       edges.push({ id: `${source}|${type}|${target}`, source, target, type })
     })

@@ -7,10 +7,10 @@ describe('StatusChip', () => {
     const wrapper = mount(StatusChip, {
       props: {
         status: 'active',
-        label: 'Active'
-      }
+        label: 'Active',
+      },
     })
-    
+
     expect(wrapper.text()).toContain('Active')
     expect(wrapper.classes()).toContain('status-active')
   })

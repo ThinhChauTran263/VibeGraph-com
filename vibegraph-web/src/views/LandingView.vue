@@ -132,13 +132,69 @@ interface GraphEdge {
 }
 
 const nodes: GraphNode[] = [
-  { id: 'test', label: 'ProjectApiIT.java', type: 'test', x: 60, y: 130, r: 12, color: 'var(--vg-blue)' },
-  { id: 'controller', label: 'ProjectController.java', type: 'controller', x: 160, y: 160, r: 14, color: 'var(--vg-cyan)' },
-  { id: 'security', label: 'SecurityConfig.java', type: 'security', x: 90, y: 280, r: 12, color: 'var(--vg-danger)' },
-  { id: 'service', label: 'ProjectService.java', type: 'service', x: 260, y: 170, r: 16, color: 'var(--vg-violet)' },
-  { id: 'repo', label: 'ProjectRepository.java', type: 'repository', x: 340, y: 250, r: 13, color: 'var(--vg-amber)' },
-  { id: 'db', label: 'Database (MySQL)', type: 'database', x: 350, y: 90, r: 10, color: 'var(--vg-green-bright)' },
-  { id: 'util', label: 'GraphBuilder.java', type: 'utility', x: 230, y: 310, r: 11, color: 'var(--vg-blue-bright)' },
+  {
+    id: 'test',
+    label: 'ProjectApiIT.java',
+    type: 'test',
+    x: 60,
+    y: 130,
+    r: 12,
+    color: 'var(--vg-blue)',
+  },
+  {
+    id: 'controller',
+    label: 'ProjectController.java',
+    type: 'controller',
+    x: 160,
+    y: 160,
+    r: 14,
+    color: 'var(--vg-cyan)',
+  },
+  {
+    id: 'security',
+    label: 'SecurityConfig.java',
+    type: 'security',
+    x: 90,
+    y: 280,
+    r: 12,
+    color: 'var(--vg-danger)',
+  },
+  {
+    id: 'service',
+    label: 'ProjectService.java',
+    type: 'service',
+    x: 260,
+    y: 170,
+    r: 16,
+    color: 'var(--vg-violet)',
+  },
+  {
+    id: 'repo',
+    label: 'ProjectRepository.java',
+    type: 'repository',
+    x: 340,
+    y: 250,
+    r: 13,
+    color: 'var(--vg-amber)',
+  },
+  {
+    id: 'db',
+    label: 'Database (MySQL)',
+    type: 'database',
+    x: 350,
+    y: 90,
+    r: 10,
+    color: 'var(--vg-green-bright)',
+  },
+  {
+    id: 'util',
+    label: 'GraphBuilder.java',
+    type: 'utility',
+    x: 230,
+    y: 310,
+    r: 11,
+    color: 'var(--vg-blue-bright)',
+  },
 ]
 
 const edges: GraphEdge[] = [
@@ -157,7 +213,7 @@ const hoverNode = ref<string | null>(null)
 const isPropagating = ref(false)
 
 function getNode(id: string): GraphNode {
-  return nodes.find(n => n.id === id)!
+  return nodes.find((n) => n.id === id)!
 }
 
 function isEdgeActive(edge: GraphEdge): boolean {
@@ -171,16 +227,16 @@ function isEdgeHighlighted(edge: GraphEdge): boolean {
 function triggerImpact(nodeId: string) {
   if (isPropagating.value) return
   isPropagating.value = true
-  
-  const node = nodes.find(n => n.id === nodeId)
+
+  const node = nodes.find((n) => n.id === nodeId)
   if (!node) return
-  
+
   selectedNode.value = node
   activeImpactNodes.value = []
-  
+
   const visited = new Set<string>()
   const queue: string[] = [nodeId]
-  
+
   function step() {
     if (queue.length === 0) {
       isPropagating.value = false
@@ -190,9 +246,9 @@ function triggerImpact(nodeId: string) {
     if (!visited.has(current)) {
       visited.add(current)
       activeImpactNodes.value.push(current)
-      
+
       // Find neighbors
-      edges.forEach(edge => {
+      edges.forEach((edge) => {
         if (edge.to === current && !visited.has(edge.from)) {
           queue.push(edge.from)
         }
@@ -200,7 +256,7 @@ function triggerImpact(nodeId: string) {
           queue.push(edge.to)
         }
       })
-      
+
       setTimeout(step, 180)
     } else {
       step()
@@ -229,7 +285,8 @@ const terminalTyping = ref(false)
 
 const commandsData = {
   impact: {
-    command: 'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
+    command:
+      'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
     output: `{
   "node": "com.vibegraph.graph.repository.ProjectRepository",
   "riskLevel": "HIGH",
@@ -243,7 +300,7 @@ const commandsData = {
     "ProjectApiIT"
   ],
   "warnings": ["Referenced by 2 execution flows"]
-}`
+}`,
   },
   context: {
     command: 'get_class_context({ projectId: "my-app", classQuery: "ProjectService" })',
@@ -253,10 +310,11 @@ const commandsData = {
   "outgoingRelations": ["ProjectRepository", "GraphBuilder"],
   "incomingRelations": ["ProjectController", "ProjectApiIT"],
   "warnings": []
-}`
+}`,
   },
   plan: {
-    command: 'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
+    command:
+      'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
     output: `{
   "changeRequest": "Rename ProjectService to WorkspaceService",
   "candidateFiles": [
@@ -271,8 +329,8 @@ const commandsData = {
     "Update tests"
   ],
   "confidence": "MEDIUM"
-}`
-  }
+}`,
+  },
 }
 
 function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
@@ -281,10 +339,10 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
   terminalTyping.value = true
   terminalInput.value = ''
   terminalOutput.value = ''
-  
+
   const cmdText = commandsData[tabKey].command
   let i = 0
-  
+
   function typeCmd() {
     if (i < cmdText.length) {
       terminalInput.value += cmdText[i]
@@ -297,7 +355,7 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
       }, 250)
     }
   }
-  
+
   typeCmd()
 }
 
@@ -334,7 +392,7 @@ function onMouseMoveBento(e: MouseEvent, index: number) {
 const guideTabs = [
   { step: '01', title: 'Run VibeGraph' },
   { step: '02', title: 'Import a project' },
-  { step: '03', title: 'Connect your AI agent' }
+  { step: '03', title: 'Connect your AI agent' },
 ]
 const activeGuideTab = ref(0)
 
@@ -347,19 +405,18 @@ async function moveVirtualCursor(targetX: number, targetY: number, duration = 12
   const startX = virtualCursor.value.x
   const startY = virtualCursor.value.y
   const startTime = performance.now()
-  
+
   return new Promise<void>((resolve) => {
     function update(time: number) {
       if (!autoTourActive.value) return resolve()
       const elapsed = time - startTime
       const progress = Math.min(elapsed / duration, 1)
-      const ease = progress < 0.5 
-        ? 4 * progress * progress * progress 
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2
-        
+      const ease =
+        progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
       virtualCursor.value.x = startX + (targetX - startX) * ease
       virtualCursor.value.y = startY + (targetY - startY) * ease
-      
+
       if (progress < 1) {
         requestAnimationFrame(update)
       } else {
@@ -372,7 +429,7 @@ async function moveVirtualCursor(targetX: number, targetY: number, duration = 12
 
 async function simulateVirtualClick() {
   virtualCursor.value.clicking = true
-  await new Promise(r => setTimeout(r, 200))
+  await new Promise((r) => setTimeout(r, 200))
   virtualCursor.value.clicking = false
 }
 
@@ -382,7 +439,7 @@ const tourTargets = [
   { id: 'hero-node-test', action: () => triggerImpact('test') },
   { id: 'terminal-tab-context', action: () => loadTerminalCommand('context') },
   { id: 'step-control-2', action: () => selectStep(2) },
-  { id: 'hero-node-repo', action: () => triggerImpact('repo') }
+  { id: 'hero-node-repo', action: () => triggerImpact('repo') },
 ]
 
 async function playTourStep() {
@@ -394,15 +451,15 @@ async function playTourStep() {
     // Align relative to viewport since cursor is fixed-positioned
     const targetX = rect.left + rect.width / 2
     const targetY = rect.top + rect.height / 2
-    
+
     await moveVirtualCursor(targetX, targetY, 1500)
-    
+
     if (!autoTourActive.value) return
-    
+
     await simulateVirtualClick()
     target.action()
   }
-  
+
   currentTourStep = (currentTourStep + 1) % tourTargets.length
   tourTimeout = setTimeout(playTourStep, 4500)
 }
@@ -416,13 +473,13 @@ function stopAutoTour() {
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
-  
+
   // Set default interactive graph select
   triggerImpact('service')
-  
+
   // Start terminal typing
   loadTerminalCommand('impact')
-  
+
   // Start stepper timer
   startStepTimer()
 
@@ -431,7 +488,7 @@ onMounted(() => {
   window.addEventListener('mousemove', stopAutoTour, { once: true })
   window.addEventListener('mousedown', stopAutoTour, { once: true })
   window.addEventListener('keydown', stopAutoTour, { once: true })
-  
+
   // Start tour after a delay
   tourTimeout = setTimeout(playTourStep, 4000)
 })
@@ -462,7 +519,12 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     >
       <svg width="22" height="22" viewBox="0 0 20 20" fill="none">
-        <path d="M2 2L9 18L12 11L19 9L2 2Z" fill="var(--vg-cyan)" stroke="#fff" stroke-width="1.8" />
+        <path
+          d="M2 2L9 18L12 11L19 9L2 2Z"
+          fill="var(--vg-cyan)"
+          stroke="#fff"
+          stroke-width="1.8"
+        />
       </svg>
       <div v-if="virtualCursor.clicking" class="click-ripple"></div>
       <span class="virtual-cursor-tag">Guided Tour Demo</span>
@@ -520,26 +582,40 @@ onBeforeUnmount(() => {
         <!-- Interactive Animated Graph Motif -->
         <div class="hero__visual" aria-hidden="true">
           <div class="orb"></div>
-          
+
           <div class="interactive-graph-card">
             <div class="graph-header">
               <span class="graph-status-dot"></span>
               <span class="graph-header-text">Interactive Blast-Radius Sandbox</span>
             </div>
-            
+
             <svg class="graphmotif" viewBox="0 0 420 420" fill="none">
               <defs>
-                <linearGradient id="lp-edge" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+                <linearGradient
+                  id="lp-edge"
+                  x1="0"
+                  y1="0"
+                  x2="420"
+                  y2="420"
+                  gradientUnits="userSpaceOnUse"
+                >
                   <stop stop-color="#3b82f6" />
                   <stop offset="0.5" stop-color="#22d3ee" />
                   <stop offset="1" stop-color="#22c55e" />
                 </linearGradient>
-                <linearGradient id="lp-edge-active" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+                <linearGradient
+                  id="lp-edge-active"
+                  x1="0"
+                  y1="0"
+                  x2="420"
+                  y2="420"
+                  gradientUnits="userSpaceOnUse"
+                >
                   <stop stop-color="#ef4444" />
                   <stop offset="1" stop-color="#fbbf24" />
                 </linearGradient>
               </defs>
-              
+
               <!-- Edges -->
               <g class="graphmotif__edges" stroke-width="2">
                 <line
@@ -553,11 +629,11 @@ onBeforeUnmount(() => {
                   :class="{
                     'edge--active': isEdgeActive(edge),
                     'edge--dimmed': selectedNode && !isEdgeActive(edge),
-                    'edge--highlighted': isEdgeHighlighted(edge)
+                    'edge--highlighted': isEdgeHighlighted(edge),
                   }"
                 />
               </g>
-              
+
               <!-- Nodes -->
               <g class="graphmotif__nodes">
                 <g
@@ -568,7 +644,7 @@ onBeforeUnmount(() => {
                   :class="{
                     'node-group--active': activeImpactNodes.includes(node.id),
                     'node-group--dimmed': selectedNode && !activeImpactNodes.includes(node.id),
-                    'node-group--hover': hoverNode === node.id
+                    'node-group--hover': hoverNode === node.id,
                   }"
                   @click="triggerImpact(node.id)"
                   @mouseenter="hoverNode = node.id"
@@ -582,13 +658,7 @@ onBeforeUnmount(() => {
                     :fill="node.color"
                     opacity="0.15"
                   />
-                  <circle
-                    class="n"
-                    :cx="node.x"
-                    :cy="node.y"
-                    :r="node.r"
-                    :fill="node.color"
-                  />
+                  <circle class="n" :cx="node.x" :cy="node.y" :r="node.r" :fill="node.color" />
                   <!-- Pulsing element for selected node -->
                   <circle
                     v-if="selectedNode?.id === node.id"
@@ -649,26 +719,35 @@ onBeforeUnmount(() => {
                 <span class="problem-num">01</span>
                 <div>
                   <strong>Cognitive Overload</strong>
-                  <p>Searching through raw files and text is slow, confusing, and fails to reveal actual execution context.</p>
+                  <p>
+                    Searching through raw files and text is slow, confusing, and fails to reveal
+                    actual execution context.
+                  </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">02</span>
                 <div>
                   <strong>Fear of Refactoring</strong>
-                  <p>Editing a method or route could break multiple upstream dependencies or tests without warning.</p>
+                  <p>
+                    Editing a method or route could break multiple upstream dependencies or tests
+                    without warning.
+                  </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">03</span>
                 <div>
                   <strong>AI Agent Blindspots</strong>
-                  <p>Coding agents lack full call-graph awareness, which leads to broken edits and regression issues.</p>
+                  <p>
+                    Coding agents lack full call-graph awareness, which leads to broken edits and
+                    regression issues.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <div class="goals-col">
             <span class="section__eyebrow">Our Solution</span>
             <h2 class="section__title">High-fidelity graph intelligence</h2>
@@ -677,21 +756,30 @@ onBeforeUnmount(() => {
                 <span class="solution-icon">✨</span>
                 <div>
                   <strong>Interactive Code Maps</strong>
-                  <p>We render your Java codebase as an explorable network, showing classes, methods, and routes visually.</p>
+                  <p>
+                    We render your Java codebase as an explorable network, showing classes, methods,
+                    and routes visually.
+                  </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">⚡</span>
                 <div>
                   <strong>Instant Blast-Radius Reports</strong>
-                  <p>Query exact callers, trace execution flows, and assess impact in milliseconds before editing code.</p>
+                  <p>
+                    Query exact callers, trace execution flows, and assess impact in milliseconds
+                    before editing code.
+                  </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">🔌</span>
                 <div>
                   <strong>Model Context Protocol (MCP)</strong>
-                  <p>Expose structure directly to LLMs, so coding agents query context, predict blast-radii, and edit safely.</p>
+                  <p>
+                    Expose structure directly to LLMs, so coding agents query context, predict
+                    blast-radii, and edit safely.
+                  </p>
                 </div>
               </div>
             </div>
@@ -716,14 +804,17 @@ onBeforeUnmount(() => {
             :key="f.title"
             :id="`bento-card-${index}`"
             class="card"
-            :class="[`card--${f.accent}`, f.span === 'wide' && index === 4 ? 'card--full' : `card--${f.span}`]"
+            :class="[
+              `card--${f.accent}`,
+              f.span === 'wide' && index === 4 ? 'card--full' : `card--${f.span}`,
+            ]"
             @mousemove="onMouseMoveBento($event, index)"
           >
             <span class="card__tag">{{ f.tag }}</span>
             <h3 class="card__title">{{ f.title }}</h3>
             <p class="card__body">{{ f.body }}</p>
             <span class="card__shine" aria-hidden="true"></span>
-            
+
             <!-- Custom interactive micro-graphics inside bento cards -->
             <div class="card__micro-viz" aria-hidden="true">
               <span v-if="f.accent === 'blue'" class="viz-nodes">
@@ -755,7 +846,7 @@ onBeforeUnmount(() => {
           <span class="section__eyebrow">How it works</span>
           <h2 class="section__title">From repo to insight in three steps</h2>
         </header>
-        
+
         <div class="stepper-layout">
           <!-- Stepper triggers -->
           <div class="stepper-controls">
@@ -774,7 +865,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          
+
           <!-- Dynamic Device Preview Screen -->
           <div class="stepper-preview">
             <div class="device-mockup">
@@ -789,7 +880,13 @@ onBeforeUnmount(() => {
                 <div v-if="activeStep === 0" class="mock-screen mock-screen--import">
                   <div class="import-area">
                     <div class="import-icon-wrap">
-                      <svg class="import-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg
+                        class="import-icon"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" y1="3" x2="12" y2="15" />
@@ -817,9 +914,30 @@ onBeforeUnmount(() => {
                     </aside>
                     <div class="mock-canvas">
                       <svg class="mini-network" viewBox="0 0 200 200">
-                        <line x1="100" y1="100" x2="60" y2="60" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
-                        <line x1="100" y1="100" x2="140" y2="60" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
-                        <line x1="100" y1="100" x2="100" y2="150" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="60"
+                          y2="60"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="140"
+                          y2="60"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="100"
+                          y2="150"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
                         <circle cx="100" cy="100" r="10" fill="var(--vg-blue-bright)" />
                         <circle cx="60" cy="60" r="8" fill="var(--vg-cyan)" />
                         <circle cx="140" cy="60" r="8" fill="var(--vg-violet)" />
@@ -843,15 +961,38 @@ onBeforeUnmount(() => {
                     <div class="mock-canvas">
                       <svg class="mini-network" viewBox="0 0 200 200">
                         <!-- highlighted connections -->
-                        <line x1="100" y1="100" x2="60" y2="60" stroke="var(--vg-danger)" stroke-width="2.5" />
-                        <line x1="100" y1="100" x2="140" y2="60" stroke="var(--vg-danger)" stroke-width="2.5" />
-                        <line x1="100" y1="100" x2="100" y2="150" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="60"
+                          y2="60"
+                          stroke="var(--vg-danger)"
+                          stroke-width="2.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="140"
+                          y2="60"
+                          stroke="var(--vg-danger)"
+                          stroke-width="2.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="100"
+                          y2="150"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
                         <circle cx="100" cy="100" r="10" fill="var(--vg-danger)" />
                         <circle cx="60" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="140" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip mini-canvas-tip--danger">Upstream risk: HIGH</span>
+                      <span class="mini-canvas-tip mini-canvas-tip--danger"
+                        >Upstream risk: HIGH</span
+                      >
                     </div>
                   </div>
                 </div>
@@ -866,9 +1007,11 @@ onBeforeUnmount(() => {
         <header class="section__head">
           <span class="section__eyebrow">Quick Start & Installation</span>
           <h2 class="section__title">Install & Vibe Code in 2 Minutes</h2>
-          <p class="section__sub">How to install, run analysis, and integrate VibeGraph with your developer workflow.</p>
+          <p class="section__sub">
+            How to install, run analysis, and integrate VibeGraph with your developer workflow.
+          </p>
         </header>
-        
+
         <div class="guide-box">
           <div class="guide-tabs" role="tablist" aria-label="Setup guide tabs">
             <button
@@ -884,11 +1027,14 @@ onBeforeUnmount(() => {
               {{ g.title }}
             </button>
           </div>
-          
+
           <div class="guide-content">
             <div v-if="activeGuideTab === 0" class="guide-pane">
               <h4>Step 1: Start VibeGraph locally</h4>
-              <p>VibeGraph is a Spring Boot backend (Java 21) with a Vue web client, backed by a Neo4j graph database. Start Neo4j, run the backend, then the web client.</p>
+              <p>
+                VibeGraph is a Spring Boot backend (Java 21) with a Vue web client, backed by a
+                Neo4j graph database. Start Neo4j, run the backend, then the web client.
+              </p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
                   <span>Terminal (bash)</span>
@@ -902,23 +1048,47 @@ docker compose up -d neo4j
 # 3. Run the web client — Vite on :5173
 cd vibegraph-web && npm install && npm run dev</code></pre>
               </div>
-              <p class="text-sm text-dim">Set <code>NEO4J_URI</code>, <code>NEO4J_USERNAME</code> and <code>NEO4J_PASSWORD</code> in <code>.env</code> — or bring the whole stack up at once with <code>docker compose up -d</code>.</p>
+              <p class="text-sm text-dim">
+                Set <code>NEO4J_URI</code>, <code>NEO4J_USERNAME</code> and
+                <code>NEO4J_PASSWORD</code> in <code>.env</code> — or bring the whole stack up at
+                once with <code>docker compose up -d</code>.
+              </p>
             </div>
 
             <div v-if="activeGuideTab === 1" class="guide-pane">
               <h4>Step 2: Import your project</h4>
-              <p>Open the dashboard at <code>http://localhost:5173</code> and import a Java project straight from the UI — no analyzer CLI required. Pick one of three methods:</p>
+              <p>
+                Open the dashboard at <code>http://localhost:5173</code> and import a Java project
+                straight from the UI — no analyzer CLI required. Pick one of three methods:
+              </p>
               <ul class="guide-list">
-                <li>📁 <strong>Local folder</strong>: point VibeGraph at a folder on the same machine; the graph re-draws in realtime as you edit (file watcher).</li>
-                <li>🗜️ <strong>Archive</strong>: upload a <code>.zip</code>, <code>.tar</code> or <code>.tar.gz</code> of the project.</li>
-                <li>🔗 <strong>GitHub</strong>: paste a public HTTPS repo URL and VibeGraph clones, indexes and maps it.</li>
+                <li>
+                  📁 <strong>Local folder</strong>: point VibeGraph at a folder on the same machine;
+                  the graph re-draws in realtime as you edit (file watcher).
+                </li>
+                <li>
+                  🗜️ <strong>Archive</strong>: upload a <code>.zip</code>, <code>.tar</code> or
+                  <code>.tar.gz</code> of the project.
+                </li>
+                <li>
+                  🔗 <strong>GitHub</strong>: paste a public HTTPS repo URL and VibeGraph clones,
+                  indexes and maps it.
+                </li>
               </ul>
-              <p class="text-sm text-dim">The backend parses the source, stores the call graph in Neo4j, and the Vue client renders it with Sigma.js — search any symbol, double-click a node to focus, or select one to see its blast radius.</p>
+              <p class="text-sm text-dim">
+                The backend parses the source, stores the call graph in Neo4j, and the Vue client
+                renders it with Sigma.js — search any symbol, double-click a node to focus, or
+                select one to see its blast radius.
+              </p>
             </div>
 
             <div v-if="activeGuideTab === 2" class="guide-pane">
               <h4>Step 3: Connect your AI agent over MCP</h4>
-              <p>VibeGraph runs a Model Context Protocol server (Spring AI) over <strong>Streamable HTTP</strong>, so agents like Claude, Cursor and Kiro can query the graph and run impact analysis. Point your agent at the endpoint:</p>
+              <p>
+                VibeGraph runs a Model Context Protocol server (Spring AI) over
+                <strong>Streamable HTTP</strong>, so agents like Claude, Cursor and Kiro can query
+                the graph and run impact analysis. Point your agent at the endpoint:
+              </p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
                   <span>AI client config (mcp.json)</span>
@@ -931,7 +1101,11 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   }
 }</code></pre>
               </div>
-              <p class="text-sm text-dim">The server exposes 15 tools — impact analysis, class &amp; method context, references, related tests, endpoint trace, project conventions and more. The exact config key may differ per client (some use <code>"type": "streamable-http"</code>).</p>
+              <p class="text-sm text-dim">
+                The server exposes 15 tools — impact analysis, class &amp; method context,
+                references, related tests, endpoint trace, project conventions and more. The exact
+                config key may differ per client (some use <code>"type": "streamable-http"</code>).
+              </p>
             </div>
           </div>
         </div>
@@ -942,15 +1116,31 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
         <header class="section__head">
           <span class="section__eyebrow">The Engine</span>
           <h2 class="section__title">How VibeGraph reads your code</h2>
-          <p class="section__sub">A self-hosted AST-and-graph engine — VibeGraph parses your Java source and serves the result to both the web UI and your AI agent.</p>
+          <p class="section__sub">
+            A self-hosted AST-and-graph engine — VibeGraph parses your Java source and serves the
+            result to both the web UI and your AI agent.
+          </p>
         </header>
         <div class="nexus-card">
-           <p>VibeGraph parses your Java source into abstract syntax trees, resolves call and usage relationships, and stores the whole graph in <strong>Neo4j</strong> — all on your own machine. Source never leaves the host.</p>
-           <ul class="guide-list">
-             <li>🔒 <strong>Local &amp; private</strong>: parsing and the Neo4j graph stay on your infrastructure; no code is sent to the cloud.</li>
-             <li>⚡ <strong>Incremental</strong>: a file watcher re-parses only what changed, so local projects update in near real-time.</li>
-             <li>🤖 <strong>MCP-native</strong>: the same graph is exposed to AI agents through a Spring AI MCP server (Streamable HTTP) for impact-safe edits.</li>
-           </ul>
+          <p>
+            VibeGraph parses your Java source into abstract syntax trees, resolves call and usage
+            relationships, and stores the whole graph in <strong>Neo4j</strong> — all on your own
+            machine. Source never leaves the host.
+          </p>
+          <ul class="guide-list">
+            <li>
+              🔒 <strong>Local &amp; private</strong>: parsing and the Neo4j graph stay on your
+              infrastructure; no code is sent to the cloud.
+            </li>
+            <li>
+              ⚡ <strong>Incremental</strong>: a file watcher re-parses only what changed, so local
+              projects update in near real-time.
+            </li>
+            <li>
+              🤖 <strong>MCP-native</strong>: the same graph is exposed to AI agents through a
+              Spring AI MCP server (Streamable HTTP) for impact-safe edits.
+            </li>
+          </ul>
         </div>
       </section>
 
@@ -964,7 +1154,7 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
             can query structure, trace flows and run impact analysis right inside your editor.
           </p>
         </header>
-        
+
         <!-- Terminal Playground Container -->
         <div class="terminal-playground">
           <div class="terminal-tabs">
@@ -993,7 +1183,7 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
               /plan-change
             </button>
           </div>
-          
+
           <div class="terminal-screen">
             <div class="terminal-screen-header">
               <span class="dot-win dot-win--red"></span>
@@ -1001,18 +1191,21 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
               <span class="dot-win dot-win--green"></span>
               <span class="terminal-screen-title">MCP Client Session</span>
             </div>
-            
+
             <div class="terminal-screen-body">
               <div class="terminal-input-line">
                 <span class="terminal-prompt">$</span>
                 <span class="terminal-typed-input">{{ terminalInput }}</span>
                 <span v-if="terminalTyping" class="terminal-cursor"></span>
               </div>
-              
+
               <transition name="fade">
-                <pre v-if="terminalOutput" class="terminal-output"><code>{{ terminalOutput }}</code></pre>
+                <pre
+                  v-if="terminalOutput"
+                  class="terminal-output"
+                ><code>{{ terminalOutput }}</code></pre>
               </transition>
-              
+
               <div v-if="terminalTyping" class="terminal-loading">
                 <span class="loading-spinner"></span>
                 Running analysis...
@@ -1045,7 +1238,9 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <section class="cta">
         <div class="cta__inner">
           <h2 class="cta__title">Ready to map your codebase?</h2>
-          <p class="cta__sub">Open the dashboard and import your first project — it takes seconds.</p>
+          <p class="cta__sub">
+            Open the dashboard and import your first project — it takes seconds.
+          </p>
           <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
             Open Dashboard
             <span class="btn__arrow" aria-hidden="true">→</span>
@@ -1069,7 +1264,9 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
           </div>
           <div class="footer-col">
             <h4>Resources</h4>
-            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank">GitHub Repo</a>
+            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank"
+              >GitHub Repo</a
+            >
             <a href="#engine">How the engine works</a>
           </div>
         </div>
@@ -1086,7 +1283,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   position: relative;
   min-height: 100vh;
   overflow: clip;
-  background: radial-gradient(120% 80% at 80% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
+  background:
+    radial-gradient(120% 80% at 80% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
     radial-gradient(90% 60% at 0% 0%, rgba(96, 165, 250, 0.1), transparent 55%), var(--vg-bg);
 }
 
@@ -1095,7 +1293,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   position: absolute;
   inset: -20% -10% auto -10%;
   height: 720px;
-  background: radial-gradient(50% 60% at 30% 30%, rgba(59, 130, 246, 0.22), transparent 70%),
+  background:
+    radial-gradient(50% 60% at 30% 30%, rgba(59, 130, 246, 0.22), transparent 70%),
     radial-gradient(45% 55% at 75% 20%, rgba(34, 197, 94, 0.16), transparent 70%);
   filter: blur(20px);
   pointer-events: none;
@@ -1104,14 +1303,19 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes floatBackground {
-  0% { transform: translateY(0) scale(1); }
-  100% { transform: translateY(30px) scale(1.05); }
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    transform: translateY(30px) scale(1.05);
+  }
 }
 
 .lp__grid-overlay {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(80% 60% at 50% 0%, #000 30%, transparent 80%);
@@ -1160,8 +1364,13 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes floatOrb {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(25px, -35px) scale(1.1); }
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(25px, -35px) scale(1.1);
+  }
 }
 
 /* Virtual Cursor Guide Tour style */
@@ -1203,8 +1412,14 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes rippleAnim {
-  0% { transform: translate(-5px, -5px) scale(0.1); opacity: 1; }
-  100% { transform: translate(-5px, -5px) scale(1.5); opacity: 0; }
+  0% {
+    transform: translate(-5px, -5px) scale(0.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-5px, -5px) scale(1.5);
+    opacity: 0;
+  }
 }
 
 main,
@@ -1219,8 +1434,10 @@ main,
   position: sticky;
   top: 0;
   z-index: 20;
-  transition: background-color var(--vg-dur) var(--vg-ease-out),
-    border-color var(--vg-dur) var(--vg-ease-out), backdrop-filter var(--vg-dur);
+  transition:
+    background-color var(--vg-dur) var(--vg-ease-out),
+    border-color var(--vg-dur) var(--vg-ease-out),
+    backdrop-filter var(--vg-dur);
   border-bottom: 1px solid transparent;
 }
 
@@ -1284,9 +1501,12 @@ main,
   border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform var(--vg-dur-fast) var(--vg-ease-out),
-    box-shadow var(--vg-dur) var(--vg-ease-out), background-color var(--vg-dur-fast),
-    border-color var(--vg-dur-fast), color var(--vg-dur-fast);
+  transition:
+    transform var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out),
+    background-color var(--vg-dur-fast),
+    border-color var(--vg-dur-fast),
+    color var(--vg-dur-fast);
 }
 
 .btn--sm {
@@ -1305,7 +1525,9 @@ main,
 }
 .btn--primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.5), 0 24px 60px -18px rgba(59, 130, 246, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.5),
+    0 24px 60px -18px rgba(59, 130, 246, 0.7);
 }
 .btn--primary:active {
   transform: translateY(0);
@@ -1425,7 +1647,8 @@ main,
   position: absolute;
   inset: 12%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(96, 165, 250, 0.35), transparent 60%),
+  background:
+    radial-gradient(circle at 35% 30%, rgba(96, 165, 250, 0.35), transparent 60%),
     radial-gradient(circle at 70% 75%, rgba(34, 197, 94, 0.28), transparent 60%);
   filter: blur(26px);
   animation: float 9s var(--vg-ease-in-out) infinite;
@@ -1482,7 +1705,8 @@ main,
 /* Edges Animations */
 .graphmotif__edges line {
   opacity: 0.25;
-  transition: stroke var(--vg-dur) var(--vg-ease-out),
+  transition:
+    stroke var(--vg-dur) var(--vg-ease-out),
     stroke-width var(--vg-dur) var(--vg-ease-out),
     opacity var(--vg-dur) var(--vg-ease-out);
 }
@@ -1517,13 +1741,17 @@ main,
      and snaps back — an infinite hover jitter loop. */
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform var(--vg-dur) var(--vg-ease-out), opacity var(--vg-dur);
+  transition:
+    transform var(--vg-dur) var(--vg-ease-out),
+    opacity var(--vg-dur);
 }
 
 .node-group circle.n {
   stroke: #070b16;
   stroke-width: 3.5;
-  transition: fill var(--vg-dur), stroke var(--vg-dur);
+  transition:
+    fill var(--vg-dur),
+    stroke var(--vg-dur);
 }
 
 .node-group circle.n-outer {
@@ -1559,8 +1787,14 @@ main,
 }
 
 @keyframes ringPulse {
-  0% { transform: scale(0.9); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 /* Telemetry Screen Panel */
@@ -1674,14 +1908,16 @@ main,
   min-height: 2.2em;
 }
 
-.problem-card, .solution-card {
+.problem-card,
+.solution-card {
   margin-top: var(--vg-space-6);
   display: flex;
   flex-direction: column;
   gap: var(--vg-space-6);
 }
 
-.problem-item, .solution-item {
+.problem-item,
+.solution-item {
   display: flex;
   gap: var(--vg-space-4);
   background: rgba(7, 11, 22, 0.4);
@@ -1703,14 +1939,16 @@ main,
   line-height: 1;
 }
 
-.problem-item strong, .solution-item strong {
+.problem-item strong,
+.solution-item strong {
   display: block;
   font-size: var(--vg-text-base);
   color: var(--vg-text);
   margin-bottom: 0.25rem;
 }
 
-.problem-item p, .solution-item p {
+.problem-item p,
+.solution-item p {
   margin: 0;
   font-size: var(--vg-text-sm);
   color: var(--vg-text-muted);
@@ -1734,8 +1972,10 @@ main,
   flex-direction: column;
   gap: 0.5rem;
   min-height: 220px;
-  transition: transform var(--vg-dur) var(--vg-ease-out),
-    border-color var(--vg-dur) var(--vg-ease-out), box-shadow var(--vg-dur) var(--vg-ease-out);
+  transition:
+    transform var(--vg-dur) var(--vg-ease-out),
+    border-color var(--vg-dur) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 /* Cursor Glow Spotlight */
@@ -1825,7 +2065,9 @@ main,
   opacity: 0.3;
   pointer-events: none;
   z-index: 1;
-  transition: opacity var(--vg-dur), transform var(--vg-dur);
+  transition:
+    opacity var(--vg-dur),
+    transform var(--vg-dur);
 }
 
 .card:hover .card__micro-viz {
@@ -1876,8 +2118,12 @@ main,
   border-radius: 50%;
   background: var(--vg-cyan);
 }
-.sync-dot--1 { animation: float 3s infinite ease-in-out; }
-.sync-dot--2 { animation: float 3s infinite ease-in-out -1.5s; }
+.sync-dot--1 {
+  animation: float 3s infinite ease-in-out;
+}
+.sync-dot--2 {
+  animation: float 3s infinite ease-in-out -1.5s;
+}
 
 /* Violet UML class structure */
 .viz-diagram {
@@ -1928,7 +2174,8 @@ main,
   display: flex;
   gap: var(--vg-space-4);
   cursor: pointer;
-  transition: border-color var(--vg-dur) var(--vg-ease-out),
+  transition:
+    border-color var(--vg-dur) var(--vg-ease-out),
     background var(--vg-dur);
 }
 
@@ -2004,9 +2251,15 @@ main,
   background: var(--vg-border-strong);
 }
 
-.device-dot:nth-child(1) { background: #ef4444; }
-.device-dot:nth-child(2) { background: #fbbf24; }
-.device-dot:nth-child(3) { background: #22c55e; }
+.device-dot:nth-child(1) {
+  background: #ef4444;
+}
+.device-dot:nth-child(2) {
+  background: #fbbf24;
+}
+.device-dot:nth-child(3) {
+  background: #22c55e;
+}
 
 .device-title {
   margin-left: auto;
@@ -2033,8 +2286,14 @@ main,
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Screen 1: Import Mockup */
@@ -2091,7 +2350,7 @@ main,
   font-size: 11px;
   display: flex;
   margin-bottom: var(--vg-space-4);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .mock-url-prefix {
@@ -2251,12 +2510,14 @@ main,
   font-size: var(--vg-text-sm);
   text-align: left;
   cursor: pointer;
-  transition: background var(--vg-dur), color var(--vg-dur-fast);
+  transition:
+    background var(--vg-dur),
+    color var(--vg-dur-fast);
   border-left: 3px solid transparent;
 }
 
 .guide-tab:hover {
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--vg-text);
 }
 
@@ -2297,7 +2558,7 @@ main,
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   overflow: hidden;
-  box-shadow: inset 0 4px 12px rgba(0,0,0,0.6);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.6);
   margin-bottom: var(--vg-space-4);
 }
 
@@ -2378,7 +2639,9 @@ main,
   font-family: var(--vg-font-display);
   font-size: var(--vg-text-xs);
   cursor: pointer;
-  transition: background var(--vg-dur), color var(--vg-dur-fast);
+  transition:
+    background var(--vg-dur),
+    color var(--vg-dur-fast);
   text-align: center;
 }
 
@@ -2412,9 +2675,15 @@ main,
   height: 10px;
   border-radius: 50%;
 }
-.dot-win--red { background: #ff5f56; }
-.dot-win--yellow { background: #ffbd2e; }
-.dot-win--green { background: #27c93f; }
+.dot-win--red {
+  background: #ff5f56;
+}
+.dot-win--yellow {
+  background: #ffbd2e;
+}
+.dot-win--green {
+  background: #27c93f;
+}
 
 .terminal-screen-title {
   margin-left: auto;
@@ -2485,19 +2754,25 @@ main,
 }
 
 /* Fade transitions for JSON output */
-.fade-enter-active, .fade-leave-active {
+.fade-enter-active,
+.fade-leave-active {
   transition: opacity 0.3s ease;
 }
-.fade-enter-from, .fade-leave-to {
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Logo wall (agents + stack) ── */
@@ -2524,7 +2799,8 @@ main,
   padding: clamp(2.5rem, 2rem + 4vw, 5rem) var(--vg-space-6);
   border-radius: var(--vg-radius-xl);
   border: 1px solid var(--vg-border-strong);
-  background: radial-gradient(70% 120% at 50% 0%, rgba(59, 130, 246, 0.22), transparent 70%),
+  background:
+    radial-gradient(70% 120% at 50% 0%, rgba(59, 130, 246, 0.22), transparent 70%),
     var(--vg-surface);
 }
 .cta__title {

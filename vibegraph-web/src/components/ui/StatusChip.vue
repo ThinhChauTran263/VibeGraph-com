@@ -27,12 +27,15 @@ defineProps<{
 }
 
 /* Base statuses */
-.status-active, .status-success, .status-open {
+.status-active,
+.status-success,
+.status-open {
   background-color: rgba(34, 197, 94, 0.15);
   color: var(--vg-green-bright);
   border: 1px solid rgba(34, 197, 94, 0.25);
 }
-.status-inactive, .status-disabled {
+.status-inactive,
+.status-disabled {
   background-color: rgba(148, 163, 184, 0.12);
   color: var(--vg-text-dim);
   border: 1px solid var(--vg-border);
@@ -42,7 +45,9 @@ defineProps<{
   color: var(--vg-amber);
   border: 1px solid rgba(251, 191, 36, 0.25);
 }
-.status-error, .status-blocked, .status-failed {
+.status-error,
+.status-blocked,
+.status-failed {
   background-color: rgba(239, 68, 68, 0.15);
   color: var(--vg-danger);
   border: 1px solid rgba(239, 68, 68, 0.25);

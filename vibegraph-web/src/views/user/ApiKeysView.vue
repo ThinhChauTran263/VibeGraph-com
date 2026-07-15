@@ -1,295 +1,350 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAccountStore } from '@/stores/account'
-import StatusChip from '@/components/ui/StatusChip.vue'
-import type { ApiKey } from '@/types/api'
-
-const accountStore = useAccountStore()
-const newKeyName = ref('')
-const isCreating = ref(false)
-const recentlyCreatedKey = ref<ApiKey | null>(null)
-
-onMounted(async () => {
-  await accountStore.fetchApiKeys()
+import AppIcon from '@/components/ui/AppIcon.vue'
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import type { ApiKeyCreated } from '@/types/api'
+import {
+  featureAvailabilityContract,
+  refreshFeatureAvailability,
+  useFeatureAvailability,
+} from '@/lib/featureAvailability'
+const account = useAccountStore(),
+  open = ref(false),
+  name = ref(''),
+  projectId = ref(''),
+  creating = ref(false),
+  secret = ref<ApiKeyCreated | null>(null),
+  disableId = ref<string | null>(null),
+  message = ref('')
+const capability = useFeatureAvailability('api_keys.create.global')
+const createDisabled = computed(
+  () => !capability.value.enabled || featureAvailabilityContract.value === false,
+)
+const reason = computed(() =>
+  createDisabled.value
+    ? capability.value.reason ||
+      'API key project binding is unavailable until the backend capability contract is connected.'
+    : null,
+)
+const canSubmit = computed(
+  () =>
+    name.value.trim().length > 0 &&
+    projectId.value.length > 0 &&
+    !creating.value &&
+    !createDisabled.value,
+)
+onMounted(() => {
+  void Promise.allSettled([
+    account.fetchApiKeys(),
+    account.fetchProjects(),
+    refreshFeatureAvailability(),
+  ])
 })
-
-const handleCreate = async () => {
-  if (!newKeyName.value.trim()) return
-  
-  isCreating.value = true
+async function create() {
+  if (!canSubmit.value) return
+  creating.value = true
   try {
-    const key = await accountStore.createApiKey(newKeyName.value)
-    recentlyCreatedKey.value = key
-    newKeyName.value = ''
+    secret.value = await account.createApiKey(name.value, projectId.value)
+    open.value = false
+    name.value = ''
+    projectId.value = ''
+  } catch (e) {
+    message.value = e instanceof Error ? e.message : 'API key creation failed.'
   } finally {
-    isCreating.value = false
+    creating.value = false
   }
 }
-
-const handleDisable = async (id: string) => {
-  if (confirm('Are you sure you want to disable this API key? This action cannot be undone.')) {
-    await accountStore.disableApiKey(id)
-  }
+async function disable() {
+  if (!disableId.value) return
+  await account.disableApiKey(disableId.value)
+  disableId.value = null
 }
-
-const copyToClipboard = (text: string) => {
-  navigator.clipboard.writeText(text)
-  alert('Copied to clipboard!')
+async function copy() {
+  if (!secret.value) return
+  await navigator.clipboard.writeText(secret.value.secretKey)
+  message.value = 'Secret copied.'
 }
 </script>
-
 <template>
-  <div class="api-keys-view">
-    <div class="header">
-      <h2>API Keys</h2>
-      <p class="subtitle">Manage your API keys for accessing VibeGraph programmatically.</p>
-    </div>
-
-    <!-- Create new key form -->
-    <div class="create-section card">
-      <h3>Create New Key</h3>
-      <form @submit.prevent="handleCreate" class="create-form">
-        <div class="input-group">
-          <input 
-            type="text" 
-            v-model="newKeyName" 
-            placeholder="Key Name (e.g. Production Env)"
-            class="form-input"
-            required
-          />
-          <button type="submit" class="btn-primary" :disabled="isCreating || !newKeyName">
-            {{ isCreating ? 'Creating...' : 'Create Key' }}
+  <main class="keys">
+    <header>
+      <div>
+        <span class="eyebrow">Developer access</span>
+        <h1>API Keys</h1>
+        <p>Keys identify a repository when tools connect to VibeGraph.</p>
+      </div>
+      <button
+        class="primary"
+        type="button"
+        :disabled="createDisabled"
+        :aria-describedby="createDisabled ? 'key-disabled' : undefined"
+        @click="open = true"
+      >
+        <AppIcon name="plus" />Create key
+      </button>
+    </header>
+    <p v-if="reason" id="key-disabled" class="disabled-note">{{ reason }}</p>
+    <section v-if="secret" class="secret" aria-labelledby="secret-title">
+      <div>
+        <h2 id="secret-title">Copy this secret now</h2>
+        <p>It is shown once and is never stored in this list.</p>
+      </div>
+      <code>{{ secret.secretKey }}</code
+      ><button type="button" @click="copy">Copy secret</button>
+    </section>
+    <p v-if="message" role="status" class="note">{{ message }}</p>
+    <section class="list">
+      <h2>Your keys</h2>
+      <div v-if="!account.apiKeys.length" class="empty">No API keys created.</div>
+      <article v-for="key in account.apiKeys" :key="key.id">
+        <div>
+          <strong>{{ key.name }}</strong
+          ><code>{{ key.keyPrefix }}</code>
+        </div>
+        <span>{{ key.projectName || key.projectId || 'Legacy key - no repository binding' }}</span
+        ><span :class="{ off: key.disabled }">{{ key.disabled ? 'Disabled' : 'Active' }}</span
+        ><time>{{ new Date(key.createdAt).toLocaleDateString() }}</time
+        ><button v-if="!key.disabled" type="button" @click="disableId = key.id">Disable</button>
+      </article>
+    </section>
+    <div
+      v-if="open"
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-key-title"
+      @keydown.esc="open = false"
+    >
+      <form @submit.prevent="create">
+        <div class="modal__head">
+          <h2 id="create-key-title">Create project API key</h2>
+          <button type="button" aria-label="Close create key dialog" @click="open = false">
+            <AppIcon name="close" />
           </button>
         </div>
+        <label for="key-name">Key name</label
+        ><input id="key-name" v-model="name" required placeholder="Production CLI" /><label
+          for="key-project"
+          >Repository</label
+        ><select id="key-project" v-model="projectId" required>
+          <option value="" disabled>Select a repository</option>
+          <option v-for="project in account.projects" :key="project.id" :value="project.id">
+            {{ project.name }}
+          </option>
+        </select>
+        <p v-if="!account.projects.length">Import a repository before creating a key.</p>
+        <button class="primary" type="submit" :disabled="!canSubmit">
+          {{ creating ? 'Creating...' : 'Create key' }}
+        </button>
       </form>
-      
-      <!-- Show secret only once after creation -->
-      <div v-if="recentlyCreatedKey" class="secret-alert">
-        <div class="secret-alert-header">
-          <strong>Key Created Successfully!</strong>
-          <span>Please copy this secret key now. You will not be able to see it again.</span>
-        </div>
-        <div class="secret-box">
-          <code>{{ recentlyCreatedKey.secret }}</code>
-          <button @click="copyToClipboard(recentlyCreatedKey.secret!)" class="btn-secondary">Copy</button>
-        </div>
-      </div>
     </div>
-
-    <!-- List of existing keys -->
-    <div class="list-section card">
-      <h3>Your API Keys</h3>
-      
-      <div v-if="accountStore.apiKeys.length === 0" class="empty-state">
-        You haven't created any API keys yet.
-      </div>
-      
-      <div v-else class="table-responsive">
-        <table class="keys-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Token Prefix</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="apiKey in accountStore.apiKeys" :key="apiKey.id">
-              <td class="font-medium">{{ apiKey.name }}</td>
-              <td class="font-mono">vg-****</td>
-              <td>
-                <StatusChip 
-                  :status="apiKey.disabled ? 'disabled' : 'active'" 
-                  :label="apiKey.disabled ? 'Disabled' : 'Active'" 
-                />
-              </td>
-              <td class="text-muted">{{ new Date(apiKey.createdAt).toLocaleDateString() }}</td>
-              <td>
-                <button 
-                  v-if="!apiKey.disabled" 
-                  @click="handleDisable(apiKey.id)" 
-                  class="btn-danger btn-disable"
-                >
-                  Disable
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+    <AdminConfirmDialog
+      :open="Boolean(disableId)"
+      title="Disable API key"
+      message="This key will stop working immediately."
+      confirm-label="Disable key"
+      tone="danger"
+      @cancel="disableId = null"
+      @confirm="disable"
+    />
+  </main>
 </template>
-
 <style scoped>
-.api-keys-view {
-  max-width: 900px;
-  margin: 0 auto;
+.keys {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-5);
 }
-.header {
-  margin-bottom: var(--vg-space-8);
+header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vg-space-4);
 }
-.header h2 {
-  margin: 0 0 var(--vg-space-2) 0;
+h1,
+h2 {
   font-family: var(--vg-font-display);
   color: var(--vg-text);
 }
-.subtitle {
-  color: var(--vg-text-muted);
-  margin: 0;
+h1 {
+  margin: 0.25rem 0;
+  font-size: clamp(1.625rem, 2.2vw, 1.875rem);
 }
-.card {
-  background: var(--vg-surface);
-  border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius);
-  padding: var(--vg-space-6);
-  margin-bottom: var(--vg-space-6);
-  box-shadow: var(--vg-shadow-sm);
-}
-.card h3 {
-  margin: 0 0 var(--vg-space-4) 0;
+h2 {
   font-size: var(--vg-text-lg);
-  color: var(--vg-text);
 }
-.create-form {
-  margin-bottom: var(--vg-space-4);
+.eyebrow {
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
-.input-group {
-  display: flex;
-  gap: var(--vg-space-4);
+p {
+  color: var(--vg-text-muted);
 }
-.form-input {
-  flex: 1;
+button,
+input,
+select {
+  font: inherit;
+}
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  min-height: 38px;
   padding: 0.5rem 0.75rem;
-  background: var(--vg-bg-elev);
-  color: var(--vg-text);
-  border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius-sm);
-  font-size: var(--vg-text-base);
-  font-family: inherit;
-  transition: border-color var(--vg-dur-fast) var(--vg-ease-out);
-}
-.form-input:focus {
-  outline: none;
-  border-color: var(--vg-blue);
-}
-.btn-primary {
-  background: var(--vg-grad-blue);
+  border: 1px solid var(--vg-blue);
+  border-radius: 6px;
+  background: var(--vg-blue);
   color: white;
-  border: none;
-  padding: 0.5rem 1.25rem;
-  border-radius: var(--vg-radius-sm);
-  font-weight: 500;
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
   cursor: pointer;
-  transition: transform var(--vg-dur-fast) var(--vg-ease-out), opacity var(--vg-dur-fast) var(--vg-ease-out);
 }
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  opacity: 0.9;
-}
-.btn-primary:disabled {
-  opacity: 0.65;
+.primary:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
-.btn-secondary {
-  background: var(--vg-surface-3);
-  color: var(--vg-text);
+.disabled-note,
+.note {
+  padding: var(--vg-space-3);
   border: 1px solid var(--vg-border);
-  padding: 0.25rem 0.75rem;
   border-radius: var(--vg-radius-sm);
-  cursor: pointer;
-  transition: background var(--vg-dur-fast) var(--vg-ease-out);
+  background: var(--vg-surface);
+  color: var(--vg-warning);
 }
-.btn-secondary:hover {
-  background: rgba(148, 163, 184, 0.16);
+.secret {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--vg-space-3);
+  padding: var(--vg-space-5);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: var(--vg-radius);
+  background: rgba(34, 197, 94, 0.08);
 }
-.btn-danger {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--vg-danger);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  padding: 0.375rem 0.75rem;
-  border-radius: var(--vg-radius-sm);
-  font-size: var(--vg-text-sm);
-  cursor: pointer;
-  transition: background var(--vg-dur-fast) var(--vg-ease-out);
+.secret code {
+  grid-column: 1/-1;
+  padding: var(--vg-space-3);
+  overflow-wrap: anywhere;
+  background: var(--vg-bg);
 }
-.btn-danger:hover {
-  background: rgba(239, 68, 68, 0.25);
+.list {
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+  overflow: hidden;
 }
-
-.secret-alert {
-  background-color: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: var(--vg-radius-sm);
+.list > h2,
+.empty {
   padding: var(--vg-space-4);
-  margin-top: var(--vg-space-4);
 }
-.secret-alert-header {
+.list article {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 0.6fr 0.7fr auto;
+  align-items: start;
+  gap: var(--vg-space-3);
+  min-height: 72px;
+  padding: var(--vg-space-3) var(--vg-space-4);
+  border-top: 1px solid var(--vg-border);
+  color: var(--vg-text-muted);
+}
+.list article > * {
+  margin-top: 0;
+  line-height: 1.35;
+}
+.list article div {
+  display: grid;
+  grid-template-rows: 20px 18px;
+  align-items: start;
+  gap: 2px;
+  margin-top: 0;
+}
+.list article div strong,
+.list article div code {
+  line-height: inherit;
+}
+.list article button {
+  align-self: start;
+  margin-top: 0;
+}
+.list strong {
+  color: var(--vg-text);
+}
+.list article button,
+.secret button {
+  min-height: 38px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-text);
+  cursor: pointer;
+}
+.off {
+  color: var(--vg-danger);
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--vg-space-4);
+  background: rgba(0, 0, 0, 0.56);
+}
+.modal form {
+  width: min(32rem, 100%);
   display: flex;
   flex-direction: column;
-  color: var(--vg-green-bright);
-  margin-bottom: var(--vg-space-3);
+  gap: var(--vg-space-3);
+  padding: var(--vg-space-5);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-lg);
+  background: var(--vg-surface);
+  box-shadow: var(--vg-shadow);
 }
-.secret-box {
+.modal__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--vg-bg-elev);
+}
+.modal__head h2 {
+  margin: 0;
+}
+.modal__head button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vg-text);
+  cursor: pointer;
+}
+.modal label {
+  color: var(--vg-text);
+  font-weight: 700;
+}
+.modal input,
+.modal select {
+  min-height: 44px;
+  padding: 0.65rem;
   border: 1px solid var(--vg-border);
-  padding: var(--vg-space-3);
   border-radius: var(--vg-radius-sm);
-}
-.secret-box code {
-  font-size: var(--vg-text-lg);
-  font-weight: 600;
+  background: var(--vg-bg);
   color: var(--vg-text);
 }
-
-.table-responsive {
-  overflow-x: auto;
-}
-.keys-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.keys-table th,
-.keys-table td {
-  padding: var(--vg-space-4);
-  text-align: left;
-  border-bottom: 1px solid var(--vg-border);
-}
-.keys-table th {
-  background-color: var(--vg-surface-2);
-  font-weight: 600;
-  color: var(--vg-text-muted);
-}
-.keys-table tbody tr {
-  background-color: var(--vg-surface);
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out);
-}
-.keys-table tbody tr:hover {
-  background-color: var(--vg-surface-3);
-}
-.keys-table tbody tr:last-child td {
-  border-bottom: none;
-}
-.font-medium {
-  font-weight: 500;
-  color: var(--vg-text);
-}
-.font-mono {
-  font-family: var(--vg-font-display);
-  color: var(--vg-text-dim);
-}
-.text-muted {
-  color: var(--vg-text-muted);
-  font-size: var(--vg-text-sm);
-}
-.empty-state {
-  padding: var(--vg-space-8);
-  text-align: center;
-  color: var(--vg-text-muted);
+@media (max-width: 760px) {
+  header {
+    flex-direction: column;
+  }
+  .list article {
+    grid-template-columns: 1fr 1fr;
+  }
+  .list article div {
+    grid-column: 1/-1;
+  }
 }
 </style>

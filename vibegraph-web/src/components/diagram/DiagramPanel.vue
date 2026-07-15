@@ -26,8 +26,16 @@ const isPanning = ref(false)
 const mainCanvas = ref<HTMLElement | null>(null)
 const fullscreenCanvas = ref<HTMLElement | null>(null)
 const fullscreenDialog = ref<HTMLElement | null>(null)
-const { status, diagram, errorMessage, isLoading, isStale, loadUmlUseCaseDiagram, loadClassDiagram, reset } =
-  useDiagrams()
+const {
+  status,
+  diagram,
+  errorMessage,
+  isLoading,
+  isStale,
+  loadUmlUseCaseDiagram,
+  loadClassDiagram,
+  reset,
+} = useDiagrams()
 let renderSeq = 0
 
 const tabs: Array<{ kind: DiagramKind; label: string }> = [
@@ -36,7 +44,9 @@ const tabs: Array<{ kind: DiagramKind; label: string }> = [
 ]
 
 const mermaidSource = computed(() => diagram.value?.mermaidSyntax?.trim() ?? '')
-const hasDiagramContent = computed(() => status.value === 'success' && mermaidSource.value.length > 0)
+const hasDiagramContent = computed(
+  () => status.value === 'success' && mermaidSource.value.length > 0,
+)
 
 // Packages that actually contain classifiers in this project. Drives the click-to-filter
 // chips so the user never has to guess an exact package name.
@@ -157,7 +167,8 @@ function renderUmlSvg(model: UmlUseCaseModel): void {
   } catch (err) {
     if (seq !== renderSeq) return
     renderedSvg.value = ''
-    renderError.value = err instanceof Error && err.message ? err.message : 'Failed to render UML diagram.'
+    renderError.value =
+      err instanceof Error && err.message ? err.message : 'Failed to render UML diagram.'
   }
 }
 
@@ -177,7 +188,8 @@ async function renderMermaid(source: string): Promise<void> {
   } catch (err) {
     if (seq !== renderSeq) return
     renderedSvg.value = ''
-    renderError.value = err instanceof Error && err.message ? err.message : 'Failed to render Mermaid diagram.'
+    renderError.value =
+      err instanceof Error && err.message ? err.message : 'Failed to render Mermaid diagram.'
   }
 }
 
@@ -221,7 +233,12 @@ function resetZoom(): void {
  * Works with the top-left transform-origin: convert the cursor position to a
  * content coordinate before scaling, then restore the same coordinate after.
  */
-function zoomAtPointer(canvas: HTMLElement | null, factor: number, clientX?: number, clientY?: number): void {
+function zoomAtPointer(
+  canvas: HTMLElement | null,
+  factor: number,
+  clientX?: number,
+  clientY?: number,
+): void {
   const oldZoom = diagramZoom.value
   const newZoom = clampZoom(Number((oldZoom * factor).toFixed(3)))
   if (newZoom === oldZoom) return
@@ -415,10 +432,7 @@ onActivated(() => {
 </script>
 
 <template>
-  <section
-    class="diagram-panel"
-    aria-labelledby="diagram-panel-heading"
-  >
+  <section class="diagram-panel" aria-labelledby="diagram-panel-heading">
     <header class="diagram-panel__header">
       <div>
         <p class="diagram-panel__eyebrow">Mermaid diagrams</p>
@@ -460,8 +474,8 @@ onActivated(() => {
       <template v-if="derivedFromClassLayer">
         reverse-engineered from the service/controller class layer and their public methods (no HTTP
         endpoints were found), using OMG UML 2.5 use-case notation. It reflects the system's
-        implemented capabilities for design-vs-code verification, not a hand-authored business-intent
-        model.
+        implemented capabilities for design-vs-code verification, not a hand-authored
+        business-intent model.
       </template>
       <template v-else>
         reverse-engineered from the source (controllers + Spring Security), using OMG UML 2.5
@@ -490,7 +504,11 @@ onActivated(() => {
       </select>
     </div>
 
-    <form v-if="activeKind === 'class'" class="diagram-panel__filters" @submit.prevent="refresh(true)">
+    <form
+      v-if="activeKind === 'class'"
+      class="diagram-panel__filters"
+      @submit.prevent="refresh(true)"
+    >
       <label class="diagram-panel__filter-label" for="diagram-package-filter">
         Package filter
       </label>
@@ -506,7 +524,9 @@ onActivated(() => {
       <datalist id="diagram-package-options">
         <option v-for="pkg in availablePackages" :key="pkg" :value="pkg" />
       </datalist>
-      <button class="diagram-panel__filter-submit" type="submit" :disabled="isLoading">Apply</button>
+      <button class="diagram-panel__filter-submit" type="submit" :disabled="isLoading">
+        Apply
+      </button>
     </form>
 
     <div
@@ -643,9 +663,13 @@ onActivated(() => {
       </div>
     </div>
 
-    <p v-else-if="status === 'success'" class="diagram-panel__empty">No diagram content returned.</p>
+    <p v-else-if="status === 'success'" class="diagram-panel__empty">
+      No diagram content returned.
+    </p>
 
-    <p v-else class="diagram-panel__hint">Choose a diagram type to load generated diagram output.</p>
+    <p v-else class="diagram-panel__hint">
+      Choose a diagram type to load generated diagram output.
+    </p>
 
     <Teleport to="body">
       <div
@@ -665,11 +689,24 @@ onActivated(() => {
             <h2>{{ tabs.find((tab) => tab.kind === activeKind)?.label }}</h2>
           </div>
           <div class="diagram-panel__fullscreen-actions">
-            <button class="diagram-panel__tool" type="button" aria-label="Zoom out" @click="zoomOut">-</button>
-            <button class="diagram-panel__tool diagram-panel__tool--wide" type="button" @click="resetZoom">
+            <button
+              class="diagram-panel__tool"
+              type="button"
+              aria-label="Zoom out"
+              @click="zoomOut"
+            >
+              -
+            </button>
+            <button
+              class="diagram-panel__tool diagram-panel__tool--wide"
+              type="button"
+              @click="resetZoom"
+            >
               {{ zoomPercent }}
             </button>
-            <button class="diagram-panel__tool" type="button" aria-label="Zoom in" @click="zoomIn">+</button>
+            <button class="diagram-panel__tool" type="button" aria-label="Zoom in" @click="zoomIn">
+              +
+            </button>
             <button
               class="diagram-panel__tool diagram-panel__tool--wide"
               type="button"
@@ -798,7 +835,10 @@ onActivated(() => {
   padding: 0.2rem 0.7rem;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
 .diagram-panel__package-chip:hover:not(:disabled) {
@@ -1007,7 +1047,9 @@ onActivated(() => {
   background: rgba(7, 11, 22, 0.6);
   color: #e8edf6;
   cursor: pointer;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .diagram-panel__views-select:hover {

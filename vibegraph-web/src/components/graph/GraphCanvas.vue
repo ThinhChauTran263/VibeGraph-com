@@ -49,7 +49,11 @@ const activeSidebarTab = ref<'explorer' | 'filters' | 'flows'>('explorer')
 
 // Active Data Flow highlight (set of node ids + connecting edge ids). When set,
 // the canvas spotlights the whole traced chain instead of a single node.
-const activeFlow = ref<{ nodeIds: Set<string>; edgeIds: Set<string>; primaryNodeId: string } | null>(null)
+const activeFlow = ref<{
+  nodeIds: Set<string>
+  edgeIds: Set<string>
+  primaryNodeId: string
+} | null>(null)
 // The selected flow shown in the right-hand DataFlowDetailPanel.
 const activeFlowDetail = ref<FlowListItem | null>(null)
 
@@ -212,7 +216,8 @@ const {
     emit('nodeSelected', null)
   },
   onNodeHover: (nodeId: string) => {
-    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value) return
+    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value)
+      return
     hoveredGraphNode.value = nodeId
     applyFocusReducers()
   },
@@ -534,11 +539,15 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
 }
 
 /** Place a newly-added node next to an already-present neighbour (small jitter), else near origin. */
-function spawnPosition(nodeId: string, edges: { source: string; target: string }[]): { x: number; y: number } {
+function spawnPosition(
+  nodeId: string,
+  edges: { source: string; target: string }[],
+): { x: number; y: number } {
   const graph = graphInstance.value
   if (graph) {
     for (const edge of edges) {
-      const other = edge.source === nodeId ? edge.target : edge.target === nodeId ? edge.source : null
+      const other =
+        edge.source === nodeId ? edge.target : edge.target === nodeId ? edge.source : null
       if (other && graph.hasNode(other)) {
         const ox = graph.getNodeAttribute(other, 'x') as number
         const oy = graph.getNodeAttribute(other, 'y') as number
@@ -563,19 +572,16 @@ const rebuildGraph = debounce((data: typeof filteredGraphData.value) => {
   applyFocusReducers()
 }, 200)
 
-watch(
-  filteredGraphData,
-  (graphData) => {
-    // Selection consistency is cheap and must stay synchronous so a stale selected
-    // node is cleared immediately even before the debounced rebuild runs.
-    if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
-      clearSelection()
-    }
+watch(filteredGraphData, (graphData) => {
+  // Selection consistency is cheap and must stay synchronous so a stale selected
+  // node is cleared immediately even before the debounced rebuild runs.
+  if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+    clearSelection()
+  }
 
-    if (!canvasRef.value || loading.value || error.value) return
-    rebuildGraph(graphData)
-  },
-)
+  if (!canvasRef.value || loading.value || error.value) return
+  rebuildGraph(graphData)
+})
 
 onUnmounted(() => {
   rebuildGraph.cancel()
@@ -598,36 +604,36 @@ onUnmounted(() => {
     <aside v-show="!loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
       <div class="graph-canvas__sidebar-topbar">
         <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'explorer'"
-          @click="activeSidebarTab = 'explorer'"
-        >
-          Explorer
-        </button>
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'filters'"
-          @click="activeSidebarTab = 'filters'"
-        >
-          Filters
-        </button>
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'flows'"
-          @click="activeSidebarTab = 'flows'"
-        >
-          Flows
-        </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'explorer'"
+            @click="activeSidebarTab = 'explorer'"
+          >
+            Explorer
+          </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'filters'"
+            @click="activeSidebarTab = 'filters'"
+          >
+            Filters
+          </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'flows'"
+            @click="activeSidebarTab = 'flows'"
+          >
+            Flows
+          </button>
         </div>
         <button
           class="graph-canvas__sidebar-collapse"
@@ -763,7 +769,11 @@ onUnmounted(() => {
         @relation-hover="onRelationHover"
         @relation-select="onRelationSelect"
       />
-      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" @select="onImpactSelect" />
+      <ImpactAnalysisPanel
+        :project-id="props.projectId"
+        :node="selectedNode"
+        @select="onImpactSelect"
+      />
     </aside>
   </div>
 </template>
@@ -825,7 +835,9 @@ onUnmounted(() => {
   left: 50%;
   width: 1px;
   background: rgba(148, 163, 184, 0.2);
-  transition: background 150ms ease, width 150ms ease;
+  transition:
+    background 150ms ease,
+    width 150ms ease;
 }
 
 .graph-canvas__resizer:hover::after,
@@ -1226,5 +1238,4 @@ onUnmounted(() => {
     transform: rotate(360deg);
   }
 }
-
 </style>

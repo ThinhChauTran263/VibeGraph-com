@@ -129,7 +129,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         } catch (err: unknown) {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         }
         return
       }
@@ -139,7 +143,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         .catch((err: unknown) => {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         })
     })
   }

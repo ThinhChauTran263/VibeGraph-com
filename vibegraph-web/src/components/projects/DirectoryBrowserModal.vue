@@ -31,7 +31,9 @@ function readDefaultPath(): string {
 // parent === null means "top" (Up disabled); '' means "go to the drive list".
 const canGoUp = computed(() => listing.value != null && listing.value.parent !== null)
 const canSelect = computed(() => !!listing.value?.path && !isLoading.value)
-const isAtDefault = computed(() => !!listing.value?.path && listing.value.path === defaultPath.value)
+const isAtDefault = computed(
+  () => !!listing.value?.path && listing.value.path === defaultPath.value,
+)
 
 async function load(path?: string): Promise<boolean> {
   isLoading.value = true
@@ -40,7 +42,8 @@ async function load(path?: string): Promise<boolean> {
     listing.value = await browseApi.browse(path)
     return true
   } catch (err) {
-    errorMessage.value = err instanceof Error && err.message ? err.message : 'Failed to list directory.'
+    errorMessage.value =
+      err instanceof Error && err.message ? err.message : 'Failed to list directory.'
     return false
   } finally {
     isLoading.value = false
@@ -129,16 +132,13 @@ function resetDefault(): void {
     <div class="dir-modal__panel">
       <header class="dir-modal__header">
         <h2 class="dir-modal__title">Choose a project folder</h2>
-        <button class="dir-modal__icon-btn" type="button" aria-label="Close" @click="emit('close')">✕</button>
+        <button class="dir-modal__icon-btn" type="button" aria-label="Close" @click="emit('close')">
+          ✕
+        </button>
       </header>
 
       <div class="dir-modal__path-bar">
-        <button
-          class="dir-modal__up"
-          type="button"
-          :disabled="!canGoUp || isLoading"
-          @click="goUp"
-        >
+        <button class="dir-modal__up" type="button" :disabled="!canGoUp || isLoading" @click="goUp">
           ↑ Up
         </button>
         <input
@@ -165,7 +165,9 @@ function resetDefault(): void {
       <p v-if="errorMessage" class="dir-modal__error" role="alert">{{ errorMessage }}</p>
 
       <div class="dir-modal__list" data-test="dir-list">
-        <div v-if="isLoading" class="dir-modal__loading"><Spinner size="sm" /><span>Loading…</span></div>
+        <div v-if="isLoading" class="dir-modal__loading">
+          <Spinner size="sm" /><span>Loading…</span>
+        </div>
         <p v-else-if="listing && listing.entries.length === 0" class="dir-modal__empty">
           No sub-folders here.
         </p>
@@ -203,7 +205,9 @@ function resetDefault(): void {
           </button>
         </div>
         <div class="dir-modal__footer-right">
-          <button class="dir-modal__btn dir-modal__btn--ghost" type="button" @click="emit('close')">Cancel</button>
+          <button class="dir-modal__btn dir-modal__btn--ghost" type="button" @click="emit('close')">
+            Cancel
+          </button>
           <button
             class="dir-modal__btn dir-modal__btn--primary"
             type="button"

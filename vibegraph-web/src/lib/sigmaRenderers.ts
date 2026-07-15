@@ -122,7 +122,12 @@ export function drawTextOnlyNodeLabel(
   if (!data.label) return
 
   const nodeType = (data as HoverData & { nodeType?: unknown }).nodeType
-  const scale = pieceWiseLabelScale(labelZoom, SIGMA_LABEL_GROW_ZOOM, SIGMA_MIN_LABEL_ZOOM_SCALE, SIGMA_MAX_LABEL_ZOOM_SCALE)
+  const scale = pieceWiseLabelScale(
+    labelZoom,
+    SIGMA_LABEL_GROW_ZOOM,
+    SIGMA_MIN_LABEL_ZOOM_SCALE,
+    SIGMA_MAX_LABEL_ZOOM_SCALE,
+  )
   const size = settings.labelSize * scale + (nodeType === 'File' ? FILE_LABEL_SIZE_BONUS : 0)
   const font = settings.labelFont
   const weight = settings.labelWeight

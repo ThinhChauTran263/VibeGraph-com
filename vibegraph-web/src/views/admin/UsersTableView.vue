@@ -128,7 +128,13 @@ const submitCreateUser = async () => {
   try {
     await adminStore.createUser({ ...createForm.value })
     showCreateModal.value = false
-    createForm.value = { email: '', displayName: '', role: 'USER', planCode: 'FREE', temporaryPassword: '' }
+    createForm.value = {
+      email: '',
+      displayName: '',
+      role: 'USER',
+      planCode: 'FREE',
+      temporaryPassword: '',
+    }
   } catch (e: unknown) {
     createError.value = e instanceof Error ? e.message : 'Failed to create user'
   } finally {
@@ -152,7 +158,9 @@ function userStatus(u: AdminUserResponse): string {
           <h2>Users Management</h2>
           <p class="subtitle">Manage user accounts, roles, and status</p>
         </div>
-        <button class="btn-create" aria-label="Create User" @click="showCreateModal = true">+ Create</button>
+        <button class="btn-create" aria-label="Create User" @click="showCreateModal = true">
+          + Create
+        </button>
       </div>
 
       <div class="filter-bar">
@@ -166,13 +174,27 @@ function userStatus(u: AdminUserResponse): string {
           placeholder="Search by email or name…"
           @keyup.enter="applyFilters"
         />
-        <select id="adminUserStatusFilter" name="statusFilter" v-model="statusFilter" class="filter-select" aria-label="Filter users by status" @change="applyFilters">
+        <select
+          id="adminUserStatusFilter"
+          name="statusFilter"
+          v-model="statusFilter"
+          class="filter-select"
+          aria-label="Filter users by status"
+          @change="applyFilters"
+        >
           <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="blocked">Blocked</option>
           <option value="deactivated">Deactivated</option>
         </select>
-        <select id="adminUserPlanFilter" name="planFilter" v-model="planFilter" class="filter-select" aria-label="Filter users by plan" @change="applyFilters">
+        <select
+          id="adminUserPlanFilter"
+          name="planFilter"
+          v-model="planFilter"
+          class="filter-select"
+          aria-label="Filter users by plan"
+          @change="applyFilters"
+        >
           <option value="">All Plans</option>
           <option value="FREE">Free</option>
           <option value="PRO">Pro</option>
@@ -208,22 +230,16 @@ function userStatus(u: AdminUserResponse): string {
               <td data-label="Status">
                 <StatusChip :status="userStatus(user)" :label="userStatus(user)" />
               </td>
-              <td class="text-muted" data-label="Reason">{{ user.blockedReasonSafe ?? user.deactivationReasonSafe ?? '-' }}</td>
+              <td class="text-muted" data-label="Reason">
+                {{ user.blockedReasonSafe ?? user.deactivationReasonSafe ?? '-' }}
+              </td>
               <td class="actions-cell" data-label="Actions">
                 <div class="row-actions">
                   <button class="btn-detail btn-sm" @click="openDrawer(user)">Detail</button>
-                  <button
-                    v-if="!user.blocked"
-                    class="btn-danger btn-sm"
-                    @click="handleBlock(user)"
-                  >
+                  <button v-if="!user.blocked" class="btn-danger btn-sm" @click="handleBlock(user)">
                     Block
                   </button>
-                  <button
-                    v-else
-                    class="btn-secondary btn-sm"
-                    @click="handleUnblock(user)"
-                  >
+                  <button v-else class="btn-secondary btn-sm" @click="handleUnblock(user)">
                     Unblock
                   </button>
                 </div>
@@ -267,14 +283,25 @@ function userStatus(u: AdminUserResponse): string {
 
     <!-- Create User Modal -->
     <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
-      <div class="modal create-user-modal" role="dialog" aria-modal="true" aria-labelledby="createUserTitle">
+      <div
+        class="modal create-user-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="createUserTitle"
+      >
         <div class="modal-header">
           <div>
             <p class="modal-kicker">Admin action</p>
             <h3 id="createUserTitle">Create user</h3>
             <p class="modal-subtitle">Create a manual account with a temporary password.</p>
           </div>
-          <button class="close-btn" aria-label="Close create user modal" @click="showCreateModal = false">&times;</button>
+          <button
+            class="close-btn"
+            aria-label="Close create user modal"
+            @click="showCreateModal = false"
+          >
+            &times;
+          </button>
         </div>
         <form @submit.prevent="submitCreateUser" class="modal-form">
           <div class="create-grid">
@@ -361,7 +388,9 @@ function userStatus(u: AdminUserResponse): string {
           </div>
           <div v-if="createError" class="error-text" role="alert">{{ createError }}</div>
           <div class="modal-actions">
-            <button type="button" class="btn-secondary" @click="showCreateModal = false">Cancel</button>
+            <button type="button" class="btn-secondary" @click="showCreateModal = false">
+              Cancel
+            </button>
             <button type="submit" class="btn-primary" :disabled="isCreating">
               {{ isCreating ? 'Creating...' : 'Create' }}
             </button>
@@ -373,6 +402,12 @@ function userStatus(u: AdminUserResponse): string {
 </template>
 
 <style scoped>
+:host,
+.users-view {
+  --admin-users-action-width: 8rem;
+  --admin-users-action-height: 3rem;
+}
+
 .header {
   margin-bottom: var(--vg-space-6);
   padding-right: 4rem;
@@ -399,20 +434,22 @@ function userStatus(u: AdminUserResponse): string {
   background: var(--vg-grad-blue);
   color: white;
   border: none;
-  width: 7rem;
-  min-width: 7rem;
-  min-height: 2.75rem;
+  width: var(--admin-users-action-width);
+  min-width: var(--admin-users-action-width);
+  min-height: var(--admin-users-action-height);
   padding: 0.5rem 0.75rem;
   border-radius: var(--vg-radius-sm);
   cursor: pointer;
   font-weight: 800;
   white-space: nowrap;
 }
-.btn-create:hover { opacity: 0.9; }
+.btn-create:hover {
+  opacity: 0.9;
+}
 
 .filter-bar {
   display: grid;
-  grid-template-columns: minmax(18rem, 42rem) 11rem 10rem 7rem;
+  grid-template-columns: minmax(18rem, 42rem) 11rem 10rem var(--admin-users-action-width);
   gap: var(--vg-space-3);
   justify-content: end;
   align-items: stretch;
@@ -435,13 +472,18 @@ function userStatus(u: AdminUserResponse): string {
   border-radius: var(--vg-radius-sm);
   font-family: inherit;
 }
-.filter-input:focus, .filter-select:focus { outline: none; border-color: var(--vg-blue); }
+.filter-input:focus,
+.filter-select:focus {
+  outline: none;
+  border-color: var(--vg-blue);
+}
 .btn-filter {
   background: var(--vg-surface-3);
   color: var(--vg-text);
   border: 1px solid var(--vg-border);
-  min-width: 7rem;
-  min-height: 2.75rem;
+  width: var(--admin-users-action-width);
+  min-width: var(--admin-users-action-width);
+  min-height: var(--admin-users-action-height);
   padding: 0.5rem 1rem;
   border-radius: var(--vg-radius-sm);
   cursor: pointer;
@@ -537,7 +579,9 @@ function userStatus(u: AdminUserResponse): string {
   border-radius: var(--vg-radius-sm);
   cursor: pointer;
 }
-.btn-detail:hover { background: rgba(148,163,184,0.16); }
+.btn-detail:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
 .btn-danger {
   background: rgba(239, 68, 68, 0.15);
   color: var(--vg-danger);
@@ -545,8 +589,9 @@ function userStatus(u: AdminUserResponse): string {
   border-radius: var(--vg-radius-sm);
   cursor: pointer;
   font-weight: 500;
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
-              border-color var(--vg-dur-fast) var(--vg-ease-out);
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out);
 }
 .btn-danger:hover {
   background: rgba(239, 68, 68, 0.25);
@@ -559,20 +604,36 @@ function userStatus(u: AdminUserResponse): string {
   border-radius: var(--vg-radius-sm);
   cursor: pointer;
 }
-.btn-secondary:hover { background: rgba(148,163,184,0.16); }
-.table-footer { padding: var(--vg-space-3) var(--vg-space-4); font-size: var(--vg-text-sm); color: var(--vg-text-muted); text-align: right; }
+.btn-secondary:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+.table-footer {
+  padding: var(--vg-space-3) var(--vg-space-4);
+  font-size: var(--vg-text-sm);
+  color: var(--vg-text-muted);
+  text-align: right;
+}
 
 /* Modal */
 .modal-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.6); z-index: 2000;
-  display: flex; align-items: center; justify-content: center; padding: 1rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
 }
 .modal {
   background: var(--vg-surface);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
-  width: 100%; max-width: 480px;
+  width: 100%;
+  max-width: 480px;
   box-shadow: var(--vg-shadow);
   overflow: hidden;
 }
@@ -581,7 +642,9 @@ function userStatus(u: AdminUserResponse): string {
   border-color: rgba(148, 163, 184, 0.22);
 }
 .modal-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: var(--vg-space-4);
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--vg-border);
@@ -621,14 +684,25 @@ function userStatus(u: AdminUserResponse): string {
   line-height: 1;
   flex: 0 0 auto;
 }
-.close-btn:hover { color: var(--vg-text); }
-.modal-form { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.close-btn:hover {
+  color: var(--vg-text);
+}
+.modal-form {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
 .create-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--vg-space-3);
 }
-.form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 .form-group label,
 .option-fieldset legend {
   font-size: var(--vg-text-sm);
@@ -644,9 +718,12 @@ function userStatus(u: AdminUserResponse): string {
 .form-input {
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
-  background: var(--vg-bg-elev); color: var(--vg-text);
-  border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm);
-  font-family: inherit; font-size: var(--vg-text-base);
+  background: var(--vg-bg-elev);
+  color: var(--vg-text);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  font-family: inherit;
+  font-size: var(--vg-text-base);
 }
 .form-input:focus {
   outline: none;
@@ -663,7 +740,9 @@ select.form-input {
     calc(100% - 1.1rem) 50%,
     calc(100% - 0.78rem) 50%;
   background-repeat: no-repeat;
-  background-size: 0.38rem 0.38rem, 0.38rem 0.38rem;
+  background-size:
+    0.38rem 0.38rem,
+    0.38rem 0.38rem;
 }
 .role-options,
 .plan-options {
@@ -734,15 +813,39 @@ select.form-input {
   padding: 0.5rem 1rem;
   font-weight: 800;
 }
-.btn-primary { background: var(--vg-grad-blue); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: var(--vg-radius-sm); cursor: pointer; font-weight: 500; }
-.btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
-.error-text { color: var(--vg-danger); font-size: var(--vg-text-sm); }
+.btn-primary {
+  background: var(--vg-grad-blue);
+  color: white;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--vg-radius-sm);
+  cursor: pointer;
+  font-weight: 500;
+}
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.error-text {
+  color: var(--vg-danger);
+  font-size: var(--vg-text-sm);
+}
 
 @media (max-width: 768px) {
-  .header { padding-right: 0; }
-  .header-top { flex-direction: column; }
-  .filter-bar { grid-template-columns: 1fr; justify-content: stretch; }
-  .filter-input, .filter-select { width: 100%; }
+  .header {
+    padding-right: 0;
+  }
+  .header-top {
+    flex-direction: column;
+  }
+  .filter-bar {
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+  .filter-input,
+  .filter-select {
+    width: 100%;
+  }
 
   .table-responsive {
     max-height: none;

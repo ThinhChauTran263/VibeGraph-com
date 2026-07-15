@@ -36,7 +36,15 @@ function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUse
         confidence: 0.8,
       },
     ],
-    relations: [{ from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 }],
+    relations: [
+      {
+        from: 'A_Admin',
+        to: 'UC_ManageProduct',
+        type: 'association',
+        label: null,
+        confidence: 0.8,
+      },
+    ],
     warnings: ['Role for POST /api/products inferred from HTTP method.'],
     mermaidSyntax: 'flowchart LR\n  subgraph Orders\n    uc([Manage products])\n  end',
     plantUmlSyntax: '@startuml\nleft to right direction\n@enduml',

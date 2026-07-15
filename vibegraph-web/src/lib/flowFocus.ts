@@ -75,7 +75,10 @@ export function createFlowFocusReducers(
         hidden: false,
         highlighted: isPrimary,
         forceLabel: true,
-        size: scaleSize(attributes.size, isPrimary ? FLOW_PRIMARY_SIZE_MULTIPLIER : FLOW_NODE_SIZE_MULTIPLIER),
+        size: scaleSize(
+          attributes.size,
+          isPrimary ? FLOW_PRIMARY_SIZE_MULTIPLIER : FLOW_NODE_SIZE_MULTIPLIER,
+        ),
         zIndex: isPrimary ? Z_FLOW_PRIMARY : Z_FLOW_NODE,
       }
     },
@@ -90,7 +93,10 @@ export function createFlowFocusReducers(
         ...attributes,
         hidden: false,
         forceLabel: true,
-        size: typeof attributes.size === 'number' ? attributes.size * FLOW_EDGE_SIZE_MULTIPLIER : attributes.size,
+        size:
+          typeof attributes.size === 'number'
+            ? attributes.size * FLOW_EDGE_SIZE_MULTIPLIER
+            : attributes.size,
         labelColor: relatedEdgeLabelColor(attributes),
         zIndex: Z_FLOW_EDGE,
       }

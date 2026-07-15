@@ -7,10 +7,10 @@ describe('ErrorAlert', () => {
     const wrapper = mount(ErrorAlert, {
       props: {
         title: 'Error Title',
-        message: 'This is an error message'
-      }
+        message: 'This is an error message',
+      },
     })
-    
+
     expect(wrapper.text()).toContain('Error Title')
     expect(wrapper.text()).toContain('This is an error message')
   })
@@ -18,10 +18,10 @@ describe('ErrorAlert', () => {
   it('renders slot content', () => {
     const wrapper = mount(ErrorAlert, {
       slots: {
-        default: '<button>Fix Issue</button>'
-      }
+        default: '<button>Fix Issue</button>',
+      },
     })
-    
+
     expect(wrapper.find('button').exists()).toBe(true)
   })
 })

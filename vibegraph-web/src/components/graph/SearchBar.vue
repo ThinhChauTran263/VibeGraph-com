@@ -68,7 +68,13 @@ function clearSearch(): void {
         @input="onInput"
         @focus="onInput"
       />
-      <button v-if="hasQuery" class="search-bar__clear" type="button" aria-label="Clear search" @click="clearSearch">
+      <button
+        v-if="hasQuery"
+        class="search-bar__clear"
+        type="button"
+        aria-label="Clear search"
+        @click="clearSearch"
+      >
         Clear
       </button>
     </div>

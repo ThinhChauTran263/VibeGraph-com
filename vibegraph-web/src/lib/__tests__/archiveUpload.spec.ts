@@ -85,9 +85,7 @@ describe('validateArchiveFile - rejections', () => {
   })
 
   it('rejects a file larger than 100 MB and reports the size in MB', () => {
-    const result = validateArchiveFile(
-      makeFile('project.zip', ARCHIVE_MAX_SIZE_BYTES + 1024),
-    )
+    const result = validateArchiveFile(makeFile('project.zip', ARCHIVE_MAX_SIZE_BYTES + 1024))
     expect(result?.kind).toBe('size')
     expect(result?.message).toContain('100 MB')
     // The reported size should be roughly the file size in MB.
