@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.CurrentUser;
@@ -52,7 +53,7 @@ class AdminReportControllerTest {
                 UUID.randomUUID(), UUID.randomUUID(), "OPEN", "BUG", "UI error",
                 Instant.now(), null, null);
 
-        org.springframework.data.domain.Page<AdminFeedbackResponse> pageResult = 
+        org.springframework.data.domain.Page<AdminFeedbackResponse> pageResult =
                 new org.springframework.data.domain.PageImpl<>(Collections.singletonList(report));
 
         when(adminService.getFeedbackReports(any(), any(), any())).thenReturn(pageResult);
@@ -95,6 +96,17 @@ class AdminReportControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         verify(adminService).replyToFeedbackReport(any(UUID.class), any(UUID.class), any(AdminFeedbackReplyRequest.class));
+    }
+
+    @Test
+    @DisplayName("production controller does not declare the test seed endpoint")
+    void seedTestData_isNotDeclared() {
+        boolean hasSeedEndpoint = java.util.Arrays.stream(AdminReportController.class.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(PostMapping.class))
+                .flatMap(method -> java.util.Arrays.stream(method.getAnnotation(PostMapping.class).value()))
+                .anyMatch("/seed-test-data"::equals);
+
+        org.junit.jupiter.api.Assertions.assertFalse(hasSeedEndpoint);
     }
 
     @Test

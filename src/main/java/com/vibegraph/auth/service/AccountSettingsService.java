@@ -89,7 +89,8 @@ public class AccountSettingsService {
             return;
         }
         AccountQuotaSnapshot snapshot = quotaSnapshot(userId);
-        if (snapshot.usedBytes() + additionalBytes > snapshot.limitBytes()) {
+        long remainingBytes = Math.max(0L, snapshot.limitBytes() - snapshot.usedBytes());
+        if (additionalBytes > remainingBytes) {
             throw new QuotaExceededException(QUOTA_EXCEEDED_MESSAGE);
         }
     }

@@ -2,18 +2,27 @@ package com.vibegraph.auth.repository;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.repository.projection.AdminSeriesRow;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * Control-plane user access. Email matching is case-insensitive to honour the
  * {@code uq_users_email_lower} functional index (lower(email) uniqueness).
  */
 public interface UserRepository extends JpaRepository<User, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.id = :id")
+    Optional<User> findByIdForUpdate(@Param("id") UUID id);
 
     @Query("SELECT u FROM User u WHERE lower(u.email) = lower(:email)")
     Optional<User> findByEmailIgnoreCase(@Param("email") String email);
@@ -38,4 +47,37 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             org.springframework.data.domain.Pageable pageable);
 
     long countByDeactivated(boolean deactivated);
+
+    @Query(value = """
+            SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS label,
+                   count(*) AS value,
+                   'month' AS period
+            FROM users
+            WHERE created_at IS NOT NULL
+            GROUP BY date_trunc('month', created_at)
+            ORDER BY date_trunc('month', created_at)
+            """, nativeQuery = true)
+    List<AdminSeriesRow> countGrowthByMonth();
+
+    @Query(value = """
+            SELECT concat(extract(year from created_at)::int, '-Q', extract(quarter from created_at)::int) AS label,
+                   count(*) AS value,
+                   'quarter' AS period
+            FROM users
+            WHERE created_at IS NOT NULL
+            GROUP BY extract(year from created_at), extract(quarter from created_at)
+            ORDER BY extract(year from created_at), extract(quarter from created_at)
+            """, nativeQuery = true)
+    List<AdminSeriesRow> countGrowthByQuarter();
+
+    @Query(value = """
+            SELECT extract(year from created_at)::int::text AS label,
+                   count(*) AS value,
+                   'year' AS period
+            FROM users
+            WHERE created_at IS NOT NULL
+            GROUP BY extract(year from created_at)
+            ORDER BY extract(year from created_at)
+            """, nativeQuery = true)
+    List<AdminSeriesRow> countGrowthByYear();
 }

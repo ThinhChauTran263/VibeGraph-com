@@ -113,6 +113,13 @@ class QuotaEnforcementTest {
                 () -> service.assertQuotaNotExceeded(userId, 50_000_001L));
     }
 
+    @Test
+    @DisplayName("Byte comparison rejects huge additions without long overflow")
+    void hugeAddition_doesNotOverflowOpen() {
+        assertThrows(QuotaExceededException.class,
+                () -> service.assertQuotaNotExceeded(userId, Long.MAX_VALUE));
+    }
+
     // ── admin override ────────────────────────────────────────────────────────
 
     @Test

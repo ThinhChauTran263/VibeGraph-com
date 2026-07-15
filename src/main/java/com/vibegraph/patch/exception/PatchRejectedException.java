@@ -33,7 +33,9 @@ public class PatchRejectedException extends RuntimeException {
         INVALID_BASE64,
         FILE_TOO_LARGE,
         TOTAL_TOO_LARGE,
-        TOO_MANY_FILES
+        TOO_MANY_FILES,
+        DUPLICATE_PATH,
+        OVERLAPPING_PATH
     }
 
     private final transient Reason reason;

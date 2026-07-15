@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.UnauthorizedException;
@@ -90,6 +91,25 @@ class LocalPatchControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
+        verify(localPatchService, never()).applyPatch(any(), any());
+    }
+
+    @Test
+    @DisplayName("returns 403 for a blocked account before patch service work")
+    void shouldReturn403WhenBlockedAccount() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(userId);
+        doThrow(new AccountBlockedException("internal risk note", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        mockMvc.perform(post("/api/projects/p1/patch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_BLOCKED"))
+                .andExpect(jsonPath("$.error.message").value("Policy review"));
+
+        verify(ownershipGuard).assertOwner("p1");
         verify(localPatchService, never()).applyPatch(any(), any());
     }
 

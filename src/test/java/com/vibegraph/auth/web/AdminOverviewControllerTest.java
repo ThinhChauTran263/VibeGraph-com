@@ -1,6 +1,7 @@
 package com.vibegraph.auth.web;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +39,21 @@ class AdminOverviewControllerTest {
     @DisplayName("GET /api/admin/overview returns dashboard stats")
     void getOverview_succeeds() throws Exception {
         AdminOverviewResponse overview = new AdminOverviewResponse(
-                100L, 5L, 20L, 10L, 3L, 2L, Instant.now());
+                100L,
+                5L,
+                20L,
+                10L,
+                3L,
+                2L,
+                Instant.now(),
+                List.of(new AdminOverviewResponse.AdminSeriesPoint("2026-07", 4, "month")),
+                List.of(new AdminOverviewResponse.AdminSeriesPoint("2026-07", 12, "month")),
+                new AdminOverviewResponse.AdminStorageSummary(100L, 1000L, "projects", null),
+                List.of(new AdminOverviewResponse.AdminDistributionPoint("FREE", 2)),
+                List.of(),
+                List.of(),
+                List.of(new AdminOverviewResponse.AdminSecurityAlert(
+                        "blocked-users", "ACCOUNT_BLOCK", "WARNING", "2 blocked", Instant.now())));
 
         when(adminService.getOverview()).thenReturn(overview);
 
@@ -48,6 +63,10 @@ class AdminOverviewControllerTest {
                 .andExpect(jsonPath("$.data.totalUsers").value(100L))
                 .andExpect(jsonPath("$.data.onlineUsers").value(5L))
                 .andExpect(jsonPath("$.data.totalProjects").value(20L))
-                .andExpect(jsonPath("$.data.openReports").value(3L));
+                .andExpect(jsonPath("$.data.openReports").value(3L))
+                .andExpect(jsonPath("$.data.userGrowth[0].label").value("2026-07"))
+                .andExpect(jsonPath("$.data.storage.sourceLabel").value("projects"))
+                .andExpect(jsonPath("$.data.planDistribution[0].label").value("FREE"))
+                .andExpect(jsonPath("$.data.securityAlerts[0].type").value("ACCOUNT_BLOCK"));
     }
 }

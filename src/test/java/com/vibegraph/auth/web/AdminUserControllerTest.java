@@ -47,7 +47,7 @@ class AdminUserControllerTest {
         UUID userId = UUID.randomUUID();
         AdminUserResponse userResponse = new AdminUserResponse(
                 userId, "test@test.local", "Test User", "USER",
-                false, false, null, null, "FREE",
+                false, null, null, false, null, null, "FREE",
                 null, null, 100L, 0L, false);
 
         when(adminService.getUsers(any(), any(), any(), any())).thenReturn(new PageImpl<>(Collections.singletonList(userResponse)));
@@ -64,7 +64,7 @@ class AdminUserControllerTest {
         UUID userId = UUID.randomUUID();
         AdminUserResponse userResponse = new AdminUserResponse(
                 userId, "test@test.local", "Test User", "USER",
-                false, false, null, null, "FREE",
+                false, null, null, false, null, null, "FREE",
                 null, null, 100L, 0L, false);
 
         when(adminService.getUserDetail(userId)).thenReturn(userResponse);
@@ -81,7 +81,7 @@ class AdminUserControllerTest {
         UUID userId = UUID.randomUUID();
         AdminUserResponse userResponse = new AdminUserResponse(
                 userId, "new@test.local", "New User", "USER",
-                false, false, null, null, "FREE",
+                false, null, null, false, null, null, "FREE",
                 null, null, 100L, 0L, false);
 
         when(adminService.createUser(any(AdminCreateUserRequest.class))).thenReturn(userResponse);
@@ -100,7 +100,7 @@ class AdminUserControllerTest {
         UUID userId = UUID.randomUUID();
         AdminUserResponse userResponse = new AdminUserResponse(
                 userId, "blocked@test.local", "Blocked", "USER",
-                false, true, "Spam", "Spam Policy", "FREE",
+                false, null, null, true, "Spam", "Spam Policy", "FREE",
                 null, null, 100L, 0L, false);
 
         when(adminService.blockUser(any(UUID.class), any(AdminUserBlockRequest.class))).thenReturn(userResponse);
@@ -119,7 +119,7 @@ class AdminUserControllerTest {
         UUID userId = UUID.randomUUID();
         AdminUserResponse userResponse = new AdminUserResponse(
                 userId, "key@test.local", "Key User", "USER",
-                false, false, null, null, "FREE",
+                false, null, null, false, null, null, "FREE",
                 null, null, 100L, 0L, true);
 
         when(adminService.updateApiKeyCreationDisabled(any(UUID.class), any(Boolean.class))).thenReturn(userResponse);

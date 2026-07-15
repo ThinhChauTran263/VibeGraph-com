@@ -12,4 +12,6 @@ import com.vibegraph.auth.domain.CreditPricingRule;
 public interface CreditPricingRuleRepository extends JpaRepository<CreditPricingRule, UUID> {
 
     Optional<CreditPricingRule> findByOperationCode(String operationCode);
+
+    boolean existsByOperationCode(String operationCode);
 }

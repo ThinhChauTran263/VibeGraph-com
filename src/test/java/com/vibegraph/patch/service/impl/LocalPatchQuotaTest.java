@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import org.mockito.InOrder;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,7 +31,9 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.QuotaExceededException;
 import com.vibegraph.mcp.source.SourceFileService;
 import com.vibegraph.patch.config.LocalPatchProperties;
@@ -59,6 +64,7 @@ class LocalPatchQuotaTest {
     @Mock ProjectUsageService projectUsageService;
     @Mock CreditPricingService creditPricingService;
     @Mock CreditBalanceService creditBalanceService;
+    @Mock FeatureGateService featureGateService;
     @Mock CurrentUser currentUser;
 
     private LocalPatchServiceImpl service;
@@ -69,7 +75,7 @@ class LocalPatchQuotaTest {
         when(sourceFileService.resolveProjectRoot(PROJECT_ID)).thenReturn(root);
         when(currentUser.id()).thenReturn(userId);
 
-        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
     }
 
     private static String b64(String text) {
@@ -79,8 +85,9 @@ class LocalPatchQuotaTest {
     // ── happy path ────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("Patch below quota → writes file and records delta")
-    void patchBelowQuota_writesFileAndRecordsDelta() {
+    @DisplayName("Patch below quota → preflights credits, writes file, records delta, and deducts")
+    void patchBelowQuota_preflightsBeforeWritesAndDeducts() {
+        when(creditPricingService.calculateCredits("CLI_PUSH", 1, 0)).thenReturn(2L);
         PatchRequest req = new PatchRequest(
                 List.of(new PatchFileChange("src/Hello.java", b64("class Hello {}"), "base64")),
                 List.of(),
@@ -90,8 +97,79 @@ class LocalPatchQuotaTest {
 
         assertThat(result.changed()).isEqualTo(1);
         assertThat(result.deleted()).isZero();
-        // Delta > 0 (new file) → recordPatchDelta must be called
         verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        InOrder order = inOrder(
+                accountSettingsService, featureGateService, creditPricingService, creditBalanceService, projectUsageService);
+        order.verify(accountSettingsService).assertQuotaNotExceeded(eq(userId), anyLong());
+        order.verify(featureGateService).assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
+        order.verify(creditPricingService).calculateCredits("CLI_PUSH", 1, 0);
+        order.verify(creditBalanceService)
+                .deductCredits(userId, 2L, "CLI", "CLI_PUSH", PROJECT_ID);
+        order.verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+    }
+
+    @Test
+    @DisplayName("Authoritative debit failure → no file write or usage update")
+    void debitFailure_doesNotMutateFilesystem() {
+        when(creditPricingService.calculateCredits("CLI_PUSH", 1, 0)).thenReturn(2L);
+        doThrow(new com.vibegraph.common.exception.InsufficientCreditsException("Insufficient credits"))
+                .when(creditBalanceService)
+                .deductCredits(userId, 2L, "CLI", "CLI_PUSH", PROJECT_ID);
+        PatchRequest req = new PatchRequest(
+                List.of(new PatchFileChange("src/Blocked.java", b64("class Blocked {}"), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, req))
+                .isInstanceOf(com.vibegraph.common.exception.InsufficientCreditsException.class);
+
+        assertThat(Files.exists(root.resolve("src/Blocked.java"))).isFalse();
+        verify(projectUsageService, never()).recordPatchDelta(eq(PROJECT_ID), anyLong());
+    }
+
+    @Test
+    @DisplayName("CLI push feature disabled -> no debit, file write, or usage update")
+    void cliPushFlagDisabled_blocksBeforeDebitAndWrite() {
+        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_CLI_PUSH))
+                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
+        PatchRequest req = new PatchRequest(
+                List.of(new PatchFileChange("src/Disabled.java", b64("class Disabled {}"), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, req))
+                .isInstanceOf(FeatureDisabledException.class);
+
+        assertThat(Files.exists(root.resolve("src/Disabled.java"))).isFalse();
+        verify(creditPricingService, never()).calculateCredits(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(), anyLong());
+        verify(creditBalanceService, never()).deductCredits(
+                eq(userId), anyLong(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        verify(projectUsageService, never()).recordPatchDelta(eq(PROJECT_ID), anyLong());
+    }
+
+    @Test
+    @DisplayName("Usage persistence failure → restores created and overwritten files")
+    void usageFailure_rollsBackFilesystemBatch() throws Exception {
+        Path existing = root.resolve("src/Existing.java");
+        Files.createDirectories(existing.getParent());
+        Files.writeString(existing, "old");
+        when(creditPricingService.calculateCredits("CLI_PUSH", 2, 0)).thenReturn(3L);
+        doThrow(new IllegalStateException("usage failed"))
+                .when(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        PatchRequest req = new PatchRequest(
+                List.of(
+                        new PatchFileChange("src/Existing.java", b64("new-content"), "base64"),
+                        new PatchFileChange("src/New.java", b64("created"), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, req))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("usage failed");
+
+        assertThat(Files.readString(existing)).isEqualTo("old");
+        assertThat(Files.exists(root.resolve("src/New.java"))).isFalse();
     }
 
     @Test
@@ -169,7 +247,12 @@ class LocalPatchQuotaTest {
 
         // quota check must still be invoked (dry run informs user of would-fail)
         verify(accountSettingsService).assertQuotaNotExceeded(eq(userId), anyLong());
-        // but usage must NOT be persisted
+        // but usage and credits must NOT be persisted
         verify(projectUsageService, never()).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        verify(creditPricingService, never()).calculateCredits(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(), anyLong());
+        verify(creditBalanceService, never()).assertCreditsAvailable(eq(userId), anyLong());
+        verify(creditBalanceService, never()).deductCredits(
+                eq(userId), anyLong(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

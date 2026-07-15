@@ -20,8 +20,6 @@ import org.springframework.stereotype.Service;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
@@ -33,6 +31,8 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
+import com.vibegraph.graph.service.DirectorySizeMeasurer;
+import com.vibegraph.graph.service.LocalProjectPathValidator;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.LocalImportService;
 import com.vibegraph.graph.service.ProjectService;
@@ -62,10 +62,10 @@ public class LocalImportServiceImpl implements LocalImportService {
     private final Executor analysisExecutor;
     private final AccountSettingsService accountSettingsService;
     private final ProjectUsageService projectUsageService;
-    private final CreditPricingService creditPricingService;
-    private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final LocalProjectPathValidator pathValidator;
+    private final DirectorySizeMeasurer directorySizeMeasurer;
 
     public LocalImportServiceImpl(ProjectService projectService,
             AnalyzeService analyzeService,
@@ -75,10 +75,10 @@ public class LocalImportServiceImpl implements LocalImportService {
             @Qualifier("analysisExecutor") Executor analysisExecutor,
             AccountSettingsService accountSettingsService,
             ProjectUsageService projectUsageService,
-            CreditPricingService creditPricingService,
-            CreditBalanceService creditBalanceService,
             CurrentUser currentUser,
-            ProjectOwnershipRegistrar ownershipRegistrar) {
+            ProjectOwnershipRegistrar ownershipRegistrar,
+            LocalProjectPathValidator pathValidator,
+            DirectorySizeMeasurer directorySizeMeasurer) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
@@ -87,10 +87,10 @@ public class LocalImportServiceImpl implements LocalImportService {
         this.analysisExecutor = analysisExecutor;
         this.accountSettingsService = accountSettingsService;
         this.projectUsageService = projectUsageService;
-        this.creditPricingService = creditPricingService;
-        this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
         this.ownershipRegistrar = ownershipRegistrar;
+        this.pathValidator = pathValidator;
+        this.directorySizeMeasurer = directorySizeMeasurer;
     }
 
     @Override
@@ -99,15 +99,13 @@ public class LocalImportServiceImpl implements LocalImportService {
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
 
-        // Measure size of the directory in-place before accepting the import.
-        long totalSize = measureDirectorySize(Path.of(request.path()));
+        Path validatedRoot = pathValidator.validateImportRoot(request.path());
+        long totalSize = directorySizeMeasurer.measureBytes(validatedRoot);
         accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
 
-        // createProject enforces the allowed-root guard + existence/dir checks
-        // synchronously, so a bad path is rejected with 400 before we accept the import.
         ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
                 .name(request.name())
-                .rootPath(request.path())
+                .rootPath(validatedRoot.toString())
                 .build());
 
         // Register ownership first to satisfy FK constraint in usage
@@ -147,11 +145,8 @@ public class LocalImportServiceImpl implements LocalImportService {
             // updates.
             fileChangeBroadcaster.watchProject(projectId, rootPath);
 
-            // Deduct credits for PROJECT_ANALYZE
-            long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
-            creditBalanceService.deductCredits(userId, requiredCredits, "PROJECT_ANALYZE", projectId);
-
-            log.info("Local-imported project {} from {} ({} files, credits: {})", projectId, rootPath, result.filesParsed(), requiredCredits);
+            log.info("Local-imported project {} from {} ({} files)",
+                    projectId, rootPath, result.filesParsed());
         } catch (RuntimeException e) {
             projectService.markFailed(projectId, e.getMessage());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.FAILED.name(), 0, e.getMessage());
@@ -161,16 +156,15 @@ public class LocalImportServiceImpl implements LocalImportService {
 
     @Override
     public DirectoryListing browse(String path) {
-        Path base = configuredBase(); // null = unconfined (no allowed-root): browse the whole host
+        Path base = configuredBase();
+        boolean isUnconfined = base == null && projectsProperties.isAllowUnconfinedBrowse();
+        if (base == null && !isUnconfined) {
+            throw new IllegalStateException(
+                    "Directory browsing is disabled until an allowed root is configured");
+        }
         String trimmed = path == null ? "" : path.trim();
 
-        // Unconfined + top-level view → list the filesystem roots ("This PC": drive
-        // letters on
-        // Windows, "/" on Unix) so a developer can reach projects on any drive without
-        // a fixed
-        // root. Each team member's disk layout differs, so a hardcoded allowed-root
-        // would not fit.
-        if (base == null && trimmed.isEmpty()) {
+        if (isUnconfined && trimmed.isEmpty()) {
             return listRoots();
         }
 
@@ -309,29 +303,4 @@ public class LocalImportServiceImpl implements LocalImportService {
         return name == null ? "" : name.toString();
     }
 
-    /**
-     * Walk the directory tree and sum all regular file sizes.
-     * Used to estimate storage quota before accepting a local import.
-     * Returns 0 on any I/O error so quota check falls through rather than blocking
-     * a valid import due to permission issues on unrelated files.
-     */
-    private static long measureDirectorySize(Path dir) {
-        if (!Files.isDirectory(dir)) {
-            return 0L;
-        }
-        try (Stream<Path> walk = Files.walk(dir)) {
-            return walk
-                    .filter(Files::isRegularFile)
-                    .mapToLong(p -> {
-                        try {
-                            return Files.size(p);
-                        } catch (IOException e) {
-                            return 0L;
-                        }
-                    })
-                    .sum();
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
 }

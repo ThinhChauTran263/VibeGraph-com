@@ -595,7 +595,7 @@ class MethodVisitorTest {
                 """);
             visitor.visit(cu, null);
             List<com.vibegraph.parser.node.EdgeData> edges = visitor.getExtractedEdges();
-            
+
             // 1. In-project helper reference should be resolved
             assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
                     && "com.example.C.helper(String)".equals(e.targetFullName())

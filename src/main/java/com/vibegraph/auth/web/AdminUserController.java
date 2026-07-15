@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.auth.dto.AdminCreateUserRequest;
 import com.vibegraph.auth.dto.AdminUserBlockRequest;
+import com.vibegraph.auth.dto.AdminUserDeactivateRequest;
 import com.vibegraph.auth.dto.AdminUserResponse;
 import com.vibegraph.auth.dto.AdminUserUpdatePlanRequest;
 import com.vibegraph.auth.dto.AdminUserUpdateQuotaRequest;
@@ -27,11 +28,14 @@ import com.vibegraph.auth.service.AdminService;
 import com.vibegraph.common.dto.response.ApiResponse;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
+@org.springframework.validation.annotation.Validated
 public class AdminUserController {
 
     private final AdminService adminService;
@@ -41,8 +45,8 @@ public class AdminUserController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String plan,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("email").ascending());
         Page<AdminUserResponse> result = adminService.getUsers(search, status, plan, pageable);
@@ -88,9 +92,10 @@ public class AdminUserController {
 
     @PatchMapping("/{userId}/deactivate")
     public ResponseEntity<ApiResponse<AdminUserResponse>> deactivate(
-            @PathVariable UUID userId
+            @PathVariable UUID userId,
+            @Valid @RequestBody AdminUserDeactivateRequest request
     ) {
-        return ResponseEntity.ok(ApiResponse.success(adminService.deactivateUser(userId)));
+        return ResponseEntity.ok(ApiResponse.success(adminService.deactivateUser(userId, request)));
     }
 
     @PatchMapping("/{userId}/plan")

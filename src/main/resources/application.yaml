@@ -102,6 +102,9 @@ vibegraph:
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+    # Fail closed by default: only explicit dev/test profile opt-ins may access arbitrary host paths.
+    allow-unconfined-browse: false
+    allow-unconfined-import: false
 
   # Path to the AI memory / conventions file surfaced by the MCP conventions tool.
   ai-memory:

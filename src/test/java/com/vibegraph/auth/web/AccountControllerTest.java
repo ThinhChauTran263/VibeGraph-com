@@ -1,6 +1,8 @@
 package com.vibegraph.auth.web;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,7 +14,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.dto.AccountProjectResponse;
 import com.vibegraph.auth.dto.AccountProjectsPageResponse;
+import com.vibegraph.auth.dto.AccountSessionStateResponse;
 import com.vibegraph.auth.dto.AccountUsageResponse;
+import com.vibegraph.auth.dto.AccountCreditLedgerResponse;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.service.AccountService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
@@ -44,7 +48,7 @@ class AccountControllerTest {
     @DisplayName("GET /api/account/profile returns current user profile")
     void profile_returnsCurrentUserProfile() throws Exception {
         when(accountService.profile())
-                .thenReturn(new UserResponse("user-1", "me@test.local", "Me", "USER"));
+                .thenReturn(new UserResponse("user-1", "me@test.local", "Me", "USER", "ACTIVE", null));
 
         mockMvc.perform(get("/api/account/profile"))
                 .andExpect(status().isOk())
@@ -56,10 +60,35 @@ class AccountControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/account/session-state returns the safe current account state")
+    void sessionState_returnsSafeCurrentAccountState() throws Exception {
+        when(accountService.sessionState()).thenReturn(new AccountSessionStateResponse(
+                "user-1",
+                "blocked@test.local",
+                "Blocked User",
+                "USER",
+                "BLOCKED",
+                "Policy review"));
+
+        mockMvc.perform(get("/api/account/session-state"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value("user-1"))
+                .andExpect(jsonPath("$.data.email").value("blocked@test.local"))
+                .andExpect(jsonPath("$.data.displayName").value("Blocked User"))
+                .andExpect(jsonPath("$.data.role").value("USER"))
+                .andExpect(jsonPath("$.data.accountStatus").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.safeReason").value("Policy review"))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.data.blockedReason").doesNotExist())
+                .andExpect(jsonPath("$.data.deactivationReason").doesNotExist());
+    }
+
+    @Test
     @DisplayName("PATCH /api/account/profile updates displayName")
     void updateProfile_updatesDisplayName() throws Exception {
         when(accountService.updateProfile(any()))
-                .thenReturn(new UserResponse("user-1", "me@test.local", "New Name", "USER"));
+                .thenReturn(new UserResponse("user-1", "me@test.local", "New Name", "USER", "ACTIVE", null));
 
         mockMvc.perform(patch("/api/account/profile")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,10 +113,24 @@ class AccountControllerTest {
     }
 
     @Test
+    @DisplayName("PATCH /api/account/password changes password")
+    void changePassword_succeeds() throws Exception {
+        mockMvc.perform(patch("/api/account/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"oldPassword":"old-password","newPassword":"new-password","confirmPassword":"new-password"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(accountService).changePassword(any());
+    }
+
+    @Test
     @DisplayName("GET /api/account/usage returns quota snapshot")
     void usage_returnsQuotaSnapshot() throws Exception {
         when(accountService.usage())
-                .thenReturn(new AccountUsageResponse(128L, 512L, 384L, "FREE", "Free", null));
+                .thenReturn(new AccountUsageResponse(128L, 512L, 384L, "FREE", "Free", null, 25, 100, 75));
 
         mockMvc.perform(get("/api/account/usage"))
                 .andExpect(status().isOk())
@@ -96,7 +139,43 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.data.limitBytes").value(512))
                 .andExpect(jsonPath("$.data.remainingBytes").value(384))
                 .andExpect(jsonPath("$.data.planCode").value("FREE"))
-                .andExpect(jsonPath("$.data.planName").value("Free"));
+                .andExpect(jsonPath("$.data.planName").value("Free"))
+                .andExpect(jsonPath("$.data.creditsUsed").value(25))
+                .andExpect(jsonPath("$.data.creditsLimit").value(100))
+                .andExpect(jsonPath("$.data.creditsRemaining").value(75));
+    }
+
+    @Test
+    @DisplayName("GET /api/account/usage/ledger returns safe recent credit entries")
+    void creditLedger_returnsRecentEntries() throws Exception {
+        UUID ledgerId = UUID.randomUUID();
+        when(accountService.creditLedger(10))
+                .thenReturn(List.of(new AccountCreditLedgerResponse(
+                        ledgerId,
+                        "CLI",
+                        "CLI_PUSH",
+                        -2,
+                        "project-1",
+                        Instant.parse("2026-07-14T12:00:00Z"))));
+
+        mockMvc.perform(get("/api/account/usage/ledger"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(ledgerId.toString()))
+                .andExpect(jsonPath("$.data[0].source").value("CLI"))
+                .andExpect(jsonPath("$.data[0].operationCode").value("CLI_PUSH"))
+                .andExpect(jsonPath("$.data[0].creditsDelta").value(-2))
+                .andExpect(jsonPath("$.data[0].projectId").value("project-1"));
+    }
+
+    @Test
+    @DisplayName("GET /api/account/usage/ledger rejects oversized limit")
+    void creditLedger_oversizedLimit_returnsValidationError() throws Exception {
+        mockMvc.perform(get("/api/account/usage/ledger?limit=51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test

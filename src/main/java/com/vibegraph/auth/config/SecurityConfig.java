@@ -31,10 +31,10 @@ import lombok.RequiredArgsConstructor;
  * Explicit, stateless security policy (Phase 1). No HTTP session, no CSRF (token-based,
  * no cookies), JWT bearer auth via {@link JwtAuthFilter}.
  *
- * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, and CORS
- * preflight. {@code /ws/**} and {@code /mcp/**} require authentication (fail closed) unless the
- * explicit {@code vibegraph.auth.realtime.demo-permit} flag is set, in which case they are permitted
- * for demo/local use only and a startup WARNING is logged. Everything else requires authentication.
+ * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, the
+ * WebSocket transport handshake, and CORS preflight. STOMP sessions authenticate independently on
+ * {@code CONNECT}; {@code /mcp/**} requires HTTP authentication unless the explicit
+ * {@code vibegraph.auth.realtime.demo-permit} flag is set. Everything else requires authentication.
  *
  * <p>CORS is driven from the same {@link CorsProperties} allow-list the app already uses (no
  * wildcard with credentials), wired into the security chain so preflight is handled before authz.
@@ -59,9 +59,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         boolean demoPermit = realtimeProperties.isDemoPermit();
         if (demoPermit) {
-            log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /ws/** and /mcp/** are "
-                    + "PERMITTED WITHOUT AUTHENTICATION. This is for demo/local only and is NOT "
-                    + "multi-user safe. Per-connection realtime/MCP auth is deferred to Phase 3.");
+            log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
+                    + "PERMITTED WITHOUT HTTP AUTHENTICATION. This is for demo/local only and is NOT "
+                    + "multi-user safe. STOMP connections still require a Bearer token on CONNECT.");
         }
 
         http
@@ -73,10 +73,10 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    auth.requestMatchers("/api/auth/**", "/actuator/health").permitAll();
+                    auth.requestMatchers("/api/auth/**", "/actuator/health", "/ws/**").permitAll();
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
-                        auth.requestMatchers("/ws/**", "/mcp/**").permitAll();
+                        auth.requestMatchers("/mcp/**").permitAll();
                     }
                     auth.anyRequest().authenticated();
                 })

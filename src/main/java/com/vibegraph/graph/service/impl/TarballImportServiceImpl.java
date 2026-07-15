@@ -15,6 +15,7 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.ServiceBusyException;
@@ -63,6 +64,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final FeatureGateService featureGateService;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
             GitHubPreFlightService preFlightService,
@@ -79,7 +81,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             CreditPricingService creditPricingService,
             CreditBalanceService creditBalanceService,
             CurrentUser currentUser,
-            ProjectOwnershipRegistrar ownershipRegistrar) {
+            ProjectOwnershipRegistrar ownershipRegistrar,
+            FeatureGateService featureGateService) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -96,18 +99,21 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
         this.ownershipRegistrar = ownershipRegistrar;
+        this.featureGateService = featureGateService;
     }
 
     @Override
     public ProjectResponse importFromGithub(GithubImportRequest request) {
-        GitHubRepositoryRef parsed = urlParser.parse(request.url());
-        GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed);
-
-        // Blocked account check before network call to GitHub.
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_IMPORT_GITHUB);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
 
+        GitHubRepositoryRef parsed = urlParser.parse(request.url());
+        GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed);
         ImportContext ctx = prepareWorkspace(resolved, userId);
+        long minimumCredits = creditPricingService.calculateCredits(
+                "IMPORT_GITHUB", ctx.javaFileCount(), ctx.totalSize(), 0);
+        creditBalanceService.assertCreditsAvailable(userId, minimumCredits);
         try {
             projectService.markAnalyzing(ctx.projectId());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0,
@@ -184,10 +190,10 @@ public class TarballImportServiceImpl implements TarballImportService {
                     "GitHub repository analysis completed");
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
 
-            // Deduct credits async
-            long sourceMb = Math.max(1, ctx.totalSize() / (1024 * 1024));
-            long requiredCredits = creditPricingService.calculateCredits("IMPORT_GITHUB", 0, sourceMb, 0);
-            creditBalanceService.deductCredits(ctx.userId(), requiredCredits, "IMPORT_GITHUB", ctx.projectId());
+            long requiredCredits = creditPricingService.calculateCredits(
+                    "IMPORT_GITHUB", ctx.javaFileCount(), ctx.totalSize(), result.nodesUpserted());
+            creditBalanceService.deductCredits(
+                    ctx.userId(), requiredCredits, "IMPORT_GITHUB", "IMPORT_GITHUB", ctx.projectId());
 
             log.info("GitHub analysis complete for project {} from {}@{} ({} .java files, credits: {})",
                     ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount(), requiredCredits);

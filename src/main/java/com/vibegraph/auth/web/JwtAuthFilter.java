@@ -62,12 +62,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length()).trim();
             try {
                 AuthenticatedUser principal = jwtService.parse(token);
-                accountSettingsService.assertNotBlocked(principal.id());
-                
+                AccountBlockedException blocked = blockedException(principal.id());
+                if (blocked != null && !isRestrictedAccountRoute(request)) {
+                    SecurityContextHolder.clearContext();
+                    writeRestrictedResponse(response, blocked.getSafeReason());
+                    return;
+                }
+
                 var userOpt = userRepository.findById(principal.id());
-                if (userOpt.isEmpty() || userOpt.get().isDeactivated()) {
+                if (userOpt.isEmpty()) {
                     SecurityContextHolder.clearContext();
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    return;
+                }
+                var user = userOpt.get();
+                if (user.isDeactivated() && !isRestrictedAccountRoute(request)) {
+                    SecurityContextHolder.clearContext();
+                    writeRestrictedResponse(response, safeDeactivationReason(user.getDeactivationReasonSafe()));
                     return;
                 }
 
@@ -77,10 +88,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 activeUsers.put(principal.id(), System.currentTimeMillis());
-            } catch (AccountBlockedException ex) {
-                SecurityContextHolder.clearContext();
-                writeBlockedResponse(response, ex);
-                return;
             } catch (JwtException | IllegalArgumentException ex) {
                 // Invalid/expired/malformed token — stay unauthenticated; entry point returns 401.
                 SecurityContextHolder.clearContext();
@@ -89,13 +96,50 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private void writeBlockedResponse(HttpServletResponse response, AccountBlockedException ex)
+    private AccountBlockedException blockedException(java.util.UUID userId) {
+        try {
+            accountSettingsService.assertNotBlocked(userId);
+            return null;
+        } catch (AccountBlockedException ex) {
+            return ex;
+        }
+    }
+
+    private boolean isRestrictedAccountRoute(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        if ("GET".equals(method) && "/api/auth/me".equals(path)) {
+            return true;
+        }
+        if ("GET".equals(method) && "/api/account/session-state".equals(path)) {
+            return true;
+        }
+        if ("/api/account/reports".equals(path)) {
+            return "GET".equals(method) || "POST".equals(method);
+        }
+        if (!path.matches("^/api/account/reports/[0-9a-fA-F-]{36}(/messages|/close)?$")) {
+            return false;
+        }
+        if (path.endsWith("/messages")) {
+            return "POST".equals(method);
+        }
+        if (path.endsWith("/close")) {
+            return "PATCH".equals(method);
+        }
+        return "GET".equals(method);
+    }
+
+    private String safeDeactivationReason(String reason) {
+        return reason == null || reason.isBlank() ? "Account closed by administrator" : reason;
+    }
+
+    private void writeRestrictedResponse(HttpServletResponse response, String safeReason)
             throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         ErrorResponse error = ErrorResponse.builder()
-                .code(ex.getCode())
-                .message(ex.getSafeReason())
+                .code("ACCOUNT_BLOCKED")
+                .message(safeReason)
                 .build();
         objectMapper.writeValue(response.getWriter(), ApiResponse.error(error));
     }

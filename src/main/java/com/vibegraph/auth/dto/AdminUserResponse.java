@@ -8,6 +8,8 @@ public record AdminUserResponse(
         String displayName,
         String role,
         boolean deactivated,
+        String deactivationReason,
+        String deactivationReasonSafe,
         boolean blocked,
         String blockedReason,
         String blockedReasonSafe,

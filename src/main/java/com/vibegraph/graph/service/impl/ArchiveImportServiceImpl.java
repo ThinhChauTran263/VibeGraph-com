@@ -15,8 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
@@ -59,10 +58,9 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final Executor analysisExecutor;
     private final AccountSettingsService accountSettingsService;
     private final ProjectUsageService projectUsageService;
-    private final CreditPricingService creditPricingService;
-    private final CreditBalanceService creditBalanceService;
     private final CurrentUser currentUser;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final FeatureGateService featureGateService;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -73,10 +71,9 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     @Qualifier("analysisExecutor") Executor analysisExecutor,
                                     AccountSettingsService accountSettingsService,
                                     ProjectUsageService projectUsageService,
-                                    CreditPricingService creditPricingService,
-                                    CreditBalanceService creditBalanceService,
                                     CurrentUser currentUser,
-                                    ProjectOwnershipRegistrar ownershipRegistrar) {
+                                    ProjectOwnershipRegistrar ownershipRegistrar,
+                                    FeatureGateService featureGateService) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -86,10 +83,9 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.analysisExecutor = analysisExecutor;
         this.accountSettingsService = accountSettingsService;
         this.projectUsageService = projectUsageService;
-        this.creditPricingService = creditPricingService;
-        this.creditBalanceService = creditBalanceService;
         this.currentUser = currentUser;
         this.ownershipRegistrar = ownershipRegistrar;
+        this.featureGateService = featureGateService;
     }
 
     @Override
@@ -101,13 +97,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
 
-            // Deduct credits
-            long sourceMb = Math.max(1, ctx.totalSize() / (1024 * 1024));
-            long requiredCredits = creditPricingService.calculateCredits("IMPORT_ARCHIVE", 0, sourceMb, 0);
-            creditBalanceService.deductCredits(currentUser.id(), requiredCredits, "IMPORT_ARCHIVE", ctx.projectId());
-
-            log.info("Imported archive '{}' as project {} ({} .java files, credits: {})",
-                    ctx.name(), ctx.projectId(), ctx.javaFileCount(), requiredCredits);
+            log.info("Imported archive '{}' as project {} ({} .java files)",
+                    ctx.name(), ctx.projectId(), ctx.javaFileCount());
             return projectService.getProject(ctx.projectId());
         } catch (RuntimeException e) {
             cleanup(ctx.workspace(), ctx.projectId());
@@ -149,6 +140,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      * errors surface immediately to the caller even on the async path.
      */
     private ImportContext prepare(String name, MultipartFile file) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_IMPORT_ARCHIVE);
         validate(name, file);
 
         // Blocked account check before we consume any server resources (extract, etc.).
@@ -212,13 +204,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
 
-            // Deduct credits async
-            long sourceMb = Math.max(1, ctx.totalSize() / (1024 * 1024));
-            long requiredCredits = creditPricingService.calculateCredits("IMPORT_ARCHIVE", 0, sourceMb, 0);
-            creditBalanceService.deductCredits(ctx.userId(), requiredCredits, "IMPORT_ARCHIVE", ctx.projectId());
-
-            log.info("Async-imported archive '{}' as project {} ({} .java files, credits: {})",
-                    ctx.name(), ctx.projectId(), ctx.javaFileCount(), requiredCredits);
+            log.info("Async-imported archive '{}' as project {} ({} .java files)",
+                    ctx.name(), ctx.projectId(), ctx.javaFileCount());
         } catch (RuntimeException e) {
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());

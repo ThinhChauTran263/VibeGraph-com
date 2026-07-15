@@ -39,6 +39,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final CurrentUser currentUser;
     private final AccountSettingsService accountSettingsService;
+    private final FeatureGateService featureGateService;
 
     /**
      * Create a local account and return a fresh token + safe user projection.
@@ -47,6 +48,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_REGISTRATION);
         String email = request.email().trim();
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new EmailAlreadyExistsException("Email already registered");
@@ -79,10 +81,6 @@ public class AuthService {
         if (!passwordMatches || user == null || user.getPasswordHash() == null) {
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        if (user.isDeactivated()) {
-            throw new InvalidCredentialsException("Account is deactivated");
-        }
-        accountSettingsService.assertNotBlocked(user.getId());
         return toAuthResponse(user);
     }
 
@@ -96,10 +94,14 @@ public class AuthService {
         UUID id = currentUser.id();
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UnauthorizedException("Authenticated user not found"));
-        return UserResponse.from(user);
+        return toUserResponse(user);
     }
 
     private AuthResponse toAuthResponse(User user) {
-        return new AuthResponse(jwtService.issue(user), UserResponse.from(user));
+        return new AuthResponse(jwtService.issue(user), toUserResponse(user));
+    }
+
+    private UserResponse toUserResponse(User user) {
+        return UserResponse.from(user, accountSettingsService.findSettings(user.getId()));
     }
 }

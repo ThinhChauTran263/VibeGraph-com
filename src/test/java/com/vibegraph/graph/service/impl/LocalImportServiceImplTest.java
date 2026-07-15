@@ -6,8 +6,6 @@ import java.util.UUID;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
@@ -27,6 +25,8 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.DirectorySizeMeasurer;
+import com.vibegraph.graph.service.LocalProjectPathValidator;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
@@ -41,10 +41,9 @@ class LocalImportServiceImplTest {
     private ProjectsProperties properties;
     private AccountSettingsService accountSettingsService;
     private ProjectUsageService projectUsageService;
-    private CreditPricingService creditPricingService;
-    private CreditBalanceService creditBalanceService;
     private CurrentUser currentUser;
     private ProjectOwnershipRegistrar ownershipRegistrar;
+    private DirectorySizeMeasurer directorySizeMeasurer;
     private LocalImportServiceImpl service;
     private final UUID userId = UUID.randomUUID();
 
@@ -56,63 +55,117 @@ class LocalImportServiceImplTest {
         graphUpdateController = Mockito.mock(GraphUpdateController.class);
         accountSettingsService = Mockito.mock(AccountSettingsService.class);
         projectUsageService = Mockito.mock(ProjectUsageService.class);
-        creditPricingService = Mockito.mock(CreditPricingService.class);
-        creditBalanceService = Mockito.mock(CreditBalanceService.class);
         currentUser = Mockito.mock(CurrentUser.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
+        directorySizeMeasurer = Mockito.mock(DirectorySizeMeasurer.class);
         properties = new ProjectsProperties();
+        properties.setAllowUnconfinedImport(true);
         Mockito.lenient().when(currentUser.id()).thenReturn(userId);
+        LocalProjectPathValidator pathValidator = new LocalProjectPathValidator(properties);
         // Run the "background" analysis inline so the async flow is deterministic in tests.
         service = new LocalImportServiceImpl(projectService, analyzeService, fileChangeBroadcaster,
                 properties, graphUpdateController, Runnable::run,
-                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
+                accountSettingsService, projectUsageService, currentUser, ownershipRegistrar,
+                pathValidator, directorySizeMeasurer);
     }
 
     @Test
     @DisplayName("importLocal analyzes in place, persists stats, broadcasts, and starts watching")
-    void importLocalAnalyzesAndWatches() {
+    void importLocalAnalyzesAndWatches(@TempDir Path projectRoot) throws Exception {
+        String canonicalRoot = projectRoot.toRealPath().toString();
         ProjectResponse created = ProjectResponse.builder()
-                .id("p1").name("demo").rootPath("/srv/demo").status("CREATED").build();
+                .id("p1").name("demo").rootPath(canonicalRoot).status("CREATED").build();
         ProjectResponse analyzing = ProjectResponse.builder()
                 .id("p1").name("demo").status("ANALYZING").build();
         Mockito.when(projectService.createProject(ArgumentMatchers.any())).thenReturn(created);
         Mockito.when(analyzeService.analyzeProject(
-                        ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq("/srv/demo"),
+                        ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq(canonicalRoot),
                         ArgumentMatchers.any()))
                 .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
         Mockito.when(projectService.getProject("p1")).thenReturn(analyzing);
 
-        service.importLocal(new LocalImportRequest("/srv/demo", "demo"));
+        service.importLocal(new LocalImportRequest(projectRoot.toString(), "demo"));
 
+        Mockito.verify(directorySizeMeasurer).measureBytes(projectRoot.toRealPath());
         Mockito.verify(projectService).createProject(ArgumentMatchers.argThat(
-                r -> "demo".equals(r.getName()) && "/srv/demo".equals(r.getRootPath())));
+                r -> "demo".equals(r.getName()) && canonicalRoot.equals(r.getRootPath())));
         Mockito.verify(projectService).markAnalyzing("p1");
         Mockito.verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZING, 0);
         Mockito.verify(analyzeService).analyzeProject(
-                ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq("/srv/demo"),
+                ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq(canonicalRoot),
                 ArgumentMatchers.any());
         Mockito.verify(projectService).markAnalyzed("p1", 3, 10, 7);
         Mockito.verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZED, 100);
-        Mockito.verify(fileChangeBroadcaster).watchProject("p1", "/srv/demo");
+        Mockito.verify(fileChangeBroadcaster).watchProject("p1", canonicalRoot);
     }
 
     @Test
     @DisplayName("importLocal marks FAILED and does not watch when analysis fails")
-    void importLocalMarksFailedOnFailure() {
+    void importLocalMarksFailedOnFailure(@TempDir Path projectRoot) throws Exception {
+        String canonicalRoot = projectRoot.toRealPath().toString();
         ProjectResponse created = ProjectResponse.builder()
-                .id("p1").name("demo").rootPath("/srv/demo").status("CREATED").build();
+                .id("p1").name("demo").rootPath(canonicalRoot).status("CREATED").build();
         Mockito.when(projectService.createProject(ArgumentMatchers.any())).thenReturn(created);
         Mockito.when(projectService.getProject("p1")).thenReturn(created);
         Mockito.when(analyzeService.analyzeProject(
-                        ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq("/srv/demo"),
+                        ArgumentMatchers.eq("p1"), ArgumentMatchers.eq("demo"), ArgumentMatchers.eq(canonicalRoot),
                         ArgumentMatchers.any()))
                 .thenThrow(new IllegalStateException("neo4j down"));
 
-        service.importLocal(new LocalImportRequest("/srv/demo", "demo"));
+        service.importLocal(new LocalImportRequest(projectRoot.toString(), "demo"));
 
         Mockito.verify(projectService).markFailed("p1", "neo4j down");
         Mockito.verify(graphUpdateController).broadcastStatus("p1", "FAILED", 0, "neo4j down");
         Mockito.verify(fileChangeBroadcaster, Mockito.never()).watchProject(ArgumentMatchers.any(), ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("import rejects an outside-root path before measuring or creating a project")
+    void importLocalRejectsOutsideRootBeforeMeasurement(
+            @TempDir Path allowedRoot,
+            @TempDir Path outsideRoot) {
+        properties.setAllowedRoot(allowedRoot.toString());
+        properties.setAllowUnconfinedImport(false);
+
+        assertThatThrownBy(() -> service.importLocal(
+                        new LocalImportRequest(outsideRoot.toString(), "outside")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("configured allowed root");
+
+        Mockito.verifyNoInteractions(directorySizeMeasurer);
+        Mockito.verify(projectService, Mockito.never()).createProject(ArgumentMatchers.any());
+        Mockito.verify(accountSettingsService, Mockito.never())
+                .assertQuotaNotExceeded(ArgumentMatchers.any(), ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    @DisplayName("import rejects a blank allowed root by default before measurement")
+    void importLocalRejectsBlankAllowedRootBeforeMeasurement(@TempDir Path projectRoot) {
+        properties.setAllowedRoot("");
+        properties.setAllowUnconfinedImport(false);
+
+        assertThatThrownBy(() -> service.importLocal(
+                        new LocalImportRequest(projectRoot.toString(), "project")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Local import is disabled");
+
+        Mockito.verifyNoInteractions(directorySizeMeasurer);
+        Mockito.verify(projectService, Mockito.never()).createProject(ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("measurement failure prevents project creation and usage persistence")
+    void importLocalMeasurementFailureStopsFlow(@TempDir Path projectRoot) {
+        Mockito.when(directorySizeMeasurer.measureBytes(ArgumentMatchers.any()))
+                .thenThrow(new IllegalArgumentException("Directory size could not be measured safely"));
+
+        assertThatThrownBy(() -> service.importLocal(
+                        new LocalImportRequest(projectRoot.toString(), "project")))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        Mockito.verify(projectService, Mockito.never()).createProject(ArgumentMatchers.any());
+        Mockito.verifyNoInteractions(projectUsageService);
+        Mockito.verifyNoInteractions(ownershipRegistrar);
     }
 
     @Test
@@ -156,9 +209,17 @@ class LocalImportServiceImplTest {
     }
 
     @Test
+    @DisplayName("browse rejects a blank allowed root unless unconfined browsing is explicitly enabled")
+    void browseRejectsBlankRootByDefault() {
+        assertThatThrownBy(() -> service.browse(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Directory browsing is disabled");
+    }
+
+    @Test
     @DisplayName("browse with a blank path lists the filesystem roots when unconfined")
     void browseListsRootsWhenUnconfined() {
-        // allowedRoot left blank → "This PC" view: every drive/root, with no parent above it.
+        properties.setAllowUnconfinedBrowse(true);
         DirectoryListing listing = service.browse(null);
 
         assertThat(listing.parent()).isNull();
@@ -174,7 +235,7 @@ class LocalImportServiceImplTest {
     @Test
     @DisplayName("browse of any accessible directory is allowed when unconfined")
     void browseAllowsAnyDirectoryWhenUnconfined(@TempDir Path anywhere) throws Exception {
-        // allowedRoot left blank → a developer can navigate to a project on any drive.
+        properties.setAllowUnconfinedBrowse(true);
         Files.createDirectories(anywhere.resolve("my-app/src"));
         Files.writeString(anywhere.resolve("my-app/pom.xml"), "<project/>\n");
 

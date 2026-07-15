@@ -15,9 +15,9 @@ import java.util.UUID;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -69,10 +70,9 @@ class ArchiveImportServiceImplTest {
 
     @Mock AccountSettingsService accountSettingsService;
     @Mock ProjectUsageService projectUsageService;
-    @Mock CreditPricingService creditPricingService;
-    @Mock CreditBalanceService creditBalanceService;
     @Mock CurrentUser currentUser;
     @Mock ProjectOwnershipRegistrar ownershipRegistrar;
+    @Mock FeatureGateService featureGateService;
 
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
@@ -88,7 +88,7 @@ class ArchiveImportServiceImplTest {
         lenient().when(currentUser.id()).thenReturn(userId);
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
-                accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
+                accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService);
     }
 
     @Test
@@ -111,6 +111,21 @@ class ArchiveImportServiceImplTest {
         verify(analyzeService).analyzeProject("p1", "demo", "rp");
         verify(projectService).updateProjectStats("p1", 1, 5, 4);
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+    }
+
+    @Test
+    @DisplayName("disabled archive import flag blocks before workspace creation")
+    void disabledArchiveImportFlag_blocksBeforeWorkspaceCreation() throws IOException {
+        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_IMPORT_ARCHIVE))
+                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_IMPORT_ARCHIVE);
+        MockMultipartFile file = zip("project.zip", Map.of("src/App.java", "class App {}"));
+
+        assertThatThrownBy(() -> service.importArchive("demo", file))
+                .isInstanceOf(FeatureDisabledException.class);
+
+        assertThat(Files.exists(workspaceRoot)).isFalse();
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
+        verify(currentUser, never()).id();
     }
 
     @Test

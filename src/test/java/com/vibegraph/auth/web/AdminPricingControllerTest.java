@@ -9,8 +9,8 @@ import org.mockito.Mockito;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
-import com.vibegraph.auth.service.AdminService;
+import com.vibegraph.auth.dto.AdminPricingRuleResponse;
+import com.vibegraph.auth.service.AdminPricingManagementService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 
 import static org.mockito.Mockito.when;
@@ -22,12 +22,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminPricingControllerTest {
 
     private MockMvc mockMvc;
-    private AdminService adminService;
+    private AdminPricingManagementService pricingManagementService;
 
     @BeforeEach
     void setUp() {
-        adminService = Mockito.mock(AdminService.class);
-        AdminPricingController controller = new AdminPricingController(adminService);
+        pricingManagementService = Mockito.mock(AdminPricingManagementService.class);
+        AdminPricingController controller = new AdminPricingController(pricingManagementService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -36,18 +36,24 @@ class AdminPricingControllerTest {
     @Test
     @DisplayName("GET /api/admin/pricing-rules returns rules list")
     void getPricingRules_succeeds() throws Exception {
-        CreditPricingRule rule = CreditPricingRule.builder()
-                .operationCode("MCP_CALL")
-                .displayName("MCP Tool Call")
-                .baseCredits(java.math.BigDecimal.valueOf(2))
-                .build();
+        AdminPricingRuleResponse rule = new AdminPricingRuleResponse(
+                "MCP_CALL",
+                "MCP Tool Call",
+                java.math.BigDecimal.valueOf(2),
+                java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.ZERO,
+                1,
+                true);
 
-        when(adminService.getPricingRules()).thenReturn(Collections.singletonList(rule));
+        when(pricingManagementService.list()).thenReturn(Collections.singletonList(rule));
 
         mockMvc.perform(get("/api/admin/pricing-rules"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].operationCode").value("MCP_CALL"))
-                .andExpect(jsonPath("$.data[0].baseCredits").value(2));
+                .andExpect(jsonPath("$.data[0].baseCredits").value(2))
+                .andExpect(jsonPath("$.data[0].id").doesNotExist())
+                .andExpect(jsonPath("$.data[0].createdAt").doesNotExist());
     }
 }

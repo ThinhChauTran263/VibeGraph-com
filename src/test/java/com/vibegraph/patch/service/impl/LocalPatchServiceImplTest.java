@@ -22,6 +22,7 @@ import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.FeatureGateService;
 import java.util.UUID;
 import com.vibegraph.patch.config.LocalPatchProperties;
 import com.vibegraph.patch.dto.request.PatchRequest;
@@ -51,6 +52,7 @@ class LocalPatchServiceImplTest {
     private ProjectUsageService projectUsageService;
     private CreditPricingService creditPricingService;
     private CreditBalanceService creditBalanceService;
+    private FeatureGateService featureGateService;
     private CurrentUser currentUser;
     private LocalPatchServiceImpl service;
 
@@ -61,10 +63,11 @@ class LocalPatchServiceImplTest {
         projectUsageService = Mockito.mock(ProjectUsageService.class);
         creditPricingService = Mockito.mock(CreditPricingService.class);
         creditBalanceService = Mockito.mock(CreditBalanceService.class);
+        featureGateService = Mockito.mock(FeatureGateService.class);
         currentUser = Mockito.mock(CurrentUser.class);
-        
+
         when(sourceFileService.resolveProjectRoot(PROJECT_ID)).thenReturn(root);
-        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+        service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
     }
 
     private static String b64(String text) {
@@ -200,6 +203,37 @@ class LocalPatchServiceImplTest {
     }
 
     @Test
+    @DisplayName("rejects duplicate write targets before debit or filesystem mutation")
+    void rejectsDuplicateWriteTargets() {
+        PatchRequest request = new PatchRequest(
+                List.of(
+                        new PatchFileChange("src/A.java", b64("one"), "base64"),
+                        new PatchFileChange("src/A.java", b64("two"), "base64")),
+                List.of(),
+                false);
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, request))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.DUPLICATE_PATH);
+        assertThat(Files.exists(root.resolve("src/A.java"))).isFalse();
+        Mockito.verify(creditBalanceService, Mockito.never())
+                .deductCredits(Mockito.any(), Mockito.anyLong(), Mockito.anyString(), Mockito.anyString(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("rejects a target present in both writes and deletions")
+    void rejectsWriteDeletionOverlap() {
+        PatchRequest request = new PatchRequest(
+                List.of(new PatchFileChange("src/A.java", b64("one"), "base64")),
+                List.of(new PatchDeletion("src/A.java")),
+                false);
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID, request))
+                .isInstanceOf(PatchRejectedException.class)
+                .extracting("reason").isEqualTo(Reason.DUPLICATE_PATH);
+    }
+
+    @Test
     @DisplayName("a single rejected file aborts the whole request — no file is applied")
     void oneRejectedEntryAppliesNothing() {
         PatchRequest request = new PatchRequest(
@@ -249,7 +283,7 @@ class LocalPatchServiceImplTest {
     void rejectsFileTooLarge() {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFileBytes(64);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
 
         String big = "a".repeat(128); // 128 raw bytes → decoded > 64
         PatchRequest request = new PatchRequest(
@@ -268,7 +302,7 @@ class LocalPatchServiceImplTest {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFileBytes(64);
         tight.setMaxTotalBytes(80);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
 
         String chunk = "a".repeat(50); // two files, 50 + 50 = 100 > 80 total
         PatchRequest request = new PatchRequest(
@@ -291,7 +325,7 @@ class LocalPatchServiceImplTest {
     void rejectsTooManyFiles() {
         LocalPatchProperties tight = new LocalPatchProperties();
         tight.setMaxFiles(2);
-        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser);
+        LocalPatchServiceImpl bounded = new LocalPatchServiceImpl(sourceFileService, tight, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
 
         PatchRequest request = new PatchRequest(
                 List.of(

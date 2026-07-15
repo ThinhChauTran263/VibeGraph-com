@@ -10,7 +10,10 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.common.exception.AccountBlockedException;
+import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -77,6 +81,7 @@ class TarballImportServiceImplTest {
     @Mock CreditBalanceService creditBalanceService;
     @Mock CurrentUser currentUser;
     @Mock ProjectOwnershipRegistrar ownershipRegistrar;
+    @Mock FeatureGateService featureGateService;
 
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
@@ -91,7 +96,8 @@ class TarballImportServiceImplTest {
         lenient().when(currentUser.id()).thenReturn(userId);
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
-                backgroundTasks::add, accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, currentUser, ownershipRegistrar);
+                backgroundTasks::add, accountSettingsService, projectUsageService, creditPricingService,
+                creditBalanceService, currentUser, ownershipRegistrar, featureGateService);
     }
 
     @Test
@@ -109,6 +115,7 @@ class TarballImportServiceImplTest {
         ProjectResponse created = ProjectResponse.builder().id("p1").name("acme/demo").rootPath("rp").status("CREATED").build();
         ProjectResponse analyzing = ProjectResponse.builder().id("p1").name("acme/demo").status("ANALYZING").progress(0).build();
         when(projectService.createProjectFromWorkspace("acme/demo", extractedRoot)).thenReturn(created);
+        when(creditPricingService.calculateCredits("IMPORT_GITHUB", 1, 0, 0)).thenReturn(3L);
         when(projectService.getProject("p1")).thenReturn(analyzing);
 
         ProjectResponse result = service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
@@ -117,17 +124,51 @@ class TarballImportServiceImplTest {
         verify(preFlightService).validatePublicRepository(new GitHubRepositoryRef("acme", "demo", null));
         verify(tarballClient).downloadTarball(eq(resolved), any(Path.class), eq(104857600L));
         verify(projectService).markAnalyzing("p1");
+        verify(creditBalanceService).assertCreditsAvailable(userId, 3L);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZING), eq(0), any(String.class));
         verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
         assertThat(backgroundTasks).hasSize(1);
 
         when(analyzeService.analyzeProject(eq("p1"), eq("acme/demo"), eq("rp"), any()))
                 .thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
+        when(creditPricingService.calculateCredits("IMPORT_GITHUB", 1, 0, 5))
+                .thenReturn(4L);
         backgroundTasks.get(0).run();
 
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZED), eq(100), any(String.class));
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+        verify(creditBalanceService).deductCredits(
+                userId, 4L, "IMPORT_GITHUB", "IMPORT_GITHUB", "p1");
+    }
+
+    @Test
+    @DisplayName("disabled GitHub import flag blocks before preflight or download")
+    void disabledGithubImportFlag_blocksBeforeNetwork() {
+        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_IMPORT_GITHUB))
+                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_IMPORT_GITHUB);
+
+        assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .isInstanceOf(FeatureDisabledException.class);
+
+        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
+    }
+
+    @Test
+    @DisplayName("blocked account stops before GitHub preflight or download")
+    void blockedAccount_stopsBeforeNetwork() {
+        doThrow(new AccountBlockedException("internal reason", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .isInstanceOf(AccountBlockedException.class);
+
+        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
+        verify(archiveExtractor, never()).extract(any(), any(), any());
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
     }
 
     @Test

@@ -13,7 +13,14 @@ import org.springframework.web.context.WebApplicationContext;
 import org.neo4j.driver.Driver;
 import com.vibegraph.auth.repository.*;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AdminAnnouncementService;
+import com.vibegraph.auth.service.AdminFeatureFlagService;
+import com.vibegraph.auth.service.AdminPlanManagementService;
+import com.vibegraph.auth.service.AdminPricingManagementService;
+import com.vibegraph.auth.service.AdminSecurityMonitorService;
 import com.vibegraph.auth.service.AdminService;
+import com.vibegraph.auth.service.AdminStorageService;
+import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.JwtService;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +65,13 @@ class AdminSecurityIT {
 
     @MockitoBean private Driver neo4jDriver;
     @MockitoBean private AdminService adminService;
+    @MockitoBean private AdminPlanManagementService adminPlanManagementService;
+    @MockitoBean private AdminPricingManagementService adminPricingManagementService;
+    @MockitoBean private AdminFeatureFlagService adminFeatureFlagService;
+    @MockitoBean private AdminAnnouncementService adminAnnouncementService;
+    @MockitoBean private AdminSecurityMonitorService adminSecurityMonitorService;
+    @MockitoBean private AdminStorageService adminStorageService;
+    @MockitoBean private CreditBalanceService creditBalanceService;
     @MockitoBean private JwtService jwtService;
     @MockitoBean private AccountSettingsService accountSettingsService;
 
@@ -71,6 +85,8 @@ class AdminSecurityIT {
     @MockitoBean private CreditPricingRuleRepository pricingRuleRepository;
     @MockitoBean private CreditLedgerRepository creditLedgerRepository;
     @MockitoBean private ApiKeyRepository apiKeyRepository;
+    @MockitoBean private FeatureFlagRepository featureFlagRepository;
+    @MockitoBean private ProjectUsageRepository projectUsageRepository;
     @MockitoBean private jakarta.persistence.EntityManagerFactory entityManagerFactory;
     @MockitoBean private jakarta.persistence.EntityManager entityManager;
     @MockitoBean private com.vibegraph.auth.CurrentUser currentUser;

@@ -17,6 +17,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
@@ -27,9 +31,6 @@ import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
-import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -48,9 +49,6 @@ class ProjectApiIT {
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
     private ProjectDeletionOrchestrator deletionOrchestrator;
-    private CreditPricingService creditPricingService;
-    private CreditBalanceService creditBalanceService;
-    private CurrentUser currentUser;
 
     @BeforeEach
     void setUp() {
@@ -60,12 +58,10 @@ class ProjectApiIT {
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
-        creditPricingService = Mockito.mock(CreditPricingService.class);
-        creditBalanceService = Mockito.mock(CreditBalanceService.class);
-        currentUser = Mockito.mock(CurrentUser.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator, creditPricingService, creditBalanceService, currentUser);
+                deletionOrchestrator, Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
+                Mockito.mock(CreditPricingService.class), Mockito.mock(CreditBalanceService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

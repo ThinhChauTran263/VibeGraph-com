@@ -9,8 +9,8 @@ import org.mockito.Mockito;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.vibegraph.auth.domain.Plan;
-import com.vibegraph.auth.service.AdminService;
+import com.vibegraph.auth.dto.AdminPlanResponse;
+import com.vibegraph.auth.service.AdminPlanManagementService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 
 import static org.mockito.Mockito.when;
@@ -22,12 +22,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminPlanControllerTest {
 
     private MockMvc mockMvc;
-    private AdminService adminService;
+    private AdminPlanManagementService planManagementService;
 
     @BeforeEach
     void setUp() {
-        adminService = Mockito.mock(AdminService.class);
-        AdminPlanController controller = new AdminPlanController(adminService);
+        planManagementService = Mockito.mock(AdminPlanManagementService.class);
+        AdminPlanController controller = new AdminPlanController(planManagementService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -36,20 +36,18 @@ class AdminPlanControllerTest {
     @Test
     @DisplayName("GET /api/admin/plans returns plans catalog")
     void getPlans_succeeds() throws Exception {
-        Plan plan = Plan.builder()
-                .code("PRO")
-                .name("Pro")
-                .storageLimitBytes(500000L)
-                .monthlyCreditLimit(500)
-                .build();
+        AdminPlanResponse plan = new AdminPlanResponse(
+                "PRO", "Pro", 500000L, 10, 500, false);
 
-        when(adminService.getPlans()).thenReturn(Collections.singletonList(plan));
+        when(planManagementService.list()).thenReturn(Collections.singletonList(plan));
 
         mockMvc.perform(get("/api/admin/plans"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].code").value("PRO"))
                 .andExpect(jsonPath("$.data[0].name").value("Pro"))
-                .andExpect(jsonPath("$.data[0].monthlyCreditLimit").value(500));
+                .andExpect(jsonPath("$.data[0].monthlyCreditLimit").value(500))
+                .andExpect(jsonPath("$.data[0].id").doesNotExist())
+                .andExpect(jsonPath("$.data[0].createdAt").doesNotExist());
     }
 }

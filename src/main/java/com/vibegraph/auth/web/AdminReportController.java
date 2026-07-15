@@ -26,11 +26,14 @@ import com.vibegraph.auth.service.AdminService;
 import com.vibegraph.common.dto.response.ApiResponse;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/reports")
 @RequiredArgsConstructor
+@org.springframework.validation.annotation.Validated
 public class AdminReportController {
 
     private final AdminService adminService;
@@ -40,8 +43,8 @@ public class AdminReportController {
     public ResponseEntity<ApiResponse<com.vibegraph.auth.dto.AdminPageResponse<AdminFeedbackResponse>>> getReports(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<AdminFeedbackResponse> result = adminService.getFeedbackReports(status, q, pageable);
@@ -78,11 +81,5 @@ public class AdminReportController {
     ) {
         adminService.closeFeedbackReport(reportId);
         return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    @PostMapping("/seed-test-data")
-    public ResponseEntity<ApiResponse<UUID>> seedTestData() {
-        UUID userId = currentUser.id();
-        return ResponseEntity.ok(ApiResponse.success(adminService.createTestReport(userId)));
     }
 }

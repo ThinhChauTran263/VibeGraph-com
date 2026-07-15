@@ -5,17 +5,21 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.mcp.source.SourceFileService;
 import com.vibegraph.patch.config.LocalPatchProperties;
@@ -65,7 +69,9 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
     private final ProjectUsageService projectUsageService;
     private final CreditPricingService creditPricingService;
     private final CreditBalanceService creditBalanceService;
+    private final FeatureGateService featureGateService;
     private final CurrentUser currentUser;
+    private final AtomicPatchApplier atomicPatchApplier;
 
     /**
      * Directory segments that must never be written to or deleted through a patch.
@@ -135,6 +141,7 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             deletionOldSizes[i] = Files.isRegularFile(deletionTargets[i])
                     ? deletionTargets[i].toFile().length() : 0L;
         }
+        rejectDuplicateAndOverlappingTargets(fileTargets, deletionTargets);
 
         // Quota: net delta = sum(newSize - oldSize) for writes + sum(-oldSize) for deletions.
         UUID userId = currentUser.id();
@@ -162,31 +169,36 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             return new PatchResult(projectId, files.size(), wouldDelete, List.of(), false);
         }
 
-        // --- Phase 3: apply. Validation already passed, so this only mutates safe,
-        // confined paths. ---
-        int changed = 0;
-        for (int i = 0; i < fileTargets.length; i++) {
-            writeFile(fileTargets[i], decoded[i]);
-            changed++;
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
+        long requiredCredits = creditPricingService.calculateCredits("CLI_PUSH", files.size(), 0);
+        creditBalanceService.deductCredits(userId, requiredCredits, "CLI", "CLI_PUSH", projectId);
+
+        List<AtomicPatchApplier.Write> writes = new java.util.ArrayList<>(fileTargets.length);
+        for (int index = 0; index < fileTargets.length; index++) {
+            writes.add(new AtomicPatchApplier.Write(fileTargets[index], decoded[index]));
         }
-        int deleted = 0;
-        for (Path target : deletionTargets) {
-            if (deleteFile(target)) {
-                deleted++;
+        List<Path> existingDeletions = java.util.Arrays.stream(deletionTargets)
+                .filter(Files::isRegularFile)
+                .toList();
+
+        AtomicPatchApplier.Session patchSession =
+                atomicPatchApplier.apply(root, writes, existingDeletions);
+        boolean transactionSynchronizationRegistered = registerTransactionCompletion(patchSession);
+        try {
+            if (netDeltaBytes != 0) {
+                projectUsageService.recordPatchDelta(projectId, netDeltaBytes);
             }
+            if (!transactionSynchronizationRegistered) {
+                patchSession.commit();
+            }
+        } catch (RuntimeException ex) {
+            patchSession.rollback();
+            throw ex;
         }
 
+        int changed = writes.size();
+        int deleted = existingDeletions.size();
         boolean requiresAnalyze = changed > 0 || deleted > 0;
-
-        // Persist usage delta so GET /api/account/usage reflects this patch immediately.
-        if (netDeltaBytes != 0) {
-            projectUsageService.recordPatchDelta(projectId, netDeltaBytes);
-        }
-
-        // Deduct credits (only file count matters for CLI_PUSH)
-        long requiredCredits = creditPricingService.calculateCredits("CLI_PUSH", files.size(), 0, 0);
-        creditBalanceService.deductCredits(userId, requiredCredits, "CLI_PUSH", projectId);
-
         log.info("Local patch for project {}: {} changed, {} deleted (requiresAnalyze={}, delta={}B, credits={})",
                 projectId, changed, deleted, requiresAnalyze, netDeltaBytes, requiredCredits);
         return new PatchResult(projectId, changed, deleted, List.of(), requiresAnalyze);
@@ -206,6 +218,26 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         if (decodedLength > properties.getMaxFileBytes()) {
             throw new PatchRejectedException(Reason.FILE_TOO_LARGE,
                     "file exceeds the maximum size of " + properties.getMaxFileBytes() + " bytes");
+        }
+    }
+
+    private void rejectDuplicateAndOverlappingTargets(Path[] writes, Path[] deletions) {
+        List<Path> targets = new java.util.ArrayList<>(writes.length + deletions.length);
+        targets.addAll(java.util.Arrays.asList(writes));
+        targets.addAll(java.util.Arrays.asList(deletions));
+        Set<Path> unique = new HashSet<>();
+        for (Path target : targets) {
+            if (!unique.add(target)) {
+                throw new PatchRejectedException(
+                        Reason.DUPLICATE_PATH, "patch contains duplicate target paths");
+            }
+        }
+        List<Path> sorted = unique.stream().sorted().toList();
+        for (int index = 0; index < sorted.size() - 1; index++) {
+            if (sorted.get(index + 1).startsWith(sorted.get(index))) {
+                throw new PatchRejectedException(
+                        Reason.OVERLAPPING_PATH, "patch contains overlapping target paths");
+            }
         }
     }
 
@@ -349,27 +381,20 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         return fileName.substring(dot + 1);
     }
 
-    // --- filesystem mutation
-    // -------------------------------------------------------------------
-
-    private void writeFile(Path target, byte[] bytes) {
-        try {
-            Path parent = target.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
+    private boolean registerTransactionCompletion(AtomicPatchApplier.Session patchSession) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return false;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_COMMITTED) {
+                    patchSession.commit();
+                } else {
+                    patchSession.rollback();
+                }
             }
-            Files.write(target, bytes);
-        } catch (IOException ex) {
-            // Never surface the raw IO message (may contain host paths); keep it generic.
-            throw new IllegalStateException("Failed to write patched file");
-        }
-    }
-
-    private boolean deleteFile(Path target) {
-        try {
-            return Files.deleteIfExists(target);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to delete file");
-        }
+        });
+        return true;
     }
 }

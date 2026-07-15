@@ -75,6 +75,15 @@ public class User {
     @Column(name = "deactivated", nullable = false)
     private boolean deactivated = false;
 
+    @Column(name = "deactivated_at")
+    private Instant deactivatedAt;
+
+    @Column(name = "deactivation_reason", length = 500)
+    private String deactivationReason;
+
+    @Column(name = "deactivation_reason_safe", length = 240)
+    private String deactivationReasonSafe;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

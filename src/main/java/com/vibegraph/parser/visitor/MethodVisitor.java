@@ -195,7 +195,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
             } catch (Exception e) {
                 // Unresolvable symbol (missing dependency, dynamic type, etc.) — emit low-confidence unresolved stub.
                 String rawTarget = call.getScope().map(s -> s.toString() + ".").orElse("") + call.getNameAsString();
-                
+
                 String ownerName = "<unresolved>";
                 if (call.getScope().isPresent()) {
                     Expression scope = call.getScope().get();
@@ -266,7 +266,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
             } catch (Exception e) {
                 // Unresolved method reference — emit low-confidence stub.
                 String rawTarget = ref.getScope().toString() + "::" + identifier;
-                
+
                 String ownerName = "<unresolved>";
                 try {
                     var resolvedType = ref.getScope().calculateResolvedType();
