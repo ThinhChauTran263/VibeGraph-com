@@ -134,9 +134,7 @@ describe('useArchiveImport - successful upload', () => {
 
 describe('useArchiveImport - error mapping', () => {
   it('maps ApiError(413) to a user-friendly oversized message', async () => {
-    uploadArchiveMock.mockRejectedValueOnce(
-      new ApiError(413, 'Payload Too Large', 'huge'),
-    )
+    uploadArchiveMock.mockRejectedValueOnce(new ApiError(413, 'Payload Too Large', 'huge'))
     const composable = useArchiveImport()
 
     const result = await composable.uploadArchive('demo', makeFile('demo.zip', 1024))
@@ -158,9 +156,7 @@ describe('useArchiveImport - error mapping', () => {
   })
 
   it('keeps the original ApiError message for client errors (e.g. 400)', async () => {
-    uploadArchiveMock.mockRejectedValueOnce(
-      new ApiError(400, 'Bad Request', 'unsafe path entry'),
-    )
+    uploadArchiveMock.mockRejectedValueOnce(new ApiError(400, 'Bad Request', 'unsafe path entry'))
     const composable = useArchiveImport()
 
     await composable.uploadArchive('demo', makeFile('demo.zip', 1024))
@@ -191,7 +187,11 @@ function makeFakeWs(opts: { connectRejects?: boolean } = {}) {
 
   const subscribe = <T>(topic: string, cb: (payload: T) => void) => {
     captured = { topic, cb: cb as unknown as (e: ProjectStatusEvent) => void }
-    return { unsubscribe: () => { unsubscribed = true } }
+    return {
+      unsubscribe: () => {
+        unsubscribed = true
+      },
+    }
   }
 
   const ws: UseWebSocketReturn = {

@@ -6,5 +6,8 @@ public record AccountUsageResponse(
         long remainingBytes,
         String planCode,
         String planName,
-        Long quotaOverrideBytes) {
+        Long quotaOverrideBytes,
+        int creditsUsed,
+        int creditsLimit,
+        int creditsRemaining) {
 }

@@ -11,8 +11,15 @@ import java.util.concurrent.RejectedExecutionException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -33,7 +40,10 @@ import com.vibegraph.graph.websocket.GraphUpdateController;
 
 import lombok.extern.slf4j.Slf4j;
 
-/** Default implementation importing public GitHub repositories through their tarball API. */
+/**
+ * Default implementation importing public GitHub repositories through their
+ * tarball API.
+ */
 @Service
 @Slf4j
 public class TarballImportServiceImpl implements TarballImportService {
@@ -48,17 +58,31 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final GraphUpdateController graphUpdateController;
     private final FileChangeBroadcaster fileChangeBroadcaster;
     private final Executor analysisExecutor;
+    private final AccountSettingsService accountSettingsService;
+    private final ProjectUsageService projectUsageService;
+    private final CreditPricingService creditPricingService;
+    private final CreditBalanceService creditBalanceService;
+    private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final FeatureGateService featureGateService;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
-                                    GitHubPreFlightService preFlightService,
-                                    GitHubTarballClient tarballClient,
-                                    ArchiveImportProperties properties,
-                                    ArchiveExtractor archiveExtractor,
-                                    ProjectService projectService,
-                                    AnalyzeService analyzeService,
-                                    GraphUpdateController graphUpdateController,
-                                    FileChangeBroadcaster fileChangeBroadcaster,
-                                    @Qualifier("analysisExecutor") Executor analysisExecutor) {
+            GitHubPreFlightService preFlightService,
+            GitHubTarballClient tarballClient,
+            ArchiveImportProperties properties,
+            ArchiveExtractor archiveExtractor,
+            ProjectService projectService,
+            AnalyzeService analyzeService,
+            GraphUpdateController graphUpdateController,
+            FileChangeBroadcaster fileChangeBroadcaster,
+            @Qualifier("analysisExecutor") Executor analysisExecutor,
+            AccountSettingsService accountSettingsService,
+            ProjectUsageService projectUsageService,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            CurrentUser currentUser,
+            ProjectOwnershipRegistrar ownershipRegistrar,
+            FeatureGateService featureGateService) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -69,14 +93,27 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.graphUpdateController = graphUpdateController;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.analysisExecutor = analysisExecutor;
+        this.accountSettingsService = accountSettingsService;
+        this.projectUsageService = projectUsageService;
+        this.creditPricingService = creditPricingService;
+        this.creditBalanceService = creditBalanceService;
+        this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
+        this.featureGateService = featureGateService;
     }
 
     @Override
     public ProjectResponse importFromGithub(GithubImportRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_IMPORT_GITHUB);
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+
         GitHubRepositoryRef parsed = urlParser.parse(request.url());
         GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed);
-        ImportContext ctx = prepareWorkspace(resolved);
-
+        ImportContext ctx = prepareWorkspace(resolved, userId);
+        long minimumCredits = creditPricingService.calculateCredits(
+                "IMPORT_GITHUB", ctx.javaFileCount(), ctx.totalSize(), 0);
+        creditBalanceService.assertCreditsAvailable(userId, minimumCredits);
         try {
             projectService.markAnalyzing(ctx.projectId());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0,
@@ -84,7 +121,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             analysisExecutor.execute(() -> analyzeInBackground(ctx));
             return projectService.getProject(ctx.projectId());
         } catch (RejectedExecutionException ex) {
-            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
+            // Executor saturated: mark FAILED and surface 503 instead of blocking the
+            // request thread.
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
             projectService.markFailed(ctx.projectId(), reason);
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
@@ -96,7 +134,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         }
     }
 
-    private ImportContext prepareWorkspace(GitHubRepositoryRef ref) {
+    private ImportContext prepareWorkspace(GitHubRepositoryRef ref, UUID userId) {
         Path workspace = properties.getWorkspaceRoot().resolve("github-" + UUID.randomUUID());
         Path tarball = workspace.resolve("repo.tar.gz");
         Path source = workspace.resolve("source");
@@ -108,12 +146,24 @@ public class TarballImportServiceImpl implements TarballImportService {
             ArchiveExtractionResult extraction = archiveExtractor.extract(tarball, ArchiveType.TAR_GZ, source);
             deleteRecursively(tarball);
 
-            ProjectResponse project = projectService.createProjectFromWorkspace(ref.displayName(), extraction.extractedRoot());
+            // Quota check after extraction — we now know the exact extracted size.
+            long totalSize = measureExtractedSize(source);
+            accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
+
+            ProjectResponse project = projectService.createProjectFromWorkspace(ref.displayName(),
+                    extraction.extractedRoot());
             createdProjectId = project.getId();
+
+            // Register ownership first to satisfy FK constraint in usage
+            ownershipRegistrar.registerGithub(createdProjectId, project.getName());
+
+            // Record storage usage synchronously.
+            projectUsageService.recordImport(createdProjectId, userId, totalSize);
+
             log.info("Imported GitHub tarball {}@{} as project {} ({} .java files)",
                     ref.displayName(), ref.ref(), project.getId(), extraction.javaFiles().size());
             return new ImportContext(workspace, project.getId(), project.getRootPath(), ref.displayName(), ref.ref(),
-                    extraction.javaFiles().size());
+                    extraction.javaFiles().size(), totalSize, userId);
         } catch (GithubImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -132,15 +182,21 @@ public class TarballImportServiceImpl implements TarballImportService {
                 projectService.updateProgress(ctx.projectId(), percent);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
             };
-            AnalyzeService.AnalysisResult result =
-                    analyzeService.analyzeProject(ctx.projectId(), ctx.repository(), ctx.rootPath(), listener);
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.repository(),
+                    ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100,
                     "GitHub repository analysis completed");
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
-            log.info("GitHub analysis complete for project {} from {}@{} ({} .java files)",
-                    ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount());
+
+            long requiredCredits = creditPricingService.calculateCredits(
+                    "IMPORT_GITHUB", ctx.javaFileCount(), ctx.totalSize(), result.nodesUpserted());
+            creditBalanceService.deductCredits(
+                    ctx.userId(), requiredCredits, "IMPORT_GITHUB", "IMPORT_GITHUB", ctx.projectId());
+
+            log.info("GitHub analysis complete for project {} from {}@{} ({} .java files, credits: {})",
+                    ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount(), requiredCredits);
         } catch (RuntimeException e) {
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
@@ -150,7 +206,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     }
 
     private record ImportContext(Path workspace, String projectId, String rootPath, String repository, String ref,
-                                 int javaFileCount) {
+            int javaFileCount, long totalSize, UUID userId) {
     }
 
     private void cleanup(Path workspace, String projectId) {
@@ -178,6 +234,21 @@ public class TarballImportServiceImpl implements TarballImportService {
             });
         } catch (IOException ex) {
             log.warn("Failed to clean workspace {}: {}", path, ex.getMessage());
+        }
+    }
+
+    /**
+     * Sum the sizes of all regular files under the extracted source directory.
+     * Used to verify quota before registering the project.
+     */
+    private long measureExtractedSize(Path dir) {
+        try (var walk = Files.walk(dir)) {
+            return walk.filter(Files::isRegularFile)
+                    .mapToLong(p -> {
+                        try { return Files.size(p); } catch (IOException e) { return 0L; }
+                    }).sum();
+        } catch (IOException e) {
+            return 0L;
         }
     }
 }

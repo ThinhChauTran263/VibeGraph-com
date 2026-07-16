@@ -16,7 +16,11 @@
 
 import { onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useGraphStore } from '@/stores/graph'
-import { useWebSocket, type TopicSubscription, type UseWebSocketReturn } from '@/composables/useWebSocket'
+import {
+  useWebSocket,
+  type TopicSubscription,
+  type UseWebSocketReturn,
+} from '@/composables/useWebSocket'
 import { applyGraphUpdate, parseGraphUpdateEvent } from '@/lib/graphPatch'
 import { bumpGraphVersion } from '@/lib/graphVersion'
 import type { GraphUpdateEvent } from '@/types/graph'

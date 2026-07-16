@@ -41,6 +41,23 @@ public class Plan {
     @Column(name = "api_key_limit", nullable = false)
     private int apiKeyLimit;
 
+    @Builder.Default
+    @Column(name = "monthly_credit_limit", nullable = false)
+    private int monthlyCreditLimit = 0;
+
+    @Builder.Default
+    @Column(name = "contact_sales_required", nullable = false)
+    private boolean contactSalesRequired = false;
+
+    @Builder.Default
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
+
+    @Builder.Default
+    @Column(name = "sort_order", nullable = false)
+    private int sortOrder = 0;
+
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

@@ -39,7 +39,11 @@ export function useGraphExpand() {
    * Expand a node's 1- or 2-hop neighborhood and merge it into {@code store.graphData}.
    * Returns the number of NEW nodes added (0 when everything was already present or on error).
    */
-  async function expandNode(projectId: string, nodeId: string, hops: ExpandHops = 1): Promise<number> {
+  async function expandNode(
+    projectId: string,
+    nodeId: string,
+    hops: ExpandHops = 1,
+  ): Promise<number> {
     if (!projectId || !nodeId) return 0
     const seq = projectSeq
     expanding.value = true

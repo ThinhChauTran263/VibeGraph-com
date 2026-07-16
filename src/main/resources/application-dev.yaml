@@ -11,6 +11,8 @@ spring:
 vibegraph:
   projects:
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+    allow-unconfined-browse: ${VIBEGRAPH_ALLOW_UNCONFINED_BROWSE:true}
+    allow-unconfined-import: ${VIBEGRAPH_ALLOW_UNCONFINED_IMPORT:true}
 
   import:
     archive:

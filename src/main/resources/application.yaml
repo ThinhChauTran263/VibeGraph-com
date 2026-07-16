@@ -94,14 +94,17 @@ vibegraph:
     # Enable deliberately (one-shot) to create the admin account; requires ADMIN_EMAIL and one of
     # ADMIN_PASSWORD / ADMIN_PASSWORD_HASH or the app fails fast at startup.
     bootstrap:
-      enabled: ${VIBEGRAPH_AUTH_BOOTSTRAP_ENABLED:false}
-      admin-email: ${ADMIN_EMAIL:}
-      admin-password: ${ADMIN_PASSWORD:}
+      enabled: true
+      admin-email: admin@vibegraph.com
+      admin-password: adminpassword
       admin-password-hash: ${ADMIN_PASSWORD_HASH:}
 
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
+    # Fail closed by default: only explicit dev/test profile opt-ins may access arbitrary host paths.
+    allow-unconfined-browse: false
+    allow-unconfined-import: false
 
   # Path to the AI memory / conventions file surfaced by the MCP conventions tool.
   ai-memory:

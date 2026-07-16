@@ -32,6 +32,8 @@ export interface TopicSubscription {
 export interface UseWebSocketOptions {
   /** Override the SockJS endpoint. Defaults to `WS_URL`. */
   url?: string
+  /** Optional STOMP CONNECT headers. Browser auth normally uses the HttpOnly cookie handshake. */
+  connectHeaders?: Record<string, string> | (() => Record<string, string>)
   /**
    * Override the STOMP client factory. Primarily a test seam so unit tests can
    * inject a fake client without a real socket. When omitted, a real
@@ -68,6 +70,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     const SockJS = sockjsModule.default
     return new Client({
       webSocketFactory: () => new SockJS(url) as unknown as IStompSocket,
+      connectHeaders: resolveConnectHeaders(),
       reconnectDelay: WS_RECONNECT_DELAY_MS,
       heartbeatIncoming: WS_HEARTBEAT_INCOMING_MS,
       heartbeatOutgoing: WS_HEARTBEAT_OUTGOING_MS,
@@ -129,7 +132,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         } catch (err: unknown) {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         }
         return
       }
@@ -139,7 +146,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         .catch((err: unknown) => {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         })
     })
   }
@@ -191,6 +202,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       error.value = 'Received a malformed WebSocket message.'
       return undefined
     }
+  }
+
+  function resolveConnectHeaders(): Record<string, string> {
+    if (typeof options.connectHeaders === 'function') {
+      return options.connectHeaders()
+    }
+    if (options.connectHeaders) {
+      return options.connectHeaders
+    }
+    return {}
   }
 
   return { status, error, connect, disconnect, subscribe }

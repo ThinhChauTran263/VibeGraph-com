@@ -75,6 +75,10 @@ spring:
 
 # VibeGraph custom config — dùng default an toàn cho test.
 vibegraph:
+  projects:
+    allow-unconfined-browse: true
+    allow-unconfined-import: true
+
   cors:
     allowed-origins:
       - http://localhost:5173

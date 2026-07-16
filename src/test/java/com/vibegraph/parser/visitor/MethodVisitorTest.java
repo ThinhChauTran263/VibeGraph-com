@@ -548,4 +548,85 @@ class MethodVisitorTest {
                     "must not infer OVERRIDES from @Override alone when the target is unresolved");
         }
     }
+
+    @Nested
+    @DisplayName("Lambda, Method Reference, and Unresolved Call Robustness (Sprint 3)")
+    class Sprint3Robustness {
+
+        private CompilationUnit parseWithSolver(String code) {
+            JavaParser solverParser = new JavaParser(new com.github.javaparser.ParserConfiguration()
+                    .setSymbolResolver(new com.github.javaparser.symbolsolver.JavaSymbolSolver(
+                            new com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver())));
+            ParseResult<CompilationUnit> result = solverParser.parse(code);
+            assertTrue(result.isSuccessful());
+            return result.getResult().orElseThrow();
+        }
+
+        @Test
+        @DisplayName("should parse lambda expressions without crash and extract internal calls")
+        void shouldParseLambdaWithoutCrash() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                import java.util.List;
+                public class C {
+                    public void process(List<String> items) {
+                        items.forEach(item -> System.out.println(item));
+                    }
+                }
+                """);
+            // Should complete successfully without throwing exceptions
+            visitor.visit(cu, null);
+            assertFalse(visitor.getExtractedMethods().isEmpty());
+        }
+
+        @Test
+        @DisplayName("should parse method references and extract resolved/unresolved calls")
+        void shouldParseMethodReferences() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                import java.util.List;
+                public class C {
+                    public void process(List<String> items) {
+                        items.forEach(this::helper);
+                        items.forEach(UnknownClass::unknownMethod);
+                    }
+                    public void helper(String s) {}
+                }
+                """);
+            visitor.visit(cu, null);
+            List<com.vibegraph.parser.node.EdgeData> edges = visitor.getExtractedEdges();
+
+            // 1. In-project helper reference should be resolved
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
+                    && "com.example.C.helper(String)".equals(e.targetFullName())
+                    && "resolved".equals(e.properties().get("targetType"))
+                    && "method".equals(e.properties().get("callKind"))));
+
+            // 2. Unresolved method reference should emit unresolved stub
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
+                    && e.targetFullName().contains("unknownMethod")
+                    && "unresolved".equals(e.properties().get("targetType"))
+                    && "method".equals(e.properties().get("callKind"))));
+        }
+
+        @Test
+        @DisplayName("should emit low-confidence CALLS edge for unresolved method calls")
+        void shouldEmitStubForUnresolvedCall() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                public class C {
+                    public void process() {
+                        unknownService.doSomething("hello", 123);
+                    }
+                }
+                """);
+            visitor.visit(cu, null);
+            List<com.vibegraph.parser.node.EdgeData> edges = visitor.getExtractedEdges();
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
+                    && "unresolved".equals(e.properties().get("targetType"))
+                    && Double.valueOf(0.3).equals(e.properties().get("confidence"))
+                    && "unknownService.doSomething".equals(e.properties().get("rawTarget"))
+                    && e.targetFullName().contains("doSomething")));
+        }
+    }
 }

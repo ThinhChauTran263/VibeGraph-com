@@ -1,10 +1,21 @@
 package com.vibegraph.common.config;
 
+import java.util.Arrays;
+
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.mcp.MeteredToolCallback;
 import com.vibegraph.mcp.tool.ArchitectureTool;
 import com.vibegraph.mcp.tool.ClassContextTool;
 import com.vibegraph.mcp.tool.ExplainFailureTool;
@@ -25,6 +36,12 @@ import com.vibegraph.mcp.tool.TraceEndpointTool;
 public class McpServerConfig {
 
     @Bean
+    @ConditionalOnMissingBean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    @Bean
     public ToolCallbackProvider mcpToolCallbackProvider(
             ArchitectureTool architectureTool,
             ClassContextTool classContextTool,
@@ -40,8 +57,15 @@ public class McpServerConfig {
             SuggestTestPlanTool suggestTestPlanTool,
             PlanCodeChangeTool planCodeChangeTool,
             ExplainFailureTool explainFailureTool,
-            ProjectConventionsTool projectConventionsTool) {
-        return MethodToolCallbackProvider.builder()
+            ProjectConventionsTool projectConventionsTool,
+            CurrentUser currentUser,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            ProjectOwnershipGuard ownershipGuard,
+            FeatureGateService featureGateService,
+            AccountSettingsService accountSettingsService,
+            ObjectMapper objectMapper) {
+        ToolCallbackProvider baseProvider = MethodToolCallbackProvider.builder()
                 .toolObjects(
                         architectureTool,
                         classContextTool,
@@ -59,5 +83,16 @@ public class McpServerConfig {
                         explainFailureTool,
                         projectConventionsTool)
                 .build();
+        return ToolCallbackProvider.from(Arrays.stream(baseProvider.getToolCallbacks())
+                .map(callback -> new MeteredToolCallback(
+                        callback,
+                        currentUser,
+                        creditPricingService,
+                        creditBalanceService,
+                        ownershipGuard,
+                        featureGateService,
+                        accountSettingsService,
+                        objectMapper))
+                .toList());
     }
 }

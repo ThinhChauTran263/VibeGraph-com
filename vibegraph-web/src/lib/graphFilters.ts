@@ -7,12 +7,15 @@ export interface GraphFilterState {
 }
 
 function countByType<T extends string>(values: T[]): Record<T, number> {
-  return values.reduce<Record<T, number>>((counts, type) => {
-    return {
-      ...counts,
-      [type]: (counts[type] ?? 0) + 1,
-    }
-  }, {} as Record<T, number>)
+  return values.reduce<Record<T, number>>(
+    (counts, type) => {
+      return {
+        ...counts,
+        [type]: (counts[type] ?? 0) + 1,
+      }
+    },
+    {} as Record<T, number>,
+  )
 }
 
 /**

@@ -14,11 +14,18 @@ import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
 import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 
+type Method = 'local' | 'archive' | 'github'
+
+const props = withDefaults(
+  defineProps<{
+    disabledMethods?: Partial<Record<Method, string | null>>
+  }>(),
+  { disabledMethods: () => ({}) },
+)
+
 const emit = defineEmits<{
   imported: [project: Project]
 }>()
-
-type Method = 'local' | 'archive' | 'github'
 
 interface MethodTab {
   id: Method
@@ -43,7 +50,8 @@ const tabs: MethodTab[] = [
     id: 'archive',
     label: 'Archive',
     short: 'Archive',
-    description: 'Upload a Java project archive (.zip, .tar, .tar.gz, .tgz). VibeGraph extracts and analyzes it for you.',
+    description:
+      'Upload a Java project archive (.zip, .tar, .tar.gz, .tgz). VibeGraph extracts and analyzes it for you.',
     accent: 'var(--vg-cyan)',
     accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
@@ -51,7 +59,8 @@ const tabs: MethodTab[] = [
     id: 'github',
     label: 'GitHub',
     short: 'GitHub',
-    description: 'Point VibeGraph at any public GitHub repository by its HTTPS URL and it clones, indexes and maps it.',
+    description:
+      'Point VibeGraph at any public GitHub repository by its HTTPS URL and it clones, indexes and maps it.',
     accent: 'var(--vg-violet)',
     accentSoft: 'rgba(167, 139, 250, 0.16)',
   },
@@ -62,6 +71,10 @@ const activeTab = computed<MethodTab>(() => tabs.find((t) => t.id === active.val
 
 function onImported(project: Project): void {
   emit('imported', project)
+}
+
+function selectMethod(method: Method): void {
+  if (!props.disabledMethods[method]) active.value = method
 }
 
 // Each method gets a distinct icon so the segmented control reads at a glance.
@@ -98,12 +111,16 @@ function iconPath(id: Method): string {
         :key="tab.id"
         class="import-panel__tab"
         :class="{ 'import-panel__tab--active': active === tab.id }"
-        :style="active === tab.id ? { '--accent': tab.accent, '--accent-soft': tab.accentSoft } : {}"
+        :style="
+          active === tab.id ? { '--accent': tab.accent, '--accent-soft': tab.accentSoft } : {}
+        "
         type="button"
         role="tab"
+        :disabled="Boolean(props.disabledMethods[tab.id])"
         :aria-selected="active === tab.id"
+        :title="props.disabledMethods[tab.id] || undefined"
         :data-test="`import-tab-${tab.id}`"
-        @click="active = tab.id"
+        @click="selectMethod(tab.id)"
       >
         <svg
           class="import-panel__tab-icon"
@@ -124,10 +141,20 @@ function iconPath(id: Method): string {
       </button>
     </div>
 
-    <div class="import-panel__body">
+    <p v-if="props.disabledMethods[active]" class="import-panel__disabled" role="status">
+      {{ props.disabledMethods[active] }}
+    </p>
+
+    <div v-else class="import-panel__body">
       <Transition name="import-fade" mode="out-in">
         <AddProjectLocal v-if="active === 'local'" key="local" embedded @imported="onImported" />
-        <AddProjectArchive v-else-if="active === 'archive'" key="archive" :async="true" embedded @imported="onImported" />
+        <AddProjectArchive
+          v-else-if="active === 'archive'"
+          key="archive"
+          :async="true"
+          embedded
+          @imported="onImported"
+        />
         <GitHubImportForm v-else key="github" embedded @imported="onImported" />
       </Transition>
     </div>
@@ -141,9 +168,9 @@ function iconPath(id: Method): string {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--vg-space-6);
+  gap: var(--vg-space-4);
   overflow: hidden;
-  padding: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+  padding: var(--vg-space-4);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius-lg);
   background: var(--vg-grad-surface);
@@ -172,7 +199,9 @@ function iconPath(id: Method): string {
   background: radial-gradient(circle, var(--accent-soft), transparent 70%);
   opacity: 0.7;
   pointer-events: none;
-  transition: opacity var(--vg-dur) var(--vg-ease-out), background var(--vg-dur);
+  transition:
+    opacity var(--vg-dur) var(--vg-ease-out),
+    background var(--vg-dur);
 }
 
 .import-panel__head {
@@ -229,26 +258,45 @@ function iconPath(id: Method): string {
 .import-panel__tab {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
+  min-height: 38px;
   font: inherit;
   font-weight: 600;
   font-size: var(--vg-text-sm);
-  padding: 0.6rem 0.85rem;
+  padding: 0.45rem 0.7rem;
+  text-align: left;
   border: 1px solid transparent;
   border-radius: calc(var(--vg-radius) - 4px);
   background: transparent;
   color: var(--vg-text-muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
-    color var(--vg-dur-fast) var(--vg-ease-out), border-color var(--vg-dur-fast) var(--vg-ease-out),
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
-.import-panel__tab:hover {
+.import-panel__tab:hover:not(:disabled) {
   color: var(--vg-text);
   background: rgba(148, 163, 184, 0.08);
+}
+
+.import-panel__tab:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.import-panel__disabled {
+  margin: 0;
+  padding: var(--vg-space-3);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-bg);
+  color: var(--vg-amber);
+  font-size: var(--vg-text-sm);
 }
 
 .import-panel__tab--active {
@@ -273,7 +321,9 @@ function iconPath(id: Method): string {
 /* Method switch transition. */
 .import-fade-enter-active,
 .import-fade-leave-active {
-  transition: opacity var(--vg-dur) var(--vg-ease-out), transform var(--vg-dur) var(--vg-ease-out);
+  transition:
+    opacity var(--vg-dur) var(--vg-ease-out),
+    transform var(--vg-dur) var(--vg-ease-out);
 }
 .import-fade-enter-from {
   opacity: 0;

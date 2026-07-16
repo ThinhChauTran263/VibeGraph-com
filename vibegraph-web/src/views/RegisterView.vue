@@ -122,11 +122,7 @@ async function handleRegister() {
           {{ error }}
         </div>
 
-        <button
-          type="submit"
-          class="auth-form__submit"
-          :disabled="loading"
-        >
+        <button type="submit" class="auth-form__submit" :disabled="loading">
           {{ loading ? 'Creating account…' : 'Create account' }}
         </button>
       </form>

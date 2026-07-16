@@ -8,7 +8,15 @@ function actor(id: string, name: string): UmlActor {
 }
 
 function uc(id: string, name: string): UmlUseCaseElement {
-  return { id, name, domain: 'd', level: 'business', source: 's', sourceEndpoint: null, confidence: 0.8 }
+  return {
+    id,
+    name,
+    domain: 'd',
+    level: 'business',
+    source: 's',
+    sourceEndpoint: null,
+    confidence: 0.8,
+  }
 }
 
 function rel(from: string, to: string, type: string): UmlRelation {
@@ -165,7 +173,12 @@ describe('renderUmlUseCaseSvg', () => {
   })
 
   it('renders a valid svg with the boundary even for an empty model', () => {
-    const svg = renderUmlUseCaseSvg({ systemName: 'Empty', actors: [], useCases: [], relations: [] })
+    const svg = renderUmlUseCaseSvg({
+      systemName: 'Empty',
+      actors: [],
+      useCases: [],
+      relations: [],
+    })
     expect(svg).toMatch(/^<svg[^>]*>/)
     expect(svg).toContain('</svg>')
     expect(svg).toContain('<rect')
@@ -173,7 +186,12 @@ describe('renderUmlUseCaseSvg', () => {
   })
 
   it('shows an explanatory note when no use cases and no actors are detected', () => {
-    const svg = renderUmlUseCaseSvg({ systemName: 'Empty', actors: [], useCases: [], relations: [] })
+    const svg = renderUmlUseCaseSvg({
+      systemName: 'Empty',
+      actors: [],
+      useCases: [],
+      relations: [],
+    })
     expect(svg).toContain('No business use cases detected')
     expect(svg).toContain('This project exposes no API endpoints to infer use cases from')
     // No ellipses / actor figures in a truly empty model.
@@ -243,6 +261,8 @@ describe('renderUmlUseCaseSvg', () => {
       ],
     })
     // The inferred use case ellipse is dashed + translucent.
-    expect(svg).toMatch(/<ellipse[^>]*stroke-dasharray="5 4" opacity="0.7"[^>]*><title>Validate Input/)
+    expect(svg).toMatch(
+      /<ellipse[^>]*stroke-dasharray="5 4" opacity="0.7"[^>]*><title>Validate Input/,
+    )
   })
 })

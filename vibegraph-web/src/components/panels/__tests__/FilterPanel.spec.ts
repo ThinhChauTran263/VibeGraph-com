@@ -31,7 +31,9 @@ vi.mock('@/stores/filter', () => ({
   useFilterStore: () => ({
     hiddenNodeTypes: hiddenNodeTypes.value,
     hiddenEdgeTypes: hiddenEdgeTypes.value,
-    hasActiveFilters: computed(() => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0),
+    hasActiveFilters: computed(
+      () => hiddenNodeTypes.value.size > 0 || hiddenEdgeTypes.value.size > 0,
+    ),
     searchQuery: '',
     toggleNodeType: (type: NodeType, available: readonly NodeType[] = []) => {
       hiddenNodeTypes.value = nextIsolate(hiddenNodeTypes.value, type, available)
@@ -78,7 +80,10 @@ describe('FilterPanel', () => {
     const wrapper = mount(FilterPanel, { props: { graphData } })
 
     const clickType = async (label: string) =>
-      wrapper.findAll('button').find((button) => button.text().includes(label))!.trigger('click')
+      wrapper
+        .findAll('button')
+        .find((button) => button.text().includes(label))!
+        .trigger('click')
 
     // First click isolates Method: every OTHER node type is hidden, Method stays.
     await clickType('Method')
@@ -99,7 +104,10 @@ describe('FilterPanel', () => {
     const wrapper = mount(FilterPanel, { props: { graphData } })
 
     const clickType = async (label: string) =>
-      wrapper.findAll('button').find((button) => button.text().includes(label))!.trigger('click')
+      wrapper
+        .findAll('button')
+        .find((button) => button.text().includes(label))!
+        .trigger('click')
 
     // Isolate Method, then add Class back: both visible, nothing hidden.
     await clickType('Method')

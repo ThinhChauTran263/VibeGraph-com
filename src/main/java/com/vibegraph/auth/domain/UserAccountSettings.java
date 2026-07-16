@@ -36,6 +36,9 @@ public class UserAccountSettings {
     @Column(name = "storage_quota_override_bytes")
     private Long storageQuotaOverrideBytes;
 
+    @Column(name = "credit_quota_override")
+    private Integer creditQuotaOverride;
+
     @Builder.Default
     @Column(name = "api_key_creation_disabled", nullable = false)
     private boolean apiKeyCreationDisabled = false;

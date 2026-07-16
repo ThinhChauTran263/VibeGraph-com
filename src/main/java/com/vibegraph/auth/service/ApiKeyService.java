@@ -40,9 +40,11 @@ public class ApiKeyService {
     private final UserRepository userRepository;
     private final AccountSettingsService accountSettingsService;
     private final PasswordEncoder passwordEncoder;
+    private final FeatureGateService featureGateService;
 
     @Transactional
     public ApiKeyCreateResponse createForCurrentUser(ApiKeyCreateRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
         UUID userId = currentUserEntity().getId();
         accountSettingsService.assertNotBlocked(userId);
         assertApiKeyCreationEnabled(userId);
@@ -53,6 +55,7 @@ public class ApiKeyService {
 
     @Transactional
     public ApiKeyCreateResponse createForUser(AdminApiKeyCreateRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
         assertCurrentUserIsAdmin();
         UUID targetUserId = request.userId();
         assertUserExists(targetUserId);

@@ -20,22 +20,22 @@ import {
 // Chosen for MAXIMUM distinctness: each type sits on a clearly different hue (and
 // the frequent types are spread far apart) so they're recognizable at a glance.
 export const NODE_COLORS: Record<NodeType, string> = {
-  Method: '#2563EB',       // blue
-  Field: '#06B6D4',        // cyan
-  Constructor: '#5EEAD4',  // pale teal (distinct from Field cyan)
-  File: '#EF4444',         // red
-  Class: '#F59E0B',        // amber / gold
-  Annotation: '#65A30D',   // olive green (far from Class amber & Interface green)
-  DBModel: '#CA8A04',      // mustard
-  Record: '#7C2D12',       // dark brown
-  Interface: '#22C55E',    // green
-  Route: '#15803D',        // dark green
-  Package: '#9333EA',      // purple
-  Enum: '#C084FC',         // light lilac (distinct from purple & pink)
-  APIEndpoint: '#EC4899',  // pink
-  Project: '#4F46E5',      // indigo
+  Method: '#2563EB', // blue
+  Field: '#06B6D4', // cyan
+  Constructor: '#5EEAD4', // pale teal (distinct from Field cyan)
+  File: '#EF4444', // red
+  Class: '#F59E0B', // amber / gold
+  Annotation: '#65A30D', // olive green (far from Class amber & Interface green)
+  DBModel: '#CA8A04', // mustard
+  Record: '#7C2D12', // dark brown
+  Interface: '#22C55E', // green
+  Route: '#15803D', // dark green
+  Package: '#9333EA', // purple
+  Enum: '#C084FC', // light lilac (distinct from purple & pink)
+  APIEndpoint: '#EC4899', // pink
+  Project: '#4F46E5', // indigo
   LocalVariable: '#64748B', // slate
-  External: '#9CA3AF',     // gray
+  External: '#9CA3AF', // gray
 }
 
 // Edge colors by relationship type - matches EdgeType from graph.ts.
@@ -44,30 +44,30 @@ export const NODE_COLORS: Record<NodeType, string> = {
 // clearly different hues; the CPG-lite (hidden-by-default) ones fill the gaps.
 export const EDGE_COLORS: Record<EdgeType, string> = {
   // ── Default-visible structural edges (must be unmistakable) ──
-  CALLS: '#DC2626',         // red
-  IMPORTS: '#2563EB',       // blue
-  DEFINES: '#16A34A',       // green
-  CONTAINS: '#9333EA',      // purple
-  HAS_METHOD: '#0891B2',    // cyan
-  HAS_INNER: '#DB2777',     // magenta
-  EXTENDS: '#EA580C',       // orange
-  IMPLEMENTS: '#CA8A04',    // gold
-  OVERRIDES: '#7C3AED',     // violet
+  CALLS: '#DC2626', // red
+  IMPORTS: '#2563EB', // blue
+  DEFINES: '#16A34A', // green
+  CONTAINS: '#9333EA', // purple
+  HAS_METHOD: '#0891B2', // cyan
+  HAS_INNER: '#DB2777', // magenta
+  EXTENDS: '#EA580C', // orange
+  IMPLEMENTS: '#CA8A04', // gold
+  OVERRIDES: '#7C3AED', // violet
   HANDLES_ROUTE: '#65A30D', // olive
   // ── CPG-lite (hidden by default) ──
-  HAS_FIELD: '#0EA5E9',     // sky
-  TYPE_OF: '#14B8A6',       // teal
-  RETURNS: '#84CC16',       // lime
+  HAS_FIELD: '#0EA5E9', // sky
+  TYPE_OF: '#14B8A6', // teal
+  RETURNS: '#84CC16', // lime
   PARAMETER_TYPE: '#A16207', // brown
-  THROWS: '#BE123C',        // crimson
-  INSTANTIATES: '#FB7185',  // light rose
-  INJECTS: '#0D9488',       // deep teal
-  ANNOTATED_BY: '#A3E635',  // light lime
-  READS: '#38BDF8',         // light blue
-  WRITES: '#FB923C',        // light orange
-  CATCHES: '#A78BFA',       // light violet
-  STEP_IN_FLOW: '#E879F9',  // light fuchsia
-  OWNS: '#6366F1',          // indigo
+  THROWS: '#BE123C', // crimson
+  INSTANTIATES: '#FB7185', // light rose
+  INJECTS: '#0D9488', // deep teal
+  ANNOTATED_BY: '#A3E635', // light lime
+  READS: '#38BDF8', // light blue
+  WRITES: '#FB923C', // light orange
+  CATCHES: '#A78BFA', // light violet
+  STEP_IN_FLOW: '#E879F9', // light fuchsia
+  OWNS: '#6366F1', // indigo
 }
 
 // CPG-lite exposure policy (Phase 1).

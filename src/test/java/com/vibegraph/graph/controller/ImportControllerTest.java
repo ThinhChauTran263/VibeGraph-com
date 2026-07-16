@@ -25,7 +25,6 @@ import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
-import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
@@ -42,14 +41,12 @@ class ImportControllerTest {
     private MockMvc mockMvc;
     private ArchiveImportService archiveImportService;
     private TarballImportService tarballImportService;
-    private ProjectOwnershipRegistrar ownershipRegistrar;
 
     @BeforeEach
     void setUp() {
         archiveImportService = Mockito.mock(ArchiveImportService.class);
         tarballImportService = Mockito.mock(TarballImportService.class);
-        ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
-        ImportController controller = new ImportController(tarballImportService, archiveImportService, ownershipRegistrar);
+        ImportController controller = new ImportController(tarballImportService, archiveImportService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -73,8 +70,6 @@ class ImportControllerTest {
         verify(archiveImportService).importArchive(eq("demo"), captor.capture());
         assertThat(captor.getValue().getOriginalFilename()).isEqualTo("project.zip");
         verify(archiveImportService, never()).importArchiveAsync(any(), any());
-        // Ownership recorded for the imported archive project.
-        verify(ownershipRegistrar).registerArchive("p1", "demo");
     }
 
     @Test
@@ -95,8 +90,6 @@ class ImportControllerTest {
 
         verify(archiveImportService).importArchiveAsync(eq("demo"), any(MultipartFile.class));
         verify(archiveImportService, never()).importArchive(any(), any());
-        // Ownership recorded synchronously before the 202, even in the async path.
-        verify(ownershipRegistrar).registerArchive("p2", "demo");
     }
 
     @Test
@@ -117,8 +110,6 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.status").value("ANALYZING"));
 
         verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
-        // Ownership recorded for the imported GitHub project.
-        verify(ownershipRegistrar).registerGithub("p3", "acme/demo");
     }
 
     @Test
@@ -132,8 +123,6 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 
         verify(tarballImportService, never()).importFromGithub(any());
-        // Validation fails before import — no ownership row.
-        verify(ownershipRegistrar, never()).registerGithub(any(), any());
     }
 
     @Test
@@ -151,8 +140,6 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.error.message").value("GitHub repository is private or not found"));
 
         verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/private"));
-        // Import threw before returning — ownership must not be recorded.
-        verify(ownershipRegistrar, never()).registerGithub(any(), any());
     }
 
     @Test
@@ -167,7 +154,5 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("ARCHIVE_UNSUPPORTED_TYPE"));
 
-        // Archive extraction threw before returning — ownership must not be recorded.
-        verify(ownershipRegistrar, never()).registerArchive(any(), any());
     }
 }

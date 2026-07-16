@@ -181,7 +181,9 @@ export function listTraceableEndpoints(graph: GraphData): EndpointEntry[] {
 
   return [...entries.values()].sort((left, right) => {
     const byPath = left.path.toLowerCase().localeCompare(right.path.toLowerCase())
-    return byPath !== 0 ? byPath : left.method.toLowerCase().localeCompare(right.method.toLowerCase())
+    return byPath !== 0
+      ? byPath
+      : left.method.toLowerCase().localeCompare(right.method.toLowerCase())
   })
 }
 
@@ -200,7 +202,12 @@ function endpointPath(node: GraphNode): string {
   return parts.length > 1 ? parts.slice(1).join(' ') : node.name
 }
 
-function toStep(index: GraphIndex, node: GraphNode, stepIndex: number, relation?: EdgeType): FlowStep {
+function toStep(
+  index: GraphIndex,
+  node: GraphNode,
+  stepIndex: number,
+  relation?: EdgeType,
+): FlowStep {
   return {
     index: stepIndex,
     nodeId: node.id,
@@ -363,7 +370,9 @@ function collectAmbiguities(index: GraphIndex, steps: FlowStep[]): FlowAmbiguity
       .filter((node): node is GraphNode => node != null && node.id !== step.nodeId)
       .map((node) => ({ nodeId: node.id, name: node.name }))
 
-    const unique = [...new Map(candidates.map((candidate) => [candidate.nodeId, candidate])).values()]
+    const unique = [
+      ...new Map(candidates.map((candidate) => [candidate.nodeId, candidate])).values(),
+    ]
     if (unique.length > 1) {
       ambiguities.push({ stepIndex: step.index, candidates: unique })
     }
@@ -397,7 +406,8 @@ export interface FlowListItem {
 }
 
 // Spring layer/class suffixes stripped when humanizing a domain label.
-const CLASS_SUFFIXES = /(Controller|RestController|Service|ServiceImpl|Impl|Repository|Repo|Manager|Component|Handler)$/
+const CLASS_SUFFIXES =
+  /(Controller|RestController|Service|ServiceImpl|Impl|Repository|Repo|Manager|Component|Handler)$/
 
 /** Distinct source files referenced by a flow's steps. */
 export function flowFileCount(flow: DataFlow): number {
@@ -433,9 +443,10 @@ export function describeFlow(item: FlowListItem): string {
   const last = flow.steps[flow.steps.length - 1]
   if (!first || !last) return 'No data flow could be traced for this entry.'
 
-  const entryPhrase = item.kind === 'endpoint' && item.path
-    ? `the ${item.method || 'HTTP'} ${item.path} endpoint`
-    : `${first.name}()`
+  const entryPhrase =
+    item.kind === 'endpoint' && item.path
+      ? `the ${item.method || 'HTTP'} ${item.path} endpoint`
+      : `${first.name}()`
   const through = first.declaringType ? ` via ${first.declaringType}` : ''
   const tail = flow.complete
     ? `reaching ${last.nodeType === 'DBModel' ? 'the ' + last.name + ' database model' : last.name}`

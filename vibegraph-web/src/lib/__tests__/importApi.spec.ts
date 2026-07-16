@@ -86,7 +86,10 @@ describe('importApi.importGithub', () => {
       text: async () =>
         JSON.stringify({
           success: false,
-          error: { code: 'GITHUB_IMPORT_ERROR', message: 'GitHub repository is private or not found' },
+          error: {
+            code: 'GITHUB_IMPORT_ERROR',
+            message: 'GitHub repository is private or not found',
+          },
         }),
     } as unknown as Response)
 

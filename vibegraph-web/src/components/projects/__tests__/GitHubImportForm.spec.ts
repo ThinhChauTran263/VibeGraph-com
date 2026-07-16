@@ -54,12 +54,16 @@ describe('GitHubImportForm', () => {
     importGithubMock.mockResolvedValueOnce(project)
     const wrapper = mount(GitHubImportForm)
 
-    await wrapper.get('input[type="url"]').setValue('https://github.com/spring-projects/spring-petclinic')
+    await wrapper
+      .get('input[type="url"]')
+      .setValue('https://github.com/spring-projects/spring-petclinic')
     await wrapper.get('form').trigger('submit.prevent')
     await nextTick()
     await nextTick()
 
-    expect(importGithubMock).toHaveBeenCalledWith('https://github.com/spring-projects/spring-petclinic')
+    expect(importGithubMock).toHaveBeenCalledWith(
+      'https://github.com/spring-projects/spring-petclinic',
+    )
     const emitted = wrapper.emitted('imported')
     expect(emitted).toBeTruthy()
     expect(emitted![0]![0]).toEqual(project)

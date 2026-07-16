@@ -70,7 +70,9 @@ const lineNumbers = computed(() => {
 })
 
 const targetLine = computed(() =>
-  typeof props.node.lineNumber === 'number' && props.node.lineNumber > 0 ? props.node.lineNumber : null,
+  typeof props.node.lineNumber === 'number' && props.node.lineNumber > 0
+    ? props.node.lineNumber
+    : null,
 )
 
 const fileName = computed(() => {
@@ -190,12 +192,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="code-viewer__actions">
             <span v-if="language && found" class="code-viewer__lang">{{ language }}</span>
-            <button
-              class="code-viewer__btn"
-              type="button"
-              :disabled="!content"
-              @click="copyCode"
-            >
+            <button class="code-viewer__btn" type="button" :disabled="!content" @click="copyCode">
               {{ copied ? 'Copied' : 'Copy' }}
             </button>
             <button
@@ -215,7 +212,11 @@ onBeforeUnmount(() => {
             <p>Loading source…</p>
           </div>
 
-          <div v-else-if="status === 'error'" class="code-viewer__state code-viewer__state--error" role="alert">
+          <div
+            v-else-if="status === 'error'"
+            class="code-viewer__state code-viewer__state--error"
+            role="alert"
+          >
             <p>{{ errorMessage }}</p>
             <button class="code-viewer__btn" type="button" @click="retry">Retry</button>
           </div>
@@ -354,7 +355,10 @@ onBeforeUnmount(() => {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
 .code-viewer__btn:hover:not(:disabled),
