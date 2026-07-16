@@ -1,5 +1,7 @@
 package com.vibegraph.diagram.controller;
 
+import java.util.Locale;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -7,10 +9,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Locale;
-
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.exception.ProjectNotAnalyzedException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.diagram.dto.response.DiagramResponse;
 import com.vibegraph.diagram.service.ClassDiagramService;
 import com.vibegraph.diagram.service.UseCaseDiagramService;
@@ -47,12 +48,14 @@ public class DiagramController {
     private final UseCaseDiagramService useCaseDiagramService;
     private final ClassDiagramService classDiagramService;
     private final ProjectService projectService;
+    private final ProjectOwnershipGuard ownershipGuard;
 
     @GetMapping("/usecase")
     public ResponseEntity<ApiResponse<Object>> getUseCaseDiagram(
             @PathVariable String projectId,
             @RequestParam(name = "style", required = false, defaultValue = STYLE_UML) String style,
             @RequestParam(name = "mode", required = false) String mode) {
+        ownershipGuard.assertOwner(projectId);
         requireAnalyzed(projectId);
         String normalizedStyle = style == null ? STYLE_UML : style.trim().toLowerCase(Locale.ROOT);
         if (!STYLE_UML.equals(normalizedStyle)) {
@@ -66,6 +69,7 @@ public class DiagramController {
     public ResponseEntity<ApiResponse<DiagramResponse>> getClassDiagram(
             @PathVariable String projectId,
             @RequestParam(name = "package", required = false) String packageFilter) {
+        ownershipGuard.assertOwner(projectId);
         requireAnalyzed(projectId);
         return ResponseEntity.ok(
                 ApiResponse.success(classDiagramService.generateClassDiagram(projectId, packageFilter)));

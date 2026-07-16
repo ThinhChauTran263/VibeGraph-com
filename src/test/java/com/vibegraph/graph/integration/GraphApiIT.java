@@ -6,9 +6,9 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.when;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.controller.GraphController;
 import com.vibegraph.graph.dto.response.EdgeDto;
@@ -40,12 +41,14 @@ class GraphApiIT {
 
     private MockMvc mockMvc;
     private GraphService graphService;
+    private ProjectOwnershipGuard ownershipGuard;
 
     @BeforeEach
     void setUp() {
         graphService = Mockito.mock(GraphService.class);
+        ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         GraphController controller = new GraphController(
-                graphService, new GraphPayloadGuard(), new GraphPayloadProperties());
+                graphService, new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

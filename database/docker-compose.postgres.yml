@@ -1,0 +1,40 @@
+# =====================================================================
+# Postgres cho VibeGraph — chạy CỤC BỘ trên máy dev
+# =====================================================================
+# Dùng khi teammate muốn có sẵn Postgres để dev/test phần auth,
+# KHÔNG cần cài Postgres thủ công.
+#
+#   Chạy:   docker compose -f docker-compose.postgres.yml up -d
+#   Tắt:    docker compose -f docker-compose.postgres.yml down
+#   Xoá sạch dữ liệu: docker compose -f docker-compose.postgres.yml down -v
+#
+# LƯU Ý QUAN TRỌNG về schema:
+#  - Backend VibeGraph sẽ dùng FLYWAY tự tạo bảng lúc khởi động (khuyến nghị).
+#    => Để mount initdb bên dưới TẮT (comment) cho khỏi đụng Flyway.
+#  - Nếu muốn có DB sẵn bảng mà KHÔNG chạy backend (vd test SQL tay),
+#    thì BỎ COMMENT dòng mount ./schema — Postgres tự chạy *.sql lần đầu.
+#    KHÔNG bật cả hai cùng lúc (Flyway sẽ báo bảng đã tồn tại).
+# =====================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibegraph-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vibegraph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibegraph}
+      POSTGRES_DB: ${POSTGRES_DB:-vibegraph}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # --- Tuỳ chọn: tự tạo schema khi KHÔNG dùng Flyway (xem lưu ý ở trên) ---
+      # - ./schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibegraph} -d ${POSTGRES_DB:-vibegraph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
