@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
-import type { AdminReport, ReportMessage } from '@/types/api'
+import type { AdminReport, ReportMessage, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import { useReportRealtime } from '@/composables/useReportRealtime'
 
 const adminStore = useAdminStore()
 const selectedReport = ref<AdminReport | null>(null)
@@ -13,10 +14,18 @@ const isSending = ref(false)
 const isClosing = ref(false)
 const errorMsg = ref('')
 const closeDialogOpen = ref(false)
+const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
 onMounted(async () => {
   await adminStore.fetchReports()
 })
+
+const reportRealtime = useReportRealtime(selectedReportId, {
+  onEvent: (event) => {
+    handleRealtimeEvent(event)
+  },
+})
+const reportRealtimeStatus = reportRealtime.status
 
 const selectReport = async (report: AdminReport) => {
   errorMsg.value = ''
@@ -74,6 +83,35 @@ const confirmCloseReport = async () => {
     isClosing.value = false
   }
 }
+
+const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
+  const currentReport = selectedReport.value
+  if (!currentReport || currentReport.id !== event.reportId) return
+
+  if (event.type === 'REPORT_MESSAGE_ADDED' && event.message) {
+    if (!selectedMessages.value.some((msg) => msg.id === event.message?.id)) {
+      selectedMessages.value.push(normalizeMessage(event.message))
+    }
+    return
+  }
+
+  if (event.type === 'REPORT_CLOSED' && event.report) {
+    currentReport.status = event.report.status
+    currentReport.closedAt = event.report.closedAt
+    currentReport.deleteAfter = event.report.deletesAfter ?? currentReport.deleteAfter
+    const idx = adminStore.reports.findIndex((r) => r.id === event.reportId)
+    const listReport = idx >= 0 ? adminStore.reports[idx] : null
+    if (listReport) {
+      listReport.status = event.report.status
+    }
+  }
+}
+
+const normalizeMessage = (message: ReportMessage): ReportMessage => ({
+  ...message,
+  isAdmin: message.senderRole === 'ADMIN',
+  senderName: message.senderRole === 'ADMIN' ? 'Admin' : 'User',
+})
 </script>
 
 <template>
@@ -143,6 +181,9 @@ const confirmCloseReport = async () => {
             :status="selectedReport.status.toLowerCase()"
             :label="selectedReport.status"
           />
+          <span class="realtime-pill" :data-status="reportRealtimeStatus">
+            {{ reportRealtimeStatus === 'connected' ? 'Live' : 'Syncing' }}
+          </span>
         </div>
       </div>
 
@@ -318,6 +359,24 @@ const confirmCloseReport = async () => {
   margin: 0;
   color: var(--vg-text);
   font: 700 var(--vg-text-xl) var(--vg-font-display);
+}
+.realtime-pill {
+  min-width: 4.25rem;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  font-size: var(--vg-text-xs);
+  font-weight: 700;
+}
+.realtime-pill:not([data-status='connected']) {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--vg-text-dim);
 }
 .btn-back {
   min-height: 36px;

@@ -17,8 +17,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vibegraph.auth.domain.FeedbackCategory;
+import com.vibegraph.auth.domain.FeedbackMessage;
 import com.vibegraph.auth.domain.FeedbackReport;
 import com.vibegraph.auth.domain.FeedbackReportStatus;
+import com.vibegraph.auth.domain.FeedbackSenderRole;
 import com.vibegraph.auth.domain.Plan;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
@@ -65,6 +67,7 @@ class AdminServiceTest {
     @Mock private CreditLedgerRepository creditLedgerRepository;
     @Mock private AdminStorageService adminStorageService;
     @Mock private PasswordEncoder passwordEncoder;
+    @Mock private FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
 
     private AdminService adminService;
 
@@ -83,7 +86,8 @@ class AdminServiceTest {
                 pricingRuleRepository,
                 creditLedgerRepository,
                 adminStorageService,
-                passwordEncoder
+                passwordEncoder,
+                feedbackReportRealtimePublisher
         );
     }
 
@@ -375,6 +379,9 @@ class AdminServiceTest {
         assertNotNull(report.getClosedAt());
         assertEquals(report.getClosedAt().plus(7, java.time.temporal.ChronoUnit.DAYS), report.getDeleteAfter());
         verify(feedbackReportRepository).save(report);
+        verify(feedbackReportRealtimePublisher).publishReportClosed(argThat(response ->
+                response.id().equals(reportId)
+                        && response.status() == FeedbackReportStatus.CLOSED));
     }
 
     @Test
@@ -392,5 +399,32 @@ class AdminServiceTest {
         assertEquals(closedAt, report.getClosedAt());
         assertEquals(closedAt.plus(7, java.time.temporal.ChronoUnit.DAYS), report.getDeleteAfter());
         verify(feedbackReportRepository, never()).save(any(FeedbackReport.class));
+        verify(feedbackReportRealtimePublisher, never()).publishReportClosed(any());
+    }
+
+    @Test
+    @DisplayName("replyToFeedbackReport saves admin message and publishes realtime event")
+    void replyToFeedbackReport_publishesRealtimeEvent() {
+        UUID reportId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        FeedbackReport report = FeedbackReport.builder().id(reportId).status(FeedbackReportStatus.OPEN)
+                .title("Bug").category(FeedbackCategory.BUG).build();
+        FeedbackMessage saved = FeedbackMessage.builder()
+                .id(UUID.randomUUID())
+                .reportId(reportId)
+                .senderUserId(adminId)
+                .senderRole(FeedbackSenderRole.ADMIN)
+                .body("We are checking this now.")
+                .build();
+
+        when(feedbackReportRepository.findById(reportId)).thenReturn(Optional.of(report));
+        when(feedbackMessageRepository.save(any(FeedbackMessage.class))).thenReturn(saved);
+
+        adminService.replyToFeedbackReport(reportId, adminId, new AdminFeedbackReplyRequest("We are checking this now."));
+
+        verify(feedbackMessageRepository).save(any(FeedbackMessage.class));
+        verify(feedbackReportRealtimePublisher).publishMessageAdded(eq(reportId), argThat(message ->
+                message.body().equals("We are checking this now.")
+                        && message.senderRole() == FeedbackSenderRole.ADMIN));
     }
 }

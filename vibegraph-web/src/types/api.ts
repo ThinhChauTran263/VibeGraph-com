@@ -301,6 +301,27 @@ export interface ReportMessage {
   senderName: string
 }
 
+export type ReportRealtimeEventType = 'REPORT_MESSAGE_ADDED' | 'REPORT_CLOSED'
+
+/** Lightweight report summary used by realtime websocket events. */
+export interface ReportSummary {
+  id: string
+  status: FeedbackReportStatus
+  category: FeedbackCategory
+  title: string
+  createdAt: string
+  closedAt: string | null
+  deletesAfter: string | null
+}
+
+export interface ReportRealtimeEvent {
+  type: ReportRealtimeEventType
+  reportId: string
+  report?: ReportSummary | null
+  message?: ReportMessage | null
+  timestamp: string
+}
+
 /** Report summary (FeedbackReportResponse). */
 export interface Report {
   id: string

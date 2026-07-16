@@ -192,15 +192,15 @@ async function extractErrorMessage(res: Response): Promise<string | undefined> {
 export const api = {
   baseUrl: API_BASE_URL,
 
-  /** Build auth headers if a token is present. */
+  /** Browser auth uses the HttpOnly cookie; CLI/API clients keep their own Bearer-token flow. */
   _authHeaders(): Record<string, string> {
-    const token = localStorage.getItem('vg_token')
-    return token ? { Authorization: `Bearer ${token}` } : {}
+    return {}
   },
 
   async get<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: { ...this._authHeaders() },
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
     return unwrap<T>(res)
   },
@@ -208,7 +208,12 @@ export const api = {
   async post<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
     return unwrap<T>(res)
@@ -217,7 +222,12 @@ export const api = {
   async patch<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
     return unwrap<T>(res)
@@ -226,7 +236,12 @@ export const api = {
   async put<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
     return unwrap<T>(res)
@@ -239,10 +254,10 @@ export const api = {
    */
   async postMultipart<T>(path: string, form: FormData): Promise<T> {
     const authHeaders = this._authHeaders()
-    const hasAuth = Object.keys(authHeaders).length > 0
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      ...(hasAuth ? { headers: authHeaders } : {}),
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...authHeaders },
       body: form,
     })
     return unwrap<T>(res)
@@ -251,7 +266,8 @@ export const api = {
   async delete(path: string): Promise<void> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'DELETE',
-      headers: { ...this._authHeaders() },
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
     if (!res.ok) {
       if (res.status === 401) {
@@ -512,6 +528,10 @@ export const authApi = {
 
   login(data: LoginRequest): Promise<AuthResponse> {
     return api.post<AuthResponse>('/api/auth/login', data)
+  },
+
+  logout(): Promise<void> {
+    return api.post<void>('/api/auth/logout')
   },
 
   async me(): Promise<User> {

@@ -43,6 +43,7 @@ public class FeedbackReportService {
     private final FeedbackReportRepository reportRepository;
     private final FeedbackMessageRepository messageRepository;
     private final CurrentUser currentUser;
+    private final FeedbackReportRealtimePublisher realtimePublisher;
 
     // ── CREATE ────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,9 @@ public class FeedbackReportService {
                 .body(request.body())
                 .build());
 
-        return toMessageResponse(message);
+        FeedbackMessageResponse response = toMessageResponse(message);
+        realtimePublisher.publishMessageAdded(reportId, response);
+        return response;
     }
 
     // ── CLOSE ─────────────────────────────────────────────────────────────────
@@ -151,7 +154,9 @@ public class FeedbackReportService {
         report.setDeleteAfter(now.plusSeconds(7L * 24 * 3600)); // +7 days
 
         log.info("User {} closed report {}", currentUser.id(), reportId);
-        return toResponse(reportRepository.save(report));
+        FeedbackReportResponse response = toResponse(reportRepository.save(report));
+        realtimePublisher.publishReportClosed(response);
+        return response;
     }
 
     // ── CLEANUP JOB ───────────────────────────────────────────────────────────

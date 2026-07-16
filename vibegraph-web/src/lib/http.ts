@@ -1,7 +1,7 @@
 /**
  * Axios HTTP client with auth interceptors.
  *
- * - Request interceptor: attaches `Authorization: Bearer <token>` from localStorage.
+ * - Request interceptor: marks browser requests; auth uses the HttpOnly cookie.
  * - Response interceptor: on 401, clears the session and redirects to /login.
  *
  * Other modules can import `http` for authenticated requests, or `httpRaw` for
@@ -11,24 +11,19 @@
 import axios from 'axios'
 import { API_BASE_URL } from './constants'
 
-const TOKEN_KEY = 'vg_token'
-
 /**
- * Main axios instance — every request going through this will get the Bearer
- * token attached (if present) and will redirect to /login on 401.
+ * Main axios instance — every request includes browser cookies and redirects to /login on 401.
  */
 export const http = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 })
 
-// ─── Request interceptor: attach Bearer token ─────────────────────────────────
+// ─── Request interceptor: mark browser client ─────────────────────────────────
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY)
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+  config.headers['X-VibeGraph-Client'] = 'web'
   return config
 })
 
@@ -39,7 +34,7 @@ http.interceptors.response.use(
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       // Clear stored session
-      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem('vg_token')
       localStorage.removeItem('vg_user')
 
       // Redirect to login page. We access the router lazily to avoid circular

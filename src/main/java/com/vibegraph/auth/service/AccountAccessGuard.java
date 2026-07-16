@@ -19,10 +19,15 @@ public class AccountAccessGuard {
 
     @Transactional(readOnly = true)
     public boolean canAccessRealtime(UUID userId) {
+        return canAccessSupportRealtime(userId)
+                && !accountSettingsService.isBlocked(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canAccessSupportRealtime(UUID userId) {
         return userId != null
                 && userRepository.findById(userId)
                         .filter(user -> !user.isDeactivated())
-                        .isPresent()
-                && !accountSettingsService.isBlocked(userId);
+                        .isPresent();
     }
 }

@@ -21,11 +21,13 @@ import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
 import com.vibegraph.common.exception.AccountBlockedException;
 
 import io.jsonwebtoken.JwtException;
+import jakarta.servlet.http.Cookie;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -58,6 +60,27 @@ class JwtAuthFilterTest {
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("valid-token"))
                 .thenReturn(new AuthenticatedUser(userId, "active@test.local", Role.USER));
+        when(userRepository.findById(userId))
+                .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertEquals(200, response.getStatus());
+        verify(accountSettingsService).assertNotBlocked(userId);
+    }
+
+    @Test
+    @DisplayName("valid JWT from HttpOnly session cookie authenticates browser requests")
+    void doFilterInternal_cookieToken_authenticatesAndContinues() throws Exception {
+        UUID userId = UUID.randomUUID();
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setCookies(new Cookie(AuthCookieService.COOKIE_NAME, "cookie-token"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        when(jwtService.parse("cookie-token"))
+                .thenReturn(new AuthenticatedUser(userId, "cookie@test.local", Role.USER));
         when(userRepository.findById(userId))
                 .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
 

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,6 +58,7 @@ class FeedbackReportServiceTest {
     @Mock FeedbackReportRepository reportRepository;
     @Mock FeedbackMessageRepository messageRepository;
     @Mock CurrentUser currentUser;
+    @Mock FeedbackReportRealtimePublisher realtimePublisher;
 
     @InjectMocks FeedbackReportService service;
 
@@ -174,6 +176,9 @@ class FeedbackReportServiceTest {
 
         assertThat(res.body()).isEqualTo("More context");
         assertThat(res.senderRole()).isEqualTo(FeedbackSenderRole.USER);
+        verify(realtimePublisher).publishMessageAdded(eq(reportId), argThat(message ->
+                message.body().equals("More context")
+                        && message.senderRole() == FeedbackSenderRole.USER));
     }
 
     @Test
@@ -213,6 +218,9 @@ class FeedbackReportServiceTest {
         assertThat(res.deletesAfter()).isNotNull();
         // deleteAfter should be approximately closedAt + 7 days
         assertThat(res.deletesAfter()).isAfter(res.closedAt());
+        verify(realtimePublisher).publishReportClosed(argThat(report ->
+                report.id().equals(reportId)
+                        && report.status() == FeedbackReportStatus.CLOSED));
     }
 
     @Test
@@ -226,5 +234,6 @@ class FeedbackReportServiceTest {
 
         // No save should be called for an already-closed report
         verify(reportRepository, never()).save(any());
+        verify(realtimePublisher, never()).publishReportClosed(any());
     }
 }

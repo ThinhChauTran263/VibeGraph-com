@@ -157,8 +157,7 @@ const router = createRouter({
 
 // ─── Navigation guard ──────────────────────────────────────────────────────────
 router.beforeEach((to) => {
-  const token = localStorage.getItem('vg_token')
-  const isAuthenticated = !!token
+  const isAuthenticated = !!getStoredUserRole()
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }

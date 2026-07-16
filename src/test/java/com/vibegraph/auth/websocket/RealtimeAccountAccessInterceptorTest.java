@@ -21,8 +21,10 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 import com.vibegraph.auth.domain.Role;
+import com.vibegraph.auth.repository.FeedbackReportRepository;
 import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
@@ -38,8 +40,10 @@ class RealtimeAccountAccessInterceptorTest {
     @Mock private JwtService jwtService;
     @Mock private AccountAccessGuard accountAccessGuard;
     @Mock private ProjectOwnershipGuard ownershipGuard;
+    @Mock private FeedbackReportRepository feedbackReportRepository;
     @Mock private MessageChannel channel;
 
+    private static final UUID REPORT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private UUID userId;
     private RealtimeAccountAccessInterceptor interceptor;
 
@@ -47,7 +51,7 @@ class RealtimeAccountAccessInterceptorTest {
     void setUp() {
         userId = UUID.randomUUID();
         interceptor = new RealtimeAccountAccessInterceptor(
-                jwtService, accountAccessGuard, ownershipGuard);
+                jwtService, accountAccessGuard, ownershipGuard, feedbackReportRepository);
     }
 
     @Test
@@ -64,7 +68,8 @@ class RealtimeAccountAccessInterceptorTest {
     @Test
     @DisplayName("a subscriber blocked after connecting receives no further project updates")
     void preSend_blockedExistingSubscriber_suppressesProjectUpdate() {
-        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true, true, false);
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true, false);
         connectUser();
         interceptor.preSend(subscribeMessage(PROJECT_ID, "updates"), channel);
 
@@ -84,16 +89,54 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
-    @DisplayName("a blocked account cannot connect")
-    void preSend_blockedUser_rejectsConnect() {
+    @DisplayName("a blocked account can still connect for support-only report topics")
+    void preSend_blockedUser_canConnectForSupportTopics() {
         when(jwtService.parse("jwt-token"))
                 .thenReturn(new AuthenticatedUser(userId, "user@test.local", Role.USER));
-        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(false);
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
 
-        assertThatThrownBy(() -> interceptor.preSend(connectMessage(), channel))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessage("Account cannot access realtime project updates");
+        assertThat(interceptor.preSend(connectMessage(), channel)).isNotNull();
         verify(ownershipGuard, never()).assertOwner(PROJECT_ID, userId);
+    }
+
+    @Test
+    @DisplayName("browser websocket CONNECT can authenticate from the HttpOnly cookie handshake principal")
+    void preSend_cookieHandshakePrincipal_allowsConnectWithoutBearerHeader() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        AuthenticatedUser principal = new AuthenticatedUser(userId, "cookie@test.local", Role.USER);
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setUser(new UsernamePasswordAuthenticationToken(principal, null, java.util.List.of()));
+
+        assertThat(interceptor.preSend(message(accessor), channel)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("report owners can subscribe and receive report updates")
+    void preSend_reportOwner_allowsReportTopic() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+
+        connectAs(Role.USER);
+        interceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
+
+        Message<byte[]> outbound = outboundReportMessage(REPORT_ID);
+        assertThat(interceptor.preSend(outbound, channel)).isSameAs(outbound);
+    }
+
+    @Test
+    @DisplayName("admins can subscribe to any report topic")
+    void preSend_admin_allowsReportTopic() {
+        UUID reportId = UUID.randomUUID();
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(feedbackReportRepository.existsById(reportId)).thenReturn(true);
+
+        connectAs(Role.ADMIN);
+        interceptor.preSend(subscribeReportMessage(reportId), channel);
+
+        Message<byte[]> outbound = outboundReportMessage(reportId);
+        assertThat(interceptor.preSend(outbound, channel)).isSameAs(outbound);
     }
 
     @Test
@@ -131,13 +174,18 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     private void connectActiveUser() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
         when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true);
         connectUser();
     }
 
     private void connectUser() {
+        connectAs(Role.USER);
+    }
+
+    private void connectAs(Role role) {
         when(jwtService.parse("jwt-token"))
-                .thenReturn(new AuthenticatedUser(userId, "user@test.local", Role.USER));
+                .thenReturn(new AuthenticatedUser(userId, role.name().toLowerCase() + "@test.local", role));
         interceptor.preSend(connectMessage(), channel);
     }
 
@@ -155,6 +203,13 @@ class RealtimeAccountAccessInterceptorTest {
         return message(accessor);
     }
 
+    private Message<byte[]> subscribeReportMessage(UUID reportId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/reports/" + reportId);
+        return message(accessor);
+    }
+
     private Message<byte[]> disconnectMessage() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.DISCONNECT);
         accessor.setSessionId(SESSION_ID);
@@ -165,6 +220,14 @@ class RealtimeAccountAccessInterceptorTest {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
         accessor.setSessionId(SESSION_ID);
         accessor.setDestination("/topic/projects/" + projectId + "/" + topic);
+        accessor.setMessageTypeIfNotSet(SimpMessageType.MESSAGE);
+        return message(accessor);
+    }
+
+    private Message<byte[]> outboundReportMessage(UUID reportId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/reports/" + reportId);
         accessor.setMessageTypeIfNotSet(SimpMessageType.MESSAGE);
         return message(accessor);
     }

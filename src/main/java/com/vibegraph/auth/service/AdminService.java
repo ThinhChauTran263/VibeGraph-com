@@ -80,6 +80,7 @@ public class AdminService {
     private final CreditLedgerRepository creditLedgerRepository;
     private final AdminStorageService adminStorageService;
     private final PasswordEncoder passwordEncoder;
+    private final FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
 
     @Transactional(readOnly = true)
     public AdminOverviewResponse getOverview() {
@@ -394,7 +395,14 @@ public class AdminService {
                 .senderRole(FeedbackSenderRole.ADMIN)
                 .body(request.body())
                 .build();
-        feedbackMessageRepository.save(msg);
+        FeedbackMessage saved = feedbackMessageRepository.save(msg);
+        feedbackReportRealtimePublisher.publishMessageAdded(
+                reportId,
+                new com.vibegraph.auth.dto.FeedbackMessageResponse(
+                        saved.getId(),
+                        saved.getSenderRole(),
+                        saved.getBody(),
+                        saved.getCreatedAt()));
     }
 
     @Transactional
@@ -409,6 +417,7 @@ public class AdminService {
         report.setClosedAt(closedAt);
         report.setDeleteAfter(closedAt.plus(7, ChronoUnit.DAYS));
         feedbackReportRepository.save(report);
+        feedbackReportRealtimePublisher.publishReportClosed(toReportResponse(report));
     }
 
     private void validateUserStatus(String status) {
@@ -482,6 +491,18 @@ public class AdminService {
                 report.getUserId(),
                 report.getStatus().name(),
                 report.getCategory().name(),
+                report.getTitle(),
+                report.getCreatedAt(),
+                report.getClosedAt(),
+                report.getDeleteAfter()
+        );
+    }
+
+    private com.vibegraph.auth.dto.FeedbackReportResponse toReportResponse(FeedbackReport report) {
+        return new com.vibegraph.auth.dto.FeedbackReportResponse(
+                report.getId(),
+                report.getStatus(),
+                report.getCategory(),
                 report.getTitle(),
                 report.getCreatedAt(),
                 report.getClosedAt(),

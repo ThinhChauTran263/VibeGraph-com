@@ -61,7 +61,8 @@ public class SecurityConfig {
         if (demoPermit) {
             log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
                     + "PERMITTED WITHOUT HTTP AUTHENTICATION. This is for demo/local only and is NOT "
-                    + "multi-user safe. STOMP connections still require a Bearer token on CONNECT.");
+                    + "multi-user safe. STOMP connections require either a Bearer token or an authenticated "
+                    + "browser cookie handshake.");
         }
 
         http

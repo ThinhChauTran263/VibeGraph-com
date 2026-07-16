@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
@@ -22,14 +23,15 @@ import com.vibegraph.common.exception.AccountBlockedException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Stateless bearer-token filter. Reads {@code Authorization: Bearer <jwt>}, verifies it, and
- * populates the {@link SecurityContextHolder} with an {@link AuthenticatedUser} principal and a
- * {@code ROLE_*} authority.
+ * Stateless token filter. Reads {@code Authorization: Bearer <jwt>} for CLI/API clients or the
+ * browser {@code vg_session} cookie, verifies it, and populates the {@link SecurityContextHolder}
+ * with an {@link AuthenticatedUser} principal and a {@code ROLE_*} authority.
  *
  * <p>On a missing or invalid token the filter does NOT reject directly — it leaves the context
  * unauthenticated and lets the chain continue, so the authorization rules + entry point produce
@@ -57,9 +59,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith(BEARER_PREFIX)
-                && SecurityContextHolder.getContext().getAuthentication() == null) {
-            String token = header.substring(BEARER_PREFIX.length()).trim();
+        String token = bearerToken(header);
+        if (token == null) {
+            token = cookieToken(request);
+        }
+        if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 AuthenticatedUser principal = jwtService.parse(token);
                 AccountBlockedException blocked = blockedException(principal.id());
@@ -94,6 +98,28 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String bearerToken(String header) {
+        if (header == null || !header.startsWith(BEARER_PREFIX)) {
+            return null;
+        }
+        String token = header.substring(BEARER_PREFIX.length()).trim();
+        return token.isEmpty() ? null : token;
+    }
+
+    private String cookieToken(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if (AuthCookieService.COOKIE_NAME.equals(cookie.getName())) {
+                String value = cookie.getValue();
+                return value == null || value.isBlank() ? null : value;
+            }
+        }
+        return null;
     }
 
     private AccountBlockedException blockedException(java.util.UUID userId) {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useAccountStore } from '@/stores/account'
-import type { Report, ReportMessage, FeedbackCategory } from '@/types/api'
+import type { Report, ReportMessage, FeedbackCategory, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
+import { useReportRealtime } from '@/composables/useReportRealtime'
 
 const accountStore = useAccountStore()
 
@@ -14,6 +15,7 @@ const replyMessage = ref('')
 const isSubmitting = ref(false)
 const isSending = ref(false)
 const errorMsg = ref('')
+const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
 const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
   { value: 'BUG', label: 'Bug Report' },
@@ -26,6 +28,13 @@ const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
 onMounted(async () => {
   await accountStore.fetchReports()
 })
+
+const reportRealtime = useReportRealtime(selectedReportId, {
+  onEvent: (event) => {
+    handleRealtimeEvent(event)
+  },
+})
+const reportRealtimeStatus = reportRealtime.status
 
 const submitReport = async () => {
   if (!newTitle.value.trim() || !newMessage.value.trim()) return
@@ -73,6 +82,38 @@ const sendReply = async () => {
     isSending.value = false
   }
 }
+
+const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
+  const currentReport = selectedReport.value
+  if (!currentReport || currentReport.id !== event.reportId) return
+
+  if (event.type === 'REPORT_MESSAGE_ADDED' && event.message) {
+    currentReport.messages ||= []
+    if (!currentReport.messages.some((msg) => msg.id === event.message?.id)) {
+      currentReport.messages.push(normalizeMessage(event.message))
+    }
+    return
+  }
+
+  if (event.type === 'REPORT_CLOSED' && event.report) {
+    currentReport.status = event.report.status
+    currentReport.closedAt = event.report.closedAt
+    currentReport.deletesAfter = event.report.deletesAfter
+    const idx = accountStore.reports.findIndex((r) => r.id === event.reportId)
+    const listReport = idx >= 0 ? accountStore.reports[idx] : null
+    if (listReport) {
+      listReport.status = event.report.status
+      listReport.closedAt = event.report.closedAt
+      listReport.deletesAfter = event.report.deletesAfter
+    }
+  }
+}
+
+const normalizeMessage = (message: ReportMessage): ReportMessage => ({
+  ...message,
+  isAdmin: message.senderRole === 'ADMIN',
+  senderName: message.senderRole === 'ADMIN' ? 'Support Team' : 'You',
+})
 </script>
 
 <template>
@@ -183,6 +224,9 @@ const sendReply = async () => {
             :status="selectedReport.status.toLowerCase()"
             :label="selectedReport.status"
           />
+          <span class="realtime-pill" :data-status="reportRealtimeStatus">
+            {{ reportRealtimeStatus === 'connected' ? 'Live' : 'Syncing' }}
+          </span>
         </div>
       </div>
 
@@ -415,6 +459,24 @@ const sendReply = async () => {
   margin: 0;
   color: var(--vg-text);
   font: 700 var(--vg-text-xl) var(--vg-font-display);
+}
+.realtime-pill {
+  min-width: 4.25rem;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  font-size: var(--vg-text-xs);
+  font-weight: 700;
+}
+.realtime-pill:not([data-status='connected']) {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--vg-text-dim);
 }
 .btn-back {
   min-height: 36px;
