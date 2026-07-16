@@ -42,6 +42,7 @@ import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.auth.repository.UserCreditBalanceRepository;
 import com.vibegraph.auth.repository.UserRepository;
+import com.vibegraph.auth.repository.SecurityEventRepository;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
 import com.vibegraph.common.exception.QuotaBelowCurrentUsageException;
 import com.vibegraph.auth.dto.StorageUnknownResponse;
@@ -68,6 +69,8 @@ class AdminServiceTest {
     @Mock private AdminStorageService adminStorageService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
+    @Mock private SecurityEventRepository securityEventRepository;
+    @Mock private AuditService auditService;
 
     private AdminService adminService;
 
@@ -87,7 +90,9 @@ class AdminServiceTest {
                 creditLedgerRepository,
                 adminStorageService,
                 passwordEncoder,
-                feedbackReportRealtimePublisher
+                feedbackReportRealtimePublisher,
+                securityEventRepository,
+                auditService
         );
     }
 
@@ -103,11 +108,13 @@ class AdminServiceTest {
         when(userRepository.countGrowthByQuarter()).thenReturn(java.util.List.of());
         when(userRepository.countGrowthByYear()).thenReturn(java.util.List.of());
         when(creditLedgerRepository.sumConsumptionByMonth()).thenReturn(java.util.List.of());
+        when(creditLedgerRepository.sumConsumptionByDay()).thenReturn(java.util.List.of());
         when(creditLedgerRepository.sumConsumptionByQuarter()).thenReturn(java.util.List.of());
         when(creditLedgerRepository.sumConsumptionByYear()).thenReturn(java.util.List.of());
         when(settingsRepository.countUsersByPlan()).thenReturn(java.util.List.of());
         when(projectUsageRepository.findTopStorageUsers(5)).thenReturn(java.util.List.of());
         when(projectUsageRepository.findTopStorageProjects(5)).thenReturn(java.util.List.of());
+        when(securityEventRepository.summarizeSince(any())).thenReturn(java.util.List.of());
         when(adminStorageService.overview()).thenReturn(new AdminStorageOverviewResponse(
                 0L,
                 java.util.List.of(),
@@ -170,7 +177,8 @@ class AdminServiceTest {
         UserAccountSettings settings = UserAccountSettings.builder()
                 .userId(userId).plan(Plan.builder().code("FREE").build()).build();
         AdminUserUpdateQuotaRequest request = new AdminUserUpdateQuotaRequest(2L, null);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
         when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
         when(projectUsageRepository.sumStorageBytesByOwnerId(userId)).thenReturn(2_097_152L);
 
@@ -191,7 +199,8 @@ class AdminServiceTest {
         UserAccountSettings settings = UserAccountSettings.builder()
                 .userId(userId).plan(Plan.builder().code("FREE").build()).build();
         AdminUserUpdateQuotaRequest request = new AdminUserUpdateQuotaRequest(null, 750);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
         when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
 
         adminService.updateQuota(userId, request);
@@ -261,8 +270,8 @@ class AdminServiceTest {
         UserAccountSettings settings = UserAccountSettings.builder().userId(userId).build();
         AdminUserUpdateQuotaRequest request = new AdminUserUpdateQuotaRequest(1L, null);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
         when(projectUsageRepository.sumStorageBytesByOwnerId(userId)).thenReturn(1_048_577L);
 
         assertThrows(QuotaBelowCurrentUsageException.class, () -> adminService.updateQuota(userId, request));
@@ -337,14 +346,15 @@ class AdminServiceTest {
         Plan plan = Plan.builder().code("PRO").storageLimitBytes(2000L).build();
         User user = User.builder().id(userId).email("test@test.local").displayName("Test").role(Role.USER).quotaBytes(100L).build();
 
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
+        when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
         when(planRepository.findByCode("PRO")).thenReturn(Optional.of(plan));
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
 
         AdminUserResponse response = adminService.updatePlan(userId, new AdminUserUpdatePlanRequest("PRO"));
 
         assertEquals("PRO", response.planCode());
-        assertEquals(2000L, response.quotaBytes());
+        assertEquals(0L, response.quotaMb());
         verify(settingsRepository).save(settings);
     }
 

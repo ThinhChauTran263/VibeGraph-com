@@ -7,6 +7,8 @@ import java.util.UUID;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +46,7 @@ class LocalImportServiceImplTest {
     private CurrentUser currentUser;
     private ProjectOwnershipRegistrar ownershipRegistrar;
     private DirectorySizeMeasurer directorySizeMeasurer;
+    private com.vibegraph.auth.service.FeatureGateService featureGateService;
     private LocalImportServiceImpl service;
     private final UUID userId = UUID.randomUUID();
 
@@ -58,6 +61,7 @@ class LocalImportServiceImplTest {
         currentUser = Mockito.mock(CurrentUser.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         directorySizeMeasurer = Mockito.mock(DirectorySizeMeasurer.class);
+        featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
         properties = new ProjectsProperties();
         properties.setAllowUnconfinedImport(true);
         Mockito.lenient().when(currentUser.id()).thenReturn(userId);
@@ -66,7 +70,20 @@ class LocalImportServiceImplTest {
         service = new LocalImportServiceImpl(projectService, analyzeService, fileChangeBroadcaster,
                 properties, graphUpdateController, Runnable::run,
                 accountSettingsService, projectUsageService, currentUser, ownershipRegistrar,
-                pathValidator, directorySizeMeasurer);
+                pathValidator, directorySizeMeasurer, new ConcurrentImportGuard(new AbuseProperties()), featureGateService);
+    }
+
+    @Test
+    @DisplayName("disabled local import flag blocks before filesystem work")
+    void importLocalDisabledBlocksBeforeFilesystemWork(@TempDir Path projectRoot) {
+        Mockito.doThrow(new com.vibegraph.common.exception.FeatureDisabledException("import.local"))
+                .when(featureGateService).assertEnabled("import.local");
+
+        assertThatThrownBy(() -> service.importLocal(new LocalImportRequest(projectRoot.toString(), "demo")))
+                .isInstanceOf(com.vibegraph.common.exception.FeatureDisabledException.class);
+
+        Mockito.verifyNoInteractions(currentUser, directorySizeMeasurer, projectService,
+                projectUsageService, ownershipRegistrar, analyzeService);
     }
 
     @Test

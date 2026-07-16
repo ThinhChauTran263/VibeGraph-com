@@ -135,6 +135,14 @@ vibegraph:
       # Max wait for the LLM relabel call before falling back to deterministic labels (ms).
       timeout-ms: ${VIBEGRAPH_USECASE_LLM_TIMEOUT_MS:8000}
 
+  abuse:
+    concurrent-imports-per-user: ${VIBEGRAPH_CONCURRENT_IMPORTS_PER_USER:1}
+    requests-per-minute-per-ip: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP:120}
+    requests-per-minute-per-user: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_USER:240}
+    requests-per-minute-per-api-key: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_API_KEY:240}
+    trust-proxy: ${VIBEGRAPH_TRUST_PROXY:false}
+    trusted-proxies: ${VIBEGRAPH_TRUSTED_PROXIES:}
+
   # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
   import:
     archive:

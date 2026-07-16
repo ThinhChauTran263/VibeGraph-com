@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
@@ -33,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/projects")
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -44,8 +44,8 @@ public class ProjectController {
     private final ProjectDeletionOrchestrator deletionOrchestrator;
     private final CurrentUser currentUser;
     private final AccountSettingsService accountSettingsService;
-    private final CreditPricingService creditPricingService;
-    private final CreditBalanceService creditBalanceService;
+    private final FeatureGateService featureGateService;
+    private final ProjectUsageService projectUsageService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -53,6 +53,16 @@ public class ProjectController {
         // so a validation failure inside createProject leaves no ownership row.
         ProjectResponse project = projectService.createProject(request);
         ownershipRegistrar.registerLocal(project.getId(), project.getName());
+        try {
+            projectUsageService.recordImport(project.getId(), currentUser.id(), 0L);
+        } catch (RuntimeException ex) {
+            try {
+                deletionOrchestrator.delete(project.getId());
+            } catch (RuntimeException cleanupFailure) {
+                ex.addSuppressed(cleanupFailure);
+            }
+            throw ex;
+        }
         return ResponseEntity.ok(ApiResponse.success(project));
     }
 
@@ -77,21 +87,15 @@ public class ProjectController {
     @PostMapping("/{id}/analyze")
     public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
         ownershipGuard.assertOwner(id);
+        featureGateService.assertEnabled(FeatureGateService.PROJECT_ANALYZE);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
-        long minimumCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0);
-        creditBalanceService.assertCreditsAvailable(userId, minimumCredits);
 
         ProjectResponse project = projectService.getProject(id);
         AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
 
         // Persist analysis stats through the interface contract — no impl downcast.
         projectService.updateProjectStats(id, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
-
-        long requiredCredits = creditPricingService.calculateCredits(
-                "PROJECT_ANALYZE", result.filesParsed(), 0, result.nodesUpserted());
-        creditBalanceService.deductCredits(
-                userId, requiredCredits, "PROJECT_ANALYZE", "PROJECT_ANALYZE", id);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }

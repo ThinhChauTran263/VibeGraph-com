@@ -77,6 +77,29 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
+    @DisplayName("a deactivated subscriber receives no further project status events")
+    void preSend_deactivatedExistingSubscriber_suppressesProjectStatus() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true, false);
+        connectUser();
+        interceptor.preSend(subscribeMessage(PROJECT_ID, "status"), channel);
+
+        assertThat(interceptor.preSend(outboundMessage(PROJECT_ID, "status"), channel)).isNull();
+    }
+
+    @Test
+    @DisplayName("a blocked subscriber cannot send project messages after status changes")
+    void preSend_blockedExistingSubscriber_rejectsProjectSend() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true, false);
+        connectUser();
+        interceptor.preSend(subscribeMessage(PROJECT_ID, "updates"), channel);
+
+        assertThatThrownBy(() -> interceptor.preSend(sendMessage(PROJECT_ID, "updates"), channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
     @DisplayName("a non-owner cannot subscribe to another user's project topic")
     void preSend_nonOwner_rejectsProjectSubscription() {
         connectActiveUser();
@@ -140,6 +163,29 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
+    @DisplayName("a deactivated account cannot connect")
+    void preSend_deactivatedUser_rejectsConnect() {
+        when(jwtService.parse("jwt-token"))
+                .thenReturn(new AuthenticatedUser(userId, "user@test.local", Role.USER));
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(false);
+
+        assertThatThrownBy(() -> interceptor.preSend(connectMessage(), channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("a deactivated report subscriber receives no further support updates")
+    void preSend_deactivatedExistingReportSubscriber_suppressesReportUpdate() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true, true, false);
+        when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+        connectAs(Role.USER);
+        interceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
+
+        assertThat(interceptor.preSend(outboundReportMessage(REPORT_ID), channel)).isNull();
+    }
+
+    @Test
     @DisplayName("a missing bearer token cannot connect")
     void preSend_missingBearerToken_rejectsConnect() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
@@ -156,11 +202,22 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
-    @DisplayName("non-project messages are not filtered")
-    void preSend_nonProjectMessage_isUnchanged() {
+    @DisplayName("non-project outbound messages are not filtered")
+    void preSend_nonProjectOutboundMessage_isUnchanged() {
         Message<byte[]> message = outboundMessage("system", "announcement");
 
         assertThat(interceptor.preSend(message, channel)).isSameAs(message);
+    }
+
+    @Test
+    @DisplayName("unknown SEND destinations are denied by default")
+    void preSend_unknownSendDestination_rejectsMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/app/unknown");
+
+        assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -213,6 +270,13 @@ class RealtimeAccountAccessInterceptorTest {
     private Message<byte[]> disconnectMessage() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.DISCONNECT);
         accessor.setSessionId(SESSION_ID);
+        return message(accessor);
+    }
+
+    private Message<byte[]> sendMessage(String projectId, String topic) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/projects/" + projectId + "/" + topic);
         return message(accessor);
     }
 

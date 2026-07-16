@@ -7,6 +7,6 @@ public class InsufficientCreditsException extends RuntimeException {
     }
 
     public String getCode() {
-        return "INSUFFICIENT_CREDITS";
+        return "CREDIT_EXHAUSTED";
     }
 }

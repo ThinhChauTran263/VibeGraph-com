@@ -218,7 +218,7 @@ class CreditBalanceServiceTest {
         stubExactPeriod(balance);
         when(balanceRepository.adjustCredits(balance.getId(), 75)).thenReturn(1);
 
-        service.applyAdminAdjustment(userId, 75, "bonus \"credits\"");
+        service.applyAdminAdjustment(userId, 75, "bonus \"credits\"\nnext\tline");
 
         verify(balanceRepository).adjustCredits(balance.getId(), 75);
         verify(balanceRepository, never()).save(balance);
@@ -229,6 +229,7 @@ class CreditBalanceServiceTest {
         assertThat(ledgerCaptor.getValue().getOperationCode()).isEqualTo("ADMIN_ADJUSTMENT");
         assertThat(ledgerCaptor.getValue().getCreditsDelta()).isEqualTo(75);
         assertThat(ledgerCaptor.getValue().getMetadata()).contains("\\\"credits\\\"");
+        assertThat(ledgerCaptor.getValue().getMetadata()).contains("\\nnext\\tline");
     }
 
     @Test
@@ -279,6 +280,13 @@ class CreditBalanceServiceTest {
 
         assertThatThrownBy(() -> service.assertCreditsAvailable(userId, 100L))
                 .isInstanceOf(InsufficientCreditsException.class);
+    }
+
+    @Test
+    @DisplayName("credit exhaustion exposes the stable API error code")
+    void insufficientCredits_usesCreditExhaustedCode() {
+        assertThat(new InsufficientCreditsException("exhausted").getCode())
+                .isEqualTo("CREDIT_EXHAUSTED");
     }
 
     private void stubMissingExactPeriod(CreditPeriodCalculator.CreditPeriod expected) {

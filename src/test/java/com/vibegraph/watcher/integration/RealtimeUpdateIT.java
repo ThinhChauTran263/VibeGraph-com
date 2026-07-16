@@ -63,6 +63,9 @@ class RealtimeUpdateIT {
     @Container
     static final Neo4jContainer<?> NEO4J = new Neo4jContainer<>("neo4j:5-community");
 
+    @Container
+    static final org.testcontainers.containers.PostgreSQLContainer<?> POSTGRES = new org.testcontainers.containers.PostgreSQLContainer<>("postgres:16-alpine");
+
     private static Driver driver;
 
     @LocalServerPort
@@ -94,6 +97,9 @@ class RealtimeUpdateIT {
         registry.add("spring.neo4j.uri", NEO4J::getBoltUrl);
         registry.add("spring.neo4j.authentication.username", () -> "neo4j");
         registry.add("spring.neo4j.authentication.password", NEO4J::getAdminPassword);
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
     @BeforeAll

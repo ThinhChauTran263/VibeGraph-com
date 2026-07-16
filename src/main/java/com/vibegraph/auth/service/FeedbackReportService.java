@@ -44,6 +44,7 @@ public class FeedbackReportService {
     private final FeedbackMessageRepository messageRepository;
     private final CurrentUser currentUser;
     private final FeedbackReportRealtimePublisher realtimePublisher;
+    private final AuditService auditService;
 
     // ── CREATE ────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,8 @@ public class FeedbackReportService {
         log.info("User {} closed report {}", currentUser.id(), reportId);
         FeedbackReportResponse response = toResponse(reportRepository.save(report));
         realtimePublisher.publishReportClosed(response);
+        auditService.recordCurrentUser("REPORT_CLOSE", report.getUserId(), "REPORT", reportId.toString(),
+                java.util.Map.of("deleteAfter", report.getDeleteAfter().toString()));
         return response;
     }
 

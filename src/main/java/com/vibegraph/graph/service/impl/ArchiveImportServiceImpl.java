@@ -2,8 +2,11 @@ package com.vibegraph.graph.service.impl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -17,6 +20,7 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
 import com.vibegraph.common.exception.ServiceBusyException;
@@ -61,6 +65,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final CurrentUser currentUser;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final FeatureGateService featureGateService;
+    private final ConcurrentImportGuard concurrentImportGuard;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -73,7 +78,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     ProjectUsageService projectUsageService,
                                     CurrentUser currentUser,
                                     ProjectOwnershipRegistrar ownershipRegistrar,
-                                    FeatureGateService featureGateService) {
+                                    FeatureGateService featureGateService,
+                                    ConcurrentImportGuard concurrentImportGuard) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -86,11 +92,21 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.currentUser = currentUser;
         this.ownershipRegistrar = ownershipRegistrar;
         this.featureGateService = featureGateService;
+        this.concurrentImportGuard = concurrentImportGuard;
     }
 
     @Override
     public ProjectResponse importArchive(String name, MultipartFile file) {
-        ImportContext ctx = prepare(name, file);
+        featureGateService.assertEnabled(FeatureGateService.IMPORT_ARCHIVE);
+        validate(name, file);
+        ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(currentUser.id());
+        ImportContext ctx;
+        try {
+            ctx = prepare(name, file);
+        } catch (RuntimeException e) {
+            lease.close();
+            throw e;
+        }
         try {
             AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
             projectService.updateProjectStats(ctx.projectId(),
@@ -103,25 +119,38 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         } catch (RuntimeException e) {
             cleanup(ctx.workspace(), ctx.projectId());
             throw e;
+        } finally {
+            lease.close();
         }
     }
 
     @Override
     public ProjectResponse importArchiveAsync(String name, MultipartFile file) {
-        ImportContext ctx = prepare(name, file);
-        projectService.markAnalyzing(ctx.projectId());
-        graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0);
+        featureGateService.assertEnabled(FeatureGateService.IMPORT_ARCHIVE);
+        validate(name, file);
+        ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(currentUser.id());
+        ImportContext ctx = null;
         try {
-            analysisExecutor.execute(() -> analyzeInBackground(ctx));
+            ctx = prepare(name, file);
+            projectService.markAnalyzing(ctx.projectId());
+            graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0);
+            ProjectResponse response = projectService.getProject(ctx.projectId());
+            ImportContext accepted = ctx.withLease(lease);
+            analysisExecutor.execute(() -> analyzeInBackground(accepted));
+            return response;
         } catch (RejectedExecutionException ex) {
-            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
-            projectService.markFailed(ctx.projectId(), reason);
-            graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
-            cleanup(ctx.workspace(), ctx.projectId());
+            if (ctx != null) {
+                projectService.markFailed(ctx.projectId(), reason);
+                graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
+                cleanup(ctx.workspace(), ctx.projectId());
+            }
+            lease.close();
             throw new ServiceBusyException(reason);
+        } catch (RuntimeException e) {
+            lease.close();
+            throw e;
         }
-        return projectService.getProject(ctx.projectId());
     }
 
     private void validate(String name, MultipartFile file) {
@@ -140,7 +169,6 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      * errors surface immediately to the caller even on the async path.
      */
     private ImportContext prepare(String name, MultipartFile file) {
-        featureGateService.assertEnabled(FeatureGateService.GLOBAL_IMPORT_ARCHIVE);
         validate(name, file);
 
         // Blocked account check before we consume any server resources (extract, etc.).
@@ -173,7 +201,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             // Record storage usage synchronously
             projectUsageService.recordImport(createdProjectId, userId, totalSize);
 
-            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize, userId);
+            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize, userId, null);
         } catch (ArchiveImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -211,11 +239,19 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
             cleanup(ctx.workspace(), null); // keep the FAILED project; only remove the now-stale workspace
             log.error("Async analysis failed for project {}: {}", ctx.projectId(), e.getMessage(), e);
+        } finally {
+            ctx.lease().close();
         }
     }
 
     /** Synchronous import state handed to the background analysis task. */
-    private record ImportContext(Path workspace, String projectId, String rootPath, String name, int javaFileCount, long totalSize, UUID userId) {
+    private record ImportContext(Path workspace, String projectId, String rootPath, String name,
+            int javaFileCount, long totalSize, UUID userId, ConcurrentImportGuard.Lease lease) {
+
+        private ImportContext withLease(ConcurrentImportGuard.Lease acquiredLease) {
+            return new ImportContext(workspace, projectId, rootPath, name, javaFileCount,
+                    totalSize, userId, acquiredLease);
+        }
     }
 
     private void cleanup(Path workspace, String projectId) {
@@ -224,6 +260,11 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                 projectService.deleteProject(projectId);
             } catch (RuntimeException ignored) {
                 // best-effort - the project may already be gone
+            }
+            try {
+                ownershipRegistrar.unregister(projectId);
+            } catch (RuntimeException ex) {
+                log.warn("Failed to clean archive import ownership {}: {}", projectId, ex.getMessage());
             }
         }
         deleteRecursively(workspace);
@@ -252,13 +293,27 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      * Used to verify quota before registering the project.
      */
     private long measureExtractedSize(Path dir) {
+        long[] totalBytes = {0L};
         try (var walk = Files.walk(dir)) {
-            return walk.filter(Files::isRegularFile)
-                    .mapToLong(p -> {
-                        try { return Files.size(p); } catch (IOException e) { return 0L; }
-                    }).sum();
-        } catch (IOException e) {
-            return 0L;
+            walk.forEach(path -> {
+                try {
+                    BasicFileAttributes attributes = Files.readAttributes(
+                            path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    if (attributes.isSymbolicLink()) {
+                        throw new IllegalArgumentException("Symbolic links are not allowed in imported sources");
+                    }
+                    if (attributes.isRegularFile()) {
+                        totalBytes[0] = Math.addExact(totalBytes[0], attributes.size());
+                    } else if (!attributes.isDirectory()) {
+                        throw new IllegalArgumentException("Unsupported file type in imported sources");
+                    }
+                } catch (IOException ex) {
+                    throw new UncheckedIOException(ex);
+                }
+            });
+            return totalBytes[0];
+        } catch (IOException | UncheckedIOException | ArithmeticException | SecurityException ex) {
+            throw new IllegalArgumentException("Imported source size could not be measured safely", ex);
         }
     }
 }

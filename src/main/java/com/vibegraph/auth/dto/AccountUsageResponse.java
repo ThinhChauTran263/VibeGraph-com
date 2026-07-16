@@ -1,13 +1,13 @@
 package com.vibegraph.auth.dto;
 
 public record AccountUsageResponse(
-        long usedBytes,
-        long limitBytes,
-        long remainingBytes,
+        long usedMb,
+        long limitMb,
+        long remainingMb,
         String planCode,
         String planName,
-        Long quotaOverrideBytes,
-        int creditsUsed,
-        int creditsLimit,
-        int creditsRemaining) {
+        Long quotaOverrideMb,
+        long creditsUsed,
+        long creditsLimit,
+        long creditsRemaining) {
 }

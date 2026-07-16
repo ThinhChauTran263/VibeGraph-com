@@ -14,9 +14,9 @@ public record AdminUserResponse(
         String blockedReason,
         String blockedReasonSafe,
         String planCode,
-        Long storageQuotaOverrideBytes,
+        Long storageQuotaOverrideMb,
         Integer creditQuotaOverride,
-        long quotaBytes,
-        long usedBytes,
+        long quotaMb,
+        long usedMb,
         boolean apiKeyCreationDisabled
 ) {}

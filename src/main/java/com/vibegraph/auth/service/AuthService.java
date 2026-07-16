@@ -40,6 +40,7 @@ public class AuthService {
     private final CurrentUser currentUser;
     private final AccountSettingsService accountSettingsService;
     private final FeatureGateService featureGateService;
+    private final AuditService auditService;
 
     /**
      * Create a local account and return a fresh token + safe user projection.
@@ -48,7 +49,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        featureGateService.assertEnabled(FeatureGateService.GLOBAL_REGISTRATION);
+        featureGateService.assertEnabled(FeatureGateService.REGISTRATION);
         String email = request.email().trim();
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new EmailAlreadyExistsException("Email already registered");
@@ -79,9 +80,15 @@ public class AuthService {
                 : DUMMY_PASSWORD_HASH;
         boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHash);
         if (!passwordMatches || user == null || user.getPasswordHash() == null) {
+            auditService.record(
+                    "FAILED_LOGIN", null, null, "USER", request.email().trim(), "FAILURE",
+                    java.util.Map.of("reason", "INVALID_CREDENTIALS"));
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        return toAuthResponse(user);
+        AuthResponse response = toAuthResponse(user);
+        auditService.record("LOGIN", user.getId(), user.getId(), "USER", user.getId().toString(), "SUCCESS",
+                java.util.Map.of("email", user.getEmail()));
+        return response;
     }
 
     /**

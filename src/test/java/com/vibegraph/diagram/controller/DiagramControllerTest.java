@@ -41,6 +41,7 @@ class DiagramControllerTest {
     private ClassDiagramService classDiagramService;
     private ProjectService projectService;
     private ProjectOwnershipGuard ownershipGuard;
+    private com.vibegraph.auth.service.FeatureGateService featureGateService;
 
     @BeforeEach
     void setUp() {
@@ -48,8 +49,10 @@ class DiagramControllerTest {
         classDiagramService = Mockito.mock(ClassDiagramService.class);
         projectService = Mockito.mock(ProjectService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
+        featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
         DiagramController controller =
-                new DiagramController(useCaseDiagramService, classDiagramService, projectService, ownershipGuard);
+                new DiagramController(useCaseDiagramService, classDiagramService, projectService, ownershipGuard,
+                        featureGateService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -71,6 +74,20 @@ class DiagramControllerTest {
     private void stubAnalyzed(String projectId) {
         when(projectService.getProject(projectId)).thenReturn(
                 ProjectResponse.builder().id(projectId).status(ProjectStatus.ANALYZED.name()).build());
+    }
+
+    @Test
+    @DisplayName("GET /diagrams/usecase rejects a disabled feature before project reads")
+    void useCaseFeatureDisabled() throws Exception {
+        doThrow(new com.vibegraph.common.exception.FeatureDisabledException("usecase.generate"))
+                .when(featureGateService).assertEnabled("usecase.generate");
+
+        mockMvc.perform(get("/api/projects/p1/diagrams/usecase"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FEATURE_DISABLED"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verifyNoInteractions(useCaseDiagramService, classDiagramService, projectService);
     }
 
     @Test

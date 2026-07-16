@@ -7,9 +7,9 @@ import com.vibegraph.auth.domain.CreditLedger;
 
 public record AdminCreditOverviewResponse(
         UUID userId,
-        int currentCreditsLimit,
-        int creditsUsed,
-        int creditsAdjustment,
-        int creditBalance,
+        long currentCreditsLimit,
+        long creditsUsed,
+        long creditsAdjustment,
+        long creditBalance,
         List<CreditLedger> ledgerHistory
 ) {}

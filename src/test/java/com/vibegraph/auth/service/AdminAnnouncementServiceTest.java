@@ -9,6 +9,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.vibegraph.auth.domain.Announcement;
 import com.vibegraph.auth.dto.AnnouncementRequest;
 import com.vibegraph.auth.repository.AnnouncementRepository;
+import com.vibegraph.auth.repository.UserRepository;
+import com.vibegraph.auth.CurrentUser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -19,12 +21,17 @@ import static org.mockito.Mockito.when;
 class AdminAnnouncementServiceTest {
 
     @Mock private AnnouncementRepository announcementRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private CurrentUser currentUser;
+    @Mock private AuditService auditService;
 
     @Test
     @DisplayName("create strips markup so announcements are plain text")
     void create_htmlInput_stripsMarkup() {
         when(announcementRepository.save(any(Announcement.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        AdminAnnouncementService service = new AdminAnnouncementService(announcementRepository);
+        when(currentUser.id()).thenReturn(java.util.UUID.randomUUID());
+        AdminAnnouncementService service = new AdminAnnouncementService(
+                announcementRepository, userRepository, currentUser, auditService);
 
         var response = service.create(new AnnouncementRequest(
                 "SECURITY",
@@ -39,5 +46,28 @@ class AdminAnnouncementServiceTest {
 
         assertEquals("Notice", response.title());
         assertEquals("alert(1)Rotate keys", response.body());
+    }
+
+    @Test
+    @DisplayName("create returns safe creator display and email projection")
+    void create_returnsCreatorProjection() {
+        java.util.UUID creatorId = java.util.UUID.randomUUID();
+        when(currentUser.id()).thenReturn(creatorId);
+        when(announcementRepository.save(any(Announcement.class))).thenAnswer(invocation -> {
+            Announcement announcement = invocation.getArgument(0);
+            announcement.setId(java.util.UUID.randomUUID());
+            return announcement;
+        });
+        when(userRepository.findById(creatorId)).thenReturn(java.util.Optional.of(
+                com.vibegraph.auth.domain.User.builder()
+                        .id(creatorId).displayName("Ops Admin").email("ops@test.local").build()));
+        AdminAnnouncementService service = new AdminAnnouncementService(
+                announcementRepository, userRepository, currentUser, auditService);
+
+        var response = service.create(new AnnouncementRequest(
+                "GENERAL", "INFO", "ALL", "Notice", "Body", null, null, true, true));
+
+        assertEquals("Ops Admin", response.creatorDisplayName());
+        assertEquals("ops@test.local", response.creatorEmail());
     }
 }

@@ -85,12 +85,11 @@ public class AccountSettingsService {
     @Transactional(readOnly = true)
     public void assertQuotaNotExceeded(UUID userId, long additionalBytes) {
         if (additionalBytes <= 0) {
-            // Deletions or zero-byte deltas never exceed quota.
             return;
         }
         AccountQuotaSnapshot snapshot = quotaSnapshot(userId);
-        long remainingBytes = Math.max(0L, snapshot.limitBytes() - snapshot.usedBytes());
-        if (additionalBytes > remainingBytes) {
+        if (snapshot.usedBytes() >= snapshot.limitBytes()
+                || additionalBytes > snapshot.limitBytes() - snapshot.usedBytes()) {
             throw new QuotaExceededException(QUOTA_EXCEEDED_MESSAGE);
         }
     }
@@ -99,14 +98,24 @@ public class AccountSettingsService {
     public AccountQuotaSnapshot quotaSnapshot(UUID userId) {
         UserAccountSettings settings = findSettings(userId);
         long usedBytes = projectUsageRepository.sumStorageBytesByOwnerId(userId);
+        long limitBytes = effectiveLimitBytes(settings);
         Long override = settings.getStorageQuotaOverrideBytes();
-        long limitBytes = override != null ? override : settings.getPlan().getStorageLimitBytes();
+        long remainingBytes = usedBytes >= limitBytes ? 0L : limitBytes - usedBytes;
         return new AccountQuotaSnapshot(
                 usedBytes,
                 limitBytes,
-                Math.max(0L, limitBytes - usedBytes),
+                remainingBytes,
                 settings.getPlan().getCode(),
                 settings.getPlan().getName(),
                 override);
+    }
+
+    static long effectiveLimitBytes(UserAccountSettings settings) {
+        Long override = settings.getStorageQuotaOverrideBytes();
+        long limitBytes = override != null ? override : settings.getPlan().getStorageLimitBytes();
+        if (limitBytes < 0) {
+            throw new IllegalStateException("Storage quota must be non-negative");
+        }
+        return limitBytes;
     }
 }

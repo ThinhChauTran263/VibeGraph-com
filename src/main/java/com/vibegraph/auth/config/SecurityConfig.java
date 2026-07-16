@@ -6,6 +6,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ClientAddressResolver;
+import com.vibegraph.abuse.IpBlockFilter;
+import com.vibegraph.abuse.IpBlockService;
+import com.vibegraph.abuse.RateLimitFilter;
+import com.vibegraph.abuse.RequestEventService;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
@@ -20,6 +28,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.vibegraph.auth.web.ApiKeyAuthFilter;
 import com.vibegraph.auth.web.JwtAuthFilter;
 import com.vibegraph.auth.web.RestAccessDeniedHandler;
 import com.vibegraph.auth.web.RestAuthEntryPoint;
@@ -43,17 +52,38 @@ import lombok.RequiredArgsConstructor;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class, AbuseProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final RestAuthEntryPoint authEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final RealtimeSecurityProperties realtimeProperties;
     private final CorsProperties corsProperties;
+    private final AbuseProperties abuseProperties;
+    private final IpBlockService ipBlockService;
+    private final RequestEventService requestEventService;
+    private final ObjectMapper objectMapper;
+
+    @Bean
+    public ClientAddressResolver clientAddressResolver() {
+        return new ClientAddressResolver(abuseProperties);
+    }
+
+    @Bean
+    public IpBlockFilter ipBlockFilter(ClientAddressResolver resolver) {
+        return new IpBlockFilter(resolver, ipBlockService, objectMapper);
+    }
+
+    @Bean
+    public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver) {
+        return new RateLimitFilter(abuseProperties, resolver, requestEventService, objectMapper,
+                java.time.Clock.systemUTC());
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -81,13 +111,16 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter(clientAddressResolver()), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
+    public static PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 

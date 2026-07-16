@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.exception.ProjectNotAnalyzedException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
@@ -49,6 +50,7 @@ public class DiagramController {
     private final ClassDiagramService classDiagramService;
     private final ProjectService projectService;
     private final ProjectOwnershipGuard ownershipGuard;
+    private final FeatureGateService featureGateService;
 
     @GetMapping("/usecase")
     public ResponseEntity<ApiResponse<Object>> getUseCaseDiagram(
@@ -56,6 +58,7 @@ public class DiagramController {
             @RequestParam(name = "style", required = false, defaultValue = STYLE_UML) String style,
             @RequestParam(name = "mode", required = false) String mode) {
         ownershipGuard.assertOwner(projectId);
+        featureGateService.assertEnabled(FeatureGateService.USECASE_GENERATE);
         requireAnalyzed(projectId);
         String normalizedStyle = style == null ? STYLE_UML : style.trim().toLowerCase(Locale.ROOT);
         if (!STYLE_UML.equals(normalizedStyle)) {

@@ -18,6 +18,18 @@ public interface CreditLedgerRepository extends JpaRepository<CreditLedger, UUID
     List<CreditLedger> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     @org.springframework.data.jpa.repository.Query(value = """
+            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS label,
+                   sum(abs(credits_delta)) AS value,
+                   'day' AS period
+            FROM credit_ledger
+            WHERE created_at IS NOT NULL
+              AND credits_delta < 0
+            GROUP BY date_trunc('day', created_at)
+            ORDER BY date_trunc('day', created_at)
+            """, nativeQuery = true)
+    List<AdminSeriesRow> sumConsumptionByDay();
+
+    @org.springframework.data.jpa.repository.Query(value = """
             SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS label,
                    sum(abs(credits_delta)) AS value,
                    'month' AS period

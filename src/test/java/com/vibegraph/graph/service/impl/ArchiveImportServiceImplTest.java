@@ -17,6 +17,8 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
@@ -88,7 +90,8 @@ class ArchiveImportServiceImplTest {
         lenient().when(currentUser.id()).thenReturn(userId);
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
-                accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService);
+                accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService,
+                new ConcurrentImportGuard(new AbuseProperties()));
     }
 
     @Test
@@ -116,8 +119,8 @@ class ArchiveImportServiceImplTest {
     @Test
     @DisplayName("disabled archive import flag blocks before workspace creation")
     void disabledArchiveImportFlag_blocksBeforeWorkspaceCreation() throws IOException {
-        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_IMPORT_ARCHIVE))
-                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_IMPORT_ARCHIVE);
+        doThrow(new FeatureDisabledException(FeatureGateService.IMPORT_ARCHIVE))
+                .when(featureGateService).assertEnabled(FeatureGateService.IMPORT_ARCHIVE);
         MockMultipartFile file = zip("project.zip", Map.of("src/App.java", "class App {}"));
 
         assertThatThrownBy(() -> service.importArchive("demo", file))

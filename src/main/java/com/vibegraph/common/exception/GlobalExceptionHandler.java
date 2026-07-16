@@ -124,7 +124,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleFeatureDisabled(FeatureDisabledException ex) {
         ErrorResponse error = ErrorResponse.builder()
                 .code(ex.getCode())
-                .message(ex.getMessage())
+                .message("Feature is currently disabled")
                 .build();
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
     }
@@ -134,8 +134,8 @@ public class GlobalExceptionHandler {
         ErrorResponse error = ErrorResponse.builder()
                 .code(ex.getCode())
                 .message(ex.getMessage())
-                .details("currentUsageBytes=" + ex.getCurrentUsageBytes()
-                        + "; requestedQuotaBytes=" + ex.getRequestedQuotaBytes())
+                .details("currentUsageMb=" + ex.getCurrentUsageMb()
+                        + "; requestedQuotaMb=" + ex.getRequestedQuotaMb())
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(error));
     }

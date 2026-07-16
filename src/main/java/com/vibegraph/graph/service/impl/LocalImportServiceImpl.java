@@ -20,7 +20,9 @@ import org.springframework.stereotype.Service;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.config.ProjectsProperties;
@@ -66,6 +68,8 @@ public class LocalImportServiceImpl implements LocalImportService {
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final LocalProjectPathValidator pathValidator;
     private final DirectorySizeMeasurer directorySizeMeasurer;
+    private final ConcurrentImportGuard concurrentImportGuard;
+    private final FeatureGateService featureGateService;
 
     public LocalImportServiceImpl(ProjectService projectService,
             AnalyzeService analyzeService,
@@ -78,7 +82,9 @@ public class LocalImportServiceImpl implements LocalImportService {
             CurrentUser currentUser,
             ProjectOwnershipRegistrar ownershipRegistrar,
             LocalProjectPathValidator pathValidator,
-            DirectorySizeMeasurer directorySizeMeasurer) {
+            DirectorySizeMeasurer directorySizeMeasurer,
+            ConcurrentImportGuard concurrentImportGuard,
+            FeatureGateService featureGateService) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
@@ -91,47 +97,60 @@ public class LocalImportServiceImpl implements LocalImportService {
         this.ownershipRegistrar = ownershipRegistrar;
         this.pathValidator = pathValidator;
         this.directorySizeMeasurer = directorySizeMeasurer;
+        this.concurrentImportGuard = concurrentImportGuard;
+        this.featureGateService = featureGateService;
     }
 
     @Override
     public ProjectResponse importLocal(LocalImportRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.IMPORT_LOCAL);
         // Blocked account must be checked BEFORE quota (returns ACCOUNT_BLOCKED, not QUOTA_EXCEEDED).
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
+        ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(userId);
 
-        Path validatedRoot = pathValidator.validateImportRoot(request.path());
-        long totalSize = directorySizeMeasurer.measureBytes(validatedRoot);
-        accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
+        try {
+            Path validatedRoot = pathValidator.validateImportRoot(request.path());
+            long totalSize = directorySizeMeasurer.measureBytes(validatedRoot);
+            accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
 
-        ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
-                .name(request.name())
-                .rootPath(validatedRoot.toString())
-                .build());
+            ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
+                    .name(request.name())
+                    .rootPath(validatedRoot.toString())
+                    .build());
 
-        // Register ownership first to satisfy FK constraint in usage
-        ownershipRegistrar.registerLocal(created.getId(), created.getName());
+            try {
+                ownershipRegistrar.registerLocal(created.getId(), created.getName());
+                projectUsageService.recordImport(created.getId(), userId, totalSize);
+            } catch (RuntimeException ex) {
+                cleanupCreatedProject(created.getId());
+                throw ex;
+            }
 
-        // Record usage synchronously so GET /api/account/usage is consistent immediately.
-        projectUsageService.recordImport(created.getId(), userId, totalSize);
-
-        projectService.markAnalyzing(created.getId());
-        graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
+            projectService.markAnalyzing(created.getId());
+            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
         // Analyze off the request thread so the client gets an immediate ANALYZING
         // response and a streamed progress bar (mirrors the archive/GitHub async flow).
-        try {
-            analysisExecutor
-                    .execute(() -> analyzeInBackground(created.getId(), created.getName(), created.getRootPath(), userId));
-        } catch (RejectedExecutionException ex) {
-            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
-            String reason = "Server is busy analyzing other projects. Please retry shortly.";
-            projectService.markFailed(created.getId(), reason);
-            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
-            throw new ServiceBusyException(reason);
+            ProjectResponse accepted = projectService.getProject(created.getId());
+            try {
+                analysisExecutor.execute(() -> analyzeInBackground(
+                        created.getId(), created.getName(), created.getRootPath(), lease));
+            } catch (RejectedExecutionException ex) {
+                String reason = "Server is busy analyzing other projects. Please retry shortly.";
+                projectService.markFailed(created.getId(), reason);
+                graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
+                lease.close();
+                throw new ServiceBusyException(reason);
+            }
+            return accepted;
+        } catch (RuntimeException e) {
+            lease.close();
+            throw e;
         }
-        return projectService.getProject(created.getId());
     }
 
-    private void analyzeInBackground(String projectId, String name, String rootPath, UUID userId) {
+    private void analyzeInBackground(String projectId, String name, String rootPath,
+            ConcurrentImportGuard.Lease lease) {
         try {
             AnalysisProgressListener listener = (percent, phase) -> {
                 projectService.updateProgress(projectId, percent);
@@ -151,6 +170,21 @@ public class LocalImportServiceImpl implements LocalImportService {
             projectService.markFailed(projectId, e.getMessage());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.FAILED.name(), 0, e.getMessage());
             log.error("Local analysis failed for project {} ({}): {}", projectId, rootPath, e.getMessage(), e);
+        } finally {
+            lease.close();
+        }
+    }
+
+    private void cleanupCreatedProject(String projectId) {
+        try {
+            projectService.deleteProject(projectId);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to clean local import project {}: {}", projectId, ex.getMessage());
+        }
+        try {
+            ownershipRegistrar.unregister(projectId);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to clean local import ownership {}: {}", projectId, ex.getMessage());
         }
     }
 

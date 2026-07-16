@@ -98,6 +98,7 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
     @Override
     @Transactional
     public PatchResult applyPatch(String projectId, PatchRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.CLI_PUSH);
         PatchRequest patch = request == null
                 ? new PatchRequest(List.of(), List.of(), false)
                 : request;
@@ -110,6 +111,8 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         List<PatchDeletion> deletions = patch.safeDeletions();
 
         enforceCountLimits(files, deletions);
+        UUID userId = currentUser.id();
+        projectUsageService.lockForPatch(projectId, userId);
 
         // --- Phase 1: validate EVERYTHING (fail-fast). No filesystem mutation happens
         // here. ---
@@ -122,7 +125,7 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             Path target = validateRelativePath(root, file.path());
             byte[] bytes = decodeContent(file);
             enforceFileSize(bytes.length);
-            totalBytes += bytes.length;
+            totalBytes = addExact(totalBytes, bytes.length);
             if (totalBytes > properties.getMaxTotalBytes()) {
                 throw new PatchRejectedException(Reason.TOTAL_TOO_LARGE,
                         "cumulative content exceeds the maximum total bytes");
@@ -144,13 +147,14 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         rejectDuplicateAndOverlappingTargets(fileTargets, deletionTargets);
 
         // Quota: net delta = sum(newSize - oldSize) for writes + sum(-oldSize) for deletions.
-        UUID userId = currentUser.id();
         long netDeltaBytes = 0;
         for (int i = 0; i < files.size(); i++) {
-            netDeltaBytes += decoded[i].length - oldSizes[i];
+            netDeltaBytes = addExact(
+                    netDeltaBytes,
+                    Math.subtractExact((long) decoded[i].length, oldSizes[i]));
         }
         for (long deletionOldSize : deletionOldSizes) {
-            netDeltaBytes -= deletionOldSize;
+            netDeltaBytes = Math.subtractExact(netDeltaBytes, deletionOldSize);
         }
         // assertQuotaNotExceeded skips automatically when delta <= 0 (no new storage consumed).
         accountSettingsService.assertQuotaNotExceeded(userId, netDeltaBytes);
@@ -169,7 +173,6 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             return new PatchResult(projectId, files.size(), wouldDelete, List.of(), false);
         }
 
-        featureGateService.assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
         long requiredCredits = creditPricingService.calculateCredits("CLI_PUSH", files.size(), 0);
         creditBalanceService.deductCredits(userId, requiredCredits, "CLI", "CLI_PUSH", projectId);
 
@@ -186,7 +189,7 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         boolean transactionSynchronizationRegistered = registerTransactionCompletion(patchSession);
         try {
             if (netDeltaBytes != 0) {
-                projectUsageService.recordPatchDelta(projectId, netDeltaBytes);
+                projectUsageService.recordPatchDelta(projectId, userId, netDeltaBytes);
             }
             if (!transactionSynchronizationRegistered) {
                 patchSession.commit();
@@ -218,6 +221,14 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         if (decodedLength > properties.getMaxFileBytes()) {
             throw new PatchRejectedException(Reason.FILE_TOO_LARGE,
                     "file exceeds the maximum size of " + properties.getMaxFileBytes() + " bytes");
+        }
+    }
+
+    private long addExact(long left, long right) {
+        try {
+            return Math.addExact(left, right);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Patch size is outside the supported range", ex);
         }
     }
 

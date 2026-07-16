@@ -12,7 +12,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
@@ -28,7 +28,7 @@ public final class MeteredToolCallback implements ToolCallback {
     private final CreditBalanceService creditBalanceService;
     private final ProjectOwnershipGuard ownershipGuard;
     private final FeatureGateService featureGateService;
-    private final AccountSettingsService accountSettingsService;
+    private final AccountAccessGuard accountAccessGuard;
     private final ObjectMapper objectMapper;
 
     public MeteredToolCallback(
@@ -38,7 +38,7 @@ public final class MeteredToolCallback implements ToolCallback {
             CreditBalanceService creditBalanceService,
             ProjectOwnershipGuard ownershipGuard,
             FeatureGateService featureGateService,
-            AccountSettingsService accountSettingsService,
+            AccountAccessGuard accountAccessGuard,
             ObjectMapper objectMapper) {
         this.delegate = delegate;
         this.currentUser = currentUser;
@@ -46,7 +46,7 @@ public final class MeteredToolCallback implements ToolCallback {
         this.creditBalanceService = creditBalanceService;
         this.ownershipGuard = ownershipGuard;
         this.featureGateService = featureGateService;
-        this.accountSettingsService = accountSettingsService;
+        this.accountAccessGuard = accountAccessGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -72,7 +72,7 @@ public final class MeteredToolCallback implements ToolCallback {
 
     private String meter(String toolInput, ToolInvocation invocation) {
         UUID userId = currentUser.id();
-        accountSettingsService.assertNotBlocked(userId);
+        accountAccessGuard.assertProductAccess(userId);
         featureGateService.assertMcpToolEnabled(delegate.getToolDefinition().name());
         String projectId = extractProjectId(toolInput);
         if (projectId != null) {
@@ -80,11 +80,9 @@ public final class MeteredToolCallback implements ToolCallback {
         }
 
         long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
-        creditBalanceService.assertCreditsAvailable(userId, requiredCredits);
-        String result = invocation.call();
         creditBalanceService.deductCredits(
                 userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
-        return result;
+        return invocation.call();
     }
 
     private String extractProjectId(String toolInput) {

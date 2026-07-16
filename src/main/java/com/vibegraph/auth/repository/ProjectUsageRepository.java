@@ -1,8 +1,11 @@
 package com.vibegraph.auth.repository;
 
-import java.util.UUID;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,6 +14,10 @@ import com.vibegraph.auth.domain.ProjectUsage;
 import com.vibegraph.auth.repository.projection.AdminStorageSubjectRow;
 
 public interface ProjectUsageRepository extends JpaRepository<ProjectUsage, String> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM ProjectUsage p WHERE p.projectId = :projectId")
+    Optional<ProjectUsage> findByIdForUpdate(@Param("projectId") String projectId);
 
     @Query("SELECT COALESCE(SUM(p.storageBytes), 0) FROM ProjectUsage p WHERE p.ownerId = :ownerId")
     long sumStorageBytesByOwnerId(@Param("ownerId") UUID ownerId);

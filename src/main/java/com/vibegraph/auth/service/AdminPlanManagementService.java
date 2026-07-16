@@ -60,7 +60,7 @@ public class AdminPlanManagementService {
     private Plan toPlan(Plan plan, AdminPlanUpsertRequest request) {
         plan.setCode(request.code());
         plan.setName(request.name());
-        plan.setStorageLimitBytes(request.storageLimitBytes());
+        plan.setStorageLimitBytes(StorageUnitConverter.mbToBytes(request.storageLimitMb()));
         plan.setApiKeyLimit(request.apiKeyLimit());
         plan.setMonthlyCreditLimit(request.monthlyCreditLimit());
         plan.setContactSalesRequired(request.contactSalesRequired());

@@ -55,6 +55,9 @@ class ApiKeyServiceTest {
     @Mock
     private FeatureGateService featureGateService;
 
+    @Mock
+    private AuditService auditService;
+
     private ApiKeyService apiKeyService;
 
     private UUID userId;
@@ -71,7 +74,8 @@ class ApiKeyServiceTest {
                 userRepository,
                 accountSettingsService,
                 passwordEncoder,
-                featureGateService);
+                featureGateService,
+                auditService);
 
         userId = UUID.randomUUID();
         user = User.builder()
@@ -106,6 +110,7 @@ class ApiKeyServiceTest {
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
             ApiKey key = invocation.getArgument(0);
+            key.setId(UUID.randomUUID());
             key.setCreatedAt(java.time.Instant.now());
             return key;
         });
@@ -133,6 +138,7 @@ class ApiKeyServiceTest {
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
             ApiKey key = invocation.getArgument(0);
+            key.setId(UUID.randomUUID());
             key.setCreatedAt(java.time.Instant.now());
             return key;
         });
@@ -147,8 +153,8 @@ class ApiKeyServiceTest {
     @Test
     @DisplayName("createForCurrentUser is blocked by the global API key feature flag before user lookup")
     void createForCurrentUser_globalFeatureDisabled_throws() {
-        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_API_KEYS))
-                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
+        doThrow(new FeatureDisabledException(FeatureGateService.API_KEYS_CREATE_GLOBAL))
+                .when(featureGateService).assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
 
         assertThrows(FeatureDisabledException.class,
                 () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
@@ -277,6 +283,7 @@ class ApiKeyServiceTest {
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
             ApiKey key = invocation.getArgument(0);
+            key.setId(UUID.randomUUID());
             key.setCreatedAt(java.time.Instant.now());
             return key;
         });

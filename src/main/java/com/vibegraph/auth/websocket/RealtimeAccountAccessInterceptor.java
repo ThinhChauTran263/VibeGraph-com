@@ -70,6 +70,9 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             return handleReportMessage(message, command, sessionId, reportId);
         }
 
+        if (command == StompCommand.SEND) {
+            throw new AccessDeniedException(RESTRICTED_MESSAGE);
+        }
         return message;
     }
 

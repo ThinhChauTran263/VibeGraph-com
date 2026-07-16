@@ -30,7 +30,7 @@ class CreditPricingServiceTest {
 
     @ParameterizedTest(name = "{0} charges {6} credits")
     @MethodSource("pricingExamples")
-    @DisplayName("uses base, file count, rounded-up source MB, and final ceiling")
+    @DisplayName("uses base, file count, exact source MB, and one final ceiling")
     void calculateCredits_usesLiteralFormula(
             String operationCode,
             BigDecimal base,
@@ -52,15 +52,15 @@ class CreditPricingServiceTest {
         return Stream.of(
                 Arguments.of("MCP_TOOL_CALL", bd("1"), bd("0"), bd("0"), 0, 0L, 1L),
                 Arguments.of("CLI_PUSH", bd("1"), bd("0.10"), bd("0"), 1, 0L, 2L),
-                Arguments.of("PROJECT_ANALYZE", bd("5"), bd("0.01"), bd("1"), 3, 1L, 7L),
+                Arguments.of("PROJECT_ANALYZE", bd("5"), bd("0.01"), bd("1"), 3, 1L, 6L),
                 Arguments.of("IMPORT_ARCHIVE", bd("3"), bd("0"), bd("1"), 0, 1L, 4L),
                 Arguments.of("IMPORT_GITHUB", bd("3"), bd("0"), bd("1"), 0, MIB + MIB / 2, 5L));
     }
 
-    @ParameterizedTest(name = "{0} bytes count as {1} MB credits")
+    @ParameterizedTest(name = "{0} bytes produce {1} credits")
     @MethodSource("byteBoundaries")
-    @DisplayName("rounds source bytes up to whole MiB")
-    void calculateCredits_roundsBytesUp(long sourceBytes, long expectedCharge) {
+    @DisplayName("uses fractional source MB before applying the final ceiling")
+    void calculateCredits_usesFractionalSourceMb(long sourceBytes, long expectedCharge) {
         CreditPricingService service = new CreditPricingService(pricingRuleRepository);
         when(pricingRuleRepository.findByOperationCode("BYTES"))
                 .thenReturn(Optional.of(rule("BYTES", bd("0"), bd("0"), bd("1"), true)));
@@ -73,21 +73,32 @@ class CreditPricingServiceTest {
                 Arguments.of(0L, 0L),
                 Arguments.of(1L, 1L),
                 Arguments.of(MIB, 1L),
-                Arguments.of(MIB + 1L, 2L));
+                Arguments.of(MIB + 1L, 2L),
+                Arguments.of(MIB + MIB / 10, 2L));
     }
 
     @Test
-    @DisplayName("node-aware pricing rounds node units up and enforces the minimum")
-    void calculateCredits_nodeAware_usesNodesAndMinimum() {
+    @DisplayName("fractional per-MB pricing is not inflated by pre-rounding source size")
+    void calculateCredits_fractionalPerMb_usesLiteralFormula() {
         CreditPricingService service = new CreditPricingService(pricingRuleRepository);
-        CreditPricingRule rule = rule("PROJECT_ANALYZE", bd("1"), bd("0"), bd("0"), true);
-        rule.setPer1kNodesCredits(bd("2"));
-        rule.setMinimumCredits(5);
-        when(pricingRuleRepository.findByOperationCode("PROJECT_ANALYZE"))
+        CreditPricingRule rule = rule("IMPORT_ARCHIVE", bd("0"), bd("0"), bd("1.5"), true);
+        when(pricingRuleRepository.findByOperationCode("IMPORT_ARCHIVE"))
                 .thenReturn(Optional.of(rule));
 
-        assertThat(service.calculateCredits("PROJECT_ANALYZE", 0, 0, 1)).isEqualTo(5L);
-        assertThat(service.calculateCredits("PROJECT_ANALYZE", 0, 0, 2_001)).isEqualTo(7L);
+        assertThat(service.calculateCredits("IMPORT_ARCHIVE", 0, MIB + MIB / 10))
+                .isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("maximum long byte input is calculated without arithmetic overflow")
+    void calculateCredits_maximumSourceBytes_isSafe() {
+        CreditPricingService service = new CreditPricingService(pricingRuleRepository);
+        when(pricingRuleRepository.findByOperationCode("IMPORT_ARCHIVE"))
+                .thenReturn(Optional.of(rule(
+                        "IMPORT_ARCHIVE", bd("3"), bd("0"), bd("1"), true)));
+
+        assertThat(service.calculateCredits("IMPORT_ARCHIVE", 0, Long.MAX_VALUE))
+                .isEqualTo(8_796_093_022_211L);
     }
 
     @Test
@@ -138,8 +149,6 @@ class CreditPricingServiceTest {
                 .baseCredits(base)
                 .perFileCredits(perFile)
                 .perMbCredits(perMb)
-                .per1kNodesCredits(bd("999"))
-                .minimumCredits(999)
                 .isActive(active)
                 .build();
     }

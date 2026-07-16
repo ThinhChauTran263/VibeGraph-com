@@ -6,7 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.domain.ProjectUsage;
+import com.vibegraph.auth.domain.UserAccountSettings;
 import com.vibegraph.auth.repository.ProjectUsageRepository;
+import com.vibegraph.auth.repository.UserAccountSettingsRepository;
+import com.vibegraph.common.exception.QuotaExceededException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ProjectUsageService {
 
     private final ProjectUsageRepository projectUsageRepository;
+    private final UserAccountSettingsRepository settingsRepository;
 
     /**
      * Record storage usage after a successful project import (local, archive, or GitHub).
@@ -38,12 +42,15 @@ public class ProjectUsageService {
      */
     @Transactional
     public void recordImport(String projectId, UUID ownerId, long bytes) {
-        long safeBytes = Math.max(0L, bytes);
+        UserAccountSettings settings = lockSettings(ownerId);
         ProjectUsage usage = projectUsageRepository.findById(projectId)
                 .orElseGet(() -> ProjectUsage.builder()
                         .projectId(projectId)
                         .ownerId(ownerId)
                         .build());
+        verifyOwner(usage, ownerId);
+        long safeBytes = requireNonNegative(bytes);
+        assertWithinQuota(ownerId, settings, usage.getStorageBytes(), safeBytes);
         usage.setStorageBytes(safeBytes);
         projectUsageRepository.save(usage);
         log.debug("Recorded import usage for project {}: {} bytes", projectId, safeBytes);
@@ -62,19 +69,31 @@ public class ProjectUsageService {
      * @param deltaBytes the signed byte change (may be negative)
      */
     @Transactional
-    public void recordPatchDelta(String projectId, long deltaBytes) {
-        ProjectUsage usage = projectUsageRepository.findById(projectId)
-                .orElse(null);
-        if (usage == null) {
-            // No row yet (project was never imported through this path); nothing to update.
-            log.warn("recordPatchDelta called for unknown project {}, skipping", projectId);
-            return;
-        }
-        long updated = Math.max(0L, usage.getStorageBytes() + deltaBytes);
+    public void recordPatchDelta(String projectId, UUID ownerId, long deltaBytes) {
+        UserAccountSettings settings = lockSettings(ownerId);
+        ProjectUsage usage = requireLockedUsage(projectId);
+        verifyOwner(usage, ownerId);
+        long updated = safeAddAndClamp(usage.getStorageBytes(), deltaBytes);
+        assertWithinQuota(ownerId, settings, usage.getStorageBytes(), updated);
         usage.setStorageBytes(updated);
         projectUsageRepository.save(usage);
         log.debug("Recorded patch delta {} bytes for project {} -> new total {} bytes",
                 deltaBytes, projectId, updated);
+    }
+
+    /** Backward-compatible overload; ownership is resolved from the existing usage row. */
+    @Transactional
+    public void recordPatchDelta(String projectId, long deltaBytes) {
+        ProjectUsage usage = projectUsageRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Project storage usage is not registered: " + projectId));
+        recordPatchDelta(projectId, usage.getOwnerId(), deltaBytes);
+    }
+
+    @Transactional
+    public void lockForPatch(String projectId, UUID ownerId) {
+        lockSettings(ownerId);
+        verifyOwner(requireLockedUsage(projectId), ownerId);
     }
 
     /**
@@ -88,6 +107,54 @@ public class ProjectUsageService {
         if (projectUsageRepository.existsById(projectId)) {
             projectUsageRepository.deleteById(projectId);
             log.debug("Deleted usage record for project {}", projectId);
+        }
+    }
+
+    private UserAccountSettings lockSettings(UUID ownerId) {
+        return settingsRepository.findByIdForUpdate(ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Account settings not found"));
+    }
+
+    private ProjectUsage requireLockedUsage(String projectId) {
+        return projectUsageRepository.findByIdForUpdate(projectId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Project storage usage is not registered: " + projectId));
+    }
+
+    private void verifyOwner(ProjectUsage usage, UUID ownerId) {
+        if (!ownerId.equals(usage.getOwnerId())) {
+            throw new IllegalArgumentException("Project usage owner mismatch");
+        }
+    }
+
+    private void assertWithinQuota(
+            UUID ownerId, UserAccountSettings settings, long oldProjectBytes, long newProjectBytes) {
+        long aggregateBytes = projectUsageRepository.sumStorageBytesByOwnerId(ownerId);
+        long usageWithoutProject;
+        try {
+            usageWithoutProject = Math.subtractExact(aggregateBytes, oldProjectBytes);
+            long projectedUsage = Math.addExact(usageWithoutProject, newProjectBytes);
+            long limitBytes = AccountSettingsService.effectiveLimitBytes(settings);
+            if (projectedUsage > limitBytes) {
+                throw new QuotaExceededException(AccountSettingsService.QUOTA_EXCEEDED_MESSAGE);
+            }
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Source storage usage is outside the supported range", ex);
+        }
+    }
+
+    private long requireNonNegative(long bytes) {
+        if (bytes < 0) {
+            throw new IllegalArgumentException("Storage usage must be non-negative");
+        }
+        return bytes;
+    }
+
+    private long safeAddAndClamp(long current, long delta) {
+        try {
+            return Math.max(0L, Math.addExact(current, delta));
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Source storage usage is outside the supported range", ex);
         }
     }
 }
