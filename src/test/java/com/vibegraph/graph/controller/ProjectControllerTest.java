@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -25,8 +26,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
@@ -60,8 +59,8 @@ class ProjectControllerTest {
     private ProjectDeletionOrchestrator deletionOrchestrator;
     private CurrentUser currentUser;
     private AccountSettingsService accountSettingsService;
-    private CreditPricingService creditPricingService;
-    private CreditBalanceService creditBalanceService;
+    private com.vibegraph.auth.service.FeatureGateService featureGateService;
+    private com.vibegraph.auth.service.ProjectUsageService projectUsageService;
 
     @BeforeEach
     void setUp() {
@@ -73,12 +72,11 @@ class ProjectControllerTest {
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
         currentUser = Mockito.mock(CurrentUser.class);
         accountSettingsService = Mockito.mock(AccountSettingsService.class);
-        creditPricingService = Mockito.mock(CreditPricingService.class);
-        creditBalanceService = Mockito.mock(CreditBalanceService.class);
+        featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
+        projectUsageService = Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator, currentUser, accountSettingsService, creditPricingService,
-                creditBalanceService);
+                deletionOrchestrator, currentUser, accountSettingsService, featureGateService, projectUsageService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -100,6 +98,25 @@ class ProjectControllerTest {
 
         // Ownership is recorded for the created project.
         verify(ownershipRegistrar, times(1)).registerLocal("abc123", "test");
+        verify(projectUsageService).recordImport(eq("abc123"), isNull(), eq(0L));
+    }
+
+    @Test
+    @DisplayName("POST /api/projects cleans up when quota tracking initialization fails")
+    void shouldCleanUpWhenUsageInitializationFails() throws Exception {
+        ProjectResponse created = ProjectResponse.builder()
+                .id("abc123").name("test").rootPath("/tmp/test").status("CREATED").build();
+        when(projectService.createProject(any())).thenReturn(created);
+        doThrow(new IllegalStateException("usage unavailable"))
+                .when(projectUsageService).recordImport(eq("abc123"), isNull(), eq(0L));
+
+        mockMvc.perform(post("/api/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"test\",\"rootPath\":\"/tmp/test\"}"))
+                .andExpect(status().isConflict());
+
+
+        verify(deletionOrchestrator).delete("abc123");
     }
 
     @Test
@@ -161,11 +178,9 @@ class ProjectControllerTest {
         ProjectResponse project = ProjectResponse.builder()
                 .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
         when(currentUser.id()).thenReturn(userId);
-        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0)).thenReturn(1L);
         when(projectService.getProject("p1")).thenReturn(project);
         when(analyzeService.analyzeProject("p1", "p1", "/tmp/p1"))
                 .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
-        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 3, 0, 10)).thenReturn(5L);
 
         mockMvc.perform(post("/api/projects/p1/analyze"))
                 .andExpect(status().isOk())
@@ -175,28 +190,22 @@ class ProjectControllerTest {
         // The key regression guard for the removed downcast: stats must be pushed
         // through the interface method, which a plain mock honors.
         verify(projectService, times(1)).updateProjectStats("p1", 3, 10, 7);
-        verify(creditBalanceService).assertCreditsAvailable(userId, 1L);
-        verify(creditBalanceService).deductCredits(
-                userId, 5L, "PROJECT_ANALYZE", "PROJECT_ANALYZE", "p1");
     }
 
     @Test
-    @DisplayName("POST /api/projects/{id}/analyze rejects insufficient credits before analysis work")
-    void shouldRejectInsufficientCreditsBeforeAnalyzeWork() throws Exception {
-        UUID userId = UUID.randomUUID();
-        when(currentUser.id()).thenReturn(userId);
-        when(creditPricingService.calculateCredits("PROJECT_ANALYZE", 0, 0, 0)).thenReturn(1L);
-        doThrow(new com.vibegraph.common.exception.InsufficientCreditsException("Insufficient credits"))
-                .when(creditBalanceService).assertCreditsAvailable(userId, 1L);
+    @DisplayName("POST /api/projects/{id}/analyze rejects a disabled feature before metering or analysis")
+    void shouldRejectDisabledAnalyzeBeforeWork() throws Exception {
+        doThrow(new com.vibegraph.common.exception.FeatureDisabledException("project.analyze"))
+                .when(featureGateService).assertEnabled("project.analyze");
 
         mockMvc.perform(post("/api/projects/p1/analyze"))
-                .andExpect(status().isPaymentRequired())
-                .andExpect(jsonPath("$.error.code").value("INSUFFICIENT_CREDITS"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FEATURE_DISABLED"));
 
+        verify(ownershipGuard).assertOwner("p1");
+        verify(currentUser, never()).id();
         verify(projectService, never()).getProject("p1");
         verify(analyzeService, never()).analyzeProject(any(), any(), any());
-        verify(projectService, never()).updateProjectStats(
-                eq("p1"), any(Integer.class), any(Integer.class), any(Integer.class));
     }
 
     @Test

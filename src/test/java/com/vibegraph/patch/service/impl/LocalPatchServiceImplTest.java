@@ -83,6 +83,22 @@ class LocalPatchServiceImplTest {
 
     // --- happy paths ---------------------------------------------------------------------------
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("disabled CLI push blocks before filesystem resolution for real and dry-run requests")
+    void cliPushDisabledBlocksBeforeFilesystemResolution(boolean dryRun) {
+        Mockito.doThrow(new com.vibegraph.common.exception.FeatureDisabledException("cli.push"))
+                .when(featureGateService).assertEnabled("cli.push");
+
+        assertThatThrownBy(() -> service.applyPatch(PROJECT_ID,
+                changeOf("src/Disabled.java", "class Disabled {}", dryRun)))
+                .isInstanceOf(com.vibegraph.common.exception.FeatureDisabledException.class);
+
+        Mockito.verify(sourceFileService, Mockito.never()).resolveProjectRoot(PROJECT_ID);
+        Mockito.verifyNoInteractions(accountSettingsService, projectUsageService,
+                creditPricingService, creditBalanceService);
+    }
+
     @Test
     @DisplayName("writes a changed file under the root and flags requiresAnalyze when not a dry run")
     void writesChangedFile() throws Exception {

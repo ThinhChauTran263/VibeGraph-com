@@ -30,10 +30,33 @@ vi.mock('../../lib/api', async (importOriginal) => {
       listApiKeysForUser: vi.fn(),
       createApiKeyForUser: vi.fn(),
       disableApiKey: vi.fn(),
+      getCreditOverview: vi.fn(),
+      adjustCredits: vi.fn(),
       listReports: vi.fn(),
       getReportDetail: vi.fn(),
       replyToReport: vi.fn(),
       closeReport: vi.fn(),
+      listFeatureFlags: vi.fn(),
+      createFeatureFlag: vi.fn(),
+      updateFeatureFlag: vi.fn(),
+      deleteFeatureFlag: vi.fn(),
+      listAnnouncements: vi.fn(),
+      createAnnouncement: vi.fn(),
+      updateAnnouncement: vi.fn(),
+      disableAnnouncement: vi.fn(),
+      deleteAnnouncement: vi.fn(),
+      listSecurityEvents: vi.fn(),
+      listRequestEvents: vi.fn(),
+      listTopUsers: vi.fn(),
+      listTopIps: vi.fn(),
+      listIpBlocks: vi.fn(),
+      createIpBlock: vi.fn(),
+      updateIpBlock: vi.fn(),
+      deleteIpBlock: vi.fn(),
+      listAuditLogs: vi.fn(),
+      getAuditLog: vi.fn(),
+      getAuditRetention: vi.fn(),
+      updateAuditRetention: vi.fn(),
     },
   }
 })
@@ -53,6 +76,111 @@ describe('Admin Store', () => {
     expect(store.pricingRules).toEqual([])
     expect(store.users).toEqual([])
     expect(store.reports).toEqual([])
+    expect(store.requestEvents).toEqual([])
+    expect(store.topUsers).toEqual([])
+    expect(store.topIps).toEqual([])
+    expect(store.ipBlocks).toEqual([])
+    expect(store.auditLogs).toEqual([])
+    expect(store.auditLogDetail).toBeNull()
+    expect(store.auditRetention).toBeNull()
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+  })
+
+  it('fetchSecurityData populates all security panels', async () => {
+    mockAdminApi.listSecurityEvents.mockResolvedValueOnce([])
+    mockAdminApi.listRequestEvents.mockResolvedValueOnce([
+      {
+        id: 'request-1',
+        userId: 'user-1',
+        apiKeyRef: null,
+        ipAddress: '203.0.113.10',
+        route: '/api/projects',
+        method: 'GET',
+        status: 429,
+        eventType: 'RATE_LIMITED',
+        occurredAt: '2026-07-17T09:00:00Z',
+      },
+    ])
+    mockAdminApi.listTopUsers.mockResolvedValueOnce([])
+    mockAdminApi.listTopIps.mockResolvedValueOnce([])
+    mockAdminApi.listIpBlocks.mockResolvedValueOnce([])
+
+    const store = useAdminStore()
+    await store.fetchSecurityData(75)
+
+    expect(mockAdminApi.listRequestEvents).toHaveBeenCalledWith(75)
+    expect(store.requestEvents[0]?.status).toBe(429)
+    expect(store.loading).toBe(false)
+  })
+
+  it('refreshes security state after IP block mutations', async () => {
+    const block = {
+      id: 'block-1',
+      ipAddress: '203.0.113.10',
+      safeReason: 'Excessive requests',
+      expiresAt: null,
+      active: true,
+      createdBy: null,
+      createdAt: null,
+      updatedAt: null,
+    }
+    mockAdminApi.createIpBlock.mockResolvedValueOnce(block)
+    mockAdminApi.listSecurityEvents.mockResolvedValue([])
+    mockAdminApi.listRequestEvents.mockResolvedValue([])
+    mockAdminApi.listTopUsers.mockResolvedValue([])
+    mockAdminApi.listTopIps.mockResolvedValue([])
+    mockAdminApi.listIpBlocks.mockResolvedValueOnce([block])
+
+    const store = useAdminStore()
+    await store.createIpBlock({
+      ipAddress: block.ipAddress,
+      safeReason: block.safeReason,
+      expiresAt: null,
+      active: true,
+    })
+
+    expect(mockAdminApi.createIpBlock).toHaveBeenCalledOnce()
+    expect(mockAdminApi.listIpBlocks).toHaveBeenCalled()
+    expect(store.ipBlocks).toEqual([block])
+  })
+
+  it('refreshes audit logs and retention after retention mutation', async () => {
+    mockAdminApi.updateAuditRetention.mockResolvedValueOnce({
+      retentionDays: 180,
+      updatedBy: 'admin-1',
+      updatedAt: '2026-07-17T09:00:00Z',
+    })
+    mockAdminApi.listAuditLogs.mockResolvedValueOnce({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      pageNumber: 0,
+      pageSize: 50,
+    })
+    mockAdminApi.getAuditRetention.mockResolvedValueOnce({
+      retentionDays: 180,
+      updatedBy: 'admin-1',
+      updatedAt: '2026-07-17T09:00:00Z',
+    })
+
+    const store = useAdminStore()
+    await store.updateAuditRetention(180)
+
+    expect(mockAdminApi.updateAuditRetention).toHaveBeenCalledWith(180)
+    expect(mockAdminApi.listAuditLogs).toHaveBeenCalled()
+    expect(mockAdminApi.getAuditRetention).toHaveBeenCalled()
+    expect(store.auditRetention?.retentionDays).toBe(180)
+  })
+
+  it('stores and rethrows admin request errors', async () => {
+    const failure = new Error('Security unavailable')
+    mockAdminApi.listSecurityEvents.mockRejectedValueOnce(failure)
+
+    const store = useAdminStore()
+    await expect(store.fetchSecurityEvents()).rejects.toBe(failure)
+    expect(store.error).toBe(failure)
+    expect(store.loading).toBe(false)
   })
 
   it('fetchPlans and fetchPricingRules populate read-only admin catalogs', async () => {
@@ -60,7 +188,7 @@ describe('Admin Store', () => {
       {
         code: 'FREE',
         name: 'Free',
-        storageLimitBytes: 500 * 1024 * 1024,
+        storageLimitMb: 500,
         apiKeyLimit: 3,
         monthlyCreditLimit: 100,
         contactSalesRequired: false,
@@ -91,7 +219,7 @@ describe('Admin Store', () => {
     const created = {
       code: 'TEAM',
       name: 'Team',
-      storageLimitBytes: 1024,
+      storageLimitMb: 1024,
       apiKeyLimit: 5,
       monthlyCreditLimit: 1000,
       contactSalesRequired: false,

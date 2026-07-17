@@ -77,7 +77,7 @@ describe('Admin UserDetailDrawer', () => {
     // Set quota below used (100 MB used, try setting to 10 MB)
     const input = wrapper.find('#quotaLimit')
     await input.setValue('10')
-    await wrapper.find('.quota-form').trigger('submit')
+    await wrapper.find('.storage-override-form').trigger('submit')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Cannot set quota lower than currently used')
@@ -103,6 +103,12 @@ describe('Admin UserDetailDrawer', () => {
     const wrapper = mountDrawer()
     await flushPromises()
     expect(wrapper.text()).toContain('API Key Creation')
+  })
+
+  it('shows credits remaining in account state', async () => {
+    const wrapper = mountDrawer()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Credits remaining')
   })
 
   it('does not render when closed', () => {

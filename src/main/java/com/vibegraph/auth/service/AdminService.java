@@ -54,7 +54,9 @@ import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.auth.repository.UserCreditBalanceRepository;
 import com.vibegraph.auth.repository.UserRepository;
+import com.vibegraph.auth.repository.SecurityEventRepository;
 import com.vibegraph.auth.repository.projection.AdminDistributionRow;
+import com.vibegraph.auth.repository.projection.AdminSecurityAlertRow;
 import com.vibegraph.auth.repository.projection.AdminSeriesRow;
 import com.vibegraph.auth.repository.projection.AdminStorageSubjectRow;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
@@ -81,6 +83,9 @@ public class AdminService {
     private final AdminStorageService adminStorageService;
     private final PasswordEncoder passwordEncoder;
     private final FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
+    private final SecurityEventRepository securityEventRepository;
+    private final AuditService auditService;
+    private final OnlineUserHistoryService onlineUserHistoryService;
 
     @Transactional(readOnly = true)
     public AdminOverviewResponse getOverview() {
@@ -90,6 +95,9 @@ public class AdminService {
         long totalReports = feedbackReportRepository.count();
         long openReports = feedbackReportRepository.countByStatus(FeedbackReportStatus.OPEN);
         long blockedUsers = settingsRepository.countByBlockedAtIsNotNull();
+        Instant now = Instant.now();
+        List<AdminSeriesPoint> onlineUserHistory =
+                onlineUserHistoryService.recordAndSnapshot(onlineUsers, now);
         return new AdminOverviewResponse(
                 totalUsers,
                 onlineUsers,
@@ -97,19 +105,21 @@ public class AdminService {
                 totalReports,
                 openReports,
                 blockedUsers,
-                Instant.now(),
+                now,
                 buildUserGrowth(),
                 buildCreditConsumption(),
                 buildStorageSummary(),
                 buildPlanDistribution(),
                 buildTopStorageUsers(),
                 buildTopStorageProjects(),
-                buildSecurityAlerts(blockedUsers)
+                buildSecurityAlerts(blockedUsers, now),
+                onlineUserHistory
         );
     }
 
     private List<AdminSeriesPoint> buildUserGrowth() {
         return mergeSeriesRows(
+                List.of(),
                 userRepository.countGrowthByMonth(),
                 userRepository.countGrowthByQuarter(),
                 userRepository.countGrowthByYear());
@@ -117,20 +127,29 @@ public class AdminService {
 
     private List<AdminSeriesPoint> buildCreditConsumption() {
         return mergeSeriesRows(
+                creditLedgerRepository.sumConsumptionByDay(),
                 creditLedgerRepository.sumConsumptionByMonth(),
                 creditLedgerRepository.sumConsumptionByQuarter(),
                 creditLedgerRepository.sumConsumptionByYear());
     }
 
     private List<AdminSeriesPoint> mergeSeriesRows(
+            List<AdminSeriesRow> daily,
             List<AdminSeriesRow> monthly,
             List<AdminSeriesRow> quarterly,
             List<AdminSeriesRow> yearly) {
         List<AdminSeriesPoint> points = new ArrayList<>();
-        monthly.forEach(row -> points.add(toSeriesPoint(row)));
-        quarterly.forEach(row -> points.add(toSeriesPoint(row)));
-        yearly.forEach(row -> points.add(toSeriesPoint(row)));
+        appendSeries(points, daily);
+        appendSeries(points, monthly);
+        appendSeries(points, quarterly);
+        appendSeries(points, yearly);
         return points;
+    }
+
+    private void appendSeries(List<AdminSeriesPoint> points, List<AdminSeriesRow> rows) {
+        if (rows != null) {
+            rows.forEach(row -> points.add(toSeriesPoint(row)));
+        }
     }
 
     private AdminSeriesPoint toSeriesPoint(AdminSeriesRow row) {
@@ -180,16 +199,25 @@ public class AdminService {
                 row.getUsedBytes() != null ? row.getUsedBytes() : 0L);
     }
 
-    private List<AdminSecurityAlert> buildSecurityAlerts(long blockedUsers) {
-        if (blockedUsers <= 0) {
-            return List.of();
+    private List<AdminSecurityAlert> buildSecurityAlerts(long blockedUsers, Instant now) {
+        List<AdminSecurityAlert> alerts = new ArrayList<>();
+        if (blockedUsers > 0) {
+            alerts.add(new AdminSecurityAlert(
+                    "blocked-users", "ACCOUNT_BLOCK", "WARNING",
+                    blockedUsers + " blocked account(s) require review", now));
         }
-        return List.of(new AdminSecurityAlert(
-                "blocked-users",
-                "ACCOUNT_BLOCK",
-                "WARNING",
-                blockedUsers + " blocked account(s) require review",
-                Instant.now()));
+        java.util.Optional.ofNullable(securityEventRepository.summarizeSince(now.minus(24, ChronoUnit.HOURS)))
+                .orElseGet(List::of).stream()
+                .map(this::toSecurityAlert)
+                .forEach(alerts::add);
+        return alerts;
+    }
+
+    private AdminSecurityAlert toSecurityAlert(AdminSecurityAlertRow row) {
+        long value = row.getValue() == null ? 0L : row.getValue();
+        return new AdminSecurityAlert(
+                "security-" + row.getType().toLowerCase() + "-" + row.getSeverity().toLowerCase(),
+                row.getType(), row.getSeverity(), value + " event(s) in the last 24 hours", row.getCreatedAt());
     }
 
     @Transactional(readOnly = true)
@@ -234,6 +262,8 @@ public class AdminService {
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
         settings.block(request.reason(), request.safeReason());
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("USER_BLOCK", userId, "USER", userId.toString(),
+                details("reason", request.reason(), "safeReason", request.safeReason()));
         return toAdminUserResponse(getUserOrThrow(userId));
     }
 
@@ -245,6 +275,7 @@ public class AdminService {
         settings.setBlockedReason(null);
         settings.setBlockedReasonSafe(null);
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("USER_UNBLOCK", userId, "USER", userId.toString(), java.util.Map.of());
         return toAdminUserResponse(getUserOrThrow(userId));
     }
 
@@ -256,39 +287,45 @@ public class AdminService {
         user.setDeactivationReason(request.reason());
         user.setDeactivationReasonSafe(request.safeReason());
         userRepository.save(user);
+        auditService.recordCurrentUser("USER_DEACTIVATE", userId, "USER", userId.toString(),
+                details("reason", request.reason(), "safeReason", request.safeReason()));
         return toAdminUserResponse(user);
     }
 
     @Transactional
     public AdminUserResponse updatePlan(UUID userId, AdminUserUpdatePlanRequest request) {
-        UserAccountSettings settings = settingsRepository.findById(userId)
+        UserAccountSettings settings = settingsRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
         Plan plan = planRepository.findByCode(request.planCode())
                 .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + request.planCode()));
         settings.setPlan(plan);
 
         // Adjust standard quota to match the new plan limit (if not overridden)
-        User user = getUserOrThrow(userId);
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
         if (settings.getStorageQuotaOverrideBytes() == null) {
             user.setQuotaBytes(plan.getStorageLimitBytes());
             userRepository.save(user);
         }
 
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("PLAN_UPDATE", userId, "USER", userId.toString(),
+                java.util.Map.of("planCode", request.planCode()));
         return toAdminUserResponse(user);
     }
 
     @Transactional
     public AdminUserResponse updateQuota(UUID userId, AdminUserUpdateQuotaRequest request) {
-        User user = getUserOrThrow(userId);
-        UserAccountSettings settings = settingsRepository.findById(userId)
+        UserAccountSettings settings = settingsRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
         if (request.storageQuotaOverrideMb() != null) {
             long newQuotaBytes;
             try {
-                newQuotaBytes = Math.multiplyExact(request.storageQuotaOverrideMb(), 1_048_576L);
-            } catch (ArithmeticException ex) {
+                newQuotaBytes = StorageUnitConverter.mbToBytes(request.storageQuotaOverrideMb());
+            } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("Storage quota override is too large");
             }
             long actualUsageBytes = projectUsageRepository.sumStorageBytesByOwnerId(userId);
@@ -309,6 +346,9 @@ public class AdminService {
         }
 
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("QUOTA_UPDATE", userId, "USER", userId.toString(),
+                details("storageQuotaOverrideMb", request.storageQuotaOverrideMb(),
+                        "creditQuotaOverride", request.creditQuotaOverride()));
         return toAdminUserResponse(user);
     }
 
@@ -320,7 +360,9 @@ public class AdminService {
         List<CreditLedger> ledgerHistory = creditLedgerRepository.findByUserIdOrderByCreatedAtDesc(
                 userId, PageRequest.of(0, 100));
 
-        int creditBalance = balance.getCreditsLimitSnapshot() + balance.getCreditsAdjustment() - balance.getCreditsUsed();
+        long creditBalance = (long) balance.getCreditsLimitSnapshot()
+                + balance.getCreditsAdjustment()
+                - balance.getCreditsUsed();
 
         return new AdminCreditOverviewResponse(
                 userId,
@@ -336,6 +378,8 @@ public class AdminService {
     public void adjustCredits(UUID userId, AdminCreditAdjustmentRequest request) {
         getUserOrThrow(userId);
         creditBalanceService.applyAdminAdjustment(userId, request.creditsDelta(), request.reason());
+        auditService.recordCurrentUser("CREDIT_UPDATE", userId, "USER", userId.toString(),
+                java.util.Map.of("creditsDelta", request.creditsDelta(), "reason", request.reason()));
     }
 
     @Transactional(readOnly = true)
@@ -378,7 +422,8 @@ public class AdminService {
         FeedbackReport report = feedbackReportRepository.findById(reportId)
                 .orElseThrow(() -> new IllegalArgumentException("Feedback report not found"));
         List<FeedbackMessage> messages = feedbackMessageRepository.findByReportIdOrderByCreatedAtAsc(reportId);
-        return new AdminFeedbackDetailResponse(toAdminFeedbackResponse(report), messages);
+        return new AdminFeedbackDetailResponse(
+                toAdminFeedbackResponse(report), messages.stream().map(this::toMessageResponse).toList());
     }
 
     @Transactional
@@ -403,6 +448,8 @@ public class AdminService {
                         saved.getSenderRole(),
                         saved.getBody(),
                         saved.getCreatedAt()));
+        auditService.recordCurrentUser("REPORT_ADMIN_REPLY", report.getUserId(), "REPORT", reportId.toString(),
+                java.util.Map.of("messageId", saved.getId().toString()));
     }
 
     @Transactional
@@ -418,6 +465,8 @@ public class AdminService {
         report.setDeleteAfter(closedAt.plus(7, ChronoUnit.DAYS));
         feedbackReportRepository.save(report);
         feedbackReportRealtimePublisher.publishReportClosed(toReportResponse(report));
+        auditService.recordCurrentUser("REPORT_CLOSE", report.getUserId(), "REPORT", reportId.toString(),
+                java.util.Map.of("deleteAfter", report.getDeleteAfter().toString()));
     }
 
     private void validateUserStatus(String status) {
@@ -464,6 +513,10 @@ public class AdminService {
         String blockedReason = settings != null ? settings.getBlockedReason() : null;
         String blockedReasonSafe = settings != null ? settings.getBlockedReasonSafe() : null;
         boolean apiKeyCreationDisabled = settings != null && settings.isApiKeyCreationDisabled();
+        long effectiveQuotaBytes = settings != null && settings.getPlan() != null
+                ? AccountSettingsService.effectiveLimitBytes(settings)
+                : user.getQuotaBytes();
+        long sourceUsageBytes = projectUsageRepository.sumStorageBytesByOwnerId(user.getId());
 
         return new AdminUserResponse(
                 user.getId(),
@@ -477,10 +530,12 @@ public class AdminService {
                 blockedReason,
                 blockedReasonSafe,
                 planCode,
-                storageQuotaOverrideBytes,
+                storageQuotaOverrideBytes == null
+                        ? null
+                        : StorageUnitConverter.bytesToAvailableMb(storageQuotaOverrideBytes),
                 creditQuotaOverride,
-                user.getQuotaBytes(),
-                user.getUsedBytes(),
+                StorageUnitConverter.bytesToAvailableMb(effectiveQuotaBytes),
+                StorageUnitConverter.bytesToUsedMb(sourceUsageBytes),
                 apiKeyCreationDisabled
         );
     }
@@ -508,5 +563,18 @@ public class AdminService {
                 report.getClosedAt(),
                 report.getDeleteAfter()
         );
+    }
+
+    private com.vibegraph.auth.dto.FeedbackMessageResponse toMessageResponse(FeedbackMessage message) {
+        return new com.vibegraph.auth.dto.FeedbackMessageResponse(
+                message.getId(), message.getSenderRole(), message.getBody(), message.getCreatedAt());
+    }
+
+    private java.util.Map<String, Object> details(Object... entries) {
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        for (int index = 0; index < entries.length; index += 2) {
+            details.put(String.valueOf(entries[index]), entries[index + 1]);
+        }
+        return details;
     }
 }

@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import AnnouncementBanner from '@/components/notifications/AnnouncementBanner.vue'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
-const KEY = 'vg_user_sidebar_collapsed',
-  router = useRouter(),
+const router = useRouter(),
+  route = useRoute(),
   auth = useAuthStore(),
   account = useAccountStore()
-const collapsed = ref(localStorage.getItem(KEY) === 'true'),
-  mobile = ref(false)
+const collapsed = ref(false),
+  mobile = ref(false),
+  isMobileViewport = ref(false),
+  menuButton = ref<HTMLButtonElement | null>(null),
+  sidebar = ref<HTMLElement | null>(null),
+  mobileCloseButton = ref<HTMLButtonElement | null>(null)
 const nav = [
   ['Overview', '/dashboard', 'overview'],
   ['Repositories', '/projects', 'repository'],
@@ -19,44 +23,149 @@ const nav = [
   ['Usage', '/usage', 'usage'],
   ['Subscription', '/subscription', 'subscription'],
   ['Reports', '/reports', 'reports'],
-  ['Notification', '/notifications', 'notification'],
-  ['Tutorial', '/tutorial', 'tutorial'],
   ['Settings', '/settings', 'settings'],
 ] as const
-const email = computed(() => account.profile?.email || auth.userEmail || 'Signed in'),
+const displayName = computed(
+    () =>
+      account.profile?.displayName ||
+      account.sessionState?.displayName ||
+      auth.userDisplayName ||
+      'Account',
+  ),
+  email = computed(
+    () => account.profile?.email || account.sessionState?.email || auth.userEmail || 'Signed in',
+  ),
   plan = computed(() => account.usage?.planName || 'Plan unavailable'),
   credits = computed(() => {
-    const u = account.usage
-    return typeof u?.creditsLimit === 'number' && typeof u.creditsUsed === 'number'
-      ? Math.max(u.creditsLimit - u.creditsUsed, 0).toLocaleString()
+    const usage = account.usage as (typeof account.usage & { creditsRemaining?: number }) | null
+    if (typeof usage?.creditsRemaining === 'number') return usage.creditsRemaining.toLocaleString()
+    return typeof usage?.creditsLimit === 'number' && typeof usage.creditsUsed === 'number'
+      ? Math.max(usage.creditsLimit - usage.creditsUsed, 0).toLocaleString()
       : 'Unavailable'
   })
-watch(collapsed, (v) => localStorage.setItem(KEY, String(v)))
+const restricted = computed(() => account.accountRestricted)
+const restrictionTitle = computed(() =>
+  account.sessionState?.accountStatus?.toUpperCase() === 'DEACTIVATED'
+    ? 'Account deactivated'
+    : 'Account access restricted',
+)
+const restrictionReason = computed(
+  () => account.restrictionReason || 'This account cannot use product features right now.',
+)
+const reportsRouteActive = computed(() => route.name === 'reports')
+let accountPoll: ReturnType<typeof setInterval> | undefined
+let mobileMedia: MediaQueryList | undefined
+function syncMobileViewport(): void {
+  isMobileViewport.value = mobileMedia?.matches ?? false
+}
 onMounted(() => {
-  void Promise.allSettled([account.fetchProfile(), account.fetchUsage()])
+  mobileMedia = window.matchMedia('(max-width: 900px)')
+  syncMobileViewport()
+  mobileMedia.addEventListener('change', syncMobileViewport)
+  accountPoll = setInterval(refreshAccountState, 10000)
+  window.addEventListener('focus', refreshAccountState)
+  void refreshAccountState()
 })
-function signOut() {
-  auth.logout()
-  void router.push({ name: 'login' })
+onBeforeUnmount(() => {
+  if (accountPoll) clearInterval(accountPoll)
+  mobileMedia?.removeEventListener('change', syncMobileViewport)
+  window.removeEventListener('focus', refreshAccountState)
+})
+async function openMobileNavigation(): Promise<void> {
+  mobile.value = true
+  await nextTick()
+  mobileCloseButton.value?.focus()
+}
+async function closeMobileNavigation(): Promise<void> {
+  if (!mobile.value) return
+  mobile.value = false
+  await nextTick()
+  menuButton.value?.focus()
+}
+function handleSidebarKeydown(event: KeyboardEvent): void {
+  if (!mobile.value) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    void closeMobileNavigation()
+    return
+  }
+  if (event.key !== 'Tab' || !sidebar.value) return
+
+  const focusable = Array.from(
+    sidebar.value.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (!first || !last) return
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+async function refreshAccountState() {
+  try {
+    await account.fetchSessionState()
+    if (!account.accountRestricted) {
+      await Promise.allSettled([account.fetchProfile(), account.fetchUsage()])
+    }
+  } catch {
+    // Global HTTP handling owns authentication failures; keep the last safe account state.
+  }
+}
+async function signOut() {
+  await auth.logout()
+  await router.push({ name: 'login' })
 }
 </script>
 <template>
   <div class="layout" :class="{ collapsed }">
-    <button class="mobile" type="button" aria-label="Open navigation" @click="mobile = true">
+    <button
+      ref="menuButton"
+      class="mobile"
+      type="button"
+      aria-label="Open navigation"
+      aria-controls="user-sidebar"
+      :aria-expanded="mobile"
+      @click="openMobileNavigation"
+    >
       <AppIcon name="menu" /></button
     ><button
       v-if="mobile"
       class="scrim"
       type="button"
       aria-label="Close navigation"
-      @click="mobile = false"
+      @click="closeMobileNavigation"
     ></button>
-    <aside :class="{ open: mobile }" aria-label="User navigation">
+    <aside
+      id="user-sidebar"
+      ref="sidebar"
+      :class="{ open: mobile }"
+      :inert="isMobileViewport && !mobile ? true : undefined"
+      aria-label="User navigation"
+      @keydown="handleSidebarKeydown"
+    >
       <header>
+        <button
+          ref="mobileCloseButton"
+          class="sidebar__mobile-close"
+          type="button"
+          aria-label="Close navigation"
+          @click="closeMobileNavigation"
+        >
+          <AppIcon name="close" />
+        </button>
         <RouterLink to="/dashboard" aria-label="VibeGraph overview"
           ><BrandMark :size="30" :show-wordmark="!collapsed" /></RouterLink
         ><button
+          class="sidebar__toggle"
           type="button"
+          aria-controls="user-sidebar"
+          :aria-expanded="!collapsed"
           :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
           @click="collapsed = !collapsed"
         >
@@ -64,30 +173,63 @@ function signOut() {
         </button>
       </header>
       <nav>
-        <RouterLink
-          v-for="[label, to, icon] in nav"
-          :key="to"
-          :to="to"
-          :title="collapsed ? label : undefined"
-          @click="mobile = false"
-          ><AppIcon :name="icon" /><span>{{ label }}</span></RouterLink
-        >
+        <template v-for="[label, to, icon] in nav" :key="to">
+          <RouterLink
+            v-if="!restricted || to === '/reports'"
+            :to="to"
+            :aria-label="label"
+            :title="collapsed ? label : undefined"
+            @click="closeMobileNavigation"
+            ><AppIcon :name="icon" /><span>{{ label }}</span></RouterLink
+          >
+          <span
+            v-else
+            class="nav-disabled"
+            aria-disabled="true"
+            :aria-label="`${label} unavailable`"
+            :title="restrictionReason"
+          >
+            <AppIcon :name="icon" /><span>{{ label }}</span>
+          </span>
+        </template>
       </nav>
-      <section class="account" :title="email">
-        <AppIcon name="wallet" />
+      <section
+        class="account"
+        :title="collapsed ? `${displayName} · ${plan} · ${credits} credits` : email"
+        :aria-label="`${displayName}, ${plan}, ${credits} credits remaining`"
+      >
+        <AppIcon name="account" />
         <div>
+          <strong>{{ displayName }}</strong>
+          <small>{{ email }}</small>
           <div class="account__summary">
             <b>{{ plan }}</b
             ><span>{{ credits }} credits</span>
           </div>
-          <small>{{ email }}</small>
         </div>
       </section>
-      <button class="signout" type="button" @click="signOut">
+      <button data-test="user-sign-out" class="signout" type="button" @click="signOut">
         <AppIcon name="logout" /><span>Sign Out</span>
       </button>
     </aside>
-    <main><AnnouncementBanner /><RouterView /></main>
+    <main :inert="mobile ? true : undefined">
+      <AnnouncementBanner v-if="!restricted" />
+      <section v-if="restricted" class="restriction-banner" role="alert">
+        <div>
+          <span>Account status</span>
+          <strong>{{ restrictionTitle }}</strong>
+          <p>{{ restrictionReason }}</p>
+        </div>
+        <RouterLink v-if="!reportsRouteActive" to="/reports">Contact support</RouterLink>
+      </section>
+      <RouterView v-if="!restricted || reportsRouteActive" />
+      <section v-else class="restricted-state" aria-labelledby="restricted-title">
+        <AppIcon name="shield" :size="30" />
+        <h1 id="restricted-title">Product controls are unavailable</h1>
+        <p>{{ restrictionReason }}</p>
+        <RouterLink to="/reports">Open a support report</RouterLink>
+      </section>
+    </main>
   </div>
 </template>
 <style scoped>
@@ -145,6 +287,7 @@ nav {
   overflow-y: auto;
 }
 nav a,
+.nav-disabled,
 .signout,
 .account {
   min-height: 40px;
@@ -165,6 +308,10 @@ nav a.router-link-active {
   color: var(--vg-text);
   border-color: rgba(96, 165, 250, 0.28);
   background: rgba(59, 130, 246, 0.1);
+}
+.nav-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 nav svg,
 .account > svg,
@@ -260,6 +407,74 @@ nav svg,
   margin: 0;
   padding: var(--vg-space-3);
 }
+.restriction-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vg-space-4);
+  margin-bottom: var(--vg-space-4);
+  padding: var(--vg-space-4);
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 45%, var(--vg-border));
+  border-left: 4px solid var(--vg-danger);
+  border-radius: var(--vg-radius-sm);
+  background: color-mix(in srgb, var(--vg-danger) 9%, var(--vg-surface));
+}
+.restriction-banner span {
+  display: block;
+  color: var(--vg-danger);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.restriction-banner strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--vg-text);
+  font: 700 var(--vg-text-lg) var(--vg-font-display);
+}
+.restriction-banner p,
+.restricted-state p {
+  margin: 0.35rem 0 0;
+  color: var(--vg-text-muted);
+}
+.restriction-banner a,
+.restricted-state a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--vg-blue);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-blue);
+  color: white;
+  font-weight: 700;
+  text-decoration: none;
+}
+.restricted-state {
+  min-height: 24rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(1.5rem, 5vw, 4rem);
+  border: 1px dashed var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+  color: var(--vg-danger);
+}
+.restricted-state h1 {
+  margin: var(--vg-space-3) 0 0;
+  color: var(--vg-text);
+  font-family: var(--vg-font-display);
+}
+.restricted-state a {
+  margin-top: var(--vg-space-4);
+}
+.sidebar__mobile-close {
+  display: none;
+}
 .mobile,
 .scrim {
   display: none;
@@ -268,6 +483,11 @@ nav svg,
   .layout,
   .layout.collapsed {
     display: block;
+  }
+  .mobile,
+  .sidebar__mobile-close {
+    width: 44px;
+    height: 44px;
   }
   .mobile {
     display: grid;
@@ -293,10 +513,16 @@ nav svg,
   aside.open {
     transform: none;
   }
+  .sidebar__mobile-close {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+  }
   .collapsed header a {
     display: flex;
   }
   .collapsed nav a,
+  .collapsed .nav-disabled,
   .collapsed .signout,
   .collapsed .account {
     justify-content: flex-start;
@@ -312,6 +538,10 @@ nav svg,
   }
   .layout > main {
     padding: calc(var(--vg-space-8) + 2rem) var(--vg-space-4) var(--vg-space-4);
+  }
+  .restriction-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

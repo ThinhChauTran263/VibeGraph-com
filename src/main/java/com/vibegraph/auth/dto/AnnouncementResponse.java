@@ -15,7 +15,11 @@ public record AnnouncementResponse(
         Instant startsAt,
         Instant endsAt,
         boolean dismissible,
-        boolean active) {
+        boolean active,
+        UUID createdByUserId,
+        String creatorDisplayName,
+        String creatorEmail,
+        Instant createdAt) {
 
     public static AnnouncementResponse from(Announcement announcement) {
         return new AnnouncementResponse(
@@ -28,6 +32,10 @@ public record AnnouncementResponse(
                 announcement.getStartsAt(),
                 announcement.getEndsAt(),
                 announcement.isDismissible(),
-                announcement.isActive());
+                announcement.isActive(),
+                announcement.getCreatedByUserId(),
+                null,
+                null,
+                announcement.getCreatedAt());
     }
 }

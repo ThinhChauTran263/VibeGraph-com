@@ -27,7 +27,7 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
@@ -61,7 +61,7 @@ class McpCreditMeteringTest {
     @Mock CreditBalanceService creditBalanceService;
     @Mock ProjectOwnershipGuard ownershipGuard;
     @Mock FeatureGateService featureGateService;
-    @Mock AccountSettingsService accountSettingsService;
+    @Mock AccountAccessGuard accountAccessGuard;
 
     private UUID userId;
     private MeteredToolCallback callback;
@@ -78,12 +78,12 @@ class McpCreditMeteringTest {
                 creditBalanceService,
                 ownershipGuard,
                 featureGateService,
-                accountSettingsService,
+                accountAccessGuard,
                 new ObjectMapper());
     }
 
     @Test
-    @DisplayName("owned project call authorizes before metering and attributes the debit")
+    @DisplayName("owned project call authorizes and atomically debits before delegated work")
     void projectCall_owner_authorizesBeforeMetering() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
         when(currentUser.id()).thenReturn(userId);
@@ -98,10 +98,9 @@ class McpCreditMeteringTest {
         order.verify(currentUser).id();
         order.verify(ownershipGuard).assertOwner("p1", userId);
         order.verify(creditPricingService).calculateCredits("MCP_TOOL_CALL", 0, 0);
-        order.verify(creditBalanceService).assertCreditsAvailable(userId, 2L);
-        order.verify(delegate).call("{\"projectId\":\"p1\"}");
         order.verify(creditBalanceService)
                 .deductCredits(userId, 2L, "MCP", "MCP_TOOL_CALL", "p1");
+        order.verify(delegate).call("{\"projectId\":\"p1\"}");
         verify(featureGateService).assertMcpToolEnabled("project_tool");
     }
 
@@ -111,14 +110,32 @@ class McpCreditMeteringTest {
         when(currentUser.id()).thenReturn(userId);
         doThrow(new com.vibegraph.common.exception.AccountBlockedException(
                         "internal reason", "Policy review"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         assertThatThrownBy(() -> callback.call("{}"))
                 .isInstanceOf(com.vibegraph.common.exception.AccountBlockedException.class)
                 .hasMessage("internal reason");
 
         verify(currentUser).id();
-        verify(accountSettingsService).assertNotBlocked(userId);
+        verify(accountAccessGuard).assertProductAccess(userId);
+        verifyNoInteractions(featureGateService, ownershipGuard, creditPricingService, creditBalanceService);
+        verify(delegate, never()).call("{}");
+    }
+
+    @Test
+    @DisplayName("deactivated account is rejected before MCP work")
+    void deactivatedAccount_blocksBeforeAnyWork() {
+        when(currentUser.id()).thenReturn(userId);
+        doThrow(new com.vibegraph.common.exception.AccountDeactivatedException(
+                        "internal deactivation reason", "Account closed by administrator"))
+                .when(accountAccessGuard).assertProductAccess(userId);
+
+        assertThatThrownBy(() -> callback.call("{}"))
+                .isInstanceOf(com.vibegraph.common.exception.AccountDeactivatedException.class)
+                .satisfies(error -> assertThat(
+                                ((com.vibegraph.common.exception.AccountDeactivatedException) error).getCode())
+                        .isEqualTo("ACCOUNT_DEACTIVATED"));
+
         verifyNoInteractions(featureGateService, ownershipGuard, creditPricingService, creditBalanceService);
         verify(delegate, never()).call("{}");
     }
@@ -133,7 +150,7 @@ class McpCreditMeteringTest {
                 .isInstanceOf(FeatureDisabledException.class);
 
         verify(currentUser).id();
-        verify(accountSettingsService).assertNotBlocked(userId);
+        verify(accountAccessGuard).assertProductAccess(userId);
         verifyNoInteractions(ownershipGuard, creditPricingService, creditBalanceService);
         verify(delegate, never()).call("{}");
     }
@@ -185,7 +202,7 @@ class McpCreditMeteringTest {
                 .hasMessageContaining("projectId");
 
         verify(currentUser, org.mockito.Mockito.times(3)).id();
-        verify(accountSettingsService, org.mockito.Mockito.times(3)).assertNotBlocked(userId);
+        verify(accountAccessGuard, org.mockito.Mockito.times(3)).assertProductAccess(userId);
         verify(featureGateService, org.mockito.Mockito.times(3)).assertMcpToolEnabled("project_tool");
         verifyNoInteractions(ownershipGuard, creditPricingService, creditBalanceService);
     }
@@ -223,24 +240,23 @@ class McpCreditMeteringTest {
     }
 
     @Test
-    @DisplayName("insufficient credits prevent the delegated MCP tool from running")
+    @DisplayName("failed atomic debit prevents the delegated MCP tool from running")
     void insufficientCredits_blocksDelegate() {
         when(currentUser.id()).thenReturn(userId);
         when(creditPricingService.calculateCredits("MCP_TOOL_CALL", 0, 0)).thenReturn(3L);
         doThrow(new InsufficientCreditsException("Insufficient credits"))
-                .when(creditBalanceService).assertCreditsAvailable(userId, 3L);
+                .when(creditBalanceService)
+                .deductCredits(userId, 3L, "MCP", "MCP_TOOL_CALL", null);
 
         assertThatThrownBy(() -> callback.call("{}"))
                 .isInstanceOf(InsufficientCreditsException.class);
 
         verify(delegate, never()).call("{}");
-        verify(creditBalanceService, never())
-                .deductCredits(userId, 3L, "MCP", "MCP_TOOL_CALL", null);
     }
 
     @Test
-    @DisplayName("failed MCP tools are not deducted")
-    void failedDelegate_isNotDeducted() {
+    @DisplayName("failed MCP tools remain charged after the reserved debit")
+    void failedDelegate_remainsDeducted() {
         when(currentUser.id()).thenReturn(userId);
         when(creditPricingService.calculateCredits("MCP_TOOL_CALL", 0, 0)).thenReturn(1L);
         when(delegate.call("{}")).thenThrow(new IllegalStateException("tool failed"));
@@ -249,7 +265,7 @@ class McpCreditMeteringTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("tool failed");
 
-        verify(creditBalanceService, never())
+        verify(creditBalanceService)
                 .deductCredits(userId, 1L, "MCP", "MCP_TOOL_CALL", null);
     }
 

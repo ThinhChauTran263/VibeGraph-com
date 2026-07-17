@@ -10,6 +10,7 @@ const paths: Record<string, string[]> = {
     'M16 3.13a4 4 0 0 1 0 7.75',
   ],
   shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', 'M9 12l2 2 4-4'],
+  audit: ['M6 3h12v18H6z', 'M9 7h6', 'M9 11h6', 'M9 15h4'],
   system: ['M4 5h16v12H4z', 'M8 21h8', 'M12 17v4'],
   announcement: ['M3 11v2a2 2 0 0 0 2 2h2l3 5h3l-2-5 8-3V6l-12 5z'],
   account: ['M20 21a8 8 0 0 0-16 0', 'M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z'],

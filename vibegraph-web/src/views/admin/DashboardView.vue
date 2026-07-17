@@ -6,6 +6,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import { useAdminStore } from '@/stores/admin'
+import { createHorizontalBarOption } from './dashboard-chart-utils'
 import type {
   AdminDistributionPoint,
   AdminSecurityAlert,
@@ -48,7 +49,6 @@ const adminStore = useAdminStore()
 const loading = ref(true)
 const errorMsg = ref('')
 const period = ref<Period>('month')
-const onlineSamples = ref<OnlineSample[]>([])
 const chartModes = reactive<Record<ChartId, ChartMode>>({
   totalUsers: 'line',
   onlineUsers: 'line',
@@ -76,11 +76,26 @@ const MONTH_LABELS = [
   'Dec',
 ]
 const MINUTE_MS = 60 * 1000
-const ONLINE_WINDOW_MS = 10 * 60 * 1000
 const ONLINE_DISPLAY_BUCKETS = 10
-const ONLINE_SAMPLES_STORAGE_KEY = 'vibegraph.admin.onlineSamples.v1'
+const POLL_INTERVAL_MS = 30 * 1000
 
 const overview = computed(() => adminStore.overview)
+const onlineSamples = computed<OnlineSample[]>(() => {
+  const samplesByMinute = new Map<number, OnlineSample>()
+  for (const point of overview.value?.onlineUserHistory ?? []) {
+    const capturedAt = Date.parse(point.label)
+    if (!Number.isFinite(capturedAt) || !Number.isFinite(point.value)) continue
+    const minute = startOfMinute(capturedAt)
+    samplesByMinute.set(minute, {
+      ...point,
+      label: formatTime24(minute),
+      capturedAt: minute,
+    })
+  }
+  return Array.from(samplesByMinute.values())
+    .sort((a, b) => a.capturedAt - b.capturedAt)
+    .slice(-ONLINE_DISPLAY_BUCKETS)
+})
 const userGrowth = computed(() => overview.value?.userGrowth ?? [])
 const creditConsumption = computed(() => overview.value?.creditConsumption ?? [])
 const storage = computed(() => overview.value?.storage ?? null)
@@ -88,6 +103,18 @@ const planDistribution = computed(() => overview.value?.planDistribution ?? [])
 const topStorageUsers = computed(() => overview.value?.topStorageUsers ?? [])
 const topStorageProjects = computed(() => overview.value?.topStorageProjects ?? [])
 const securityAlerts = computed(() => overview.value?.securityAlerts ?? [])
+const topStorageProjectChartOption = computed(() =>
+  createHorizontalBarOption(
+    topStorageProjects.value.map((project) => ({
+      label: project.name,
+      value: project.usedBytes,
+    })),
+    formatBytes,
+  ),
+)
+const planDistributionChartOption = computed(() =>
+  createHorizontalBarOption(planDistribution.value, formatNumber),
+)
 
 const storagePercent = computed(() => {
   if (!storage.value?.totalBytes) return 0
@@ -175,79 +202,51 @@ const dashboardCharts = computed<DashboardChart[]>(() => [
 ])
 
 onMounted(async () => {
-  restoreOnlineSamples()
-  await loadOverview()
-  pollInterval = setInterval(loadOverview, 30000)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  if (document.visibilityState === 'visible') {
+    await loadOverview()
+    startPolling()
+  } else {
+    loading.value = false
+  }
 })
 
 onUnmounted(() => {
-  if (pollInterval) clearInterval(pollInterval)
+  stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
+
+function startPolling(): void {
+  stopPolling()
+  pollInterval = setInterval(() => {
+    if (document.visibilityState === 'visible') void loadOverview()
+  }, POLL_INTERVAL_MS)
+}
+
+function stopPolling(): void {
+  if (!pollInterval) return
+  clearInterval(pollInterval)
+  pollInterval = undefined
+}
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState !== 'visible') {
+    stopPolling()
+    return
+  }
+  void loadOverview()
+  startPolling()
+}
 
 async function loadOverview(): Promise<void> {
   try {
     await adminStore.fetchOverview()
-    captureOnlineSample()
     errorMsg.value = ''
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to load admin overview'
   } finally {
     loading.value = false
   }
-}
-
-function captureOnlineSample(): void {
-  if (!overview.value) return
-  const capturedAt = Date.now()
-  const cutoff = capturedAt - ONLINE_WINDOW_MS
-  const label = new Date(capturedAt).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  onlineSamples.value = [
-    ...onlineSamples.value.filter((sample) => sample.capturedAt >= cutoff),
-    { label, value: overview.value.onlineUsers, capturedAt },
-  ]
-  persistOnlineSamples()
-}
-
-function restoreOnlineSamples(): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    const raw = window.sessionStorage.getItem(ONLINE_SAMPLES_STORAGE_KEY)
-    if (!raw) return
-
-    const parsed = JSON.parse(raw) as Partial<OnlineSample>[]
-    const cutoff = Date.now() - ONLINE_WINDOW_MS
-    onlineSamples.value = parsed
-      .filter(isOnlineSample)
-      .filter((sample) => sample.capturedAt >= cutoff)
-  } catch {
-    window.sessionStorage.removeItem(ONLINE_SAMPLES_STORAGE_KEY)
-  }
-}
-
-function persistOnlineSamples(): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    window.sessionStorage.setItem(ONLINE_SAMPLES_STORAGE_KEY, JSON.stringify(onlineSamples.value))
-  } catch {
-    // Realtime history is a visual aid only; polling should continue if storage is unavailable.
-  }
-}
-
-function isOnlineSample(sample: Partial<OnlineSample>): sample is OnlineSample {
-  return (
-    typeof sample.label === 'string' &&
-    typeof sample.value === 'number' &&
-    Number.isFinite(sample.value) &&
-    typeof sample.capturedAt === 'number' &&
-    Number.isFinite(sample.capturedAt)
-  )
 }
 
 function formatNumber(value: number | undefined): string {
@@ -269,10 +268,6 @@ function formatChartValue(value: number, kind: DashboardChart['valueKind']): str
 
 function sumPoints(points: AdminSeriesPoint[] | AdminDistributionPoint[]): number {
   return points.reduce((sum, point) => sum + point.value, 0)
-}
-
-function toDistributionPoint(point: AdminSeriesPoint): AdminDistributionPoint {
-  return { label: point.label, value: point.value }
 }
 
 function periodBucketText(selectedPeriod: Period, bucketCount?: number): string {
@@ -404,10 +399,6 @@ function extractQuarter(label: string): { year: number; quarter: number } | unde
   return { year: Number(match[1]), quarter: Number(match[2]) }
 }
 
-function maxPoint(points: AdminDistributionPoint[]): number {
-  return Math.max(...points.map((point) => point.value), 1)
-}
-
 function chartPalette(tone: ChartTone): string[] {
   switch (tone) {
     case 'green':
@@ -429,7 +420,7 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
   const axisBounds = valueAxisBounds(card, values)
   const onlineWindow = onlineWindowBounds()
   const onlineSeries = card.id === 'onlineUsers' ? onlineSeriesData() : []
-  const isDayCategory = card.id !== 'onlineUsers' && period.value === 'day'
+  const hasRotatedCategoryLabels = card.id !== 'onlineUsers' && period.value === 'day'
   const xAxisLabel = categoryAxisLabel(card, labels.length)
   const colors = chartPalette(card.tone)
   const textColor = '#c7d2fe'
@@ -464,13 +455,13 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
       ...base,
       legend: {
         type: 'scroll',
-        orient: 'vertical',
-        right: 8,
-        top: 'middle',
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 0,
         icon: 'circle',
         itemWidth: 10,
         itemHeight: 10,
-        textStyle: { color: textColor, fontWeight: 700 },
+        textStyle: { color: textColor, fontSize: 11, fontWeight: 700 },
         formatter: (name: string) => {
           const point = dataPoints.find((item) => item.label === name)
           if (isOnlinePie) {
@@ -483,21 +474,12 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
         {
           name: card.title,
           type: 'pie',
-          radius: isOnlinePie ? ['42%', '62%'] : ['48%', '72%'],
-          center: isOnlinePie ? ['34%', '46%'] : ['34%', '50%'],
+          radius: ['46%', '70%'],
+          center: ['50%', '43%'],
           minAngle: 6,
           avoidLabelOverlap: true,
-          label: {
-            show: !isOnlinePie,
-            color: textColor,
-            formatter: '{d}%',
-            fontWeight: 800,
-            overflow: 'none',
-          },
-          labelLine: {
-            show: !isOnlinePie,
-            lineStyle: { color: mutedColor },
-          },
+          label: { show: false },
+          labelLine: { show: false },
           data: dataPoints.map((point) => ({
             name: point.label,
             value: point.value,
@@ -512,7 +494,13 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
   if (mode === 'bar') {
     return {
       ...base,
-      grid: { top: 20, right: 20, bottom: isDayCategory ? 42 : 18, left: 12, containLabel: true },
+      grid: {
+        top: 20,
+        right: 20,
+        bottom: hasRotatedCategoryLabels ? 42 : 18,
+        left: 12,
+        containLabel: true,
+      },
       xAxis: {
         type: card.id === 'onlineUsers' ? 'value' : 'category',
         min: card.id === 'onlineUsers' ? onlineWindow.start : undefined,
@@ -552,7 +540,7 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
             borderRadius: [8, 8, 0, 0],
           },
           label: {
-            show: true,
+            show: card.id !== 'onlineUsers' && labels.length <= 6,
             position: 'top',
             color: textColor,
             fontWeight: 800,
@@ -569,7 +557,13 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
 
   return {
     ...base,
-    grid: { top: 18, right: 20, bottom: isDayCategory ? 42 : 18, left: 12, containLabel: true },
+    grid: {
+      top: 18,
+      right: 20,
+      bottom: hasRotatedCategoryLabels ? 42 : 18,
+      left: 12,
+      containLabel: true,
+    },
     xAxis: {
       type: card.id === 'onlineUsers' ? 'value' : 'category',
       min: card.id === 'onlineUsers' ? onlineWindow.start : undefined,
@@ -603,7 +597,7 @@ function chartOption(card: DashboardChart): Record<string, unknown> {
         type: 'line',
         data:
           card.id === 'onlineUsers'
-            ? onlineSeries.map((sample) => onlineLinePoint(sample))
+            ? onlineSeries.map((sample) => [sample.time, sample.value])
             : values,
         smooth: true,
         symbolSize: card.id === 'onlineUsers' ? 5 : 8,
@@ -620,7 +614,10 @@ function valueAxisBounds(
   card: DashboardChart,
   values: number[],
 ): { max?: number; interval?: number } {
-  if (card.id === 'onlineUsers') return { max: 100, interval: 10 }
+  if (card.id === 'onlineUsers') {
+    const max = niceAxisMax(Math.max(...values, overview.value?.onlineUsers ?? 0, 0))
+    return { max, interval: max <= 10 ? 1 : undefined }
+  }
   if (card.valueKind !== 'number') return {}
   return { max: niceAxisMax(Math.max(...values, 0)) }
 }
@@ -634,10 +631,29 @@ function categoryAxisLabel(card: DashboardChart, labelCount: number): Record<str
   }
 
   if (period.value === 'day') {
-    return { interval: 0, fontSize: 10, rotate: 45, margin: 14 }
+    return {
+      interval: Math.max(0, Math.ceil(labelCount / 8) - 1),
+      fontSize: 10,
+      rotate: 45,
+      margin: 14,
+      hideOverlap: true,
+    }
   }
 
-  return { interval: 0, fontSize: labelCount > 8 ? 11 : 12 }
+  if (period.value === 'month') {
+    return {
+      interval: 0,
+      fontSize: 9,
+      formatter: (_value: string, index: number) => String(index + 1),
+      hideOverlap: false,
+    }
+  }
+
+  return {
+    interval: 0,
+    fontSize: 12,
+    hideOverlap: true,
+  }
 }
 
 function onlineWindowBounds(): { start: number; end: number } {
@@ -646,14 +662,10 @@ function onlineWindowBounds(): { start: number; end: number } {
   return { start: end - (ONLINE_DISPLAY_BUCKETS - 1) * MINUTE_MS, end }
 }
 
-function onlineSeriesData(): { time: number; value: number; label: string }[] {
+function onlineSeriesData(): { time: number; value: number | null; label: string }[] {
   const window = onlineWindowBounds()
   const samples = [...onlineSamples.value].sort((a, b) => a.capturedAt - b.capturedAt)
-  let lastKnownValue =
-    samples.find((sample) => sample.capturedAt >= window.start)?.value ??
-    samples[samples.length - 1]?.value ??
-    overview.value?.onlineUsers ??
-    0
+  let lastKnownValue: number | null = null
 
   return Array.from({ length: ONLINE_DISPLAY_BUCKETS }, (_, index) => {
     const bucketStart = window.start + index * MINUTE_MS
@@ -682,6 +694,7 @@ function pieDataPoints(card: DashboardChart): AdminDistributionPoint[] {
   if (card.id === 'onlineUsers') {
     const grouped = new Map<number, number>()
     for (const sample of onlineSeriesData()) {
+      if (sample.value === null) continue
       grouped.set(sample.value, (grouped.get(sample.value) ?? 0) + 1)
     }
 
@@ -701,11 +714,6 @@ function onlinePieLegendLabel(name: string, minutes: number): string {
   return `${name} · ${minutes} min · ${percent}%`
 }
 
-function onlineLinePoint(sample: { time: number; value: number }): [number, number, number] {
-  const visualValue = sample.value <= 1 ? 0 : sample.value
-  return [sample.time, visualValue, sample.value]
-}
-
 function chartRenderKey(card: DashboardChart): string {
   const onlineTail = onlineSamples.value[onlineSamples.value.length - 1]?.capturedAt ?? 0
   const realtimeKey =
@@ -715,7 +723,7 @@ function chartRenderKey(card: DashboardChart): string {
 
 function formatOnlineTooltip(
   params: unknown,
-  series: { time: number; value: number; label: string }[],
+  series: { time: number; value: number | null; label: string }[],
 ): string {
   const item = Array.isArray(params) ? params[0] : params
   const payload = item as
@@ -773,10 +781,6 @@ function trendLabel(points: AdminDistributionPoint[]): string {
   const total = sumPoints(points)
   if (total === 0) return 'No new users in this view'
   return `${formatNumber(total)} new users in this view`
-}
-
-function barWidth(value: number, points: AdminDistributionPoint[]): string {
-  return `${Math.max(value > 0 ? 4 : 0, Math.round((value / maxPoint(points)) * 100))}%`
 }
 
 function alertLabel(alert: AdminSecurityAlert): string {
@@ -904,20 +908,18 @@ function subjectKey(item: AdminStorageSubject): string {
       <article class="panel">
         <div class="panel-header">
           <h3>Top Storage Projects</h3>
-          <span>{{ topStorageProjects.length }} rows</span>
+          <span>{{ topStorageProjects.length }} projects</span>
         </div>
         <p v-if="topStorageProjects.length === 0" class="empty-state">
           No repository storage usage recorded yet.
         </p>
-        <div v-else class="compact-list">
-          <div v-for="item in topStorageProjects" :key="subjectKey(item)" class="compact-row">
-            <span>
-              <strong>{{ item.name }}</strong>
-              <small v-if="item.ownerEmail">{{ item.ownerEmail }}</small>
-            </span>
-            <b>{{ formatBytes(item.usedBytes) }}</b>
-          </div>
-        </div>
+        <VChart
+          v-else
+          class="support-chart"
+          :option="topStorageProjectChartOption"
+          :update-options="chartUpdateOptions"
+          :autoresize="true"
+        />
       </article>
 
       <article class="panel">
@@ -939,24 +941,22 @@ function subjectKey(item: AdminStorageSubject): string {
         </div>
       </article>
 
-      <article class="panel panel--wide">
+      <article class="panel panel--wide" data-test="plan-distribution-panel">
         <div class="panel-header">
           <h3>Plan Distribution</h3>
           <span>{{ planDistribution.length }} plans</span>
         </div>
-        <div v-if="planDistribution.length" class="mini-bars mini-bars--inline">
-          <div v-for="point in planDistribution" :key="point.label" class="bar-item">
-            <span>{{ point.label }}</span>
-            <div class="bar-track">
-              <div :style="{ width: barWidth(point.value, planDistribution) }"></div>
-            </div>
-            <strong>{{ formatNumber(point.value) }}</strong>
-          </div>
-        </div>
+        <VChart
+          v-if="planDistribution.length"
+          class="support-chart support-chart--wide"
+          :option="planDistributionChartOption"
+          :update-options="chartUpdateOptions"
+          :autoresize="true"
+        />
         <p v-else class="empty-state">No plan distribution data yet.</p>
       </article>
 
-      <article class="panel panel--wide">
+      <article class="panel panel--wide" data-test="security-alerts-panel">
         <div class="panel-header">
           <h3>Security / Abuse Alerts</h3>
           <span>{{ securityAlerts.length || overview?.blockedUsers || 0 }} signals</span>
@@ -1205,6 +1205,15 @@ function subjectKey(item: AdminStorageSubject): string {
   height: 16rem;
 }
 
+.support-chart {
+  width: 100%;
+  height: 15rem;
+}
+
+.support-chart--wide {
+  height: 14rem;
+}
+
 .chart-card--blue {
   --chart-color: #60a5fa;
 }
@@ -1383,6 +1392,15 @@ function subjectKey(item: AdminStorageSubject): string {
 
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chart-card__top {
+    display: flex;
+  }
+
+  .chart-card__metric span {
+    min-width: 0;
+    flex: none;
   }
 
   .segmented,

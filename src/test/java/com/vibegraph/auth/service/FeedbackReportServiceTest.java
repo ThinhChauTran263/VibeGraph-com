@@ -59,6 +59,7 @@ class FeedbackReportServiceTest {
     @Mock FeedbackMessageRepository messageRepository;
     @Mock CurrentUser currentUser;
     @Mock FeedbackReportRealtimePublisher realtimePublisher;
+    @Mock AuditService auditService;
 
     @InjectMocks FeedbackReportService service;
 
@@ -68,7 +69,7 @@ class FeedbackReportServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(currentUser.id()).thenReturn(userId);
+        org.mockito.Mockito.lenient().when(currentUser.id()).thenReturn(userId);
 
         openReport = FeedbackReport.builder()
                 .id(reportId)
@@ -216,8 +217,7 @@ class FeedbackReportServiceTest {
         assertThat(res.status()).isEqualTo(FeedbackReportStatus.CLOSED);
         assertThat(res.closedAt()).isNotNull();
         assertThat(res.deletesAfter()).isNotNull();
-        // deleteAfter should be approximately closedAt + 7 days
-        assertThat(res.deletesAfter()).isAfter(res.closedAt());
+        assertThat(res.deletesAfter()).isEqualTo(res.closedAt().plusSeconds(7L * 24 * 60 * 60));
         verify(realtimePublisher).publishReportClosed(argThat(report ->
                 report.id().equals(reportId)
                         && report.status() == FeedbackReportStatus.CLOSED));
@@ -235,5 +235,17 @@ class FeedbackReportServiceTest {
         // No save should be called for an already-closed report
         verify(reportRepository, never()).save(any());
         verify(realtimePublisher, never()).publishReportClosed(any());
+    }
+
+    @Test
+    @DisplayName("cleanup makes reports eligible only when deleteAfter is at or before the run time")
+    void cleanupExpiredReports_passesCurrentEligibilityCutoffToRepository() {
+        Instant before = Instant.now();
+
+        service.cleanupExpiredReports();
+
+        Instant after = Instant.now();
+        verify(reportRepository).deleteByDeleteAfterLessThanEqual(argThat(cutoff ->
+                !cutoff.isBefore(before) && !cutoff.isAfter(after)));
     }
 }

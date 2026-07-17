@@ -15,6 +15,7 @@ import com.vibegraph.auth.dto.RegisterRequest;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AuthService;
+import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.dto.response.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +45,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuthCookieService authCookieService;
+    private final AuditService auditService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
@@ -63,6 +65,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest servletRequest) {
+        auditService.recordCurrentUser("LOGOUT", null, "SESSION", null, java.util.Map.of());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, authCookieService.clearCookie(servletRequest).toString())
                 .body(ApiResponse.success(null));

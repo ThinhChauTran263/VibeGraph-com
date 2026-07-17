@@ -76,15 +76,19 @@ public class AccountService {
         UUID userId = currentUserEntity().getId();
         AccountQuotaSnapshot snapshot = accountSettingsService.quotaSnapshot(userId);
         UserCreditBalance balance = creditBalanceService.findOrCreateCurrentPeriod(userId);
-        int creditsLimit = Math.max(0, balance.getCreditsLimitSnapshot() + balance.getCreditsAdjustment());
-        int creditsUsed = balance.getCreditsUsed();
+        long creditsLimit = Math.max(0L,
+                (long) balance.getCreditsLimitSnapshot() + balance.getCreditsAdjustment());
+        long creditsUsed = balance.getCreditsUsed();
+        Long quotaOverrideMb = snapshot.quotaOverrideBytes() == null
+                ? null
+                : StorageUnitConverter.bytesToAvailableMb(snapshot.quotaOverrideBytes());
         return new AccountUsageResponse(
-                snapshot.usedBytes(),
-                snapshot.limitBytes(),
-                snapshot.remainingBytes(),
+                StorageUnitConverter.bytesToUsedMb(snapshot.usedBytes()),
+                StorageUnitConverter.bytesToAvailableMb(snapshot.limitBytes()),
+                StorageUnitConverter.bytesToAvailableMb(snapshot.remainingBytes()),
                 snapshot.planCode(),
                 snapshot.planName(),
-                snapshot.quotaOverrideBytes(),
+                quotaOverrideMb,
                 creditsUsed,
                 creditsLimit,
                 Math.max(0, creditsLimit - creditsUsed));

@@ -5,12 +5,34 @@ import QuotaMeter from '@/components/ui/QuotaMeter.vue'
 
 const accountStore = useAccountStore()
 
+interface UsageDisplay {
+  usedMb?: number
+  limitMb?: number
+  remainingMb?: number
+  sourceStorageUsed?: number
+  sourceStorageLimit?: number
+  creditsUsed?: number
+  creditsLimit?: number
+  creditsRemaining?: number
+}
+
+const usage = computed(() => accountStore.usage as (typeof accountStore.usage & UsageDisplay) | null)
+const usedMb = computed(() => usage.value?.usedMb ?? usage.value?.sourceStorageUsed ?? 0)
+const limitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
+const remainingMb = computed(() =>
+  usage.value?.remainingMb ?? Math.max(limitMb.value - usedMb.value, 0),
+)
 const creditBalanceLabel = computed(() => {
-  const usage = accountStore.usage
-  if (!usage || typeof usage.creditsUsed !== 'number' || typeof usage.creditsLimit !== 'number') {
+  if (typeof usage.value?.creditsRemaining === 'number') {
+    return `${usage.value.creditsRemaining} credits`
+  }
+  if (
+    typeof usage.value?.creditsUsed !== 'number' ||
+    typeof usage.value?.creditsLimit !== 'number'
+  ) {
     return 'Unavailable'
   }
-  return `${Math.max(usage.creditsLimit - usage.creditsUsed, 0)} credits`
+  return `${Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)} credits`
 })
 
 onMounted(async () => {
@@ -42,36 +64,34 @@ function formatDate(value: string | null): string {
 <template>
   <div class="usage-view">
     <header class="page-header">
-      <h2>Usage</h2>
+      <h1>Usage</h1>
       <p>Current plan, source storage quota, and credit availability from account APIs.</p>
     </header>
 
-    <div v-if="accountStore.usage" class="usage-grid">
+    <div v-if="usage" class="usage-grid">
       <section class="usage-card">
         <span class="usage-card__label">Current plan</span>
-        <strong>{{ accountStore.usage.planName }}</strong>
-        <span class="usage-card__meta">{{ accountStore.usage.planCode }}</span>
+        <strong>{{ usage.planName }}</strong>
+        <span class="usage-card__meta">{{ usage.planCode }}</span>
       </section>
 
       <section class="usage-card">
         <span class="usage-card__label">Credit balance</span>
         <strong>{{ creditBalanceLabel }}</strong>
         <span class="usage-card__meta">
-          {{ accountStore.usage.creditsUsed ?? 0 }} /
-          {{ accountStore.usage.creditsLimit ?? 0 }} credits used this cycle
+          {{ usage.creditsUsed ?? 0 }} /
+          {{ usage.creditsLimit ?? 0 }} credits used this cycle
         </span>
       </section>
 
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
           <h3>Source storage quota</h3>
-          <span
-            >{{ Math.round(accountStore.usage.remainingBytes / 1024 / 1024) }} MB remaining</span
-          >
+          <span>{{ remainingMb }} MB remaining</span>
         </div>
         <QuotaMeter
-          :used="accountStore.usage.sourceStorageUsed ?? 0"
-          :total="accountStore.usage.sourceStorageLimit ?? 0"
+          :used="usedMb"
+          :total="limitMb"
           unit="MB"
         />
       </section>
@@ -116,7 +136,7 @@ function formatDate(value: string | null): string {
   gap: var(--vg-space-6);
 }
 
-.page-header h2 {
+.page-header h1 {
   margin: 0 0 var(--vg-space-1);
   color: var(--vg-text);
   font-family: var(--vg-font-display);

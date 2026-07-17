@@ -9,6 +9,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.dto.AdminPlanResponse;
+import com.vibegraph.auth.dto.AdminPlanUpsertRequest;
 import com.vibegraph.auth.repository.PlanRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 
@@ -37,5 +39,28 @@ class AdminPlanManagementServiceTest {
         assertFalse(plan.isActive());
         verify(planRepository).save(plan);
         verify(planRepository, never()).delete(plan);
+    }
+
+    @Test
+    @DisplayName("create converts admin MB quota to bytes and returns MB")
+    void create_usesMegabytesAtTheApiBoundary() {
+        AdminPlanUpsertRequest request = new AdminPlanUpsertRequest(
+                "PRO", "Pro", 500, 10, 500, false, true, 20);
+        Plan saved = Plan.builder()
+                .code("PRO")
+                .name("Pro")
+                .storageLimitBytes(524_288_000L)
+                .apiKeyLimit(10)
+                .monthlyCreditLimit(500)
+                .build();
+        when(planRepository.existsByCode("PRO")).thenReturn(false);
+        when(planRepository.save(org.mockito.ArgumentMatchers.any(Plan.class))).thenReturn(saved);
+
+        AdminPlanResponse response = new AdminPlanManagementService(
+                planRepository, settingsRepository).create(request);
+
+        org.junit.jupiter.api.Assertions.assertEquals(500, response.storageLimitMb());
+        verify(planRepository).save(org.mockito.ArgumentMatchers.argThat(
+                plan -> plan.getStorageLimitBytes() == 524_288_000L));
     }
 }

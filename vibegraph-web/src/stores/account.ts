@@ -9,6 +9,8 @@ import type {
   ApiKeyCreated,
   Report,
   ReportMessage,
+  AccountSessionState,
+  UserNotification,
 } from '../types/api'
 import { accountApi } from '../lib/api'
 
@@ -28,6 +30,18 @@ export const useAccountStore = defineStore('account', () => {
   const projects = ref<Project[]>([])
   const apiKeys = ref<ApiKey[]>([])
   const reports = ref<Report[]>([])
+  const sessionState = ref<AccountSessionState | null>(null)
+  const notifications = ref<UserNotification[]>([])
+  const notificationDetail = ref<UserNotification | null>(null)
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
+  let notificationLimit = 50
+  const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read))
+  const accountRestricted = computed(() => {
+    const status = sessionState.value?.accountStatus?.toUpperCase()
+    return status === 'BLOCKED' || status === 'DEACTIVATED'
+  })
+  const restrictionReason = computed(() => sessionState.value?.safeReason ?? null)
 
   /** Derived: current plan name from usage (empty string until loaded) */
   const planName = computed(() => usage.value?.planName ?? '')
@@ -41,6 +55,23 @@ export const useAccountStore = defineStore('account', () => {
       ...data,
       status: normalizeStatus(data.accountStatus),
     }
+  }
+
+  async function fetchSessionState(): Promise<AccountSessionState> {
+    const data = await accountApi.getSessionState()
+    sessionState.value = data
+    if (profile.value) {
+      profile.value = {
+        ...profile.value,
+        displayName: data.displayName,
+        email: data.email,
+        role: data.role,
+        accountStatus: data.accountStatus,
+        safeReason: data.safeReason ?? undefined,
+        status: normalizeStatus(data.accountStatus),
+      }
+    }
+    return data
   }
 
   async function updateDisplayName(newName: string): Promise<void> {
@@ -59,16 +90,91 @@ export const useAccountStore = defineStore('account', () => {
     await accountApi.changePassword(oldPassword, newPassword, confirmPassword)
   }
 
+  // ─── Notifications ──────────────────────────────────────────────────────────
+
+  async function withNotificationState<T>(request: () => Promise<T>): Promise<T> {
+    loading.value = true
+    error.value = null
+    try {
+      return await request()
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause : new Error('Notification request failed.')
+      throw cause
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function refreshNotifications(): Promise<void> {
+    notifications.value = await accountApi.listNotifications(notificationLimit)
+  }
+
+  async function fetchNotifications(limit = 50): Promise<void> {
+    notificationLimit = limit
+    await withNotificationState(refreshNotifications)
+  }
+
+  async function fetchAnnouncements(limit = 50): Promise<void> {
+    notificationLimit = limit
+    await withNotificationState(async () => {
+      notifications.value = await accountApi.listAnnouncements(limit)
+    })
+  }
+
+  async function fetchNotification(id: string): Promise<UserNotification> {
+    return withNotificationState(async () => {
+      const detail = await accountApi.getNotification(id)
+      notificationDetail.value = detail
+      return detail
+    })
+  }
+
+  async function markNotificationRead(id: string): Promise<UserNotification> {
+    return withNotificationState(async () => {
+      const updated = await accountApi.markNotificationRead(id)
+      await refreshNotifications()
+      notificationDetail.value = notifications.value.find((item) => item.id === id) ?? updated
+      return notificationDetail.value
+    })
+  }
+
+  async function dismissNotification(id: string): Promise<void> {
+    await withNotificationState(async () => {
+      await accountApi.dismissNotification(id)
+      await refreshNotifications()
+      if (notificationDetail.value?.id === id) notificationDetail.value = null
+    })
+  }
+
   // ─── Usage ──────────────────────────────────────────────────────────────────
 
   async function fetchUsage(): Promise<void> {
     const data = await accountApi.getUsage()
-    // Expose MB-based helpers alongside raw bytes for backward compat
-    const MB = 1024 * 1024
+    const bytesPerMb = 1024 * 1024
+    const usedMb = Number.isFinite(data.usedMb)
+      ? data.usedMb
+      : Math.round((data.usedBytes ?? 0) / bytesPerMb)
+    const limitMb = Number.isFinite(data.limitMb)
+      ? data.limitMb
+      : Math.round((data.limitBytes ?? 0) / bytesPerMb)
+    const remainingMb = Number.isFinite(data.remainingMb)
+      ? data.remainingMb
+      : Number.isFinite(data.remainingBytes)
+        ? Math.round((data.remainingBytes ?? 0) / bytesPerMb)
+        : Math.max(limitMb - usedMb, 0)
+
     usage.value = {
       ...data,
-      sourceStorageUsed: Math.round(data.usedBytes / MB),
-      sourceStorageLimit: Math.round(data.limitBytes / MB),
+      usedMb,
+      limitMb,
+      remainingMb,
+      quotaOverrideMb:
+        data.quotaOverrideMb ??
+        (typeof data.quotaOverrideBytes === 'number'
+          ? Math.round(data.quotaOverrideBytes / bytesPerMb)
+          : null),
+      sourceStorageUsed: usedMb,
+      sourceStorageLimit: limitMb,
     }
   }
 
@@ -102,16 +208,11 @@ export const useAccountStore = defineStore('account', () => {
    * Creates an API key and prepends it to the list.
    * Returns the full create response — caller must display the `secretKey` immediately.
    */
-  async function createApiKey(name: string, projectId?: string): Promise<ApiKeyCreated> {
-    const created = await accountApi.createApiKey(name, projectId)
+  async function createApiKey(name: string): Promise<ApiKeyCreated> {
+    const created = await accountApi.createApiKey(name)
     // Add a display entry to the list (without secret — already gone)
     const listEntry: ApiKey = {
       id: created.id,
-      projectId: created.projectId ?? projectId,
-      projectName:
-        created.projectName ??
-        projects.value.find((project) => project.id === projectId)?.name ??
-        null,
       keyPrefix: created.keyPrefix,
       name: created.name,
       createdAt: created.createdAt,
@@ -126,11 +227,10 @@ export const useAccountStore = defineStore('account', () => {
 
   async function disableApiKey(id: string): Promise<void> {
     await accountApi.disableApiKey(id)
-    const key = apiKeys.value.find((k) => k.id === id)
-    if (key) {
-      key.disabledAt = new Date().toISOString()
-      key.disabled = true
-    }
+    const disabledAt = new Date().toISOString()
+    apiKeys.value = apiKeys.value.map((key) =>
+      key.id === id ? { ...key, disabledAt, disabled: true } : key,
+    )
   }
 
   // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -166,10 +266,10 @@ export const useAccountStore = defineStore('account', () => {
     return normalizeMessage(msg)
   }
 
-  async function closeReport(reportId: string): Promise<void> {
-    await accountApi.closeReport(reportId)
-    const report = reports.value.find((r) => r.id === reportId)
-    if (report) report.status = 'CLOSED'
+  async function closeReport(reportId: string): Promise<Report> {
+    const closed = normalizeReport(await accountApi.closeReport(reportId))
+    reports.value = reports.value.map((report) => (report.id === reportId ? closed : report))
+    return closed
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -194,6 +294,14 @@ export const useAccountStore = defineStore('account', () => {
 
   return {
     profile,
+    sessionState,
+    notifications,
+    notificationDetail,
+    unreadNotifications,
+    loading,
+    error,
+    accountRestricted,
+    restrictionReason,
     usage,
     creditLedger,
     projects,
@@ -201,6 +309,13 @@ export const useAccountStore = defineStore('account', () => {
     reports,
     planName,
     fetchProfile,
+    fetchSessionState,
+    fetchNotifications,
+    fetchAnnouncements,
+    fetchNotification,
+    markNotificationRead,
+    dismissNotification,
+    refreshNotifications,
     updateDisplayName,
     changePassword,
     fetchUsage,

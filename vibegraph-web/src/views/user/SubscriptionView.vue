@@ -1,8 +1,32 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useAccountStore } from '@/stores/account'
 
 const accountStore = useAccountStore()
+
+interface SubscriptionUsage {
+  limitMb?: number
+  remainingMb?: number
+  sourceStorageLimit?: number
+  creditsRemaining?: number
+  creditsLimit?: number
+  creditsUsed?: number
+}
+
+const usage = computed(
+  () => accountStore.usage as (typeof accountStore.usage & SubscriptionUsage) | null,
+)
+const storageLimitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
+const storageRemainingMb = computed(() =>
+  usage.value?.remainingMb ?? Math.max(storageLimitMb.value - (usage.value?.sourceStorageUsed ?? 0), 0),
+)
+const remainingCredits = computed(() => {
+  if (typeof usage.value?.creditsRemaining === 'number') return usage.value.creditsRemaining
+  if (typeof usage.value?.creditsLimit === 'number' && typeof usage.value.creditsUsed === 'number') {
+    return Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)
+  }
+  return null
+})
 
 onMounted(async () => {
   if (!accountStore.usage) {
@@ -14,33 +38,37 @@ onMounted(async () => {
 <template>
   <div class="subscription-view">
     <header class="page-header">
-      <h2>Subscription</h2>
+      <h1>Subscription</h1>
       <p>Review your current plan and account quota from the account usage API.</p>
     </header>
 
     <section class="current-plan">
       <span class="current-plan__label">Current plan</span>
-      <strong>{{ accountStore.usage?.planName ?? 'Unavailable' }}</strong>
-      <dl v-if="accountStore.usage">
+      <strong>{{ usage?.planName ?? 'Unavailable' }}</strong>
+      <dl v-if="usage">
         <div>
           <dt>Plan code</dt>
-          <dd>{{ accountStore.usage.planCode }}</dd>
+          <dd>{{ usage.planCode }}</dd>
         </div>
         <div>
           <dt>Source storage quota</dt>
-          <dd>{{ Math.round(accountStore.usage.limitBytes / 1024 / 1024) }} MB</dd>
+          <dd>{{ storageLimitMb }} MB</dd>
         </div>
         <div>
           <dt>Remaining storage</dt>
-          <dd>{{ Math.round(accountStore.usage.remainingBytes / 1024 / 1024) }} MB</dd>
+          <dd>{{ storageRemainingMb }} MB</dd>
+        </div>
+        <div>
+          <dt>Remaining credits</dt>
+          <dd>{{ remainingCredits === null ? 'Unavailable' : `${remainingCredits} credits` }}</dd>
         </div>
       </dl>
       <p v-else>Plan details are unavailable until the account usage API responds.</p>
     </section>
 
     <section class="empty-state">
-      Plan catalog management is available in the admin console. The user app does not expose a
-      public plan catalog or billing-management API yet.
+      A public plan catalog is not available from the current user API. Upgrade options, including
+      Enterprise contact sales, remain unavailable until the backend exposes that contract.
     </section>
   </div>
 </template>
@@ -52,7 +80,7 @@ onMounted(async () => {
   gap: var(--vg-space-6);
 }
 
-.page-header h2 {
+.page-header h1 {
   margin: 0 0 var(--vg-space-1);
   color: var(--vg-text);
   font-family: var(--vg-font-display);

@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.vibegraph.auth.domain.Announcement;
 import com.vibegraph.auth.dto.AnnouncementRequest;
 import com.vibegraph.auth.dto.AnnouncementResponse;
+import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.repository.AnnouncementRepository;
+import com.vibegraph.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,31 +21,44 @@ import lombok.RequiredArgsConstructor;
 public class AdminAnnouncementService {
 
     private final AnnouncementRepository announcementRepository;
+    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<AnnouncementResponse> list() {
         return announcementRepository.findAll().stream()
                 .sorted(Comparator.comparing(Announcement::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .map(AnnouncementResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
     public AnnouncementResponse create(AnnouncementRequest request) {
-        return AnnouncementResponse.from(announcementRepository.save(toAnnouncement(
-                Announcement.builder().build(), request)));
+        Announcement announcement = toAnnouncement(Announcement.builder().build(), request);
+        announcement.setCreatedByUserId(currentUser.id());
+        announcement.setCreatedAt(java.time.Instant.now());
+        AnnouncementResponse response = toResponse(announcementRepository.save(announcement));
+        auditService.recordCurrentUser("ANNOUNCEMENT_CREATE", null, "ANNOUNCEMENT",
+                response.id() == null ? null : response.id().toString(),
+                java.util.Map.of("type", response.type(), "severity", response.severity()));
+        return response;
     }
 
     @Transactional
     public AnnouncementResponse update(UUID id, AnnouncementRequest request) {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Announcement not found: " + id));
-        return AnnouncementResponse.from(announcementRepository.save(toAnnouncement(announcement, request)));
+        AnnouncementResponse response = toResponse(announcementRepository.save(toAnnouncement(announcement, request)));
+        auditService.recordCurrentUser("ANNOUNCEMENT_UPDATE", null, "ANNOUNCEMENT", id.toString(),
+                java.util.Map.of("type", response.type(), "severity", response.severity()));
+        return response;
     }
 
     @Transactional
     public void delete(UUID id) {
         announcementRepository.deleteById(id);
+        auditService.recordCurrentUser("ANNOUNCEMENT_DELETE", null, "ANNOUNCEMENT", id.toString(), java.util.Map.of());
     }
 
     @Transactional
@@ -51,7 +66,9 @@ public class AdminAnnouncementService {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Announcement not found: " + id));
         announcement.setActive(false);
-        return AnnouncementResponse.from(announcementRepository.save(announcement));
+        AnnouncementResponse response = toResponse(announcementRepository.save(announcement));
+        auditService.recordCurrentUser("ANNOUNCEMENT_DISABLE", null, "ANNOUNCEMENT", id.toString(), java.util.Map.of());
+        return response;
     }
 
     private Announcement toAnnouncement(Announcement announcement, AnnouncementRequest request) {
@@ -73,5 +90,18 @@ public class AdminAnnouncementService {
 
     private String toPlainText(String value) {
         return value.replaceAll("<[^>]*>", "").trim();
+    }
+
+    private AnnouncementResponse toResponse(Announcement announcement) {
+        AnnouncementResponse base = AnnouncementResponse.from(announcement);
+        if (announcement.getCreatedByUserId() == null) {
+            return base;
+        }
+        return userRepository.findById(announcement.getCreatedByUserId())
+                .map(user -> new AnnouncementResponse(
+                        base.id(), base.type(), base.severity(), base.target(), base.title(), base.body(),
+                        base.startsAt(), base.endsAt(), base.dismissible(), base.active(), base.createdByUserId(),
+                        user.getDisplayName(), user.getEmail(), base.createdAt()))
+                .orElse(base);
     }
 }

@@ -7,6 +7,7 @@ import { API_BASE_URL } from './constants'
 import http from './http'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
+import type { ApiErrorCode, ApiErrorPayload } from '@/types/api'
 
 /**
  * A node as returned inside an impact-analysis result. Mirrors the backend
@@ -98,6 +99,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly statusText: string,
     message?: string,
+    public readonly code?: ApiErrorCode,
+    public readonly details?: string | null,
   ) {
     super(message ?? `HTTP ${status}: ${statusText}`)
     this.name = 'ApiError'
@@ -107,7 +110,7 @@ export class ApiError extends Error {
 interface ApiResponse<T> {
   success: boolean
   data: T
-  error?: { code: string; message: string }
+  error?: ApiErrorPayload | null
 }
 
 /**
@@ -166,26 +169,50 @@ async function unwrap<T>(res: Response): Promise<T> {
     if (res.status === 401) {
       handleUnauthorized()
     }
-    // Try to extract a structured error message from the response body
-    // before falling back to the raw text or HTTP status.
-    const message = await extractErrorMessage(res)
-    throw new ApiError(res.status, res.statusText, message)
+    const error = await extractApiError(res)
+    throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
   }
   const json = (await res.json()) as ApiResponse<T>
   if (!json.success) {
-    throw new ApiError(400, 'API Error', json.error?.message ?? 'Unknown error')
+    throw new ApiError(
+      400,
+      'API Error',
+      json.error?.message ?? 'Unknown error',
+      json.error?.code,
+      json.error?.details,
+    )
   }
   return json.data
 }
 
-async function extractErrorMessage(res: Response): Promise<string | undefined> {
+interface ExtractedApiError {
+  message?: string
+  code?: ApiErrorCode
+  details?: string | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseApiError(value: unknown): ExtractedApiError | null {
+  if (!isRecord(value) || !isRecord(value.error)) return null
+  const error = value.error
+  return {
+    message: typeof error.message === 'string' ? error.message : undefined,
+    code: typeof error.code === 'string' ? error.code : undefined,
+    details:
+      typeof error.details === 'string' || error.details === null ? error.details : undefined,
+  }
+}
+
+async function extractApiError(res: Response): Promise<ExtractedApiError> {
   const text = await res.text().catch(() => '')
-  if (!text) return undefined
+  if (!text) return {}
   try {
-    const parsed = JSON.parse(text) as Partial<ApiResponse<unknown>>
-    return parsed?.error?.message ?? text
+    return parseApiError(JSON.parse(text)) ?? { message: text }
   } catch {
-    return text
+    return { message: text }
   }
 }
 
@@ -273,8 +300,8 @@ export const api = {
       if (res.status === 401) {
         handleUnauthorized()
       }
-      const message = await extractErrorMessage(res)
-      throw new ApiError(res.status, res.statusText, message)
+      const error = await extractApiError(res)
+      throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
     }
   },
 }
@@ -552,6 +579,8 @@ import type {
   ApiKeyCreated,
   Report,
   ReportMessage,
+  UserNotification,
+  AccountSessionState,
   PagedResponse,
   FeedbackCategory,
   AdminOverview,
@@ -566,6 +595,13 @@ import type {
   AdminAnnouncement,
   AdminAnnouncementRequest,
   AdminSecurityEvent,
+  AdminCreditOverview,
+  AdminRequestEvent,
+  AdminRequestAggregate,
+  AdminIpBlock,
+  AdminIpBlockRequest,
+  AdminAuditLog,
+  AdminAuditRetention,
 } from '@/types/api'
 
 /**
@@ -573,6 +609,9 @@ import type {
  * Every method returns the unwrapped `data` payload from `ApiResponse<T>`.
  */
 export const accountApi = {
+  getSessionState(): Promise<AccountSessionState> {
+    return api.get<AccountSessionState>('/api/account/session-state')
+  },
   getProfile(): Promise<UserProfile> {
     return api.get<UserProfile>('/api/account/profile')
   },
@@ -594,11 +633,8 @@ export const accountApi = {
   listApiKeys(): Promise<ApiKey[]> {
     return api.get<ApiKey[]>('/api/account/api-keys')
   },
-  createApiKey(name: string, projectId?: string): Promise<ApiKeyCreated> {
-    return api.post<ApiKeyCreated>(
-      '/api/account/api-keys',
-      projectId ? { name, projectId } : { name },
-    )
+  createApiKey(name: string): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>('/api/account/api-keys', { name })
   },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
@@ -623,6 +659,29 @@ export const accountApi = {
   closeReport(reportId: string): Promise<Report> {
     return api.patch<Report>(
       `/api/account/reports/${encodeURIComponent(reportId)}/close`,
+      undefined,
+    )
+  },
+  listNotifications(limit = 50): Promise<UserNotification[]> {
+    const query = new URLSearchParams({ limit: String(limit) })
+    return api.get<UserNotification[]>(`/api/account/notifications?${query}`)
+  },
+  listAnnouncements(limit = 50): Promise<UserNotification[]> {
+    const query = new URLSearchParams({ limit: String(limit) })
+    return api.get<UserNotification[]>(`/api/account/announcements?${query}`)
+  },
+  getNotification(id: string): Promise<UserNotification> {
+    return api.get<UserNotification>(`/api/account/notifications/${encodeURIComponent(id)}`)
+  },
+  markNotificationRead(id: string): Promise<UserNotification> {
+    return api.patch<UserNotification>(
+      `/api/account/notifications/${encodeURIComponent(id)}/read`,
+      undefined,
+    )
+  },
+  dismissNotification(id: string): Promise<UserNotification> {
+    return api.patch<UserNotification>(
+      `/api/account/notifications/${encodeURIComponent(id)}/dismiss`,
       undefined,
     )
   },
@@ -790,7 +849,73 @@ export const adminApi = {
   deleteAnnouncement(id: string): Promise<void> {
     return api.delete(`/api/admin/announcements/${encodeURIComponent(id)}`)
   },
+  getCreditOverview(userId: string): Promise<AdminCreditOverview> {
+    return api.get<AdminCreditOverview>(`/api/admin/credits/users/${encodeURIComponent(userId)}`)
+  },
+  adjustCredits(userId: string, creditsDelta: number, reason: string): Promise<void> {
+    return api.post<void>(`/api/admin/credits/users/${encodeURIComponent(userId)}/adjust`, {
+      creditsDelta,
+      reason,
+    })
+  },
   listSecurityEvents(limit = 50): Promise<AdminSecurityEvent[]> {
     return api.get<AdminSecurityEvent[]>(`/api/admin/security/events?limit=${limit}`)
+  },
+  listRequestEvents(limit = 100): Promise<AdminRequestEvent[]> {
+    return api.get<AdminRequestEvent[]>(`/api/admin/security/request-events?limit=${limit}`)
+  },
+  listTopUsers(minutes = 60, limit = 20): Promise<AdminRequestAggregate[]> {
+    return api.get<AdminRequestAggregate[]>(
+      `/api/admin/security/top-users?minutes=${minutes}&limit=${limit}`,
+    )
+  },
+  listTopIps(minutes = 60, limit = 20): Promise<AdminRequestAggregate[]> {
+    return api.get<AdminRequestAggregate[]>(
+      `/api/admin/security/top-ips?minutes=${minutes}&limit=${limit}`,
+    )
+  },
+  listIpBlocks(limit = 100): Promise<AdminIpBlock[]> {
+    return api.get<AdminIpBlock[]>(`/api/admin/security/ip-blocks?limit=${limit}`)
+  },
+  createIpBlock(data: AdminIpBlockRequest): Promise<AdminIpBlock> {
+    return api.post<AdminIpBlock>('/api/admin/security/ip-blocks', data)
+  },
+  updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<AdminIpBlock> {
+    return api.patch<AdminIpBlock>(`/api/admin/security/ip-blocks/${encodeURIComponent(id)}`, data)
+  },
+  deleteIpBlock(id: string): Promise<void> {
+    return api.delete(`/api/admin/security/ip-blocks/${encodeURIComponent(id)}`)
+  },
+  listAuditLogs(
+    params: {
+      action?: string
+      outcome?: string
+      actorUserId?: string
+      targetUserId?: string
+      from?: string
+      to?: string
+      page?: number
+      size?: number
+    } = {},
+  ): Promise<PagedResponse<AdminAuditLog>> {
+    const query = new URLSearchParams()
+    if (params.action) query.set('action', params.action)
+    if (params.outcome) query.set('outcome', params.outcome)
+    if (params.actorUserId) query.set('actorUserId', params.actorUserId)
+    if (params.targetUserId) query.set('targetUserId', params.targetUserId)
+    if (params.from) query.set('from', params.from)
+    if (params.to) query.set('to', params.to)
+    query.set('page', String(params.page ?? 0))
+    query.set('size', String(params.size ?? 50))
+    return api.get<PagedResponse<AdminAuditLog>>(`/api/admin/audit-logs?${query}`)
+  },
+  getAuditLog(id: string): Promise<AdminAuditLog> {
+    return api.get<AdminAuditLog>(`/api/admin/audit-logs/${encodeURIComponent(id)}`)
+  },
+  getAuditRetention(): Promise<AdminAuditRetention> {
+    return api.get<AdminAuditRetention>('/api/admin/audit-logs/retention')
+  },
+  updateAuditRetention(retentionDays: number): Promise<AdminAuditRetention> {
+    return api.put<AdminAuditRetention>('/api/admin/audit-logs/retention', { retentionDays })
   },
 }

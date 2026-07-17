@@ -24,6 +24,7 @@ import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.JwtService;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(classes = AdminSecurityIT.TestConfig.class)
@@ -91,6 +92,17 @@ class AdminSecurityIT {
     @MockitoBean private jakarta.persistence.EntityManager entityManager;
     @MockitoBean private com.vibegraph.auth.CurrentUser currentUser;
     @MockitoBean private com.vibegraph.common.config.CorsProperties corsProperties;
+    @MockitoBean private com.vibegraph.abuse.IpBlockService ipBlockService;
+    @MockitoBean private com.vibegraph.abuse.RequestEventService requestEventService;
+    @MockitoBean private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    @MockitoBean private com.vibegraph.auth.repository.AuditLogRepository auditLogRepository;
+    @MockitoBean private com.vibegraph.auth.repository.AuditRetentionSettingRepository auditRetentionSettingRepository;
+    @MockitoBean private com.vibegraph.auth.repository.NotificationRepository notificationRepository;
+    @MockitoBean private com.vibegraph.auth.repository.SecurityEventRepository securityEventRepository;
+    @MockitoBean private com.vibegraph.auth.repository.AnnouncementRepository announcementRepository;
+    @MockitoBean private com.vibegraph.auth.repository.UserIdentityRepository userIdentityRepository;
+    @MockitoBean private org.springframework.messaging.simp.SimpMessagingTemplate simpMessagingTemplate;
+    @MockitoBean private java.time.Clock clock;
 
     @Test
     @DisplayName("GET /api/admin/overview without authenticated user returns 401 Unauthorized")
@@ -125,5 +137,43 @@ class AdminSecurityIT {
 
         mockMvc.perform(get("/api/admin/overview"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/feature-flags with USER role returns 403")
+    void featureFlags_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/feature-flags"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("GET /api/admin/feature-flags with ADMIN role reaches controller")
+    void featureFlags_adminRole_reachesController() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/feature-flags"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("POST /api/admin/feature-flags with ADMIN role reaches controller")
+    void featureFlagsCreate_adminRole_reachesController() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(post("/api/admin/feature-flags")
+                        .contentType("application/json")
+                        .content("{\"key\":\"registration\",\"scope\":\"GLOBAL\",\"displayName\":\"Registration\",\"enabled\":true}"))
+                .andExpect(status().isCreated());
     }
 }

@@ -44,6 +44,9 @@ public class Announcement {
     @Column(name = "body", nullable = false, length = 2000)
     private String body;
 
+    @Column(name = "created_by_user_id")
+    private UUID createdByUserId;
+
     @Column(name = "starts_at")
     private Instant startsAt;
 

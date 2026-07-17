@@ -132,6 +132,11 @@ const router = createRouter({
           component: () => import('../views/admin/SecurityView.vue'),
         },
         {
+          path: 'audit',
+          name: 'admin-audit',
+          component: () => import('../views/admin/AuditView.vue'),
+        },
+        {
           path: 'system',
           name: 'admin-feature-flags',
           component: () => import('../views/admin/FeatureFlagsView.vue'),

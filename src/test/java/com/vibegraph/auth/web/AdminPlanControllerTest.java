@@ -37,7 +37,7 @@ class AdminPlanControllerTest {
     @DisplayName("GET /api/admin/plans returns plans catalog")
     void getPlans_succeeds() throws Exception {
         AdminPlanResponse plan = new AdminPlanResponse(
-                "PRO", "Pro", 500000L, 10, 500, false);
+                "PRO", "Pro", 500L, 10, 500, false);
 
         when(planManagementService.list()).thenReturn(Collections.singletonList(plan));
 
@@ -46,6 +46,7 @@ class AdminPlanControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].code").value("PRO"))
                 .andExpect(jsonPath("$.data[0].name").value("Pro"))
+                .andExpect(jsonPath("$.data[0].storageLimitMb").value(500))
                 .andExpect(jsonPath("$.data[0].monthlyCreditLimit").value(500))
                 .andExpect(jsonPath("$.data[0].id").doesNotExist())
                 .andExpect(jsonPath("$.data[0].createdAt").doesNotExist());

@@ -20,8 +20,12 @@ const adminStore = useAdminStore()
 
 // ── Quota ────────────────────────────────────────────────────────────────────
 const storageOverrideMb = ref<number | ''>('')
+const creditQuotaOverride = ref<number | ''>('')
+const creditAdjustment = ref<number | ''>('')
+const creditReason = ref('')
 const quotaError = ref('')
 const isSavingQuota = ref(false)
+const isAdjustingCredits = ref(false)
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 const actionError = ref('')
@@ -34,16 +38,16 @@ const pendingApiKeyId = ref<string | null>(null)
 const selectedPlan = ref('FREE')
 const isSavingPlan = ref(false)
 const isPlanMenuOpen = ref(false)
-const planOptions = [
-  { value: 'FREE', label: 'Free' },
-  { value: 'PRO', label: 'Pro' },
-  { value: 'PRO_PLUS', label: 'Pro+' },
-  { value: 'MAX', label: 'Max' },
-  { value: 'ENTERPRISE', label: 'Enterprise' },
-]
+const planOptions = computed(() =>
+  adminStore.plans.map((plan) => ({ value: plan.code, label: plan.name })),
+)
 
 const selectedPlanLabel = computed(
-  () => planOptions.find((plan) => plan.value === selectedPlan.value)?.label ?? selectedPlan.value,
+  () => planOptions.value.find((plan) => plan.value === selectedPlan.value)?.label ?? selectedPlan.value,
+)
+
+const creditOverview = computed(() =>
+  props.user ? adminStore.creditOverviews[props.user.id] ?? null : null,
 )
 
 // ── API Key creation toggle ───────────────────────────────────────────────────
@@ -72,15 +76,22 @@ watch(
 
     selectedPlan.value = u.planCode
 
-    // Quota override in MB (backend stores bytes; convert for display)
-    const overrideBytes = u.storageQuotaOverrideBytes
-    storageOverrideMb.value = overrideBytes != null ? Math.round(overrideBytes / (1024 * 1024)) : ''
+    const legacyOverrideBytes = u.storageQuotaOverrideBytes
+    storageOverrideMb.value =
+      u.storageQuotaOverrideMb ??
+      (legacyOverrideBytes != null ? Math.round(legacyOverrideBytes / (1024 * 1024)) : '')
+    creditQuotaOverride.value = u.creditQuotaOverride ?? ''
 
     if (isNewUser) {
       // Load user API keys only when opening a different user. Updating the same
       // user should not reset the API key section scroll position.
       try {
-        userApiKeys.value = await adminStore.listApiKeysForUser(u.id)
+        const [keys] = await Promise.all([
+          adminStore.listApiKeysForUser(u.id),
+          adminStore.fetchCreditOverview(u.id),
+          adminStore.plans.length ? Promise.resolve() : adminStore.fetchPlans(),
+        ])
+        userApiKeys.value = keys
       } catch {
         userApiKeys.value = []
       }
@@ -96,16 +107,17 @@ watch(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function usedMb(u: AdminUserResponse): number {
-  return Math.round(u.usedBytes / (1024 * 1024))
+  return u.usedMb ?? Math.round((u.usedBytes ?? 0) / (1024 * 1024))
 }
 
 function quotaMb(u: AdminUserResponse): number {
-  return Math.round(u.quotaBytes / (1024 * 1024))
+  return u.quotaMb ?? Math.round((u.quotaBytes ?? 0) / (1024 * 1024))
 }
 
 function storagePercent(u: AdminUserResponse): number {
-  if (!u.quotaBytes) return 0
-  return Math.min(100, Math.round((u.usedBytes / u.quotaBytes) * 100))
+  const quota = quotaMb(u)
+  if (!quota) return 0
+  return Math.min(100, Math.round((usedMb(u) / quota) * 100))
 }
 
 function userInitials(u: AdminUserResponse): string {
@@ -128,9 +140,12 @@ function userStatus(u: AdminUserResponse): string {
 
 // ── Quota ─────────────────────────────────────────────────────────────────────
 
-const handleQuotaUpdate = async () => {
+const handleQuotaUpdate = async (target: 'storage' | 'credit' | 'both') => {
   if (!props.user) return
-  const overrideMb = storageOverrideMb.value === '' ? null : Number(storageOverrideMb.value)
+  const overrideMb =
+    (target === 'storage' || target === 'both') && storageOverrideMb.value !== ''
+      ? Number(storageOverrideMb.value)
+      : null
   const usedMbVal = usedMb(props.user)
   if (overrideMb !== null && overrideMb < usedMbVal) {
     quotaError.value = `Cannot set quota lower than currently used (${usedMbVal} MB)`
@@ -139,12 +154,38 @@ const handleQuotaUpdate = async () => {
   quotaError.value = ''
   isSavingQuota.value = true
   try {
-    await adminStore.updateQuota(props.user.id, overrideMb, null)
+    const creditOverride =
+      (target === 'credit' || target === 'both') && creditQuotaOverride.value !== ''
+        ? Number(creditQuotaOverride.value)
+        : null
+    await adminStore.updateQuota(props.user.id, overrideMb, creditOverride)
+    await adminStore.fetchCreditOverview(props.user.id)
     emit('updated')
   } catch (e: unknown) {
     quotaError.value = e instanceof Error ? e.message : 'Failed to update quota'
   } finally {
     isSavingQuota.value = false
+  }
+}
+
+const handleCreditAdjustment = async () => {
+  if (!props.user || creditAdjustment.value === '' || !creditReason.value.trim()) return
+  const delta = Number(creditAdjustment.value)
+  if (!Number.isInteger(delta) || delta === 0) {
+    quotaError.value = 'Credit adjustment must be a non-zero whole number.'
+    return
+  }
+  isAdjustingCredits.value = true
+  quotaError.value = ''
+  try {
+    await adminStore.adjustCredits(props.user.id, delta, creditReason.value.trim())
+    creditAdjustment.value = ''
+    creditReason.value = ''
+    emit('updated')
+  } catch (e: unknown) {
+    quotaError.value = e instanceof Error ? e.message : 'Failed to adjust credits'
+  } finally {
+    isAdjustingCredits.value = false
   }
 }
 
@@ -197,7 +238,6 @@ const submitReasonAction = async (payload: { safeReason: string; reason: string 
     }
     reasonDialogMode.value = null
     emit('updated')
-    emit('close')
   } catch (e: unknown) {
     actionError.value = e instanceof Error ? e.message : `Failed to ${mode} user`
   } finally {
@@ -219,7 +259,6 @@ const confirmSimpleAction = async () => {
     if (mode === 'unblock') {
       await adminStore.unblockUser(props.user.id)
       emit('updated')
-      emit('close')
     } else if (pendingApiKeyId.value) {
       await adminStore.disableApiKey(pendingApiKeyId.value)
       userApiKeys.value = await adminStore.listApiKeysForUser(props.user.id)
@@ -278,13 +317,17 @@ const handleDisableApiKey = async (keyId: string) => {
   confirmDialogMode.value = 'disableApiKey'
 }
 
-const copySecret = (secret: string) => {
-  navigator.clipboard.writeText(secret)
+const copySecret = async (secret: string) => {
+  try {
+    await navigator.clipboard.writeText(secret)
+  } catch {
+    actionError.value = 'Could not copy the secret. Select and copy it manually.'
+  }
 }
 </script>
 
 <template>
-  <div v-if="isOpen && user" class="drawer-overlay" @click.self="emit('close')">
+  <section v-if="isOpen && user" class="drawer-overlay" aria-label="Selected user detail">
     <div class="drawer">
       <div class="drawer-header">
         <div>
@@ -325,6 +368,10 @@ const copySecret = (secret: string) => {
             <div>
               <span>Storage</span>
               <strong>{{ storagePercent(user) }}%</strong>
+            </div>
+            <div class="summary-credit">
+              <span>Credits remaining</span>
+              <strong>{{ creditOverview?.creditBalance ?? '-' }}</strong>
             </div>
           </div>
           <div v-if="user.blockedReasonSafe" class="reason-note">
@@ -426,83 +473,98 @@ const copySecret = (secret: string) => {
 
         <hr />
 
-        <!-- Storage Quota -->
-        <div class="section storage-section">
-          <div class="section-title-row">
-            <div>
-              <h4>Storage Quota</h4>
-              <p class="section-caption">Source storage usage and admin override limit.</p>
-            </div>
-            <span class="state-pill storage-pill">{{ storagePercent(user) }}%</span>
-          </div>
-
-          <div class="quota-card">
-            <p class="quota-summary">
-              <span
-                ><strong>{{ usedMb(user) }} MB</strong> used</span
-              >
-              <span
-                ><strong>{{ quotaMb(user) }} MB</strong> quota</span
-              >
-            </p>
-            <div class="quota-meter" aria-label="Storage quota usage">
-              <div :style="{ width: `${storagePercent(user)}%` }"></div>
-            </div>
-
-            <form @submit.prevent="handleQuotaUpdate" class="quota-form">
-              <label for="quotaLimit">Override Limit (MB) - leave blank to use plan default</label>
-              <div class="input-group">
-                <input
-                  id="quotaLimit"
-                  name="quotaLimit"
-                  type="number"
-                  v-model="storageOverrideMb"
-                  class="form-input"
-                  min="0"
-                  placeholder="Plan default"
-                />
-                <button type="submit" class="btn-primary" :disabled="isSavingQuota">
-                  {{ isSavingQuota ? 'Saving...' : 'Save' }}
-                </button>
+        <div id="user-quota-controls" class="quota-credit-grid" tabindex="-1">
+          <div class="quota-side-stack">
+            <div class="section storage-section">
+              <div class="section-title-row">
+                <div>
+                  <h4>Storage Quota</h4>
+                  <p class="section-caption">Source storage usage and custom limit for this account.</p>
+                </div>
+                <span class="state-pill storage-pill">{{ storagePercent(user) }}%</span>
               </div>
-              <div v-if="quotaError" class="error-text">{{ quotaError }}</div>
-            </form>
-          </div>
-        </div>
 
-        <hr />
+              <div class="quota-card">
+                <p class="quota-summary">
+                  <span><strong>{{ usedMb(user) }} MB</strong> used</span>
+                  <span><strong>{{ quotaMb(user) }} MB</strong> quota</span>
+                </p>
+                <div class="quota-meter" aria-label="Storage quota usage">
+                  <div :style="{ width: `${storagePercent(user)}%` }"></div>
+                </div>
 
-        <!-- API Key Creation Toggle -->
-        <div class="section api-toggle-section">
-          <div class="section-title-row">
-            <div>
-              <h4>API Key Creation</h4>
-              <p class="section-caption">Control whether this user can create new API keys.</p>
+                <form class="storage-override-form" @submit.prevent="handleQuotaUpdate('storage')">
+                  <label for="quotaLimit">
+                    <span>Storage override (MB)</span>
+                    <input id="quotaLimit" v-model="storageOverrideMb" name="quotaLimit" type="number" class="form-input" min="0" placeholder="Use plan default" />
+                  </label>
+                  <button type="submit" class="btn-outline-secondary" :disabled="isSavingQuota">
+                    {{ isSavingQuota ? 'Saving...' : 'Save storage limit' }}
+                  </button>
+                </form>
+                <div v-if="quotaError" class="error-text">{{ quotaError }}</div>
+              </div>
             </div>
-            <span class="state-pill" :class="{ disabled: user.apiKeyCreationDisabled }">
-              {{ user.apiKeyCreationDisabled ? 'Disabled' : 'Enabled' }}
-            </span>
+
+            <div class="section api-toggle-section">
+              <div class="section-title-row">
+                <div>
+                  <h4>API Key Creation</h4>
+                  <p class="section-caption">Manage whether this account can create additional API keys.</p>
+                </div>
+                <span class="state-pill" :class="{ disabled: user.apiKeyCreationDisabled }">
+                  {{ user.apiKeyCreationDisabled ? 'Paused' : 'Allowed' }}
+                </span>
+              </div>
+              <form class="api-key-policy-form" @submit.prevent="handleToggleApiKeyCreation">
+                <div class="api-key-policy-copy">
+                  <span>Current policy</span>
+                  <strong>{{ user.apiKeyCreationDisabled ? 'New key creation is paused' : 'New key creation is allowed' }}</strong>
+                  <small>{{ user.apiKeyCreationDisabled ? 'Existing keys remain visible but no new key can be issued.' : 'The user can issue a key subject to their plan limit.' }}</small>
+                </div>
+                <button type="submit" class="btn-outline-secondary" :disabled="isTogglingApiKeyCreation">
+                  {{ isTogglingApiKeyCreation ? 'Saving...' : user.apiKeyCreationDisabled ? 'Allow creation' : 'Pause creation' }}
+                </button>
+              </form>
+            </div>
           </div>
-          <div class="api-key-control">
-            <div class="api-key-copy">
-              <strong>{{
-                user.apiKeyCreationDisabled ? 'Creation paused' : 'Creation allowed'
-              }}</strong>
-              <span>
-                {{
-                  user.apiKeyCreationDisabled
-                    ? 'New API keys cannot be created for this account.'
-                    : 'This account can create API keys within its plan limit.'
-                }}
+
+          <div class="section credit-section">
+            <div class="section-title-row">
+              <div>
+                <h4>Credits</h4>
+                <p class="section-caption">Period credit limit and one-time account adjustments.</p>
+              </div>
+              <span class="state-pill" :class="{ disabled: creditOverview?.creditBalance === 0 }">
+                {{ creditOverview?.creditBalance ?? '-' }} remaining
               </span>
             </div>
-            <button
-              class="btn-outline-secondary btn-sm"
-              @click="handleToggleApiKeyCreation"
-              :disabled="isTogglingApiKeyCreation"
-            >
-              {{ user.apiKeyCreationDisabled ? 'Enable' : 'Disable' }}
-            </button>
+
+            <div class="quota-card">
+              <div class="credit-overview" aria-label="User credit balance">
+                <div><span>Credit limit</span><strong>{{ creditOverview?.currentCreditsLimit ?? '-' }}</strong></div>
+                <div><span>Credits used</span><strong>{{ creditOverview?.creditsUsed ?? '-' }}</strong></div>
+                <div><span>Admin adjustment</span><strong>{{ creditOverview?.creditsAdjustment ?? '-' }}</strong></div>
+                <div class="credits-remaining"><span>Credits remaining</span><strong>{{ creditOverview?.creditBalance ?? '-' }}</strong></div>
+              </div>
+
+              <form class="credit-limit-form" @submit.prevent="handleQuotaUpdate('credit')">
+                <label for="creditQuotaLimit">
+                  <span>Credit quota override</span>
+                  <input id="creditQuotaLimit" v-model="creditQuotaOverride" name="creditQuotaLimit" type="number" class="form-input" min="0" placeholder="Use plan default" />
+                </label>
+                <button type="submit" class="btn-outline-secondary" :disabled="isSavingQuota">
+                  {{ isSavingQuota ? 'Saving...' : 'Save credit limit' }}
+                </button>
+              </form>
+
+              <form class="credit-form" @submit.prevent="handleCreditAdjustment">
+                <label for="creditAdjustment"><span>Credit adjustment</span><input id="creditAdjustment" v-model="creditAdjustment" class="form-input" type="number" min="-1000000" max="1000000" placeholder="+100 or -25" required /></label>
+                <label for="creditReason"><span>Internal reason</span><input id="creditReason" v-model="creditReason" class="form-input" maxlength="500" placeholder="Support correction or goodwill credit" required /></label>
+                <button type="submit" class="btn-outline-secondary" :disabled="isAdjustingCredits || creditAdjustment === '' || !creditReason.trim()">{{ isAdjustingCredits ? 'Adjusting...' : 'Apply credit adjustment' }}</button>
+              </form>
+              <div v-if="quotaError" class="error-text">{{ quotaError }}</div>
+            </div>
           </div>
         </div>
 
@@ -534,7 +596,7 @@ const copySecret = (secret: string) => {
 
           <!-- Secret revealed after creation -->
           <div v-if="createdKeySecret" class="secret-alert">
-            <div class="secret-alert-title">⚠ Save this secret — shown only once!</div>
+            <div class="secret-alert-title">Save this secret - it is shown only once.</div>
             <div class="secret-box">
               <code>{{ createdKeySecret.secretKey }}</code>
               <button class="btn-copy" @click="copySecret(createdKeySecret.secretKey)">Copy</button>
@@ -612,7 +674,7 @@ const copySecret = (secret: string) => {
       "
       @confirm="confirmSimpleAction"
     />
-  </div>
+  </section>
 </template>
 
 <style scoped>
@@ -1232,12 +1294,13 @@ hr {
   background: linear-gradient(90deg, rgba(96, 165, 250, 0.95), rgba(34, 197, 94, 0.88));
 }
 
-/* Full-width in-card detail panel */
+/* Full-width inline detail panel */
 .drawer-overlay {
-  inset: 0;
+  position: relative;
+  inset: auto;
   display: block;
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98)), var(--vg-surface);
+  border-top: 1px solid var(--vg-border);
+  background: var(--vg-surface);
   backdrop-filter: none;
 }
 
@@ -1247,7 +1310,7 @@ hr {
 
   width: 100%;
   max-width: none;
-  height: 100%;
+  height: auto;
   border-left: 0;
   box-shadow: none;
   animation: none;
@@ -1366,7 +1429,7 @@ hr {
 
 .summary-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--vg-space-3);
 }
 
@@ -1392,6 +1455,15 @@ hr {
   color: var(--vg-text);
   font-size: var(--vg-text-lg);
   overflow-wrap: anywhere;
+}
+
+.summary-metrics .summary-credit {
+  border-color: rgba(34, 197, 94, 0.38);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.summary-metrics .summary-credit strong {
+  color: var(--vg-green-bright);
 }
 
 .reason-note {
@@ -1837,5 +1909,1051 @@ select.form-input {
 
 .drawer-body .user-summary .reason-note {
   width: 100%;
+}
+</style>
+
+<style scoped>
+.quota-side-stack .api-toggle-section {
+  padding: 0.55rem 0.95rem;
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  margin-bottom: 0.35rem;
+}
+
+.quota-side-stack .api-toggle-section .section-caption {
+  display: none;
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.5rem);
+  gap: 0.55rem;
+}
+
+.quota-side-stack .api-key-policy-copy strong {
+  line-height: 1.15;
+}
+
+.quota-side-stack .api-key-policy-form .btn-outline-secondary {
+  min-height: 2.2rem;
+  padding-block: 0.35rem;
+}
+
+.quota-side-stack .storage-section .quota-card {
+  padding: 0.65rem;
+  gap: 0.5rem;
+}
+
+.quota-side-stack .storage-section .quota-summary span {
+  min-height: 3rem;
+}
+
+.quota-side-stack .storage-section .form-input,
+.quota-side-stack .storage-section .btn-outline-secondary {
+  min-height: 2.4rem;
+}
+
+.drawer-body #user-quota-controls .quota-side-stack {
+  gap: 10px;
+}
+</style>
+
+<style scoped>
+.quota-side-stack .api-toggle-section {
+  padding: 0.55rem 0.95rem;
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  margin-bottom: 0.35rem;
+}
+
+.quota-side-stack .api-toggle-section .section-caption {
+  display: none;
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.5rem);
+  gap: 0.55rem;
+}
+
+.quota-side-stack .api-key-policy-copy strong {
+  line-height: 1.15;
+}
+
+.quota-side-stack .api-key-policy-form .btn-outline-secondary {
+  min-height: 2.2rem;
+  padding-block: 0.35rem;
+}
+
+.quota-side-stack .storage-section .quota-card {
+  padding: 0.65rem;
+  gap: 0.5rem;
+}
+
+.quota-side-stack .storage-section .quota-summary span {
+  min-height: 3rem;
+}
+
+.quota-side-stack .storage-section .form-input,
+.quota-side-stack .storage-section .btn-outline-secondary {
+  min-height: 2.4rem;
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls.quota-credit-grid {
+  align-items: stretch;
+}
+
+.drawer-body #user-quota-controls .credit-section {
+  align-self: stretch;
+  height: 100%;
+}
+
+.drawer-body #user-quota-controls .credit-section .quota-card {
+  flex: 1 1 auto;
+}
+
+.drawer-body #user-quota-controls .storage-override-form,
+.drawer-body #user-quota-controls .credit-limit-form {
+  grid-template-columns: minmax(0, 1fr) 11.5rem;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form label,
+.drawer-body #user-quota-controls .credit-limit-form label {
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form .form-input,
+.drawer-body #user-quota-controls .credit-limit-form .form-input,
+.drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.4rem;
+  height: 2.4rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 11.5rem;
+  max-width: 11.5rem;
+  padding: 0 0.75rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.drawer-body #user-quota-controls .credit-overview div {
+  min-height: 4.25rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.drawer-body #user-quota-controls .credit-overview span {
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
+.drawer-body #user-quota-controls .credit-overview strong {
+  margin-top: 0.2rem;
+  font-size: var(--vg-text-base);
+  line-height: 1.2;
+}
+
+.drawer-body #user-quota-controls .credit-limit-form {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 760px) {
+  .drawer-body #user-quota-controls .storage-override-form,
+  .drawer-body #user-quota-controls .credit-limit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+  .drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+    min-width: 0;
+    max-width: none;
+  }
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls .storage-override-form,
+.drawer-body #user-quota-controls .credit-limit-form {
+  grid-template-columns: minmax(0, 1fr) 11.5rem;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form label,
+.drawer-body #user-quota-controls .credit-limit-form label {
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form .form-input,
+.drawer-body #user-quota-controls .credit-limit-form .form-input,
+.drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.4rem;
+  height: 2.4rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 11.5rem;
+  max-width: 11.5rem;
+  padding: 0 0.75rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.drawer-body #user-quota-controls .credit-overview div {
+  min-height: 4.25rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.drawer-body #user-quota-controls .credit-overview span {
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
+.drawer-body #user-quota-controls .credit-overview strong {
+  margin-top: 0.2rem;
+  font-size: var(--vg-text-base);
+  line-height: 1.2;
+}
+
+.drawer-body #user-quota-controls .credit-limit-form {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 760px) {
+  .drawer-body #user-quota-controls .storage-override-form,
+  .drawer-body #user-quota-controls .credit-limit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+  .drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary {
+    min-width: 0;
+    max-width: none;
+  }
+}
+</style>
+
+<style scoped>
+.quota-fields,
+.credit-overview,
+.credit-form {
+  display: grid;
+  gap: var(--vg-space-3);
+}
+.quota-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.quota-fields label,
+.credit-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  font-weight: 700;
+}
+.credit-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: var(--vg-space-4);
+}
+.credit-overview div {
+  padding: var(--vg-space-3);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-bg);
+}
+.credit-overview span,
+.credit-overview strong {
+  display: block;
+}
+.credit-overview span {
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  text-transform: uppercase;
+}
+.credit-overview strong {
+  margin-top: var(--vg-space-1);
+  color: var(--vg-text);
+  font-size: var(--vg-text-lg);
+}
+.credits-remaining {
+  border-color: rgba(34, 197, 94, 0.38) !important;
+  background: rgba(34, 197, 94, 0.08) !important;
+}
+.credits-remaining strong {
+  color: var(--vg-green-bright);
+}
+.credit-form {
+  grid-template-columns: minmax(8rem, 0.5fr) minmax(14rem, 1fr) auto;
+  align-items: end;
+  margin-top: var(--vg-space-3);
+}
+@media (max-width: 760px) {
+  .quota-fields,
+  .credit-form {
+    grid-template-columns: 1fr;
+  }
+  .credit-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
+
+<style scoped>
+.quota-credit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vg-space-4);
+}
+.quota-credit-grid .storage-section,
+.quota-credit-grid .credit-section {
+  min-height: 0;
+}
+.quota-credit-grid .quota-card {
+  min-height: 0;
+}
+.storage-override-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--vg-space-3);
+}
+.storage-override-form label,
+.api-key-policy-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+}
+.storage-override-form label > span,
+.api-key-policy-copy > span {
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  font-weight: 700;
+}
+.storage-override-form .btn-primary,
+.credit-form .btn-outline-secondary,
+.api-key-policy-form .btn-outline-secondary {
+  min-width: var(--detail-action-width);
+  min-height: 3.25rem;
+}
+.credit-section .credit-overview {
+  margin-top: 0;
+}
+.credit-section .credit-form {
+  margin-top: var(--vg-space-3);
+}
+.api-key-policy-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--vg-space-3);
+  flex: 1;
+  min-height: 0;
+  padding: var(--vg-space-4);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(2, 6, 23, 0.3);
+}
+.api-key-policy-copy strong {
+  color: var(--vg-text);
+  font-size: var(--vg-text-base);
+}
+.api-key-policy-copy small {
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  line-height: 1.45;
+}
+@media (max-width: 960px) {
+  .quota-credit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .storage-override-form,
+  .api-key-policy-form {
+    grid-template-columns: 1fr;
+  }
+  .storage-override-form .btn-primary,
+  .credit-form .btn-outline-secondary,
+  .api-key-policy-form .btn-outline-secondary {
+    width: 100%;
+  }
+}
+</style>
+
+<style scoped>
+.quota-credit-grid,
+.api-toggle-section {
+  grid-column: 1 / -1;
+}
+
+.quota-credit-grid {
+  display: block;
+}
+
+.quota-management-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-3);
+}
+
+.quota-management-title {
+  padding-inline: 0;
+}
+
+.quota-management-card {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.85fr) minmax(28rem, 1.15fr);
+  gap: var(--vg-space-4);
+  padding: var(--vg-space-4);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.storage-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--vg-space-3);
+}
+
+.quota-management-card .quota-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vg-space-3);
+  margin: 0;
+}
+
+.quota-management-card .quota-summary span {
+  min-width: 0;
+  padding: var(--vg-space-3);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.quota-management-card .quota-summary strong {
+  display: block;
+  min-width: 0;
+  margin-bottom: var(--vg-space-1);
+  color: var(--vg-text);
+  font-size: var(--vg-text-lg);
+}
+
+.quota-management-card .quota-meter {
+  margin: 0;
+}
+
+.quota-management-card .credit-overview {
+  align-self: stretch;
+  grid-template-columns: repeat(4, minmax(7rem, 1fr));
+  gap: var(--vg-space-3);
+  margin: 0;
+}
+
+.quota-management-card .credit-overview div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--vg-space-3);
+  overflow: hidden;
+}
+
+.quota-management-card .credit-overview span {
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.quota-management-card .credit-overview strong {
+  overflow-wrap: anywhere;
+}
+
+.quota-overrides-form,
+.credit-form {
+  grid-column: 1 / -1;
+}
+
+.quota-overrides-form {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(13rem, 1fr) minmax(12rem, auto);
+  align-items: end;
+  gap: var(--vg-space-3);
+}
+
+.quota-overrides-form label,
+.credit-form label {
+  min-width: 0;
+}
+
+.quota-overrides-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  font-weight: 700;
+}
+
+.quota-overrides-form .btn-outline-secondary,
+.credit-form .btn-outline-secondary {
+  width: 100%;
+  min-width: 12rem;
+  min-height: 3.25rem;
+  white-space: normal;
+}
+
+.api-toggle-section {
+  min-height: auto;
+}
+
+.api-toggle-section .section-title-row {
+  padding-inline: 0;
+}
+
+.api-key-policy-form {
+  min-height: 0;
+  padding: var(--vg-space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  align-items: center;
+}
+
+.api-key-policy-copy {
+  gap: var(--vg-space-1);
+}
+
+.api-key-policy-form .btn-outline-secondary {
+  width: 100%;
+  min-width: 10rem;
+  min-height: 3rem;
+}
+
+@media (max-width: 1180px) {
+  .quota-management-card {
+    grid-template-columns: 1fr;
+  }
+
+  .quota-management-card .credit-overview {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .quota-overrides-form,
+  .credit-form,
+  .api-key-policy-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .quota-management-card .quota-summary,
+  .quota-management-card .credit-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
+
+<style scoped>
+.drawer-body .quota-credit-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vg-space-4);
+}
+
+.drawer-body .quota-credit-grid .storage-section,
+.drawer-body .quota-credit-grid .credit-section {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-3);
+}
+
+.drawer-body .quota-credit-grid .section-title-row {
+  padding-inline: 0;
+}
+
+.drawer-body .quota-credit-grid .section-caption {
+  grid-column: 1 / -1;
+}
+
+.drawer-body .quota-credit-grid .quota-card {
+  min-height: 0;
+  flex: 1;
+}
+
+.drawer-body .quota-credit-grid .quota-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-body .quota-credit-grid .quota-summary span {
+  display: block;
+  min-width: 0;
+}
+
+.drawer-body .quota-credit-grid .quota-summary strong {
+  display: block;
+  min-width: 0;
+  margin-bottom: var(--vg-space-1);
+}
+
+.credit-limit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  align-items: end;
+  gap: var(--vg-space-3);
+}
+
+.credit-limit-form label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+  font-weight: 700;
+}
+
+.credit-limit-form .btn-outline-secondary,
+.storage-override-form .btn-outline-secondary {
+  width: 100%;
+  min-width: 10rem;
+  min-height: 3.25rem;
+  white-space: normal;
+}
+
+.drawer-body .quota-credit-grid .credit-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 0;
+}
+
+.drawer-body .quota-credit-grid .credit-overview div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.drawer-body .quota-credit-grid .credit-overview span,
+.drawer-body .quota-credit-grid .credit-overview strong {
+  overflow-wrap: anywhere;
+}
+
+.drawer-body .quota-credit-grid .credit-form {
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(14rem, 1fr) minmax(12rem, auto);
+}
+
+@media (max-width: 1180px) {
+  .drawer-body .quota-credit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .credit-limit-form,
+  .drawer-body .quota-credit-grid .credit-form,
+  .storage-override-form {
+    grid-template-columns: 1fr;
+  }
+
+  .drawer-body .quota-credit-grid .credit-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls.quota-credit-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--vg-space-4);
+}
+
+.quota-side-stack {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-4);
+}
+
+.quota-side-stack .storage-section,
+.quota-side-stack .api-toggle-section,
+.drawer-body #user-quota-controls .credit-section {
+  min-width: 0;
+  min-height: 0;
+}
+
+.quota-side-stack .storage-section,
+.quota-side-stack .api-toggle-section {
+  flex: 0 0 auto;
+}
+
+.quota-side-stack .storage-section {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.quota-side-stack .storage-section h4,
+.quota-side-stack .storage-section .section-caption {
+  grid-column: auto;
+}
+
+.quota-side-stack .storage-section .section-title-row {
+  width: 100%;
+}
+
+.drawer-body #user-quota-controls .section-title-row {
+  padding-inline: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+  align-items: start;
+}
+
+.drawer-body #user-quota-controls .section-title-row h4,
+.drawer-body #user-quota-controls .section-caption {
+  text-align: left;
+}
+
+.drawer-body #user-quota-controls .section-caption {
+  grid-column: 1 / -1;
+}
+
+.drawer-body #user-quota-controls .quota-card,
+.quota-side-stack .api-key-policy-form {
+  width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.quota-side-stack .storage-section .quota-card {
+  flex: 0 0 auto;
+}
+
+.quota-side-stack .storage-section .quota-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quota-side-stack .storage-section .quota-summary span {
+  padding: var(--vg-space-3);
+}
+
+.storage-override-form {
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 12rem);
+}
+
+.storage-override-form .btn-outline-secondary,
+.credit-limit-form .btn-outline-secondary,
+.api-key-policy-form .btn-outline-secondary {
+  min-width: 0;
+  max-width: none;
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 12rem);
+  align-items: center;
+}
+
+.drawer-body #user-quota-controls .credit-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-body #user-quota-controls .credit-section .quota-card {
+  flex: 1;
+}
+
+.drawer-body #user-quota-controls .credit-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.drawer-body #user-quota-controls .credit-form {
+  grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr) minmax(8.25rem, 9rem);
+  align-items: end;
+  width: 100%;
+}
+
+.drawer-body #user-quota-controls .credit-form .btn-outline-secondary {
+  width: 100%;
+  min-width: 0;
+  max-width: 9rem;
+  justify-self: stretch;
+  overflow-wrap: anywhere;
+}
+
+.drawer-body #user-quota-controls .credit-form .form-input,
+.drawer-body #user-quota-controls .credit-form label {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .drawer-body #user-quota-controls.quota-credit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .storage-override-form,
+  .credit-limit-form,
+  .quota-side-stack .api-key-policy-form,
+  .drawer-body #user-quota-controls .credit-form {
+    grid-template-columns: 1fr;
+  }
+
+  .drawer-body #user-quota-controls .credit-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls.quota-credit-grid {
+  align-items: start;
+}
+
+.drawer-body #user-quota-controls .credit-section,
+.drawer-body #user-quota-controls .credit-section .quota-card {
+  align-self: start;
+}
+
+.drawer-body #user-quota-controls .credit-section .quota-card {
+  flex: 0 0 auto;
+}
+
+.quota-side-stack {
+  gap: var(--vg-space-3);
+}
+
+.quota-side-stack .api-toggle-section {
+  padding: var(--vg-space-3);
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 8.75rem);
+  column-gap: var(--vg-space-3);
+}
+
+.quota-side-stack .api-toggle-section h4 {
+  margin-bottom: 0;
+}
+
+.quota-side-stack .api-toggle-section .section-caption {
+  line-height: 1.35;
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(8.5rem, 9.5rem);
+  gap: var(--vg-space-3);
+  padding: 0.75rem 0.875rem;
+}
+
+.quota-side-stack .api-key-policy-copy {
+  gap: 0.35rem;
+}
+
+.quota-side-stack .api-key-policy-copy small {
+  line-height: 1.35;
+  font-size: var(--vg-text-xs);
+}
+
+.quota-side-stack .api-key-policy-form .btn-outline-secondary {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 760px) {
+  .drawer-body #user-quota-controls.quota-credit-grid {
+    align-items: stretch;
+  }
+
+  .quota-side-stack .api-key-policy-form {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls .section {
+  padding: 0.95rem;
+}
+
+.drawer-body #user-quota-controls .section-title-row {
+  margin-bottom: 0.75rem;
+}
+
+.drawer-body #user-quota-controls .section-title-row h4 {
+  font-size: 1.05rem;
+}
+
+.drawer-body #user-quota-controls .section-caption {
+  font-size: var(--vg-text-sm);
+  line-height: 1.3;
+}
+
+.quota-side-stack .storage-section .quota-card {
+  padding: 0.8rem;
+  gap: 0.65rem;
+}
+
+.quota-side-stack .storage-section .quota-summary {
+  gap: 0.75rem;
+}
+
+.quota-side-stack .storage-section .quota-summary span {
+  min-height: 3.25rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.quota-side-stack .storage-section .quota-meter {
+  height: 0.48rem;
+}
+
+.quota-side-stack .storage-section .storage-override-form {
+  grid-template-columns: minmax(0, 1fr) minmax(10.5rem, 11.5rem);
+  gap: 0.75rem;
+}
+
+.quota-side-stack .storage-section .form-input,
+.quota-side-stack .storage-section .btn-outline-secondary {
+  min-height: 2.55rem;
+}
+
+.quota-side-stack .storage-section .btn-outline-secondary {
+  white-space: nowrap;
+}
+
+.quota-side-stack .api-toggle-section {
+  padding: 0.8rem 0.95rem;
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  margin-bottom: 0.45rem;
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.75rem);
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.quota-side-stack .api-key-policy-copy {
+  gap: 0.2rem;
+}
+
+.quota-side-stack .api-key-policy-copy > span {
+  display: none;
+}
+
+.quota-side-stack .api-key-policy-copy strong {
+  font-size: var(--vg-text-sm);
+}
+
+.quota-side-stack .api-key-policy-copy small {
+  display: none;
+  max-width: 25rem;
+  font-size: var(--vg-text-xs);
+  line-height: 1.25;
+}
+
+.quota-side-stack .api-key-policy-form .btn-outline-secondary {
+  min-height: 2.4rem;
+  padding-inline: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .quota-side-stack .storage-section .storage-override-form,
+  .quota-side-stack .api-key-policy-form {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<style scoped>
+.quota-side-stack .api-toggle-section {
+  padding: 0.55rem 0.95rem;
+}
+
+.quota-side-stack .api-toggle-section .section-title-row {
+  margin-bottom: 0.35rem;
+}
+
+.quota-side-stack .api-toggle-section .section-caption {
+  display: none;
+}
+
+.quota-side-stack .api-key-policy-form {
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.5rem);
+  gap: 0.55rem;
+}
+
+.quota-side-stack .api-key-policy-copy strong {
+  line-height: 1.15;
+}
+
+.quota-side-stack .api-key-policy-form .btn-outline-secondary {
+  min-height: 2.2rem;
+  padding-block: 0.35rem;
+}
+
+.quota-side-stack .storage-section .quota-card {
+  padding: 0.65rem;
+  gap: 0.5rem;
+}
+
+.quota-side-stack .storage-section .quota-summary span {
+  min-height: 3rem;
+}
+
+.quota-side-stack .storage-section .form-input,
+.quota-side-stack .storage-section .btn-outline-secondary {
+  min-height: 2.4rem;
+}
+</style>
+
+<style scoped>
+.drawer-body #user-quota-controls.quota-credit-grid {
+  align-items: stretch;
+}
+
+.drawer-body #user-quota-controls .credit-section {
+  align-self: stretch;
+  height: 100%;
+}
+
+.drawer-body #user-quota-controls .credit-section .quota-card {
+  flex: 1 1 auto;
+}
+
+.drawer-body #user-quota-controls .credit-section .section-title-row .state-pill {
+  margin-right: 1rem;
 }
 </style>

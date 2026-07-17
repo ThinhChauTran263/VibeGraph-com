@@ -41,21 +41,25 @@ public class ApiKeyService {
     private final AccountSettingsService accountSettingsService;
     private final PasswordEncoder passwordEncoder;
     private final FeatureGateService featureGateService;
+    private final AuditService auditService;
 
     @Transactional
     public ApiKeyCreateResponse createForCurrentUser(ApiKeyCreateRequest request) {
-        featureGateService.assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
+        featureGateService.assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
         UUID userId = currentUserEntity().getId();
         accountSettingsService.assertNotBlocked(userId);
         assertApiKeyCreationEnabled(userId);
         assertPlanLimitNotReached(userId);
 
-        return createApiKey(userId, request.name());
+        ApiKeyCreateResponse response = createApiKey(userId, request.name());
+        auditService.recordCurrentUser("API_KEY_CREATE", userId, "API_KEY", response.id().toString(),
+                java.util.Map.of("keyPrefix", response.keyPrefix(), "name", response.name()));
+        return response;
     }
 
     @Transactional
     public ApiKeyCreateResponse createForUser(AdminApiKeyCreateRequest request) {
-        featureGateService.assertEnabled(FeatureGateService.GLOBAL_API_KEYS);
+        featureGateService.assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
         assertCurrentUserIsAdmin();
         UUID targetUserId = request.userId();
         assertUserExists(targetUserId);
@@ -63,7 +67,10 @@ public class ApiKeyService {
         assertApiKeyCreationEnabled(targetUserId);
         assertPlanLimitNotReached(targetUserId);
 
-        return createApiKey(targetUserId, request.name());
+        ApiKeyCreateResponse response = createApiKey(targetUserId, request.name());
+        auditService.recordCurrentUser("API_KEY_CREATE", targetUserId, "API_KEY", response.id().toString(),
+                java.util.Map.of("keyPrefix", response.keyPrefix(), "name", response.name()));
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +96,7 @@ public class ApiKeyService {
                 .orElseThrow(() -> new ForbiddenException("Access denied"));
         apiKey.setDisabledAt(java.time.Instant.now());
         apiKeyRepository.save(apiKey);
+        auditService.recordCurrentUser("API_KEY_DISABLE", userId, "API_KEY", keyId.toString(), java.util.Map.of());
     }
 
     @Transactional
@@ -98,6 +106,8 @@ public class ApiKeyService {
                 .orElseThrow(() -> new ForbiddenException("Access denied"));
         apiKey.setDisabledAt(java.time.Instant.now());
         apiKeyRepository.save(apiKey);
+        auditService.recordCurrentUser(
+                "API_KEY_DISABLE", apiKey.getUserId(), "API_KEY", keyId.toString(), java.util.Map.of());
     }
 
     private ApiKeyCreateResponse createApiKey(UUID userId, String name) {

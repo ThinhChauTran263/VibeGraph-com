@@ -21,27 +21,41 @@ class FeatureGateServiceTest {
     @Mock FeatureFlagRepository featureFlagRepository;
 
     @Test
+    @DisplayName("Phase 7 feature flag constants use canonical backend keys")
+    void canonicalFeatureKeys_matchPhase7Contract() {
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.REGISTRATION).isEqualTo("registration");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.API_KEYS_CREATE_GLOBAL)
+                .isEqualTo("api_keys.create.global");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.CLI_PUSH).isEqualTo("cli.push");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_LOCAL).isEqualTo("import.local");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_ARCHIVE).isEqualTo("import.archive");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_GITHUB).isEqualTo("import.github");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.PROJECT_ANALYZE).isEqualTo("project.analyze");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.MCP_ENABLED).isEqualTo("mcp.enabled");
+        org.assertj.core.api.Assertions.assertThat(FeatureGateService.USECASE_GENERATE).isEqualTo("usecase.generate");
+    }
+
+    @Test
     @DisplayName("missing or enabled flags allow the feature by default")
     void assertEnabled_allowsWhenNoDisabledFlagExists() {
         FeatureGateService service = new FeatureGateService(featureFlagRepository);
-        when(featureFlagRepository.existsByKeyAndEnabledFalse("global.cli_push")).thenReturn(false);
+        when(featureFlagRepository.existsByKeyAndEnabledFalse(FeatureGateService.CLI_PUSH)).thenReturn(false);
 
-        service.assertEnabled("global.cli_push");
+        service.assertEnabled(FeatureGateService.CLI_PUSH);
 
-        verify(featureFlagRepository).existsByKeyAndEnabledFalse("global.cli_push");
+        verify(featureFlagRepository).existsByKeyAndEnabledFalse(FeatureGateService.CLI_PUSH);
     }
 
     @Test
     @DisplayName("disabled flag blocks the feature with a stable exception")
     void assertEnabled_disabledFlagThrows() {
         FeatureGateService service = new FeatureGateService(featureFlagRepository);
-        when(featureFlagRepository.existsByKeyAndEnabledFalse("global.cli_push")).thenReturn(true);
+        when(featureFlagRepository.existsByKeyAndEnabledFalse(FeatureGateService.CLI_PUSH)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.assertEnabled("global.cli_push"))
+        assertThatThrownBy(() -> service.assertEnabled(FeatureGateService.CLI_PUSH))
                 .isInstanceOf(FeatureDisabledException.class)
-                .hasMessageContaining("global.cli_push");
+                .hasMessageContaining(FeatureGateService.CLI_PUSH);
     }
-
     @Test
     @DisplayName("MCP tool checks global MCP and normalized per-tool flag")
     void assertMcpToolEnabled_checksGlobalAndToolFlag() {
@@ -49,7 +63,7 @@ class FeatureGateServiceTest {
 
         service.assertMcpToolEnabled("Plan Code Change");
 
-        verify(featureFlagRepository).existsByKeyAndEnabledFalse(FeatureGateService.GLOBAL_MCP);
+        verify(featureFlagRepository).existsByKeyAndEnabledFalse("mcp.enabled");
         verify(featureFlagRepository).existsByKeyAndEnabledFalse("mcp.tool.plan_code_change");
     }
 
@@ -57,11 +71,11 @@ class FeatureGateServiceTest {
     @DisplayName("disabled global MCP blocks before the per-tool lookup")
     void assertMcpToolEnabled_globalDisabledShortCircuits() {
         FeatureGateService service = new FeatureGateService(featureFlagRepository);
-        when(featureFlagRepository.existsByKeyAndEnabledFalse(FeatureGateService.GLOBAL_MCP)).thenReturn(true);
+        when(featureFlagRepository.existsByKeyAndEnabledFalse("mcp.enabled")).thenReturn(true);
 
         assertThatThrownBy(() -> service.assertMcpToolEnabled("source_file"))
                 .isInstanceOf(FeatureDisabledException.class)
-                .hasMessageContaining(FeatureGateService.GLOBAL_MCP);
+                .hasMessageContaining("mcp.enabled");
 
         verify(featureFlagRepository, never()).existsByKeyAndEnabledFalse("mcp.tool.source_file");
     }

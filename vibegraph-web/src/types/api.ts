@@ -5,6 +5,25 @@
 
 export type FeedbackCategory = 'BUG' | 'PROJECT' | 'QUOTA' | 'FEATURE' | 'OTHER'
 
+export type KnownApiErrorCode =
+  | 'ACCOUNT_BLOCKED'
+  | 'ACCOUNT_DEACTIVATED'
+  | 'FEATURE_DISABLED'
+  | 'QUOTA_EXCEEDED'
+  | 'CREDIT_EXHAUSTED'
+  | 'CONCURRENT_IMPORT_LIMIT'
+  | 'TOO_MANY_REQUESTS'
+  | 'IP_BLOCKED'
+
+/** Backend error codes are extensible; known Phase 7 codes are provided for narrowing. */
+export type ApiErrorCode = KnownApiErrorCode | (string & {})
+
+export interface ApiErrorPayload {
+  code: ApiErrorCode
+  message: string
+  details?: string | null
+}
+
 /** Matches Java FeedbackReportStatus */
 export type FeedbackReportStatus = 'OPEN' | 'CLOSED'
 
@@ -47,6 +66,16 @@ export interface UserProfile {
   safeReason?: string
 }
 
+/** Safe account state returned by GET /api/account/session-state. */
+export interface AccountSessionState {
+  id: string
+  email: string
+  displayName: string
+  role: string
+  accountStatus: string
+  safeReason: string | null
+}
+
 /**
  * Full user detail returned by admin endpoints (AdminUserResponse).
  * Mirrors the backend AdminUserResponse record exactly.
@@ -63,31 +92,36 @@ export interface AdminUserResponse {
   blockedReason: string | null
   blockedReasonSafe: string | null
   planCode: string
-  storageQuotaOverrideBytes: number | null
+  storageQuotaOverrideMb?: number | null
+  quotaMb?: number
+  usedMb?: number
+  /** Compatibility fields for older running backend images. */
+  storageQuotaOverrideBytes?: number | null
+  quotaBytes?: number
+  usedBytes?: number
   creditQuotaOverride: number | null
-  /** Effective quota in bytes (plan default or override) */
-  quotaBytes: number
-  /** Currently used bytes */
-  usedBytes: number
   apiKeyCreationDisabled: boolean
 }
 
-/**
- * Usage quota for the current user (AccountUsageResponse).
- * Backend returns byte-based values; convenience MB helpers are computed in the store.
- */
+/** Usage quota returned by GET /api/account/usage (AccountUsageResponse). */
 export interface UserUsage {
-  usedBytes: number
-  limitBytes: number
-  remainingBytes: number
+  usedMb: number
+  limitMb: number
+  remainingMb: number
   planCode: string
   planName: string
-  quotaOverrideBytes: number | null
-  // Derived MB helpers (populated by store)
+  quotaOverrideMb: number | null
+  creditsUsed: number
+  creditsLimit: number
+  creditsRemaining: number
+  /** Compatibility fields for older running backend images. */
+  usedBytes?: number
+  limitBytes?: number
+  remainingBytes?: number
+  quotaOverrideBytes?: number | null
+  /** Compatibility aliases populated by the account store. */
   sourceStorageUsed?: number
   sourceStorageLimit?: number
-  creditsUsed?: number
-  creditsLimit?: number
   apiKeyLimit?: number
   apiKeysDisabled?: boolean
 }
@@ -120,8 +154,6 @@ export interface Project {
 /** API key metadata returned by list endpoints (ApiKeyResponse). */
 export interface ApiKey {
   id: string
-  projectId?: string | null
-  projectName?: string | null
   /** The masked prefix shown to users, e.g. "vg-abc12" */
   keyPrefix: string
   name: string
@@ -137,8 +169,6 @@ export interface ApiKey {
 /** Response from POST /api/account/api-keys — includes the one-time secret. */
 export interface ApiKeyCreated {
   id: string
-  projectId?: string | null
-  projectName?: string | null
   keyPrefix: string
   name: string
   /** The full secret — shown exactly once, never retrievable again */
@@ -165,6 +195,7 @@ export interface AdminOverview {
   topStorageUsers?: AdminStorageSubject[]
   topStorageProjects?: AdminStorageSubject[]
   securityAlerts?: AdminSecurityAlert[]
+  onlineUserHistory?: AdminSeriesPoint[]
 }
 
 export interface AdminSeriesPoint {
@@ -235,6 +266,30 @@ export interface AdminAnnouncement {
   endsAt: string | null
   dismissible: boolean
   active: boolean
+  createdByUserId: string | null
+  creatorDisplayName: string | null
+  creatorEmail: string | null
+  createdAt: string | null
+  /** @deprecated Use creatorDisplayName or creatorEmail. */
+  creatorName?: string | null
+}
+
+/** Persisted user notification materialized from an announcement. */
+export interface UserNotification {
+  id: string
+  announcementId: string
+  title: string
+  body: string
+  creatorName: string
+  creatorDisplayName: string | null
+  creatorEmail: string | null
+  createdAt: string
+  severity: string
+  type: string
+  dismissible: boolean
+  read: boolean
+  readAt: string | null
+  dismissedAt: string | null
 }
 
 export interface AdminAnnouncementRequest {
@@ -260,10 +315,97 @@ export interface AdminSecurityEvent {
   createdAt: string | null
 }
 
+export interface AdminCreditLedgerEntry {
+  id: string
+  userId: string
+  projectId: string | null
+  balanceId: string | null
+  source: string
+  operationCode: string
+  creditsDelta: number
+  metadata: string
+  createdAt: string | null
+}
+
+export interface AdminCreditOverview {
+  userId: string
+  currentCreditsLimit: number
+  creditsUsed: number
+  creditsAdjustment: number
+  creditBalance: number
+  ledgerHistory: AdminCreditLedgerEntry[]
+}
+
+export interface AdminRequestEvent {
+  id: string
+  userId: string | null
+  apiKeyRef: string | null
+  ipAddress: string | null
+  route: string
+  method: string
+  status: number
+  eventType: string
+  occurredAt: string
+}
+
+export interface AdminRequestAggregate {
+  userId: string | null
+  apiKeyRef: string | null
+  ipAddress: string | null
+  minuteBucket: string
+  requestsPerMinute: number
+}
+
+export interface AdminIpBlockRequest {
+  ipAddress: string
+  safeReason: string
+  expiresAt: string | null
+  active: boolean
+}
+
+export interface AdminIpBlock extends AdminIpBlockRequest {
+  id: string
+  createdBy: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface AdminAuditLogQuery {
+  action?: string
+  outcome?: string
+  actorUserId?: string
+  targetUserId?: string
+  from?: string
+  to?: string
+  page?: number
+  size?: number
+}
+
+export interface AdminAuditLog {
+  id: string
+  action: string
+  actorUserId: string | null
+  targetUserId: string | null
+  targetType: string | null
+  targetId: string | null
+  outcome: string
+  ipAddress: string | null
+  details: string | null
+  createdAt: string
+}
+
+export interface AdminAuditRetention {
+  retentionDays: number
+  updatedBy: string | null
+  updatedAt: string | null
+}
+
 export interface AdminPlan {
   code: string
   name: string
-  storageLimitBytes: number
+  storageLimitMb: number
+  /** Compatibility field for pre-Phase-7 payloads. */
+  storageLimitBytes?: number
   apiKeyLimit: number
   monthlyCreditLimit: number
   contactSalesRequired: boolean
@@ -285,7 +427,7 @@ export interface AdminPricingRule {
   active: boolean
 }
 
-export interface AdminPricingRuleRequest extends AdminPricingRule {}
+export type AdminPricingRuleRequest = AdminPricingRule
 
 // ─── Reports / Feedback ────────────────────────────────────────────────────────
 

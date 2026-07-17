@@ -79,6 +79,13 @@ vibegraph:
     allow-unconfined-browse: true
     allow-unconfined-import: true
 
+  abuse:
+    concurrent-imports-per-user: 2
+    requests-per-minute-per-ip: 10000
+    requests-per-minute-per-user: 10000
+    requests-per-minute-per-api-key: 10000
+    trust-proxy: false
+
   cors:
     allowed-origins:
       - http://localhost:5173

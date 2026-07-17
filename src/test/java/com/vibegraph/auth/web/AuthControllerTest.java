@@ -16,6 +16,7 @@ import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.config.JwtProperties;
 import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AuthService;
+import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 
 import static org.hamcrest.Matchers.containsString;
@@ -36,10 +37,11 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         authService = Mockito.mock(AuthService.class);
+        AuditService auditService = Mockito.mock(AuditService.class);
         JwtProperties jwtProperties = new JwtProperties();
         jwtProperties.setExpirationMs(86_400_000L);
         AuthCookieService cookieService = new AuthCookieService(jwtProperties);
-        AuthController controller = new AuthController(authService, cookieService);
+        AuthController controller = new AuthController(authService, cookieService, auditService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

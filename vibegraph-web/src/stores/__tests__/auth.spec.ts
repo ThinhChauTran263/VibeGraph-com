@@ -105,6 +105,16 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('vg_user')).toBe(JSON.stringify(fakeUser))
     })
 
+    it('ignores a readable token accidentally returned in a web login response', async () => {
+      mockAuthApi.login.mockResolvedValue({ ...fakeAuthResponse, token: 'must-not-persist' })
+      const store = useAuthStore()
+
+      await store.login({ email: 'dev@vibegraph.io', password: 'secret123' })
+
+      expect(store.token).toBeNull()
+      expect(localStorage.getItem('vg_token')).toBeNull()
+    })
+
     it('propagates errors from authApi.login', async () => {
       mockAuthApi.login.mockRejectedValue(new Error('Invalid credentials'))
       const store = useAuthStore()

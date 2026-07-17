@@ -72,8 +72,8 @@ class LocalPatchQuotaTest {
 
     @BeforeEach
     void setUp() {
-        when(sourceFileService.resolveProjectRoot(PROJECT_ID)).thenReturn(root);
-        when(currentUser.id()).thenReturn(userId);
+        org.mockito.Mockito.lenient().when(sourceFileService.resolveProjectRoot(PROJECT_ID)).thenReturn(root);
+        org.mockito.Mockito.lenient().when(currentUser.id()).thenReturn(userId);
 
         service = new LocalPatchServiceImpl(sourceFileService, new LocalPatchProperties(), accountSettingsService, projectUsageService, creditPricingService, creditBalanceService, featureGateService, currentUser, new AtomicPatchApplier());
     }
@@ -97,15 +97,16 @@ class LocalPatchQuotaTest {
 
         assertThat(result.changed()).isEqualTo(1);
         assertThat(result.deleted()).isZero();
-        verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), eq(userId), anyLong());
         InOrder order = inOrder(
                 accountSettingsService, featureGateService, creditPricingService, creditBalanceService, projectUsageService);
+        order.verify(featureGateService).assertEnabled(FeatureGateService.CLI_PUSH);
+        order.verify(projectUsageService).lockForPatch(PROJECT_ID, userId);
         order.verify(accountSettingsService).assertQuotaNotExceeded(eq(userId), anyLong());
-        order.verify(featureGateService).assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
         order.verify(creditPricingService).calculateCredits("CLI_PUSH", 1, 0);
         order.verify(creditBalanceService)
                 .deductCredits(userId, 2L, "CLI", "CLI_PUSH", PROJECT_ID);
-        order.verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        order.verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), eq(userId), anyLong());
     }
 
     @Test
@@ -130,8 +131,8 @@ class LocalPatchQuotaTest {
     @Test
     @DisplayName("CLI push feature disabled -> no debit, file write, or usage update")
     void cliPushFlagDisabled_blocksBeforeDebitAndWrite() {
-        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_CLI_PUSH))
-                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_CLI_PUSH);
+        doThrow(new FeatureDisabledException(FeatureGateService.CLI_PUSH))
+                .when(featureGateService).assertEnabled(FeatureGateService.CLI_PUSH);
         PatchRequest req = new PatchRequest(
                 List.of(new PatchFileChange("src/Disabled.java", b64("class Disabled {}"), "base64")),
                 List.of(),
@@ -156,7 +157,7 @@ class LocalPatchQuotaTest {
         Files.writeString(existing, "old");
         when(creditPricingService.calculateCredits("CLI_PUSH", 2, 0)).thenReturn(3L);
         doThrow(new IllegalStateException("usage failed"))
-                .when(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+                .when(projectUsageService).recordPatchDelta(eq(PROJECT_ID), eq(userId), anyLong());
         PatchRequest req = new PatchRequest(
                 List.of(
                         new PatchFileChange("src/Existing.java", b64("new-content"), "base64"),
@@ -188,7 +189,7 @@ class LocalPatchQuotaTest {
         service.applyPatch(PROJECT_ID, req);
 
         // Delta is negative (old file removed) → recordPatchDelta must be called with a negative value
-        verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), anyLong());
+        verify(projectUsageService).recordPatchDelta(eq(PROJECT_ID), eq(userId), anyLong());
     }
 
     @Test

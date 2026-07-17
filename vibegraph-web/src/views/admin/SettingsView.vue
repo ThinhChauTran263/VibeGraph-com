@@ -97,19 +97,6 @@ async function changePassword() {
           /><button type="submit" :disabled="busy">Change password</button>
         </form>
       </section>
-      <section class="retention" aria-disabled="true">
-        <div>
-          <h2>Audit log retention</h2>
-          <span>Contract unavailable</span>
-        </div>
-        <p>
-          Retention policy editing remains disabled until the admin settings endpoint is available.
-        </p>
-        <label for="retention-days">Retention period</label
-        ><select id="retention-days" disabled>
-          <option>Backend contract required</option>
-        </select>
-      </section>
     </div>
   </main>
 </template>

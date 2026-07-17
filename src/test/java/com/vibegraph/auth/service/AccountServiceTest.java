@@ -290,7 +290,13 @@ class AccountServiceTest {
         when(currentUser.id()).thenReturn(userId);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(accountSettingsService.quotaSnapshot(userId))
-                .thenReturn(new AccountQuotaSnapshot(128L, 512L, 384L, "FREE", "Free", null));
+                .thenReturn(new AccountQuotaSnapshot(
+                        1_572_864L,
+                        4_194_304L,
+                        2_621_440L,
+                        "FREE",
+                        "Free",
+                        null));
         when(creditBalanceService.findOrCreateCurrentPeriod(userId))
                 .thenReturn(UserCreditBalance.builder()
                         .creditsLimitSnapshot(100)
@@ -300,12 +306,12 @@ class AccountServiceTest {
 
         AccountUsageResponse usage = accountService.usage();
 
-        assertEquals(128L, usage.usedBytes());
-        assertEquals(512L, usage.limitBytes());
-        assertEquals(384L, usage.remainingBytes());
+        assertEquals(2L, usage.usedMb());
+        assertEquals(4L, usage.limitMb());
+        assertEquals(2L, usage.remainingMb());
         assertEquals("FREE", usage.planCode());
         assertEquals("Free", usage.planName());
-        assertNull(usage.quotaOverrideBytes());
+        assertNull(usage.quotaOverrideMb());
         assertEquals(25, usage.creditsUsed());
         assertEquals(110, usage.creditsLimit());
         assertEquals(85, usage.creditsRemaining());

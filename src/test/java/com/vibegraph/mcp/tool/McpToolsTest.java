@@ -16,7 +16,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
@@ -80,7 +80,7 @@ class McpToolsTest {
                 Mockito.mock(CreditBalanceService.class),
                 Mockito.mock(ProjectOwnershipGuard.class),
                 Mockito.mock(FeatureGateService.class),
-                Mockito.mock(AccountSettingsService.class),
+                Mockito.mock(AccountAccessGuard.class),
                 new ObjectMapper());
     }
 

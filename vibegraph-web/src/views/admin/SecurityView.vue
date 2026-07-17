@@ -1,200 +1,203 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
-const admin = useAdminStore(),
-  loading = ref(true),
-  error = ref('')
-async function load() {
+import type { AdminIpBlock, AdminIpBlockRequest } from '@/types/api'
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+
+const admin = useAdminStore()
+const loading = ref(true)
+const saving = ref(false)
+const error = ref('')
+const editingId = ref<string | null>(null)
+const pendingDelete = ref<AdminIpBlock | null>(null)
+const form = ref({ ipAddress: '', safeReason: '', expiresAt: '', active: true })
+
+const totalRequests = computed(() => admin.requestEvents.length)
+const blockedRequests = computed(() => admin.requestEvents.filter((event) => event.status === 429 || event.status === 403).length)
+const abuseState = computed(() => {
+  if (admin.securityEvents.some((event) => event.severity.toUpperCase() === 'CRITICAL')) return 'Critical'
+  if (blockedRequests.value > 0) return 'Defending'
+  return 'Stable'
+})
+
+onMounted(load)
+
+async function load(): Promise<void> {
   loading.value = true
+  error.value = ''
   try {
-    await admin.fetchSecurityEvents(50)
-    error.value = ''
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load security events.'
+    const unavailable = await admin.fetchSecurityData(100)
+    if (unavailable.length) error.value = `Unavailable from the running backend: ${unavailable.join(', ')}.`
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Failed to load security operations.'
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
-const unavailable = [
-  { title: 'Request monitor', text: 'Live request telemetry endpoint is unavailable.' },
-  { title: 'Exact IP block / watchlist', text: 'IP policy management endpoint is unavailable.' },
-  { title: 'Audit log', text: 'Audit log query endpoint is unavailable.' },
-]
+
+function toPayload(): AdminIpBlockRequest {
+  return {
+    ipAddress: form.value.ipAddress.trim(),
+    safeReason: form.value.safeReason.trim(),
+    expiresAt: form.value.expiresAt ? new Date(form.value.expiresAt).toISOString() : null,
+    active: form.value.active,
+  }
+}
+
+async function saveBlock(): Promise<void> {
+  saving.value = true
+  error.value = ''
+  try {
+    if (editingId.value) await admin.updateIpBlock(editingId.value, toPayload())
+    else await admin.createIpBlock(toPayload())
+    resetForm()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Failed to save IP block.'
+  } finally {
+    saving.value = false
+  }
+}
+
+function editBlock(block: AdminIpBlock): void {
+  editingId.value = block.id
+  form.value = {
+    ipAddress: block.ipAddress,
+    safeReason: block.safeReason,
+    expiresAt: block.expiresAt ? toLocalDateTime(block.expiresAt) : '',
+    active: block.active,
+  }
+}
+
+function resetForm(): void {
+  editingId.value = null
+  form.value = { ipAddress: '', safeReason: '', expiresAt: '', active: true }
+}
+
+async function deleteBlock(): Promise<void> {
+  if (!pendingDelete.value) return
+  saving.value = true
+  try {
+    await admin.deleteIpBlock(pendingDelete.value.id)
+    if (editingId.value === pendingDelete.value.id) resetForm()
+    pendingDelete.value = null
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Failed to remove IP block.'
+  } finally {
+    saving.value = false
+  }
+}
+
+function toLocalDateTime(value: string): string {
+  const date = new Date(value)
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function formatDate(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : 'Never'
+}
 </script>
+
 <template>
-  <main class="security">
-    <header>
-      <div>
-        <span>Operations</span>
-        <h1>Security</h1>
-        <p>Real security events and contract-aware defensive controls.</p>
-      </div>
-      <button type="button" :disabled="loading" @click="load">
-        {{ loading ? 'Loading...' : 'Refresh events' }}
-      </button>
+  <main class="security-page">
+    <header class="page-header">
+      <div><span class="eyebrow">Operations</span><h1>Security</h1><p>Monitor request pressure, abuse signals, and exact IP policy.</p></div>
+      <button type="button" class="secondary" :disabled="loading" @click="load">{{ loading ? 'Loading...' : 'Refresh data' }}</button>
     </header>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <section class="events">
-      <div>
-        <h2>Rate-limit & security events</h2>
-        <span>Live endpoint</span>
-      </div>
-      <p v-if="!loading && !admin.securityEvents.length" class="empty">
-        No security events recorded.
-      </p>
-      <div v-else class="table">
-        <div class="row head">
-          <span>Type</span><span>Severity</span><span>Source</span><span>Description</span
-          ><span>Created</span>
-        </div>
-        <div v-for="event in admin.securityEvents" :key="event.id" class="row">
-          <strong>{{ event.eventType }}</strong
-          ><span>{{ event.severity }}</span
-          ><span>{{ event.source || '-' }}</span
-          ><span>{{ event.description }}</span
-          ><time>{{ event.createdAt ? new Date(event.createdAt).toLocaleString() : '-' }}</time>
-        </div>
-      </div>
+    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+
+    <section class="metrics" aria-label="Security status">
+      <article><span>Request sample</span><strong>{{ totalRequests }}</strong><small>latest events</small></article>
+      <article><span>Blocked / limited</span><strong>{{ blockedRequests }}</strong><small>HTTP 403 or 429</small></article>
+      <article><span>Active IP blocks</span><strong>{{ admin.ipBlocks.filter((block) => block.active).length }}</strong><small>enforced policies</small></article>
+      <article><span>Abuse state</span><strong>{{ abuseState }}</strong><small>from live signals</small></article>
     </section>
-    <section class="unavailable" aria-label="Unavailable security capabilities">
-      <article v-for="surface in unavailable" :key="surface.title" aria-disabled="true">
-        <div>
-          <h2>{{ surface.title }}</h2>
-          <span>Contract unavailable</span>
-        </div>
-        <p>
-          {{ surface.text }} This surface is intentionally disabled and contains no simulated data.
-        </p>
-        <button type="button" disabled>Unavailable</button>
+
+    <section class="rank-grid">
+      <article class="panel">
+        <div class="panel-heading"><div><h2>Top users</h2><p>Highest request rate in the last 60 minutes.</p></div><span>RPM</span></div>
+        <ol><li v-for="row in admin.topUsers" :key="`${row.userId}-${row.minuteBucket}`"><code>{{ row.userId || row.apiKeyRef || 'Anonymous' }}</code><strong>{{ row.requestsPerMinute }}</strong></li><li v-if="!admin.topUsers.length" class="empty">No user aggregates.</li></ol>
+      </article>
+      <article class="panel">
+        <div class="panel-heading"><div><h2>Top IP addresses</h2><p>Sources with the highest request rate.</p></div><span>RPM</span></div>
+        <ol><li v-for="row in admin.topIps" :key="`${row.ipAddress}-${row.minuteBucket}`"><code>{{ row.ipAddress || 'Unknown' }}</code><strong>{{ row.requestsPerMinute }}</strong></li><li v-if="!admin.topIps.length" class="empty">No IP aggregates.</li></ol>
       </article>
     </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><h2>Request events</h2><p>Recent HTTP outcomes from the abuse telemetry pipeline.</p></div><span>{{ admin.requestEvents.length }} events</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Event</th><th>Method / route</th><th>Status</th><th>User / key</th><th>IP</th><th>Occurred</th></tr></thead><tbody><tr v-if="!loading && !admin.requestEvents.length"><td colspan="6" class="empty">No request events recorded.</td></tr><tr v-for="event in admin.requestEvents" :key="event.id"><td data-label="Event"><strong>{{ event.eventType }}</strong></td><td data-label="Route"><code>{{ event.method }} {{ event.route }}</code></td><td data-label="Status"><span class="status" :class="{ danger: event.status >= 400 }">{{ event.status }}</span></td><td data-label="User / key"><code>{{ event.userId || event.apiKeyRef || '-' }}</code></td><td data-label="IP"><code>{{ event.ipAddress || '-' }}</code></td><td data-label="Occurred"><time>{{ formatDate(event.occurredAt) }}</time></td></tr></tbody></table></div>
+    </section>
+
+    <section class="policy-grid">
+      <article class="panel editor-panel">
+        <div class="panel-heading"><div><h2>{{ editingId ? 'Edit IP block' : 'Create IP block' }}</h2><p>Use a safe reason suitable for client-facing denial responses.</p></div><button type="button" class="secondary" :disabled="saving" @click="resetForm">Reset</button></div>
+        <form @submit.prevent="saveBlock">
+          <label><span>IP address or CIDR</span><input v-model="form.ipAddress" required maxlength="120" placeholder="203.0.113.42" /></label>
+          <label class="wide"><span>Safe reason</span><textarea v-model="form.safeReason" required maxlength="240" rows="4" placeholder="Access temporarily restricted due to unusual request volume."></textarea></label>
+          <label><span>Expires at</span><input v-model="form.expiresAt" type="datetime-local" /></label>
+          <label class="switch-row"><input v-model="form.active" type="checkbox" /><span>{{ form.active ? 'Policy active' : 'Policy paused' }}</span></label>
+          <button type="submit" :disabled="saving">{{ saving ? 'Saving...' : editingId ? 'Update block' : 'Create block' }}</button>
+        </form>
+      </article>
+      <article class="panel blocks-panel">
+        <div class="panel-heading"><div><h2>IP block policies</h2><p>Exact policies enforced by the backend filter.</p></div><span>{{ admin.ipBlocks.length }} policies</span></div>
+        <div class="block-list"><article v-for="block in admin.ipBlocks" :key="block.id" :class="{ paused: !block.active }"><div><code>{{ block.ipAddress }}</code><span>{{ block.active ? 'Active' : 'Paused' }}</span></div><p>{{ block.safeReason }}</p><small>Expires {{ formatDate(block.expiresAt) }}</small><footer><button type="button" class="secondary" @click="editBlock(block)">Edit</button><button type="button" class="danger-button" @click="pendingDelete = block">Remove</button></footer></article><p v-if="!admin.ipBlocks.length" class="empty">No IP block policies configured.</p></div>
+      </article>
+    </section>
+
+    <AdminConfirmDialog :open="Boolean(pendingDelete)" title="Remove IP block" :message="`Remove policy for ${pendingDelete?.ipAddress ?? 'this address'}? Requests will no longer be blocked by this policy.`" confirm-label="Remove policy" tone="danger" :busy="saving" @cancel="pendingDelete = null" @confirm="deleteBlock" />
   </main>
 </template>
+
 <style scoped>
-.security {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vg-space-5);
-}
-header,
-header > div,
-.events > div,
-.unavailable article > div {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vg-space-4);
-}
-header > div {
-  display: block;
-}
-header span {
-  color: var(--vg-blue-bright);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-h1,
-h2 {
-  font-family: var(--vg-font-display);
-  color: var(--vg-text);
-}
-h1 {
-  margin: 0.25rem 0;
-  font-size: clamp(1.625rem, 2.2vw, 1.875rem);
-}
-h2 {
-  font-size: var(--vg-text-lg);
-}
-p {
-  color: var(--vg-text-muted);
-}
-button {
-  min-height: 38px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--vg-border);
-  border-radius: 6px;
-  background: var(--vg-surface);
-  color: var(--vg-text);
-  font: 600 var(--vg-text-sm) var(--vg-font-body);
-  cursor: pointer;
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.error {
-  color: var(--vg-danger);
-}
-.events,
-.unavailable article {
-  padding: var(--vg-space-4);
-  border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius);
-  background: var(--vg-surface);
-}
-.events h2,
-.unavailable h2 {
-  margin: 0;
-}
-.events > div > span {
-  color: var(--vg-green-bright);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-}
-.table {
-  margin-top: var(--vg-space-4);
-  overflow: auto;
-}
-.row {
-  min-width: 900px;
-  display: grid;
-  grid-template-columns: 150px 100px 130px minmax(250px, 1fr) 180px;
-  gap: var(--vg-space-3);
-  padding: var(--vg-space-3);
-  border-top: 1px solid var(--vg-border);
-  color: var(--vg-text-muted);
-}
-.row.head {
-  background: var(--vg-bg);
-  color: var(--vg-text);
-  font-weight: 700;
-}
-.row strong {
-  color: var(--vg-text);
-}
-.empty {
-  padding: var(--vg-space-5) 0;
-  text-align: left;
-}
-.unavailable {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--vg-space-4);
-}
-.unavailable article {
-  opacity: 0.68;
-}
-.unavailable article span {
-  color: var(--vg-warning);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-}
-.unavailable article button {
-  width: auto;
-  justify-self: start;
-  text-align: left;
-}
-@media (max-width: 900px) {
-  .unavailable {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 640px) {
-  header {
-    flex-direction: column;
-  }
-}
+.security-page { display: flex; flex-direction: column; gap: var(--vg-space-4); }
+.page-header, .panel-heading, .metrics, .rank-grid, .policy-grid { display: grid; gap: var(--vg-space-4); }
+.page-header, .panel-heading { grid-template-columns: minmax(0,1fr) auto; align-items: start; }
+.eyebrow { color: var(--vg-blue-bright); font-size: var(--vg-text-xs); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+h1, h2 { margin: 0; color: var(--vg-text); font-family: var(--vg-font-display); letter-spacing: 0; }
+h1 { margin-top: var(--vg-space-1); font-size: clamp(1.625rem, 2.2vw, 1.875rem); }
+h2 { font-size: var(--vg-text-lg); }
+p { margin: var(--vg-space-1) 0 0; color: var(--vg-text-muted); }
+.notice, .panel { padding: var(--vg-space-4); border: 1px solid var(--vg-border); border-radius: var(--vg-radius); background: var(--vg-surface); }
+.notice.error { color: var(--vg-danger); border-color: rgba(239,68,68,.3); }
+button, input, textarea { min-height: 2.75rem; border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); font: inherit; }
+button { padding: 0 var(--vg-space-3); background: var(--vg-blue); border-color: var(--vg-blue); color: white; cursor: pointer; font-weight: 800; }
+button.secondary { background: var(--vg-surface-2); border-color: var(--vg-border); color: var(--vg-text); }
+button.danger-button { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.35); color: var(--vg-danger); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+input, textarea { width: 100%; padding: var(--vg-space-2) var(--vg-space-3); background: var(--vg-bg); color: var(--vg-text); }
+input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--vg-blue-bright); outline-offset: 2px; }
+.metrics { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.metrics article { padding: var(--vg-space-4); border-left: 3px solid var(--vg-blue); background: var(--vg-surface); border-top: 1px solid var(--vg-border); border-right: 1px solid var(--vg-border); border-bottom: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); }
+.metrics span, .metrics small, .panel-heading > span { display: block; color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.metrics strong { display: block; margin: .4rem 0 .15rem; color: var(--vg-text); font-family: var(--vg-font-display); font-size: 1.6rem; }
+.rank-grid, .policy-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.panel-heading > span { color: var(--vg-green-bright); }
+ol { display: grid; gap: var(--vg-space-2); margin: var(--vg-space-4) 0 0; padding-left: 1.4rem; }
+li { display: flex; justify-content: space-between; gap: var(--vg-space-3); padding: var(--vg-space-2); border-bottom: 1px solid var(--vg-border); color: var(--vg-text); }
+code { overflow-wrap: anywhere; color: var(--vg-text); font-family: var(--vg-font-mono,monospace); font-size: var(--vg-text-xs); }
+.table-wrap { margin-top: var(--vg-space-4); overflow-x: auto; }
+table { width: 100%; min-width: 70rem; border-collapse: collapse; }
+th, td { padding: var(--vg-space-3); border-bottom: 1px solid var(--vg-border); text-align: left; vertical-align: top; color: var(--vg-text); }
+th { background: var(--vg-surface-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); text-transform: uppercase; letter-spacing: .04em; }
+.status { display: inline-flex; min-width: 2.4rem; justify-content: center; padding: .2rem .45rem; border-radius: 999px; background: rgba(34,197,94,.1); color: var(--vg-green-bright); font-size: var(--vg-text-xs); font-weight: 800; }
+.status.danger { background: rgba(239,68,68,.1); color: var(--vg-danger); }
+.editor-panel form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--vg-space-3); margin-top: var(--vg-space-4); }
+.editor-panel label { display: flex; flex-direction: column; gap: var(--vg-space-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; }
+.editor-panel .wide { grid-column: 1 / -1; }
+.switch-row { flex-direction: row !important; align-items: center; justify-content: flex-start; padding-top: 1.8rem; text-transform: none !important; font-size: var(--vg-text-sm) !important; }
+.switch-row input { width: 1.15rem; min-height: 1.15rem; accent-color: var(--vg-blue); }
+.block-list { display: grid; gap: var(--vg-space-3); margin-top: var(--vg-space-4); }
+.block-list article { padding: var(--vg-space-3); border: 1px solid rgba(239,68,68,.27); border-radius: var(--vg-radius-sm); background: rgba(239,68,68,.06); }
+.block-list article.paused { border-color: var(--vg-border); background: var(--vg-bg); opacity: .75; }
+.block-list article > div, .block-list footer { display: flex; align-items: center; justify-content: space-between; gap: var(--vg-space-2); }
+.block-list article > div span { color: var(--vg-danger); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; }
+.block-list article.paused > div span { color: var(--vg-text-muted); }
+.block-list p { color: var(--vg-text); }
+.block-list small { color: var(--vg-text-dim); }
+.block-list footer { justify-content: flex-end; margin-top: var(--vg-space-3); }
+.empty { color: var(--vg-text-muted); text-align: center; }
+@media (max-width: 1000px) { .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .rank-grid, .policy-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .page-header, .panel-heading { grid-template-columns: 1fr; } .metrics { grid-template-columns: 1fr; } .editor-panel form { grid-template-columns: 1fr; } .editor-panel .wide { grid-column: auto; } .switch-row { padding-top: 0; } }
 </style>

@@ -20,19 +20,30 @@ const percentage = computed(() => {
       <span class="quota-used">{{ used }}{{ unit }} / {{ total }}{{ unit }} used</span>
       <span class="quota-remaining">{{ remaining }}{{ unit }} remaining</span>
     </div>
-    <div class="progress-track">
+    <div
+      v-if="total > 0"
+      class="progress-track"
+      role="progressbar"
+      aria-label="Source storage quota"
+      aria-valuemin="0"
+      :aria-valuemax="total"
+      :aria-valuenow="Math.min(used, total)"
+      :aria-valuetext="`${used}${unit} of ${total}${unit} used; ${remaining}${unit} remaining`"
+    >
       <div
         class="progress-fill"
         :class="{ 'progress-warning': percentage >= 80, 'progress-danger': percentage >= 100 }"
         :style="{ width: `${percentage}%` }"
       ></div>
     </div>
+    <p v-else class="quota-unavailable" role="status">Quota unavailable</p>
   </div>
 </template>
 
 <style scoped>
 .quota-meter {
-  min-width: 250px;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--vg-space-2);

@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useAccountStore } from '@/stores/account'
 import type { Report, ReportMessage, FeedbackCategory, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
 
 const accountStore = useAccountStore()
@@ -14,6 +15,8 @@ const newMessage = ref('')
 const replyMessage = ref('')
 const isSubmitting = ref(false)
 const isSending = ref(false)
+const isClosing = ref(false)
+const closeDialogOpen = ref(false)
 const errorMsg = ref('')
 const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
@@ -26,7 +29,11 @@ const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
 ]
 
 onMounted(async () => {
-  await accountStore.fetchReports()
+  try {
+    await accountStore.fetchReports()
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to load reports'
+  }
 })
 
 const reportRealtime = useReportRealtime(selectedReportId, {
@@ -35,6 +42,12 @@ const reportRealtime = useReportRealtime(selectedReportId, {
   },
 })
 const reportRealtimeStatus = reportRealtime.status
+const reportRealtimeLabel = computed(() => {
+  if (reportRealtimeStatus.value === 'connected') return 'Live'
+  if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
+  if (reportRealtimeStatus.value === 'connecting') return 'Syncing'
+  return 'Offline'
+})
 
 const submitReport = async () => {
   if (!newTitle.value.trim() || !newMessage.value.trim()) return
@@ -74,12 +87,33 @@ const sendReply = async () => {
       selectedReport.value.id,
       replyMessage.value,
     )
-    selectedReport.value.messages.push(msg)
+    if (!selectedReport.value.messages.some((item) => item.id === msg.id)) {
+      selectedReport.value.messages.push(msg)
+    }
     replyMessage.value = ''
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to send reply'
   } finally {
     isSending.value = false
+  }
+}
+
+const closeReport = () => {
+  if (selectedReport.value?.status === 'OPEN') closeDialogOpen.value = true
+}
+
+const confirmCloseReport = async () => {
+  if (!selectedReport.value) return
+  isClosing.value = true
+  errorMsg.value = ''
+  try {
+    const closed = await accountStore.closeReport(selectedReport.value.id)
+    selectedReport.value = { ...selectedReport.value, ...closed }
+    closeDialogOpen.value = false
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to close report'
+  } finally {
+    isClosing.value = false
   }
 }
 
@@ -114,6 +148,12 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   isAdmin: message.senderRole === 'ADMIN',
   senderName: message.senderRole === 'ADMIN' ? 'Support Team' : 'You',
 })
+
+const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) return 'Just now'
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? 'Just now' : new Date(timestamp).toLocaleString()
+}
 </script>
 
 <template>
@@ -188,7 +228,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
                 <td class="text-muted">{{ r.category }}</td>
                 <td><StatusChip :status="r.status.toLowerCase()" :label="r.status" /></td>
                 <td class="text-muted">
-                  {{ new Date(r.closedAt ?? r.createdAt).toLocaleString() }}
+                  {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
                 <td><button class="btn-secondary btn-sm" @click="selectReport(r)">View</button></td>
               </tr>
@@ -225,7 +265,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
             :label="selectedReport.status"
           />
           <span class="realtime-pill" :data-status="reportRealtimeStatus">
-            {{ reportRealtimeStatus === 'connected' ? 'Live' : 'Syncing' }}
+            {{ reportRealtimeLabel }}
           </span>
         </div>
       </div>
@@ -245,7 +285,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
                 <strong>{{ msg.senderName }}</strong>
                 <span class="message-role">{{ msg.isAdmin ? 'VibeGraph support' : 'You' }}</span>
               </div>
-              <time :datetime="msg.createdAt">{{ new Date(msg.createdAt).toLocaleString() }}</time>
+              <time :datetime="msg.createdAt || undefined">{{ formatDateTime(msg.createdAt) }}</time>
             </header>
             <p class="message-content">{{ msg.body }}</p>
           </div>
@@ -272,10 +312,28 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
           <button type="submit" class="btn-primary" :disabled="isSending || !replyMessage">
             {{ isSending ? 'Sending...' : 'Send' }}
           </button>
+          <button type="button" class="btn-danger" :disabled="isClosing" @click="closeReport">
+            Close report
+          </button>
         </form>
       </div>
-      <div v-else class="closed-notice">This report is closed.</div>
+      <div v-else class="closed-notice">
+        This report is closed.
+        <small v-if="selectedReport.deletesAfter">
+          Scheduled for deletion after {{ new Date(selectedReport.deletesAfter).toLocaleDateString() }}.
+        </small>
+      </div>
     </div>
+
+    <AdminConfirmDialog
+      :open="closeDialogOpen"
+      title="Close report"
+      message="Close this report thread? You can still view the conversation until the retention date."
+      confirm-label="Close report"
+      :busy="isClosing"
+      @cancel="closeDialogOpen = false"
+      @confirm="confirmCloseReport"
+    />
   </div>
 </template>
 
@@ -363,6 +421,21 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
 .btn-primary:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+.btn-danger {
+  min-height: 44px;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 45%, var(--vg-border));
+  border-radius: var(--vg-radius-sm);
+  background: color-mix(in srgb, var(--vg-danger) 10%, transparent);
+  color: var(--vg-danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 .btn-secondary {
   min-height: 34px;
@@ -618,9 +691,12 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
 }
 .reply-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: stretch;
   gap: var(--vg-space-2);
+}
+.reply-form .error-text {
+  grid-column: 1 / -1;
 }
 .reply-input {
   height: 44px;
@@ -643,6 +719,11 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   background: var(--vg-surface-2);
   border-radius: var(--vg-radius-sm);
   color: var(--vg-text-muted);
+}
+.closed-notice small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--vg-text-dim);
 }
 
 .sr-only {
@@ -683,6 +764,14 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   .reply-box,
   .reply-form {
     grid-template-columns: 1fr;
+  }
+  .reply-box {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-inline: calc(var(--vg-space-2) * -1);
+    border-radius: var(--vg-radius-sm) var(--vg-radius-sm) 0 0;
+    box-shadow: 0 -8px 24px rgba(2, 6, 23, 0.18);
   }
   .detail-header {
     flex-direction: column;

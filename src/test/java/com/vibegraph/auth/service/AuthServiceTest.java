@@ -50,6 +50,9 @@ class AuthServiceTest {
     @Mock
     private FeatureGateService featureGateService;
 
+    @Mock
+    private AuditService auditService;
+
     private AuthService authService;
 
     @BeforeEach
@@ -60,7 +63,8 @@ class AuthServiceTest {
                 jwtService,
                 currentUser,
                 accountSettingsService,
-                featureGateService);
+                featureGateService,
+                auditService);
     }
 
     @Test
@@ -87,8 +91,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("register is blocked by the global registration feature flag before persistence")
     void register_featureDisabled_blocksBeforePersistence() {
-        doThrow(new FeatureDisabledException(FeatureGateService.GLOBAL_REGISTRATION))
-                .when(featureGateService).assertEnabled(FeatureGateService.GLOBAL_REGISTRATION);
+        doThrow(new FeatureDisabledException(FeatureGateService.REGISTRATION))
+                .when(featureGateService).assertEnabled(FeatureGateService.REGISTRATION);
         RegisterRequest request = new RegisterRequest("new@test.local", "Password123!", "New User");
 
         assertThrows(FeatureDisabledException.class, () -> authService.register(request));

@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAccountStore } from '../account'
 import * as apiModule from '../../lib/api'
-import type { ApiKeyCreated, ApiKey, UserProfile, UserUsage, Report } from '../../types/api'
+import type {
+  AccountSessionState,
+  ApiKeyCreated,
+  ApiKey,
+  UserProfile,
+  UserUsage,
+  Report,
+  UserNotification,
+} from '../../types/api'
 
 // Mock the accountApi used by the store
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -10,6 +18,7 @@ vi.mock('../../lib/api', async (importOriginal) => {
   return {
     ...original,
     accountApi: {
+      getSessionState: vi.fn(),
       getProfile: vi.fn(),
       updateProfile: vi.fn(),
       changePassword: vi.fn(),
@@ -24,11 +33,33 @@ vi.mock('../../lib/api', async (importOriginal) => {
       getReportDetail: vi.fn(),
       addMessage: vi.fn(),
       closeReport: vi.fn(),
+      listNotifications: vi.fn(),
+      listAnnouncements: vi.fn(),
+      getNotification: vi.fn(),
+      markNotificationRead: vi.fn(),
+      dismissNotification: vi.fn(),
     },
   }
 })
 
 const mockAccountApi = vi.mocked(apiModule.accountApi)
+
+const notification: UserNotification = {
+  id: 'notification-1',
+  announcementId: 'announcement-1',
+  title: 'Maintenance',
+  body: 'Planned maintenance window.',
+  creatorName: 'Admin',
+  creatorDisplayName: 'VibeGraph Admin',
+  creatorEmail: 'admin@example.com',
+  createdAt: '2026-07-17T09:00:00Z',
+  severity: 'WARNING',
+  type: 'MAINTENANCE',
+  dismissible: true,
+  read: false,
+  readAt: null,
+  dismissedAt: null,
+}
 
 describe('Account Store', () => {
   beforeEach(() => {
@@ -44,6 +75,75 @@ describe('Account Store', () => {
     expect(store.projects).toEqual([])
     expect(store.apiKeys).toEqual([])
     expect(store.reports).toEqual([])
+    expect(store.notifications).toEqual([])
+    expect(store.notificationDetail).toBeNull()
+    expect(store.unreadNotifications).toEqual([])
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+  })
+
+  it('fetchSessionState exposes restriction status and safe reason', async () => {
+    const state: AccountSessionState = {
+      id: 'usr-1',
+      email: 'blocked@example.com',
+      displayName: 'Blocked User',
+      role: 'USER',
+      accountStatus: 'BLOCKED',
+      safeReason: 'Access is temporarily restricted.',
+    }
+    mockAccountApi.getSessionState.mockResolvedValueOnce(state)
+
+    const store = useAccountStore()
+    await store.fetchSessionState()
+
+    expect(store.accountRestricted).toBe(true)
+    expect(store.restrictionReason).toBe(state.safeReason)
+    expect(store.sessionState).toEqual(state)
+  })
+
+  it('fetches notifications and refreshes canonical data after marking read', async () => {
+    const readNotification = { ...notification, read: true, readAt: '2026-07-17T09:01:00Z' }
+    mockAccountApi.listNotifications
+      .mockResolvedValueOnce([notification])
+      .mockResolvedValueOnce([readNotification])
+    mockAccountApi.markNotificationRead.mockResolvedValueOnce(readNotification)
+
+    const store = useAccountStore()
+    await store.fetchNotifications(25)
+    const updated = await store.markNotificationRead(notification.id)
+
+    expect(mockAccountApi.listNotifications).toHaveBeenNthCalledWith(1, 25)
+    expect(mockAccountApi.listNotifications).toHaveBeenNthCalledWith(2, 25)
+    expect(updated).toEqual(readNotification)
+    expect(store.notifications).toEqual([readNotification])
+    expect(store.unreadNotifications).toEqual([])
+  })
+
+  it('dismisses a notification and removes it after refreshing the inbox', async () => {
+    mockAccountApi.listNotifications.mockResolvedValueOnce([notification]).mockResolvedValueOnce([])
+    mockAccountApi.getNotification.mockResolvedValueOnce(notification)
+    mockAccountApi.dismissNotification.mockResolvedValueOnce({
+      ...notification,
+      dismissedAt: '2026-07-17T09:02:00Z',
+    })
+
+    const store = useAccountStore()
+    await store.fetchNotifications()
+    await store.fetchNotification(notification.id)
+    await store.dismissNotification(notification.id)
+
+    expect(store.notifications).toEqual([])
+    expect(store.notificationDetail).toBeNull()
+  })
+
+  it('stores and rethrows notification errors', async () => {
+    const failure = new Error('Notifications unavailable')
+    mockAccountApi.listNotifications.mockRejectedValueOnce(failure)
+
+    const store = useAccountStore()
+    await expect(store.fetchNotifications()).rejects.toBe(failure)
+    expect(store.error).toBe(failure)
+    expect(store.loading).toBe(false)
   })
 
   it('fetchProfile populates profile from API', async () => {
@@ -65,25 +165,35 @@ describe('Account Store', () => {
     expect(store.profile?.status).toBe('active')
   })
 
-  it('fetchUsage populates usage and derives MB helpers', async () => {
+  it('fetchUsage preserves the Phase 7 MB quota and credit contract', async () => {
     const mockUsage: UserUsage = {
-      usedBytes: 10 * 1024 * 1024,
-      limitBytes: 100 * 1024 * 1024,
-      remainingBytes: 90 * 1024 * 1024,
+      usedMb: 10,
+      limitMb: 100,
+      remainingMb: 90,
       planCode: 'FREE',
       planName: 'Free Tier',
-      quotaOverrideBytes: null,
+      quotaOverrideMb: null,
+      creditsUsed: 25,
+      creditsLimit: 100,
+      creditsRemaining: 75,
     }
     mockAccountApi.getUsage.mockResolvedValueOnce(mockUsage)
 
     const store = useAccountStore()
     await store.fetchUsage()
 
-    expect(store.usage?.planName).toBe('Free Tier')
-    expect(store.usage?.sourceStorageUsed).toBe(10)
-    expect(store.usage?.sourceStorageLimit).toBe(100)
-    expect(store.usage?.creditsUsed).toBeUndefined()
-    expect(store.usage?.creditsLimit).toBeUndefined()
+    expect(store.usage).toMatchObject({
+      usedMb: 10,
+      limitMb: 100,
+      remainingMb: 90,
+      sourceStorageUsed: 10,
+      sourceStorageLimit: 100,
+      creditsUsed: 25,
+      creditsLimit: 100,
+      creditsRemaining: 75,
+    })
+    expect(store.usage?.sourceStorageUsed).not.toBeNaN()
+    expect(store.usage?.sourceStorageLimit).not.toBeNaN()
   })
 
   it('fetchCreditLedger populates recent credit activity', async () => {

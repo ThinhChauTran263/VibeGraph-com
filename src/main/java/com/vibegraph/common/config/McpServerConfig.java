@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
@@ -63,7 +63,7 @@ public class McpServerConfig {
             CreditBalanceService creditBalanceService,
             ProjectOwnershipGuard ownershipGuard,
             FeatureGateService featureGateService,
-            AccountSettingsService accountSettingsService,
+            AccountAccessGuard accountAccessGuard,
             ObjectMapper objectMapper) {
         ToolCallbackProvider baseProvider = MethodToolCallbackProvider.builder()
                 .toolObjects(
@@ -91,7 +91,7 @@ public class McpServerConfig {
                         creditBalanceService,
                         ownershipGuard,
                         featureGateService,
-                        accountSettingsService,
+                        accountAccessGuard,
                         objectMapper))
                 .toList());
     }

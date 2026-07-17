@@ -20,7 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.repository.UserRepository;
-import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
@@ -40,7 +40,7 @@ class JwtAuthFilterTest {
     private JwtService jwtService;
 
     @Mock
-    private AccountSettingsService accountSettingsService;
+    private AccountAccessGuard accountAccessGuard;
 
     @Mock
     private UserRepository userRepository;
@@ -54,12 +54,13 @@ class JwtAuthFilterTest {
     @DisplayName("valid JWT for active account authenticates and continues")
     void doFilterInternal_activeUser_authenticatesAndContinues() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("valid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("valid-token"))
                 .thenReturn(new AuthenticatedUser(userId, "active@test.local", Role.USER));
+        doNothing().when(accountAccessGuard).assertProductAccess(userId);
         when(userRepository.findById(userId))
                 .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
 
@@ -67,20 +68,21 @@ class JwtAuthFilterTest {
 
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         assertEquals(200, response.getStatus());
-        verify(accountSettingsService).assertNotBlocked(userId);
+        verify(accountAccessGuard).assertProductAccess(userId);
     }
 
     @Test
     @DisplayName("valid JWT from HttpOnly session cookie authenticates browser requests")
     void doFilterInternal_cookieToken_authenticatesAndContinues() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setCookies(new Cookie(AuthCookieService.COOKIE_NAME, "cookie-token"));
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("cookie-token"))
                 .thenReturn(new AuthenticatedUser(userId, "cookie@test.local", Role.USER));
+        doNothing().when(accountAccessGuard).assertProductAccess(userId);
         when(userRepository.findById(userId))
                 .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
 
@@ -88,21 +90,21 @@ class JwtAuthFilterTest {
 
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         assertEquals(200, response.getStatus());
-        verify(accountSettingsService).assertNotBlocked(userId);
+        verify(accountAccessGuard).assertProductAccess(userId);
     }
 
     @Test
     @DisplayName("valid JWT for blocked account returns ACCOUNT_BLOCKED and stops chain")
     void doFilterInternal_blockedUser_returnsForbidden() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("blocked-token"))
                 .thenReturn(new AuthenticatedUser(userId, "blocked@test.local", Role.USER));
         doThrow(new AccountBlockedException("Account is blocked", "policy violation"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
@@ -115,10 +117,10 @@ class JwtAuthFilterTest {
     }
 
     @Test
-    @DisplayName("valid JWT for deactivated account returns structured ACCOUNT_BLOCKED on product routes")
+    @DisplayName("valid JWT for deactivated account returns structured ACCOUNT_DEACTIVATED on product routes")
     void doFilterInternal_deactivatedUser_returnsStructuredRestriction() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("deactivated-token");
         request.setMethod("POST");
         request.setRequestURI("/api/projects/import-local");
@@ -126,19 +128,16 @@ class JwtAuthFilterTest {
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("deactivated-token"))
                 .thenReturn(new AuthenticatedUser(userId, "deactivated@test.local", Role.USER));
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(User.builder()
-                .id(userId)
-                .deactivated(true)
-                .deactivationReason("private note")
-                .deactivationReasonSafe("Account closed by administrator")
-                .build()));
+        doThrow(new com.vibegraph.common.exception.AccountDeactivatedException(
+                        "internal deactivation reason", "Account closed by administrator"))
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         assertNull(chain.getRequest());
         assertEquals(403, response.getStatus());
-        assertTrue(response.getContentAsString().contains("ACCOUNT_BLOCKED"));
+        assertTrue(response.getContentAsString().contains("ACCOUNT_DEACTIVATED"));
         assertTrue(response.getContentAsString().contains("Account closed by administrator"));
         assertFalse(response.getContentAsString().contains("private note"));
     }
@@ -147,7 +146,7 @@ class JwtAuthFilterTest {
     @DisplayName("blocked account can access session state for safe polling")
     void doFilterInternal_blockedUser_allowsSessionState() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         request.setMethod("GET");
         request.setRequestURI("/api/account/session-state");
@@ -158,7 +157,7 @@ class JwtAuthFilterTest {
         when(userRepository.findById(userId))
                 .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
         doThrow(new AccountBlockedException("internal reason", "Policy review"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
@@ -172,7 +171,7 @@ class JwtAuthFilterTest {
     @DisplayName("deactivated account can access session state for safe polling")
     void doFilterInternal_deactivatedUser_allowsSessionState() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("deactivated-token");
         request.setMethod("GET");
         request.setRequestURI("/api/account/session-state");
@@ -180,6 +179,9 @@ class JwtAuthFilterTest {
         MockFilterChain chain = new MockFilterChain();
         when(jwtService.parse("deactivated-token"))
                 .thenReturn(new AuthenticatedUser(userId, "deactivated@test.local", Role.USER));
+        doThrow(new com.vibegraph.common.exception.AccountDeactivatedException(
+                        "internal deactivation reason", "Account closed by administrator"))
+                .when(accountAccessGuard).assertProductAccess(userId);
         when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(User.builder()
                 .id(userId)
                 .deactivated(true)
@@ -200,7 +202,7 @@ class JwtAuthFilterTest {
     @DisplayName("blocked account is rejected on product routes")
     void doFilterInternal_blockedUser_rejectsProductRoutes(String method, String path) throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         request.setMethod(method);
         request.setRequestURI(path);
@@ -209,7 +211,7 @@ class JwtAuthFilterTest {
         when(jwtService.parse("blocked-token"))
                 .thenReturn(new AuthenticatedUser(userId, "blocked@test.local", Role.USER));
         doThrow(new AccountBlockedException("internal block reason", "Policy review"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
@@ -225,7 +227,7 @@ class JwtAuthFilterTest {
     @DisplayName("restricted accounts can access only their feedback report routes")
     void doFilterInternal_blockedUser_allowsReports() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         request.setMethod("POST");
         request.setRequestURI("/api/account/reports/" + UUID.randomUUID() + "/messages");
@@ -236,7 +238,7 @@ class JwtAuthFilterTest {
         when(userRepository.findById(userId))
                 .thenReturn(java.util.Optional.of(User.builder().id(userId).deactivated(false).build()));
         doThrow(new AccountBlockedException("Account is blocked", "Policy review"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
@@ -249,7 +251,7 @@ class JwtAuthFilterTest {
     @DisplayName("restricted accounts cannot use report-like near-match routes")
     void doFilterInternal_blockedUser_rejectsNearMatchPath() throws Exception {
         UUID userId = UUID.randomUUID();
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("blocked-token");
         request.setMethod("GET");
         request.setRequestURI("/api/account/reports-extra");
@@ -258,7 +260,7 @@ class JwtAuthFilterTest {
         when(jwtService.parse("blocked-token"))
                 .thenReturn(new AuthenticatedUser(userId, "blocked@test.local", Role.USER));
         doThrow(new AccountBlockedException("Account is blocked", "Policy review"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+                .when(accountAccessGuard).assertProductAccess(userId);
 
         filter.doFilter(request, response, chain);
 
@@ -269,7 +271,7 @@ class JwtAuthFilterTest {
     @Test
     @DisplayName("invalid JWT remains unauthenticated and continues")
     void doFilterInternal_invalidToken_continuesUnauthenticated() throws Exception {
-        JwtAuthFilter filter = new JwtAuthFilter(jwtService, accountSettingsService, userRepository);
+        JwtAuthFilter filter = new JwtAuthFilter(jwtService, userRepository, accountAccessGuard);
         MockHttpServletRequest request = requestWithToken("invalid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
@@ -279,7 +281,8 @@ class JwtAuthFilterTest {
 
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         assertEquals(200, response.getStatus());
-        verifyNoInteractions(accountSettingsService);
+        verifyNoInteractions(accountAccessGuard);
+
     }
 
     private static Stream<Arguments> productRoutes() {
