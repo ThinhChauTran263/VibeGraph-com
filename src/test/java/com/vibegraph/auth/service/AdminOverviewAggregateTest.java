@@ -2,6 +2,7 @@ package com.vibegraph.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +51,7 @@ class AdminOverviewAggregateTest {
     @Mock FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
     @Mock SecurityEventRepository securityEventRepository;
     @Mock AuditService auditService;
+    @Mock OnlineUserHistoryService onlineUserHistoryService;
 
     @InjectMocks AdminService adminService;
 
@@ -72,6 +74,7 @@ class AdminOverviewAggregateTest {
         when(projectUsageRepository.findTopStorageUsers(5)).thenReturn(List.of());
         when(projectUsageRepository.findTopStorageProjects(5)).thenReturn(List.of());
         when(securityEventRepository.summarizeSince(any())).thenReturn(List.of());
+        when(onlineUserHistoryService.recordAndSnapshot(anyLong(), any())).thenReturn(List.of());
         when(adminStorageService.overview()).thenReturn(new AdminStorageOverviewResponse(
                 0L, List.of(),
                 new StorageUnknownResponse("database", "UNKNOWN", "unknown"),

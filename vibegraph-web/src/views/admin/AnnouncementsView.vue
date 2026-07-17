@@ -9,6 +9,8 @@ const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
 const pendingDisableId = ref<string | null>(null)
+const pendingDeleteId = ref<string | null>(null)
+const editingId = ref<string | null>(null)
 
 const typeOptions = [
   { value: 'MAINTENANCE', label: 'Maintenance' },
@@ -45,6 +47,21 @@ const form = ref<AdminAnnouncementRequest>({
 
 onMounted(loadAnnouncements)
 
+function resetForm(): void {
+  form.value = {
+    type: 'GENERAL',
+    severity: 'INFO',
+    target: 'ALL',
+    title: '',
+    body: '',
+    startsAt: null,
+    endsAt: null,
+    dismissible: true,
+    active: true,
+  }
+  editingId.value = null
+}
+
 async function loadAnnouncements(): Promise<void> {
   try {
     await adminStore.fetchAnnouncements()
@@ -57,32 +74,61 @@ async function loadAnnouncements(): Promise<void> {
 }
 
 async function submitAnnouncement(): Promise<void> {
+  const title = form.value.title.trim()
+  const body = form.value.body.trim()
+  if (!title || !body) {
+    errorMsg.value = 'Title and message are required.'
+    return
+  }
+  const duplicate = adminStore.announcements.some(
+    (item) => item.title.trim().toLowerCase() === title.toLowerCase() && item.id !== editingId.value,
+  )
+  if (duplicate) {
+    errorMsg.value = 'An announcement with this title already exists.'
+    return
+  }
   saving.value = true
   try {
-    await adminStore.createAnnouncement({
+    const payload = {
       ...form.value,
-      title: form.value.title.trim(),
-      body: form.value.body.trim(),
+      title,
+      body,
       startsAt: toInstant(form.value.startsAt),
       endsAt: toInstant(form.value.endsAt),
-    })
-    form.value = {
-      type: 'GENERAL',
-      severity: 'INFO',
-      target: 'ALL',
-      title: '',
-      body: '',
-      startsAt: null,
-      endsAt: null,
-      dismissible: true,
-      active: true,
     }
+    if (editingId.value) await adminStore.updateAnnouncement(editingId.value, payload)
+    else await adminStore.createAnnouncement(payload)
+    resetForm()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to create announcement.'
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to save announcement.'
   } finally {
     saving.value = false
   }
+}
+
+function editAnnouncement(id: string): void {
+  const item = adminStore.announcements.find((announcement) => announcement.id === id)
+  if (!item) return
+  editingId.value = id
+  form.value = {
+    type: typeOptions.some((option) => option.value === item.type)
+      ? (item.type as (typeof typeOptions)[number]['value'])
+      : 'GENERAL',
+    severity: severityOptions.some((option) => option.value === item.severity)
+      ? (item.severity as (typeof severityOptions)[number]['value'])
+      : 'INFO',
+    target: targetOptions.some((option) => option.value === item.target)
+      ? (item.target as (typeof targetOptions)[number]['value'])
+      : 'ALL',
+    title: item.title,
+    body: item.body,
+    startsAt: toDateTimeLocal(item.startsAt),
+    endsAt: toDateTimeLocal(item.endsAt),
+    dismissible: item.dismissible,
+    active: item.active,
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function disablePending(): Promise<void> {
@@ -99,6 +145,21 @@ async function disablePending(): Promise<void> {
   }
 }
 
+async function deletePending(): Promise<void> {
+  if (!pendingDeleteId.value) return
+  saving.value = true
+  try {
+    await adminStore.deleteAnnouncement(pendingDeleteId.value)
+    pendingDeleteId.value = null
+    if (editingId.value) resetForm()
+    errorMsg.value = ''
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to delete announcement.'
+  } finally {
+    saving.value = false
+  }
+}
+
 function typeLabel(value: string): string {
   return typeOptions.find((option) => option.value === value)?.label ?? value
 }
@@ -106,6 +167,13 @@ function typeLabel(value: string): string {
 function toInstant(value: string | null | undefined): string | null {
   if (!value) return null
   return new Date(value).toISOString()
+}
+
+function toDateTimeLocal(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 </script>
 
@@ -124,7 +192,7 @@ function toInstant(value: string | null | undefined): string | null {
     <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
     <div v-if="loading" class="notice">Loading announcements...</div>
 
-    <section class="panel composer-panel" aria-label="Create announcement">
+    <section class="panel composer-panel" :aria-label="editingId ? 'Edit announcement' : 'Create announcement'">
       <form class="composer" @submit.prevent="submitAnnouncement">
         <label class="field">
           <span>Type</span>
@@ -215,7 +283,10 @@ function toInstant(value: string | null | undefined): string | null {
             </label>
           </div>
           <button type="submit" :disabled="saving">
-            {{ saving ? 'Creating...' : 'Create notice' }}
+            {{ saving ? 'Saving...' : editingId ? 'Save changes' : 'Create notice' }}
+          </button>
+          <button v-if="editingId" type="button" class="secondary-action" :disabled="saving" @click="resetForm">
+            Cancel edit
           </button>
         </div>
       </form>
@@ -244,10 +315,12 @@ function toInstant(value: string | null | undefined): string | null {
               {{ item.endsAt ? `Ends ${new Date(item.endsAt).toLocaleString()}` : 'No end date' }}
             </small>
           </div>
-          <button v-if="item.active" type="button" @click="pendingDisableId = item.id">
-            Disable
-          </button>
-          <span v-else class="status-chip">Disabled</span>
+          <div class="row-actions">
+            <button type="button" class="secondary-action" @click="editAnnouncement(item.id)">Edit</button>
+            <button v-if="item.active" type="button" @click="pendingDisableId = item.id">Disable</button>
+            <span v-else class="status-chip">Disabled</span>
+            <button type="button" class="delete-action" @click="pendingDeleteId = item.id">Delete</button>
+          </div>
         </article>
       </div>
     </section>
@@ -261,6 +334,16 @@ function toInstant(value: string | null | undefined): string | null {
       :busy="saving"
       @cancel="pendingDisableId = null"
       @confirm="disablePending"
+    />
+    <AdminConfirmDialog
+      :open="Boolean(pendingDeleteId)"
+      title="Delete announcement"
+      message="Delete this announcement permanently? Existing user notification history may no longer be available."
+      confirm-label="Delete announcement"
+      tone="danger"
+      :busy="saving"
+      @cancel="pendingDeleteId = null"
+      @confirm="deletePending"
     />
   </div>
 </template>
@@ -352,7 +435,7 @@ small {
 .form-actions {
   grid-column: span 6;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 11.5rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--vg-space-3);
   align-self: end;
@@ -491,6 +574,26 @@ button:disabled {
   width: 11.5rem;
   min-height: 2.75rem;
 }
+.secondary-action {
+  border-color: var(--vg-border);
+  background: transparent;
+  color: var(--vg-text);
+}
+.delete-action {
+  border-color: color-mix(in srgb, var(--vg-danger) 45%, var(--vg-border));
+  background: color-mix(in srgb, var(--vg-danger) 10%, transparent);
+  color: var(--vg-danger);
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vg-space-2);
+}
+.row-actions button,
+.row-actions .status-chip {
+  min-height: 2.25rem;
+}
 
 .announcement-list {
   display: flex;
@@ -501,7 +604,7 @@ button:disabled {
 
 .announcement-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 7rem;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   background: rgba(2, 6, 23, 0.3);
   border: 1px solid var(--vg-border);
@@ -590,7 +693,7 @@ button:disabled {
   }
 
   .form-actions {
-    grid-template-columns: minmax(0, 1fr) 13rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .toggle-options {
@@ -604,6 +707,9 @@ button:disabled {
   .panel-header,
   .announcement-row {
     flex-direction: column;
+  }
+  .announcement-row {
+    grid-template-columns: 1fr;
   }
 
   .composer {
@@ -628,6 +734,9 @@ button:disabled {
 
   .form-actions button {
     width: 100%;
+  }
+  .row-actions {
+    justify-content: flex-start;
   }
 }
 </style>

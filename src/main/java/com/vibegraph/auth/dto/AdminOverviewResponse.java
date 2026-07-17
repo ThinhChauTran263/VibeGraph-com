@@ -17,7 +17,8 @@ public record AdminOverviewResponse(
         List<AdminDistributionPoint> planDistribution,
         List<AdminStorageSubject> topStorageUsers,
         List<AdminStorageSubject> topStorageProjects,
-        List<AdminSecurityAlert> securityAlerts
+        List<AdminSecurityAlert> securityAlerts,
+        List<AdminSeriesPoint> onlineUserHistory
 ) {
     public record AdminSeriesPoint(String label, long value, String period) {
     }

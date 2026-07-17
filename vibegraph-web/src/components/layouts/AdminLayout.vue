@@ -18,6 +18,7 @@ const navItems = [
   { label: 'Feedback / Reports', to: '/admin/reports', icon: 'reports' },
   { label: 'Plans & Credits', to: '/admin/plans-credits', icon: 'wallet' },
   { label: 'Security', to: '/admin/security', icon: 'shield' },
+  { label: 'Audit', to: '/admin/audit', icon: 'audit' },
   { label: 'System', to: '/admin/system', icon: 'system' },
   { label: 'Announcements', to: '/admin/announcements', icon: 'announcement' },
   { label: 'Settings', to: '/admin/settings', icon: 'settings' },

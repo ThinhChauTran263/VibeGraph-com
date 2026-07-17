@@ -55,7 +55,7 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
   <main class="auth-page">
     <header class="auth-page__header">
       <RouterLink class="auth-brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
-        <BrandMark :size="30" />
+        <BrandMark :size="30" :show-wordmark="true" />
       </RouterLink>
     </header>
 

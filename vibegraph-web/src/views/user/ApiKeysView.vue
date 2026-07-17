@@ -4,11 +4,9 @@ import { useAccountStore } from '@/stores/account'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { ApiKeyCreated } from '@/types/api'
-import {
-  featureAvailabilityContract,
-  refreshFeatureAvailability,
-  useFeatureAvailability,
-} from '@/lib/featureAvailability'
+import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+const PROJECT_BINDING_REASON =
+  'Repository-bound API key creation is not supported by the current backend contract.'
 const account = useAccountStore(),
   open = ref(false),
   name = ref(''),
@@ -16,17 +14,11 @@ const account = useAccountStore(),
   creating = ref(false),
   secret = ref<ApiKeyCreated | null>(null),
   disableId = ref<string | null>(null),
+  disabling = ref(false),
   message = ref('')
 const capability = useFeatureAvailability('api_keys.create.global')
-const createDisabled = computed(
-  () => !capability.value.enabled || featureAvailabilityContract.value === false,
-)
-const reason = computed(() =>
-  createDisabled.value
-    ? capability.value.reason ||
-      'API key project binding is unavailable until the backend capability contract is connected.'
-    : null,
-)
+const createDisabled = computed(() => true)
+const reason = computed(() => PROJECT_BINDING_REASON)
 const canSubmit = computed(
   () =>
     name.value.trim().length > 0 &&
@@ -45,7 +37,7 @@ async function create() {
   if (!canSubmit.value) return
   creating.value = true
   try {
-    secret.value = await account.createApiKey(name.value, projectId.value)
+    secret.value = await account.createApiKey(name.value)
     open.value = false
     name.value = ''
     projectId.value = ''
@@ -56,25 +48,39 @@ async function create() {
   }
 }
 async function disable() {
-  if (!disableId.value) return
-  await account.disableApiKey(disableId.value)
-  disableId.value = null
+  if (!disableId.value || disabling.value) return
+  disabling.value = true
+  message.value = ''
+  try {
+    await account.disableApiKey(disableId.value)
+    disableId.value = null
+    message.value = 'API key disabled.'
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : 'Could not disable this API key.'
+  } finally {
+    disabling.value = false
+  }
 }
 async function copy() {
   if (!secret.value) return
-  await navigator.clipboard.writeText(secret.value.secretKey)
-  message.value = 'Secret copied.'
+  try {
+    await navigator.clipboard.writeText(secret.value.secretKey)
+    message.value = 'Secret copied.'
+  } catch {
+    message.value = 'Could not copy the secret. Select it and copy it manually.'
+  }
 }
 </script>
 <template>
-  <main class="keys">
+  <section class="keys" aria-labelledby="api-keys-title">
     <header>
       <div>
         <span class="eyebrow">Developer access</span>
-        <h1>API Keys</h1>
+        <h1 id="api-keys-title">API Keys</h1>
         <p>Keys identify a repository when tools connect to VibeGraph.</p>
       </div>
       <button
+        data-test="create-api-key"
         class="primary"
         type="button"
         :disabled="createDisabled"
@@ -102,10 +108,18 @@ async function copy() {
           <strong>{{ key.name }}</strong
           ><code>{{ key.keyPrefix }}</code>
         </div>
-        <span>{{ key.projectName || key.projectId || 'Legacy key - no repository binding' }}</span
+        <span>No repository binding in the current API contract</span
         ><span :class="{ off: key.disabled }">{{ key.disabled ? 'Disabled' : 'Active' }}</span
         ><time>{{ new Date(key.createdAt).toLocaleDateString() }}</time
-        ><button v-if="!key.disabled" type="button" @click="disableId = key.id">Disable</button>
+        ><button
+          v-if="!key.disabled"
+          type="button"
+          :data-test="`disable-key-${key.id}`"
+          :aria-label="`Disable API key ${key.name}`"
+          @click="disableId = key.id"
+        >
+          Disable
+        </button>
       </article>
     </section>
     <div
@@ -145,10 +159,11 @@ async function copy() {
       message="This key will stop working immediately."
       confirm-label="Disable key"
       tone="danger"
+      :busy="disabling"
       @cancel="disableId = null"
       @confirm="disable"
     />
-  </main>
+  </section>
 </template>
 <style scoped>
 .keys {

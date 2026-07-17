@@ -71,6 +71,7 @@ class AdminServiceTest {
     @Mock private FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
     @Mock private SecurityEventRepository securityEventRepository;
     @Mock private AuditService auditService;
+    @Mock private OnlineUserHistoryService onlineUserHistoryService;
 
     private AdminService adminService;
 
@@ -92,7 +93,8 @@ class AdminServiceTest {
                 passwordEncoder,
                 feedbackReportRealtimePublisher,
                 securityEventRepository,
-                auditService
+                auditService,
+                onlineUserHistoryService
         );
     }
 
@@ -115,6 +117,8 @@ class AdminServiceTest {
         when(projectUsageRepository.findTopStorageUsers(5)).thenReturn(java.util.List.of());
         when(projectUsageRepository.findTopStorageProjects(5)).thenReturn(java.util.List.of());
         when(securityEventRepository.summarizeSince(any())).thenReturn(java.util.List.of());
+        when(onlineUserHistoryService.recordAndSnapshot(anyLong(), any())).thenReturn(java.util.List.of(
+                new AdminOverviewResponse.AdminSeriesPoint("2026-07-17T13:05:00Z", 0L, "minute")));
         when(adminStorageService.overview()).thenReturn(new AdminStorageOverviewResponse(
                 0L,
                 java.util.List.of(),
@@ -129,6 +133,7 @@ class AdminServiceTest {
         assertEquals(30L, overview.totalReports());
         assertEquals(15L, overview.openReports());
         assertEquals(2L, overview.blockedUsers());
+        assertEquals(1, overview.onlineUserHistory().size());
         assertEquals("projects", overview.storage().sourceLabel());
         assertEquals(1, overview.securityAlerts().size());
         verify(userRepository, never()).findAll();

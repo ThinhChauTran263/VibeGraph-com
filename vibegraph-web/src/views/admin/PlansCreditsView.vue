@@ -15,7 +15,6 @@ const saving = ref(false)
 const errorMsg = ref('')
 const editingPlanCode = ref<string | null>(null)
 const editingRuleCode = ref<string | null>(null)
-const BYTES_PER_MB = 1024 * 1024
 
 type PendingConfirm = {
   title: string
@@ -31,7 +30,7 @@ const pendingConfirm = ref<PendingConfirm | null>(null)
 const emptyPlan: AdminPlanRequest = {
   code: '',
   name: '',
-  storageLimitBytes: 0,
+  storageLimitMb: 0,
   apiKeyLimit: 0,
   monthlyCreditLimit: 0,
   contactSalesRequired: false,
@@ -55,9 +54,9 @@ const ruleForm = ref<AdminPricingRuleRequest>({ ...emptyRule })
 const plans = computed(() => adminStore.plans)
 const pricingRules = computed(() => adminStore.pricingRules)
 const planStorageMb = computed({
-  get: () => Math.round(planForm.value.storageLimitBytes / BYTES_PER_MB),
+  get: () => planForm.value.storageLimitMb,
   set: (value: number) => {
-    planForm.value.storageLimitBytes = Math.max(0, Math.round(Number(value) || 0)) * BYTES_PER_MB
+    planForm.value.storageLimitMb = Math.max(0, Math.round(Number(value) || 0))
   },
 })
 
@@ -167,8 +166,9 @@ function resetRuleForm(): void {
   ruleForm.value = { ...emptyRule }
 }
 
-function formatStorageMb(value: number): string {
-  return `${Math.round(value / BYTES_PER_MB).toLocaleString()} MB`
+function formatStorageMb(plan: AdminPlan): string {
+  const storageMb = plan.storageLimitMb ?? Math.round((plan.storageLimitBytes ?? 0) / (1024 * 1024))
+  return `${storageMb.toLocaleString()} MB`
 }
 </script>
 
@@ -190,10 +190,10 @@ function formatStorageMb(value: number): string {
         <div class="panel-header">
           <div>
             <h3>Plans</h3>
-            <p>Storage is managed in MB. The API still receives byte values behind the scenes.</p>
+            <p>Storage is managed in MB from the form through the admin API.</p>
           </div>
-          <button v-if="editingPlanCode" class="ghost-button" type="button" @click="resetPlanForm">
-            New plan
+          <button class="ghost-button" type="button" :disabled="saving" @click="resetPlanForm">
+            Reset form
           </button>
         </div>
         <form class="plan-editor" @submit.prevent="submitPlan">
@@ -296,7 +296,7 @@ function formatStorageMb(value: number): string {
               <tr v-for="plan in plans" :key="plan.code">
                 <td class="strong" data-label="Code">{{ plan.code }}</td>
                 <td data-label="Name">{{ plan.name }}</td>
-                <td data-label="Storage">{{ formatStorageMb(plan.storageLimitBytes) }}</td>
+                <td data-label="Storage">{{ formatStorageMb(plan) }}</td>
                 <td data-label="API keys">{{ plan.apiKeyLimit }}</td>
                 <td data-label="Credits / month">{{ plan.monthlyCreditLimit }}</td>
                 <td data-label="Sales">

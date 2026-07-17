@@ -17,7 +17,11 @@ const closeDialogOpen = ref(false)
 const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
 onMounted(async () => {
-  await adminStore.fetchReports()
+  try {
+    await adminStore.fetchReports()
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to load reports'
+  }
 })
 
 const reportRealtime = useReportRealtime(selectedReportId, {
@@ -26,6 +30,12 @@ const reportRealtime = useReportRealtime(selectedReportId, {
   },
 })
 const reportRealtimeStatus = reportRealtime.status
+const reportRealtimeLabel = computed(() => {
+  if (reportRealtimeStatus.value === 'connected') return 'Live'
+  if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
+  if (reportRealtimeStatus.value === 'connecting') return 'Syncing'
+  return 'Offline'
+})
 
 const selectReport = async (report: AdminReport) => {
   errorMsg.value = ''
@@ -75,7 +85,9 @@ const confirmCloseReport = async () => {
   errorMsg.value = ''
   try {
     await adminStore.closeReport(selectedReport.value.id)
-    selectedReport.value = { ...selectedReport.value, status: 'CLOSED' }
+    const detail = await adminStore.fetchReportDetail(selectedReport.value.id)
+    selectedReport.value = detail.report
+    selectedMessages.value = detail.messages
     closeDialogOpen.value = false
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to close report'
@@ -112,6 +124,12 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   isAdmin: message.senderRole === 'ADMIN',
   senderName: message.senderRole === 'ADMIN' ? 'Admin' : 'User',
 })
+
+const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) return 'Just now'
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? 'Just now' : new Date(timestamp).toLocaleString()
+}
 </script>
 
 <template>
@@ -141,7 +159,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
                 <td class="text-muted">{{ r.category }}</td>
                 <td><StatusChip :status="r.status.toLowerCase()" :label="r.status" /></td>
                 <td class="text-muted">
-                  {{ new Date(r.closedAt ?? r.createdAt).toLocaleString() }}
+                  {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
                 <td><button class="btn-secondary btn-sm" @click="selectReport(r)">View</button></td>
               </tr>
@@ -182,7 +200,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
             :label="selectedReport.status"
           />
           <span class="realtime-pill" :data-status="reportRealtimeStatus">
-            {{ reportRealtimeStatus === 'connected' ? 'Live' : 'Syncing' }}
+            {{ reportRealtimeLabel }}
           </span>
         </div>
       </div>
@@ -205,7 +223,7 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
                 <strong>{{ msg.senderName }}</strong>
                 <span class="message-role">{{ msg.isAdmin ? 'VibeGraph support' : 'User' }}</span>
               </div>
-              <time :datetime="msg.createdAt">{{ new Date(msg.createdAt).toLocaleString() }}</time>
+              <time :datetime="msg.createdAt || undefined">{{ formatDateTime(msg.createdAt) }}</time>
             </header>
             <p class="message-content">{{ msg.body }}</p>
           </div>
@@ -619,6 +637,14 @@ const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   .reply-box,
   .reply-form {
     grid-template-columns: 1fr;
+  }
+  .reply-box {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-inline: calc(var(--vg-space-2) * -1);
+    border-radius: var(--vg-radius-sm) var(--vg-radius-sm) 0 0;
+    box-shadow: 0 -8px 24px rgba(2, 6, 23, 0.18);
   }
 }
 </style>

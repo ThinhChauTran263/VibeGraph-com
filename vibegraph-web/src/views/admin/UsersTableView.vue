@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, nextTick, ref, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminUserResponse } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
@@ -10,7 +10,7 @@ import AdminReasonDialog from '@/components/admin/AdminReasonDialog.vue'
 const adminStore = useAdminStore()
 
 // Detail panel
-const drawerOpen = ref(false)
+const detailOpen = ref(false)
 const selectedUser = ref<AdminUserResponse | null>(null)
 
 // Search / filter
@@ -31,22 +31,27 @@ const createRoleOptions = [
   { value: 'USER', label: 'User', description: 'Workspace, reports, API keys' },
   { value: 'ADMIN', label: 'Admin', description: 'Admin console access' },
 ] as const
-const createPlanOptions = [
-  { value: 'FREE', label: 'Free', description: '100 MB + 100 credits' },
-  { value: 'PRO', label: 'Pro', description: '500 MB + 500 credits' },
-  { value: 'PRO_PLUS', label: 'Pro Plus', description: '1024 MB + 1000 credits' },
-  { value: 'MAX', label: 'Max', description: '2048 MB + 2000 credits' },
-  { value: 'ENTERPRISE', label: 'Enterprise', description: 'Custom contract' },
-] as const
+const supportedUserPlans = new Set(['FREE', 'PRO', 'PRO_PLUS', 'MAX', 'ENTERPRISE'])
+const createPlanOptions = computed(() =>
+  adminStore.plans
+    .filter((plan) => supportedUserPlans.has(plan.code))
+    .map((plan) => ({
+      value: plan.code,
+      label: plan.name,
+      description: `${plan.storageLimitMb ?? Math.round((plan.storageLimitBytes ?? 0) / (1024 * 1024))} MB + ${plan.monthlyCreditLimit} credits`,
+    })),
+)
 const isCreating = ref(false)
 const createError = ref('')
 const tableActionError = ref('')
 const reasonDialogUser = ref<AdminUserResponse | null>(null)
 const unblockDialogUser = ref<AdminUserResponse | null>(null)
 const isUserActioning = ref(false)
+const currentPage = computed(() => adminStore.usersPagination.pageNumber ?? adminStore.usersPagination.page ?? 0)
+const currentPageSize = computed(() => adminStore.usersPagination.pageSize ?? adminStore.usersPagination.size ?? 20)
 
 onMounted(async () => {
-  await adminStore.fetchUsers()
+  await Promise.all([adminStore.fetchUsers(), adminStore.fetchPlans()])
 })
 
 const applyFilters = async () => {
@@ -57,13 +62,18 @@ const applyFilters = async () => {
   })
 }
 
-const openDrawer = (user: AdminUserResponse) => {
+const openDetail = async (user: AdminUserResponse) => {
   selectedUser.value = user
-  drawerOpen.value = true
+  detailOpen.value = true
+  await nextTick()
+  document.getElementById('user-quota-controls')?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
 }
 
-const closeDrawer = () => {
-  drawerOpen.value = false
+const closeDetail = () => {
+  detailOpen.value = false
   selectedUser.value = null
 }
 
@@ -80,8 +90,8 @@ const onUserUpdated = async () => {
     search: searchQuery.value || undefined,
     status: statusFilter.value || undefined,
     plan: planFilter.value || undefined,
-    page: adminStore.usersPagination.pageNumber,
-    size: adminStore.usersPagination.pageSize,
+    page: currentPage.value,
+    size: currentPageSize.value,
   })
   syncSelectedUser()
 }
@@ -196,11 +206,9 @@ function userStatus(u: AdminUserResponse): string {
           @change="applyFilters"
         >
           <option value="">All Plans</option>
-          <option value="FREE">Free</option>
-          <option value="PRO">Pro</option>
-          <option value="PRO_PLUS">Pro+</option>
-          <option value="MAX">Max</option>
-          <option value="ENTERPRISE">Enterprise</option>
+          <option v-for="plan in createPlanOptions" :key="plan.value" :value="plan.value">
+            {{ plan.label }}
+          </option>
         </select>
         <button class="btn-filter" @click="applyFilters">Search</button>
       </div>
@@ -235,7 +243,7 @@ function userStatus(u: AdminUserResponse): string {
               </td>
               <td class="actions-cell" data-label="Actions">
                 <div class="row-actions">
-                  <button class="btn-detail btn-sm" @click="openDrawer(user)">Detail</button>
+                  <button class="btn-detail btn-sm" :aria-expanded="selectedUser?.id === user.id && detailOpen" @click="openDetail(user)">Detail</button>
                   <button v-if="!user.blocked" class="btn-danger btn-sm" @click="handleBlock(user)">
                     Block
                   </button>
@@ -249,14 +257,18 @@ function userStatus(u: AdminUserResponse): string {
         </table>
       </div>
       <div class="table-footer" v-if="adminStore.usersPagination.totalElements > 0">
-        {{ adminStore.users.length }} / {{ adminStore.usersPagination.totalElements }} users
+        <span>{{ adminStore.users.length }} / {{ adminStore.usersPagination.totalElements }} users</span>
+        <div class="pagination-actions">
+          <button type="button" class="btn-secondary btn-sm" :disabled="currentPage <= 0" @click="adminStore.fetchUsers({ search: searchQuery || undefined, status: statusFilter || undefined, plan: planFilter || undefined, page: currentPage - 1, size: currentPageSize })">Previous</button>
+          <span>Page {{ currentPage + 1 }} / {{ Math.max(adminStore.usersPagination.totalPages, 1) }}</span>
+          <button type="button" class="btn-secondary btn-sm" :disabled="currentPage + 1 >= adminStore.usersPagination.totalPages" @click="adminStore.fetchUsers({ search: searchQuery || undefined, status: statusFilter || undefined, plan: planFilter || undefined, page: currentPage + 1, size: currentPageSize })">Next</button>
+        </div>
       </div>
 
-      <!-- User Detail Panel: rendered inside the users list card -->
       <UserDetailDrawer
-        :isOpen="drawerOpen"
+        :isOpen="detailOpen"
         :user="selectedUser"
-        @close="closeDrawer"
+        @close="closeDetail"
         @updated="onUserUpdated"
       />
     </div>
@@ -608,10 +620,22 @@ function userStatus(u: AdminUserResponse): string {
   background: rgba(148, 163, 184, 0.16);
 }
 .table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vg-space-3);
   padding: var(--vg-space-3) var(--vg-space-4);
   font-size: var(--vg-text-sm);
   color: var(--vg-text-muted);
-  text-align: right;
+}
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-2);
+}
+.pagination-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Modal */

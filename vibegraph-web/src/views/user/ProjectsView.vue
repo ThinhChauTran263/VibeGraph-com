@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
@@ -26,6 +26,12 @@ const importReason = computed(() =>
   importDisabled.value
     ? 'Repository import is unavailable because no import method is currently enabled.'
     : null,
+)
+watch(
+  () => route.query.import,
+  (importQuery) => {
+    showImport.value = importQuery === 'new'
+  },
 )
 
 async function loadProjects() {
@@ -73,14 +79,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="repositories">
+  <section class="repositories" aria-labelledby="repositories-title">
     <header class="page-header">
       <div>
         <span class="eyebrow">Workspace</span>
-        <h1>Repositories</h1>
+        <h1 id="repositories-title">Repositories</h1>
         <p>Imported Java projects, ready for graph exploration.</p>
       </div>
       <button
+        data-test="new-repository"
         class="primary"
         type="button"
         :disabled="importDisabled"
@@ -93,16 +100,6 @@ onMounted(() => {
       </button>
     </header>
     <p v-if="importReason" id="import-disabled" class="disabled-note">{{ importReason }}</p>
-    <section v-if="showImport && !importDisabled" class="import-section">
-      <ImportProjectPanel
-        :disabled-methods="{
-          local: local.enabled ? null : local.reason,
-          archive: archive.enabled ? null : archive.reason,
-          github: github.enabled ? null : github.reason,
-        }"
-        @imported="imported"
-      />
-    </section>
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
     <section v-if="projects.length" class="repo-grid" aria-label="Imported repositories">
       <article v-for="project in projects" :key="project.id" class="repo-card">
@@ -131,7 +128,12 @@ onMounted(() => {
           </div>
         </dl>
         <div class="repo-card__actions">
-          <button class="explore" type="button" @click="open(project)">
+          <button
+            class="explore"
+            type="button"
+            :data-test="`open-project-${project.id}`"
+            @click="open(project)"
+          >
             <AppIcon name="graph" :size="17" />Explore Graph
           </button>
           <button
@@ -153,6 +155,16 @@ onMounted(() => {
         New Repository
       </button>
     </section>
+    <section v-if="showImport && !importDisabled" class="import-section">
+      <ImportProjectPanel
+        :disabled-methods="{
+          local: local.enabled ? null : local.reason,
+          archive: archive.enabled ? null : archive.reason,
+          github: github.enabled ? null : github.reason,
+        }"
+        @imported="imported"
+      />
+    </section>
     <AdminConfirmDialog
       :open="Boolean(deleteTarget)"
       title="Delete repository"
@@ -163,7 +175,7 @@ onMounted(() => {
       @cancel="deleteTarget = null"
       @confirm="confirmDelete"
     />
-  </main>
+  </section>
 </template>
 
 <style scoped>

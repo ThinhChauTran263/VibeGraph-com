@@ -53,7 +53,9 @@ class AdminOverviewControllerTest {
                 List.of(),
                 List.of(),
                 List.of(new AdminOverviewResponse.AdminSecurityAlert(
-                        "blocked-users", "ACCOUNT_BLOCK", "WARNING", "2 blocked", Instant.now())));
+                        "blocked-users", "ACCOUNT_BLOCK", "WARNING", "2 blocked", Instant.now())),
+                List.of(new AdminOverviewResponse.AdminSeriesPoint(
+                        "2026-07-17T13:05:00Z", 5L, "minute")));
 
         when(adminService.getOverview()).thenReturn(overview);
 
@@ -67,6 +69,9 @@ class AdminOverviewControllerTest {
                 .andExpect(jsonPath("$.data.userGrowth[0].label").value("2026-07"))
                 .andExpect(jsonPath("$.data.storage.sourceLabel").value("projects"))
                 .andExpect(jsonPath("$.data.planDistribution[0].label").value("FREE"))
-                .andExpect(jsonPath("$.data.securityAlerts[0].type").value("ACCOUNT_BLOCK"));
+                .andExpect(jsonPath("$.data.securityAlerts[0].type").value("ACCOUNT_BLOCK"))
+                .andExpect(jsonPath("$.data.onlineUserHistory[0].label")
+                        .value("2026-07-17T13:05:00Z"))
+                .andExpect(jsonPath("$.data.onlineUserHistory[0].value").value(5L));
     }
 }

@@ -58,7 +58,8 @@ describe('importApi.uploadArchive (sync)', () => {
     expect(form.get('name')).toBe('my-svc')
     expect(form.get('file')).toBeInstanceOf(File)
     // Content-Type must be left for the browser to compute (multipart boundary).
-    expect(init.headers).toBeUndefined()
+    expect(init.headers).toMatchObject({ 'X-VibeGraph-Client': 'web' })
+    expect(init.headers).not.toHaveProperty('Content-Type')
   })
 })
 
@@ -74,7 +75,10 @@ describe('importApi.importGithub', () => {
     const init = call[1]!
     expect(String(url)).toMatch(/\/api\/projects\/import-github$/)
     expect(init.method).toBe('POST')
-    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-VibeGraph-Client': 'web',
+    })
     expect(init.body).toBe(JSON.stringify({ url: 'https://github.com/owner/repo' }))
   })
 

@@ -58,6 +58,24 @@ const templates: TemplateFlag[] = [
     note: 'Useful when patch writes or credit preflight need maintenance.',
   },
   {
+    group: 'Analysis and generation',
+    key: 'project.analyze',
+    scope: 'GLOBAL',
+    displayName: 'Project analyze',
+    enabled: true,
+    description: 'Allow users to analyze imported projects.',
+    note: 'Disable during analyzer incidents without blocking repository browsing.',
+  },
+  {
+    group: 'Analysis and generation',
+    key: 'usecase.generate',
+    scope: 'GLOBAL',
+    displayName: 'Use case generation',
+    enabled: true,
+    description: 'Allow generated use-case views.',
+    note: 'Disable generation without disabling graph exploration.',
+  },
+  {
     group: 'CLI and API',
     key: 'api_keys.create.global',
     scope: 'GLOBAL',
@@ -68,7 +86,7 @@ const templates: TemplateFlag[] = [
   },
   {
     group: 'Platform access',
-    key: 'auth.registration',
+    key: 'registration',
     scope: 'GLOBAL',
     displayName: 'Registration',
     enabled: true,
@@ -78,45 +96,54 @@ const templates: TemplateFlag[] = [
   {
     group: 'MCP tool controls',
     key: 'mcp.enabled',
-    scope: 'MCP_TOOL',
+    scope: 'GLOBAL',
     displayName: 'All MCP tools',
     enabled: true,
     description: 'Allow MCP tool execution.',
     note: 'Master switch for MCP incidents.',
   },
-  {
+  ...[
+    'get_project_architecture',
+    'get_class_context',
+    'get_impact_analysis',
+    'get_layer_pattern',
+    'get_source_file',
+    'get_method_source',
+    'search_source',
+    'find_references',
+    'trace_endpoint',
+    'get_method_cpg_context',
+    'find_related_tests',
+    'suggest_test_plan',
+    'plan_code_change',
+    'explain_failure_path',
+    'get_project_conventions',
+  ].map((toolName) => ({
     group: 'MCP tool controls',
-    key: 'mcp.tool.project_context',
-    scope: 'MCP_TOOL',
-    displayName: 'Project context tool',
+    key: `mcp.tool.${toolName}`,
+    scope: 'MCP_TOOL' as const,
+    displayName: toolName.replace(/_/g, ' ').replace(/(^|\s)\S/g, (letter: string) => letter.toUpperCase()),
     enabled: true,
-    description: 'Allow project context MCP calls.',
-    note: 'Disable one MCP tool without shutting all tools down.',
-  },
-  {
-    group: 'MCP tool controls',
-    key: 'mcp.tool.graph_query',
-    scope: 'MCP_TOOL',
-    displayName: 'Graph query tool',
-    enabled: true,
-    description: 'Allow graph query MCP calls.',
-    note: 'Use for expensive or buggy graph queries.',
-  },
-  {
-    group: 'MCP tool controls',
-    key: 'usecase.generate',
-    scope: 'MCP_TOOL',
-    displayName: 'Use case generation',
-    enabled: true,
-    description: 'Allow generated use-case views.',
-    note: 'Disable generation without disabling graph exploration.',
-  },
+    description: `Allow ${toolName.replace(/_/g, ' ')} MCP calls.`,
+    note: 'Child control; the MCP global switch overrides this state.',
+  })),
 ]
 
 const COLLAPSE_KEY = 'vg_admin_system_collapsed_groups'
-const collapsedGroups = ref<Record<string, boolean>>(
-  JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '{}'),
-)
+const collapsedGroups = ref<Record<string, boolean>>(readCollapsedGroups())
+
+function readCollapsedGroups(): Record<string, boolean> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+    )
+  } catch {
+    localStorage.removeItem(COLLAPSE_KEY)
+    return {}
+  }
+}
 function toggleGroup(group: string): void {
   collapsedGroups.value[group] = !collapsedGroups.value[group]
   localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsedGroups.value))
@@ -129,7 +156,7 @@ const groupColumns = computed(() => [
 ])
 const extraFlags = computed(() =>
   adminStore.featureFlags.filter(
-    (flag) => !templates.some((template) => template.key === flag.key),
+    (flag) => flag.key !== 'auth.registration' && !templates.some((template) => template.key === flag.key),
   ),
 )
 
@@ -191,8 +218,14 @@ function currentFlag(template: TemplateFlag): AdminFeatureFlag | null {
   return adminStore.featureFlags.find((flag) => flag.key === template.key) ?? null
 }
 
+function mcpGlobalEnabled(): boolean {
+  const global = templates.find((item) => item.key === 'mcp.enabled')
+  return global ? currentFlag(global)?.enabled ?? global.enabled : true
+}
+
 function currentEnabled(template: TemplateFlag): boolean {
-  return currentFlag(template)?.enabled ?? template.enabled
+  const ownEnabled = currentFlag(template)?.enabled ?? template.enabled
+  return template.scope === 'MCP_TOOL' ? ownEnabled && mcpGlobalEnabled() : ownEnabled
 }
 </script>
 
@@ -300,7 +333,8 @@ function currentEnabled(template: TemplateFlag): boolean {
             <span class="switch-wrap">
               <input
                 type="checkbox"
-                :checked="currentEnabled(template)"
+                :checked="currentFlag(template)?.enabled ?? template.enabled"
+                :disabled="template.scope === 'MCP_TOOL' && !mcpGlobalEnabled()"
                 :aria-label="`Toggle ${template.displayName}`"
                 @change="toggleTemplate(template, ($event.target as HTMLInputElement).checked)"
               />

@@ -28,4 +28,17 @@ describe('QuotaMeter', () => {
     expect(wrapper.text()).toContain('500MB / 500MB used')
     expect(wrapper.text()).toContain('0MB remaining')
   })
+
+  it('uses status semantics when a determinate quota is unavailable', () => {
+    const wrapper = mount(QuotaMeter, {
+      props: {
+        used: 0,
+        total: 0,
+        unit: 'MB',
+      },
+    })
+
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
+    expect(wrapper.get('[role="status"]').text()).toContain('Quota unavailable')
+  })
 })

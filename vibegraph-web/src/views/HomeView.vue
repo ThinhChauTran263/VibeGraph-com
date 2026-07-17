@@ -10,8 +10,10 @@ const name = computed(
   () => account.profile?.displayName || account.profile?.email?.split('@')[0] || 'there',
 )
 const remainingCredits = computed(() => {
-  const limit = account.usage?.creditsLimit
-  const used = account.usage?.creditsUsed
+  const usage = account.usage as (typeof account.usage & { creditsRemaining?: number }) | null
+  if (typeof usage?.creditsRemaining === 'number') return usage.creditsRemaining.toLocaleString()
+  const limit = usage?.creditsLimit
+  const used = usage?.creditsUsed
   return typeof limit === 'number' && typeof used === 'number'
     ? Math.max(limit - used, 0).toLocaleString()
     : 'Unavailable'
@@ -23,10 +25,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="overview">
+  <section class="overview" aria-labelledby="overview-title">
     <header class="overview__header">
       <span class="eyebrow">Overview</span>
-      <h1>Welcome back, {{ name }}</h1>
+      <h1 id="overview-title">Welcome back, {{ name }}</h1>
       <p>A focused summary of your VibeGraph workspace.</p>
     </header>
 
@@ -56,23 +58,27 @@ onMounted(() => {
         <h2 id="quick-heading">Quick actions</h2>
       </div>
       <div class="quick__actions">
-        <button type="button" @click="router.push({ name: 'projects', query: { import: 'new' } })">
+        <button
+          data-test="quick-repositories"
+          type="button"
+          @click="router.push({ name: 'projects', query: { import: 'new' } })"
+        >
           <span class="quick__icon" aria-hidden="true"
             ><AppIcon name="repository" :size="22"
           /></span>
           <span>New repository</span>
         </button>
-        <button type="button" @click="router.push({ name: 'api-keys' })">
+        <button data-test="quick-api-keys" type="button" @click="router.push({ name: 'api-keys' })">
           <span class="quick__icon" aria-hidden="true"><AppIcon name="key" :size="22" /></span>
           <span>Create API key</span>
         </button>
-        <button type="button" @click="router.push({ name: 'reports' })">
+        <button data-test="quick-reports" type="button" @click="router.push({ name: 'reports' })">
           <span class="quick__icon" aria-hidden="true"><AppIcon name="reports" :size="22" /></span>
           <span>Open reports</span>
         </button>
       </div>
     </section>
-  </main>
+  </section>
 </template>
 
 <style scoped>

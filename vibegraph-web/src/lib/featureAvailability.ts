@@ -7,6 +7,7 @@ export type FeatureKey =
   | 'import.github'
   | 'cli.push'
   | 'api_keys.create.global'
+  | 'project.analyze'
   | 'mcp.enabled'
   | 'usecase.generate'
 
@@ -49,9 +50,14 @@ function withoutContract(key: FeatureKey): FeatureAvailability {
 
 export async function refreshFeatureAvailability(): Promise<void> {
   try {
-    const response = await api.get<SessionCapabilitiesResponse>('/api/session-state')
+    const response = await api.get<SessionCapabilitiesResponse>('/api/account/session-state')
+    if (!response.features) {
+      features.value = {}
+      contractAvailable.value = false
+      return
+    }
     const next: Partial<Record<FeatureKey, FeatureAvailability>> = {}
-    for (const [key, value] of Object.entries(response.features ?? {})) {
+    for (const [key, value] of Object.entries(response.features)) {
       if (typeof value === 'boolean')
         next[key as FeatureKey] = {
           key: key as FeatureKey,

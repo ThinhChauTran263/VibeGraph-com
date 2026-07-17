@@ -1,131 +1,116 @@
-import { describe, it, expect, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ProfileView from '../ProfileView.vue'
 import { useAccountStore } from '@/stores/account'
 
-describe('ProfileView', () => {
-  it('renders settings account information and password fields', async () => {
-    const wrapper = mount(ProfileView, {
-      global: {
-        plugins: [
-          createTestingPinia({
-            createSpy: vi.fn,
-            initialState: {
-              account: {
-                profile: {
-                  email: 'test@example.com',
-                  displayName: 'John Doe',
-                  role: 'admin',
-                  status: 'active',
-                },
-              },
-            },
-          }),
-        ],
+function mountView() {
+  const pinia = createTestingPinia({
+    createSpy: vi.fn,
+    initialState: {
+      account: {
+        profile: {
+          id: 'user-1',
+          email: 'test@example.com',
+          displayName: 'John Doe',
+          role: 'USER',
+          status: 'active',
+        },
       },
-    })
+    },
+  })
+  return { wrapper: mount(ProfileView, { global: { plugins: [pinia] } }), pinia }
+}
 
+describe('ProfileView', () => {
+  it('renders account identity and password fields without OTP controls', async () => {
+    const { wrapper } = mountView()
     await flushPromises()
+
     expect(wrapper.text()).toContain('Settings')
     expect(wrapper.text()).toContain('test@example.com')
-    expect(wrapper.text()).toContain('admin')
-    expect(wrapper.find('#current-password').exists()).toBe(true)
-    expect(wrapper.find('#new-password').exists()).toBe(true)
-    expect(wrapper.find('#confirm-new-password').exists()).toBe(true)
+    expect(wrapper.get('#current-password').element).toBeInstanceOf(HTMLInputElement)
+    expect(wrapper.get('#new-password').element).toBeInstanceOf(HTMLInputElement)
+    expect(wrapper.get('#confirm-new-password').element).toBeInstanceOf(HTMLInputElement)
     expect(wrapper.text()).not.toContain('OTP')
     expect(wrapper.text()).not.toContain('Send code')
   })
 
-  it('calls updateDisplayName when the account form is submitted', async () => {
-    const wrapper = mount(ProfileView, {
-      global: {
-        plugins: [
-          createTestingPinia({
-            createSpy: vi.fn,
-            initialState: {
-              account: {
-                profile: {
-                  email: 'test@example.com',
-                  displayName: 'John Doe',
-                  role: 'admin',
-                  status: 'active',
-                },
-              },
-            },
-          }),
-        ],
-      },
-    })
+  it('trims and submits a changed display name', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
 
-    const store = useAccountStore()
-    const input = wrapper.find('#displayName')
-    await input.setValue('Jane Doe')
-    await wrapper.find('form.update-form').trigger('submit')
+    await wrapper.get('#displayName').setValue('  Jane Doe  ')
+    await wrapper.get('form.update-form').trigger('submit')
 
     expect(store.updateDisplayName).toHaveBeenCalledWith('Jane Doe')
   })
 
-  it('validates password confirmation without sending OTP UI', async () => {
-    const wrapper = mount(ProfileView, {
-      global: {
-        plugins: [
-          createTestingPinia({
-            createSpy: vi.fn,
-            initialState: {
-              account: {
-                profile: {
-                  email: 'test@example.com',
-                  displayName: 'John Doe',
-                  role: 'USER',
-                  status: 'active',
-                },
-              },
-            },
-          }),
-        ],
-      },
-    })
+  it('shows a validation error instead of silently ignoring a blank display name', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
 
-    await wrapper.find('#current-password').setValue('old-password')
-    await wrapper.find('#new-password').setValue('new-password-1')
-    await wrapper.find('#confirm-new-password').setValue('new-password-2')
-    await wrapper.find('form.password-form').trigger('submit')
+    await wrapper.get('#displayName').setValue('   ')
+    await wrapper.get('form.update-form').trigger('submit')
 
-    expect(wrapper.text()).toContain('New password and confirmation do not match')
+    expect(wrapper.get('[data-test="profile-message"]').attributes('role')).toBe('alert')
+    expect(wrapper.get('[data-test="profile-message"]').text()).toContain('Display name is required')
+    expect(wrapper.get('#displayName').attributes('aria-invalid')).toBe('true')
+    expect(wrapper.get('#displayName').attributes('aria-describedby')).toBe('profile-message')
+    expect(store.updateDisplayName).not.toHaveBeenCalled()
   })
 
-  it('submits password change with current, new, and confirmation passwords', async () => {
-    const wrapper = mount(ProfileView, {
-      global: {
-        plugins: [
-          createTestingPinia({
-            createSpy: vi.fn,
-            initialState: {
-              account: {
-                profile: {
-                  email: 'test@example.com',
-                  displayName: 'John Doe',
-                  role: 'USER',
-                  status: 'active',
-                },
-              },
-            },
-          }),
-        ],
-      },
-    })
+  it('validates the backend minimum password length before calling the API', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
 
-    const store = useAccountStore()
-    await wrapper.find('#current-password').setValue('old-password')
-    await wrapper.find('#new-password').setValue('new-password')
-    await wrapper.find('#confirm-new-password').setValue('new-password')
-    await wrapper.find('form.password-form').trigger('submit')
+    await wrapper.get('#current-password').setValue('old-password')
+    await wrapper.get('#new-password').setValue('short')
+    await wrapper.get('#confirm-new-password').setValue('short')
+    await wrapper.get('form.password-form').trigger('submit')
+
+    expect(wrapper.get('[data-test="password-message"]').attributes('role')).toBe('alert')
+    expect(wrapper.get('[data-test="password-message"]').text()).toContain(
+      'New password must be at least 8 characters',
+    )
+    expect(wrapper.get('#new-password').attributes('aria-invalid')).toBe('true')
+    expect(wrapper.get('#new-password').attributes('aria-describedby')).toBe('password-message')
+    expect(store.changePassword).not.toHaveBeenCalled()
+  })
+
+  it('validates password confirmation before calling the API', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+
+    await wrapper.get('#current-password').setValue('old-password')
+    await wrapper.get('#new-password').setValue('new-password-1')
+    await wrapper.get('#confirm-new-password').setValue('new-password-2')
+    await wrapper.get('form.password-form').trigger('submit')
+
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'New password and confirmation do not match',
+    )
+    expect(store.changePassword).not.toHaveBeenCalled()
+  })
+
+  it('clears password fields only after a successful password change', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    vi.mocked(store.changePassword).mockResolvedValue(undefined)
+
+    await wrapper.get('#current-password').setValue('old-password')
+    await wrapper.get('#new-password').setValue('new-password')
+    await wrapper.get('#confirm-new-password').setValue('new-password')
+    await wrapper.get('form.password-form').trigger('submit')
+    await flushPromises()
 
     expect(store.changePassword).toHaveBeenCalledWith(
       'old-password',
       'new-password',
       'new-password',
     )
+    expect((wrapper.get('#current-password').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#new-password').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#confirm-new-password').element as HTMLInputElement).value).toBe('')
   })
 })

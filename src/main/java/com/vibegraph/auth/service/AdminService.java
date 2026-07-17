@@ -85,6 +85,7 @@ public class AdminService {
     private final FeedbackReportRealtimePublisher feedbackReportRealtimePublisher;
     private final SecurityEventRepository securityEventRepository;
     private final AuditService auditService;
+    private final OnlineUserHistoryService onlineUserHistoryService;
 
     @Transactional(readOnly = true)
     public AdminOverviewResponse getOverview() {
@@ -95,6 +96,8 @@ public class AdminService {
         long openReports = feedbackReportRepository.countByStatus(FeedbackReportStatus.OPEN);
         long blockedUsers = settingsRepository.countByBlockedAtIsNotNull();
         Instant now = Instant.now();
+        List<AdminSeriesPoint> onlineUserHistory =
+                onlineUserHistoryService.recordAndSnapshot(onlineUsers, now);
         return new AdminOverviewResponse(
                 totalUsers,
                 onlineUsers,
@@ -109,7 +112,8 @@ public class AdminService {
                 buildPlanDistribution(),
                 buildTopStorageUsers(),
                 buildTopStorageProjects(),
-                buildSecurityAlerts(blockedUsers, now)
+                buildSecurityAlerts(blockedUsers, now),
+                onlineUserHistory
         );
     }
 

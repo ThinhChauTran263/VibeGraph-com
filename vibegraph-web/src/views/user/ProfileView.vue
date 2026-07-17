@@ -11,6 +11,9 @@ const profileMessage = ref('')
 const passwordMessage = ref('')
 const isSubmitting = ref(false)
 const isChangingPassword = ref(false)
+const profileMessageIsError = ref(false)
+const passwordMessageIsError = ref(false)
+const MIN_PASSWORD_LENGTH = 8
 
 onMounted(async () => {
   if (!accountStore.profile) {
@@ -22,13 +25,22 @@ onMounted(async () => {
 })
 
 const updateProfile = async () => {
-  if (!displayNameInput.value.trim()) return
+  const displayName = displayNameInput.value.trim()
+  profileMessage.value = ''
+  profileMessageIsError.value = false
+  if (!displayName) {
+    profileMessage.value = 'Display name is required.'
+    profileMessageIsError.value = true
+    return
+  }
 
   isSubmitting.value = true
-  profileMessage.value = ''
   try {
-    await accountStore.updateDisplayName(displayNameInput.value)
+    await accountStore.updateDisplayName(displayName)
     profileMessage.value = 'Display name updated.'
+  } catch (error) {
+    profileMessage.value = error instanceof Error ? error.message : 'Profile update failed.'
+    profileMessageIsError.value = true
   } finally {
     isSubmitting.value = false
   }
@@ -36,12 +48,20 @@ const updateProfile = async () => {
 
 async function submitPasswordChange(): Promise<void> {
   passwordMessage.value = ''
+  passwordMessageIsError.value = false
   if (!currentPassword.value || !newPassword.value || !confirmNewPassword.value) {
     passwordMessage.value = 'Enter your current password, new password, and confirmation.'
+    passwordMessageIsError.value = true
+    return
+  }
+  if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
+    passwordMessage.value = `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+    passwordMessageIsError.value = true
     return
   }
   if (newPassword.value !== confirmNewPassword.value) {
     passwordMessage.value = 'New password and confirmation do not match.'
+    passwordMessageIsError.value = true
     return
   }
   isChangingPassword.value = true
@@ -57,6 +77,7 @@ async function submitPasswordChange(): Promise<void> {
     passwordMessage.value = 'Password changed.'
   } catch (e) {
     passwordMessage.value = e instanceof Error ? e.message : 'Password change failed.'
+    passwordMessageIsError.value = true
   } finally {
     isChangingPassword.value = false
   }
@@ -66,7 +87,7 @@ async function submitPasswordChange(): Promise<void> {
 <template>
   <div class="settings-view">
     <header class="page-header">
-      <h2>Settings</h2>
+      <h1>Settings</h1>
       <p>Manage account identity and password settings.</p>
     </header>
 
@@ -74,32 +95,43 @@ async function submitPasswordChange(): Promise<void> {
       <section class="settings-card">
         <h3>Account</h3>
         <div class="info-group">
-          <label>Email</label>
+          <span class="info-label">Email</span>
           <div class="info-value">{{ accountStore.profile.email }}</div>
         </div>
 
         <div class="info-group">
-          <label>Role</label>
+          <span class="info-label">Role</span>
           <div class="info-value role-badge">{{ accountStore.profile.role }}</div>
         </div>
 
         <form class="update-form" @submit.prevent="updateProfile">
-          <label class="field" for="displayName">
-            <span>Display name</span>
+          <div class="field">
+            <label for="displayName">Display name</label>
             <div class="input-row">
               <input
                 id="displayName"
                 v-model="displayNameInput"
                 type="text"
                 class="form-input"
+                required
                 :disabled="isSubmitting"
+                :aria-invalid="profileMessageIsError"
+                :aria-describedby="profileMessage ? 'profile-message' : undefined"
               />
               <button type="submit" class="btn-primary" :disabled="isSubmitting">
                 {{ isSubmitting ? 'Updating...' : 'Update' }}
               </button>
             </div>
-          </label>
-          <p v-if="profileMessage" class="form-note" role="status">{{ profileMessage }}</p>
+          </div>
+          <p
+            v-if="profileMessage"
+            id="profile-message"
+            data-test="profile-message"
+            class="form-note"
+            :role="profileMessageIsError ? 'alert' : 'status'"
+          >
+            {{ profileMessage }}
+          </p>
         </form>
       </section>
 
@@ -114,6 +146,10 @@ async function submitPasswordChange(): Promise<void> {
               type="password"
               class="form-input"
               autocomplete="current-password"
+              required
+              :disabled="isChangingPassword"
+              :aria-invalid="passwordMessageIsError"
+              :aria-describedby="passwordMessage ? 'password-message' : undefined"
             />
           </label>
           <label class="field" for="new-password">
@@ -124,6 +160,11 @@ async function submitPasswordChange(): Promise<void> {
               type="password"
               class="form-input"
               autocomplete="new-password"
+              minlength="8"
+              required
+              :disabled="isChangingPassword"
+              :aria-invalid="passwordMessageIsError"
+              :aria-describedby="passwordMessage ? 'password-message' : undefined"
             />
           </label>
           <label class="field" for="confirm-new-password">
@@ -134,9 +175,22 @@ async function submitPasswordChange(): Promise<void> {
               type="password"
               class="form-input"
               autocomplete="new-password"
+              minlength="8"
+              required
+              :disabled="isChangingPassword"
+              :aria-invalid="passwordMessageIsError"
+              :aria-describedby="passwordMessage ? 'password-message' : undefined"
             />
           </label>
-          <p v-if="passwordMessage" class="form-note" role="status">{{ passwordMessage }}</p>
+          <p
+            v-if="passwordMessage"
+            id="password-message"
+            data-test="password-message"
+            class="form-note"
+            :role="passwordMessageIsError ? 'alert' : 'status'"
+          >
+            {{ passwordMessage }}
+          </p>
           <button type="submit" class="btn-primary" :disabled="isChangingPassword">
             {{ isChangingPassword ? 'Changing...' : 'Change password' }}
           </button>
@@ -154,7 +208,7 @@ async function submitPasswordChange(): Promise<void> {
   gap: var(--vg-space-6);
 }
 
-.page-header h2 {
+.page-header h1 {
   margin: 0 0 var(--vg-space-1);
   color: var(--vg-text);
   font-family: var(--vg-font-display);
@@ -189,8 +243,9 @@ async function submitPasswordChange(): Promise<void> {
   font-family: var(--vg-font-display);
 }
 
-.info-group label,
-.field span {
+.info-label,
+.field span,
+.field > label {
   display: block;
   font-size: var(--vg-text-sm);
   font-weight: 600;

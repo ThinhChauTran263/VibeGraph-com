@@ -1,5 +1,7 @@
 <script setup lang="ts">
-withDefaults(
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     open: boolean
     title: string
@@ -21,24 +23,78 @@ const emit = defineEmits<{
   (e: 'confirm'): void
   (e: 'cancel'): void
 }>()
+const dialog = ref<HTMLElement | null>(null)
+const cancelButton = ref<HTMLButtonElement | null>(null)
+let previousFocus: HTMLElement | null = null
+
+function dialogId(suffix: string): string {
+  return `${props.title.replace(/\s+/g, '-').toLowerCase()}-${suffix}`
+}
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && !props.busy) {
+    event.preventDefault()
+    emit('cancel')
+    return
+  }
+  if (event.key !== 'Tab' || !dialog.value) return
+
+  const focusable = Array.from(
+    dialog.value.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (!first || !last) return
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (isOpen) {
+      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      await nextTick()
+      cancelButton.value?.focus()
+    } else {
+      previousFocus?.focus()
+      previousFocus = null
+    }
+  },
+)
+onBeforeUnmount(() => previousFocus?.focus())
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="dialog-backdrop" role="presentation" @click.self="emit('cancel')">
       <section
+        ref="dialog"
         class="dialog"
         role="dialog"
         aria-modal="true"
-        :aria-labelledby="`${title.replace(/\s+/g, '-').toLowerCase()}-title`"
+        :aria-labelledby="dialogId('title')"
+        :aria-describedby="dialogId('description')"
+        @keydown="handleKeydown"
       >
         <div class="dialog__marker" :class="{ danger: tone === 'danger' }" aria-hidden="true"></div>
         <div class="dialog__body">
-          <h2 :id="`${title.replace(/\s+/g, '-').toLowerCase()}-title`">{{ title }}</h2>
-          <p>{{ message }}</p>
+          <h2 :id="dialogId('title')">{{ title }}</h2>
+          <p :id="dialogId('description')">{{ message }}</p>
         </div>
         <div class="dialog__actions">
-          <button type="button" class="btn secondary" :disabled="busy" @click="emit('cancel')">
+          <button
+            ref="cancelButton"
+            type="button"
+            class="btn secondary"
+            :disabled="busy"
+            @click="emit('cancel')"
+          >
             {{ cancelLabel }}
           </button>
           <button

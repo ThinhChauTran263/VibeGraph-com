@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import SubscriptionView from '../SubscriptionView.vue'
 
 describe('SubscriptionView', () => {
-  it('renders current plan without a hardcoded plan catalog', async () => {
+  it('renders the real current plan without a hardcoded user plan catalog', async () => {
     const wrapper = mount(SubscriptionView, {
       global: {
         plugins: [
@@ -13,12 +13,14 @@ describe('SubscriptionView', () => {
             initialState: {
               account: {
                 usage: {
-                  usedBytes: 0,
-                  limitBytes: 500 * 1024 * 1024,
-                  remainingBytes: 500 * 1024 * 1024,
+                  usedMb: 125,
+                  limitMb: 500,
+                  remainingMb: 375,
                   planCode: 'PRO',
                   planName: 'Pro',
-                  quotaOverrideBytes: null,
+                  creditsUsed: 200,
+                  creditsLimit: 1000,
+                  creditsRemaining: 800,
                 },
               },
             },
@@ -32,8 +34,22 @@ describe('SubscriptionView', () => {
     expect(wrapper.text()).toContain('Pro')
     expect(wrapper.text()).toContain('PRO')
     expect(wrapper.text()).toContain('500 MB')
+    expect(wrapper.text()).toContain('375 MB')
+    expect(wrapper.text()).toContain('800 credits')
     expect(wrapper.text()).not.toContain('Pro Plus')
-    expect(wrapper.text()).not.toContain('Enterprise')
-    expect(wrapper.text()).toContain('The user app does not expose a public plan catalog')
+    expect(wrapper.text()).toContain('A public plan catalog is not available')
+    expect(wrapper.text()).toContain('Enterprise contact sales')
+    expect(wrapper.text()).toContain('remain unavailable')
+  })
+
+  it('shows an honest unavailable state while account usage is missing', async () => {
+    const wrapper = mount(SubscriptionView, {
+      global: {
+        plugins: [createTestingPinia({ createSpy: vi.fn, initialState: { account: {} } })],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Unavailable')
+    expect(wrapper.text()).not.toContain('NaN')
   })
 })
