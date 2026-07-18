@@ -184,6 +184,31 @@ class AccountApiKeyControllerTest {
     }
 
     @Test
+    @DisplayName("PATCH /api/account/api-keys/{id}/enable enables owned user-disabled key")
+    void enable_ownedUserDisabledKey_succeeds() throws Exception {
+        UUID keyId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/account/api-keys/" + keyId + "/enable"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(apiKeyService).enableForCurrentUser(keyId);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/account/api-keys/{id}/enable returns 403 for admin locked key")
+    void enable_adminLockedKey_returnsForbidden() throws Exception {
+        UUID keyId = UUID.randomUUID();
+        Mockito.doThrow(new ApiKeyAdminLockedException("Administrator-locked API keys cannot be changed"))
+                .when(apiKeyService).enableForCurrentUser(keyId);
+
+        mockMvc.perform(patch("/api/account/api-keys/" + keyId + "/enable"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("API_KEY_ADMIN_LOCKED"));
+    }
+
+    @Test
     @DisplayName("PATCH /api/account/api-keys/{id}/disable returns 403 for non-owned key")
     void disable_nonOwnedKey_returnsForbidden() throws Exception {
         UUID keyId = UUID.randomUUID();

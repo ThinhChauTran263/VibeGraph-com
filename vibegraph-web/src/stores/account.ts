@@ -263,7 +263,27 @@ export const useAccountStore = defineStore('account', () => {
     await accountApi.disableApiKey(id)
     const disabledAt = new Date().toISOString()
     apiKeys.value = apiKeys.value.map((key) =>
-      key.id === id ? { ...key, disabledAt, disabled: true } : key,
+      key.id === id
+        ? { ...key, disabledAt, disabledBy: 'USER', disabledReason: null, disabled: true }
+        : key,
+    )
+  }
+
+  async function enableApiKey(id: string): Promise<void> {
+    await accountApi.enableApiKey(id)
+    apiKeys.value = apiKeys.value.map((key) =>
+      key.id === id
+        ? {
+            ...key,
+            disabledAt: null,
+            disabledBy: null,
+            disabledReason: null,
+            lockedAt: null,
+            lockedBy: null,
+            locked: false,
+            disabled: false,
+          }
+        : key,
     )
   }
 
@@ -364,6 +384,7 @@ export const useAccountStore = defineStore('account', () => {
     fetchApiKeys,
     createApiKey,
     disableApiKey,
+    enableApiKey,
     deleteApiKey,
     fetchReports,
     createReport,

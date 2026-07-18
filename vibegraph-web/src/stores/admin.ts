@@ -19,13 +19,19 @@ import type {
   AdminCreditOverview,
   AdminRequestEvent,
   AdminRequestAggregate,
+  AdminSuspiciousNetwork,
   AdminIpBlock,
   AdminIpBlockRequest,
   AdminAuditLog,
   AdminAuditRetention,
   AdminAuditLogQuery,
 } from '../types/api'
-import { adminApi } from '../lib/api'
+import { adminApi, api } from '../lib/api'
+
+export type SecurityLiveStatus = 'connected' | 'reconnecting' | 'paused'
+
+const SECURITY_EVENT_LIMIT = 100
+const SECURITY_AGGREGATE_DEBOUNCE_MS = 1500
 
 export const useAdminStore = defineStore('admin', () => {
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -44,8 +50,9 @@ export const useAdminStore = defineStore('admin', () => {
   const announcements = ref<AdminAnnouncement[]>([])
   const securityEvents = ref<AdminSecurityEvent[]>([])
   const requestEvents = ref<AdminRequestEvent[]>([])
+  const securityLiveStatus = ref<SecurityLiveStatus>('paused')
   const topUsers = ref<AdminRequestAggregate[]>([])
-  const topIps = ref<AdminRequestAggregate[]>([])
+  const topIps = ref<AdminSuspiciousNetwork[]>([])
   const ipBlocks = ref<AdminIpBlock[]>([])
   const creditOverviews = ref<Record<string, AdminCreditOverview>>({})
   const auditLogs = ref<AdminAuditLog[]>([])
@@ -73,6 +80,8 @@ export const useAdminStore = defineStore('admin', () => {
     pageNumber: 0,
     pageSize: 20,
   })
+  let securityEventSource: EventSource | null = null
+  let securityAggregateRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   // ─── Overview ─────────────────────────────────────────────────────────────────
 
@@ -371,6 +380,94 @@ export const useAdminStore = defineStore('admin', () => {
     })
   }
 
+  async function refreshSecurityAggregates(): Promise<void> {
+    const results = await Promise.allSettled([
+      adminApi.listTopUsers(securityLimits.topMinutes, securityLimits.topLimit),
+      adminApi.listTopIps(securityLimits.topMinutes, securityLimits.topLimit),
+    ])
+    if (results[0]?.status === 'fulfilled') topUsers.value = results[0].value
+    if (results[1]?.status === 'fulfilled') topIps.value = results[1].value
+  }
+
+  function startSecurityStream(): void {
+    if (securityEventSource) return
+    if (typeof EventSource === 'undefined') {
+      securityLiveStatus.value = 'paused'
+      return
+    }
+    securityLiveStatus.value = 'reconnecting'
+    const source = new EventSource(`${api.baseUrl}/api/admin/security/stream`, {
+      withCredentials: true,
+    })
+    securityEventSource = source
+    source.onopen = () => {
+      if (securityEventSource === source) securityLiveStatus.value = 'connected'
+    }
+    source.onerror = () => {
+      if (securityEventSource !== source) return
+      securityLiveStatus.value =
+        source.readyState === EventSource.CLOSED ? 'paused' : 'reconnecting'
+    }
+    source.addEventListener('request-event', handleLiveRequestEvent)
+  }
+
+  function stopSecurityStream(): void {
+    securityEventSource?.close()
+    securityEventSource = null
+    if (securityAggregateRefreshTimer) clearTimeout(securityAggregateRefreshTimer)
+    securityAggregateRefreshTimer = null
+    securityLiveStatus.value = 'paused'
+  }
+
+  function handleLiveRequestEvent(event: Event): void {
+    const data = 'data' in event && typeof event.data === 'string' ? event.data : null
+    if (!data) return
+    try {
+      const parsed: unknown = JSON.parse(data)
+      if (!isAdminRequestEvent(parsed)) return
+      requestEvents.value = [
+        parsed,
+        ...requestEvents.value.filter((existing) => existing.id !== parsed.id),
+      ].slice(0, SECURITY_EVENT_LIMIT)
+      scheduleSecurityAggregateRefresh()
+    } catch {
+      // Ignore malformed stream frames while keeping the connection alive.
+    }
+  }
+
+  function scheduleSecurityAggregateRefresh(): void {
+    if (securityAggregateRefreshTimer) clearTimeout(securityAggregateRefreshTimer)
+    securityAggregateRefreshTimer = setTimeout(() => {
+      securityAggregateRefreshTimer = null
+      void refreshSecurityAggregates()
+    }, SECURITY_AGGREGATE_DEBOUNCE_MS)
+  }
+
+  function isAdminRequestEvent(value: unknown): value is AdminRequestEvent {
+    if (!isRecord(value)) return false
+    return (
+      typeof value.id === 'string' &&
+      isNullableString(value.userId) &&
+      isNullableString(value.userDisplayName) &&
+      isNullableString(value.userEmail) &&
+      isNullableString(value.apiKeyRef) &&
+      isNullableString(value.ipAddress) &&
+      typeof value.route === 'string' &&
+      typeof value.method === 'string' &&
+      typeof value.status === 'number' &&
+      typeof value.eventType === 'string' &&
+      typeof value.occurredAt === 'string'
+    )
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null
+  }
+
+  function isNullableString(value: unknown): value is string | null {
+    return value === null || typeof value === 'string'
+  }
+
   async function refreshSecurity(): Promise<void> {
     const [events, requestRows, usersByRate, ipsByRate, blocks] = await Promise.all([
       adminApi.listSecurityEvents(securityLimits.events),
@@ -396,7 +493,7 @@ export const useAdminStore = defineStore('admin', () => {
         adminApi.listTopIps(securityLimits.topMinutes, securityLimits.topLimit),
         adminApi.listIpBlocks(securityLimits.ipBlocks),
       ])
-      const labels = ['security events', 'request events', 'top users', 'top IPs', 'IP blocks']
+      const labels = ['security events', 'request events', 'top users', 'suspicious networks', 'IP blocks']
       if (results[0]?.status === 'fulfilled') securityEvents.value = results[0].value
       if (results[1]?.status === 'fulfilled') requestEvents.value = results[1].value
       if (results[2]?.status === 'fulfilled') topUsers.value = results[2].value
@@ -508,6 +605,7 @@ export const useAdminStore = defineStore('admin', () => {
     announcements,
     securityEvents,
     requestEvents,
+    securityLiveStatus,
     topUsers,
     topIps,
     ipBlocks,
@@ -558,6 +656,9 @@ export const useAdminStore = defineStore('admin', () => {
     fetchTopUsers,
     fetchTopIps,
     fetchIpBlocks,
+    refreshSecurityAggregates,
+    startSecurityStream,
+    stopSecurityStream,
     fetchSecurityData,
     refreshSecurity,
     createIpBlock,

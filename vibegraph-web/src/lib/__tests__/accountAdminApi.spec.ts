@@ -84,6 +84,19 @@ describe('Phase 7 account API contract', () => {
       expect(init?.headers).not.toHaveProperty('Authorization')
     }
   })
+
+  it('uses the real owner API key enable route', async () => {
+    fetchMock.mockResolvedValue(success(null))
+
+    await accountApi.enableApiKey('key/1')
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/api\/account\/api-keys\/key%2F1\/enable$/,
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('PATCH')
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe('include')
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization')
+  })
 })
 
 describe('Phase 7 admin security and audit API contract', () => {
@@ -123,7 +136,7 @@ describe('Phase 7 admin security and audit API contract', () => {
     const urls = fetchMock.mock.calls.map(([url]) => String(url))
     expect(urls[0]).toMatch(/request-events\?limit=75$/)
     expect(urls[1]).toMatch(/top-users\?minutes=30&limit=5$/)
-    expect(urls[2]).toMatch(/top-ips\?minutes=45&limit=7$/)
+    expect(urls[2]).toMatch(/suspicious-networks\?minutes=45&limit=7$/)
     expect(urls[3]).toMatch(/\/api\/admin\/security\/ip-blocks$/)
     expect(urls[4]).toMatch(/\/api\/admin\/security\/ip-blocks\/block%2F1$/)
     expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(JSON.stringify(block))

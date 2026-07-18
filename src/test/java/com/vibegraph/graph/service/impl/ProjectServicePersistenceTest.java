@@ -3,6 +3,8 @@ package com.vibegraph.graph.service.impl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,7 +48,15 @@ class ProjectServicePersistenceTest {
     void recoversPersistedProjectAfterRestart() throws IOException {
         Path source = Files.createDirectories(workspaceRoot.resolve("proj-x/source"));
         when(graphRepository.findProject("proj-x"))
-                .thenReturn(new ProjectMetadata("proj-x", "Demo Repo", source.toString()));
+                .thenReturn(new ProjectMetadata(
+                        "proj-x",
+                        "Demo Repo",
+                        source.toString(),
+                        Instant.parse("2026-07-17T10:00:00Z"),
+                        Instant.parse("2026-07-17T11:15:00Z"),
+                        24,
+                        180,
+                        320));
 
         ProjectResponse recovered = service.getProject("proj-x");
 
@@ -54,6 +64,39 @@ class ProjectServicePersistenceTest {
         assertThat(recovered.getName()).isEqualTo("Demo Repo");
         assertThat(recovered.getRootPath()).isEqualTo(source.toString());
         assertThat(recovered.getStatus()).isEqualTo("ANALYZED");
+        assertThat(recovered.getTotalFiles()).isEqualTo(24);
+        assertThat(recovered.getTotalNodes()).isEqualTo(180);
+        assertThat(recovered.getTotalEdges()).isEqualTo(320);
+        assertThat(recovered.getCreatedAt()).isEqualTo(Instant.parse("2026-07-17T10:00:00Z"));
+        assertThat(recovered.getLastAnalyzedAt()).isEqualTo(Instant.parse("2026-07-17T11:15:00Z"));
+    }
+
+    @Test
+    @DisplayName("lists recovered persisted projects with stats after restart")
+    void listsRecoveredPersistedProjectsWithStats() throws IOException {
+        Path source = Files.createDirectories(workspaceRoot.resolve("proj-y/source"));
+        when(graphRepository.findAllProjects())
+                .thenReturn(List.of(new ProjectMetadata(
+                        "proj-y",
+                        "Demo Repo Y",
+                        source.toString(),
+                        Instant.parse("2026-07-17T12:00:00Z"),
+                        Instant.parse("2026-07-17T12:30:00Z"),
+                        13,
+                        91,
+                        140)));
+
+        List<ProjectResponse> projects = service.listProjects();
+
+        assertThat(projects).singleElement()
+                .satisfies(project -> {
+                    assertThat(project.getId()).isEqualTo("proj-y");
+                    assertThat(project.getStatus()).isEqualTo("ANALYZED");
+                    assertThat(project.getTotalFiles()).isEqualTo(13);
+                    assertThat(project.getTotalNodes()).isEqualTo(91);
+                    assertThat(project.getTotalEdges()).isEqualTo(140);
+                    assertThat(project.getLastAnalyzedAt()).isEqualTo(Instant.parse("2026-07-17T12:30:00Z"));
+                });
     }
 
     @Test

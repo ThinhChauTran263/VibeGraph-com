@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import ProjectsView from '../ProjectsView.vue'
+import { useProjectStore } from '@/stores/project'
 
 const apiMocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -63,7 +64,7 @@ function makeProject(id: string, name: string) {
   }
 }
 
-async function mountView(path = '/projects') {
+async function mountView(path = '/projects', pinia = createTestingPinia({ createSpy: vi.fn })) {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
@@ -75,7 +76,7 @@ async function mountView(path = '/projects') {
   await router.isReady()
   const wrapper = mount(ProjectsView, {
     global: {
-      plugins: [router, createTestingPinia({ createSpy: vi.fn })],
+      plugins: [router, pinia],
       stubs: {
         ImportProjectPanel: ImportProjectPanelStub,
         AdminConfirmDialog: ConfirmDialogStub,
@@ -83,7 +84,7 @@ async function mountView(path = '/projects') {
     },
   })
   await flushPromises()
-  return { wrapper, router }
+  return { wrapper, router, pinia }
 }
 
 describe('ProjectsView', () => {
@@ -107,12 +108,22 @@ describe('ProjectsView', () => {
     expect(wrapper.find('[data-test="import-panel"]').exists()).toBe(false)
 
     await wrapper.get('button[data-test="new-repository"]').trigger('click')
-    expect(wrapper.get('[data-test="import-panel"]').text()).toContain('Import panel')
-    expect(
-      wrapper.get('section[aria-label="Imported repositories"]').element.compareDocumentPosition(
-        wrapper.get('[data-test="import-panel"]').element,
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    expect(dialog.get('[data-test="import-panel"]').text()).toContain('Import panel')
+  })
+
+  it('uses the cached repository list when returning to the page', async () => {
+    const { wrapper, pinia } = await mountView()
+    const projectStore = useProjectStore()
+
+    apiMocks.list.mockClear()
+    wrapper.unmount()
+    const cached = await mountView('/projects', pinia)
+
+    expect(projectStore.projectsLoaded).toBe(true)
+    expect(apiMocks.list).not.toHaveBeenCalled()
+    expect(cached.wrapper.text()).toContain('VibeGraph Web')
   })
 
   it('reacts to the quick-action import query while already mounted', async () => {
@@ -120,7 +131,9 @@ describe('ProjectsView', () => {
 
     await router.push({ name: 'projects', query: { import: 'new' } })
     await flushPromises()
-    expect(wrapper.get('[data-test="import-panel"]').text()).toContain('Import panel')
+    expect(wrapper.get('[role="dialog"] [data-test="import-panel"]').text()).toContain(
+      'Import panel',
+    )
 
     await router.push({ name: 'projects' })
     await flushPromises()
@@ -172,7 +185,7 @@ describe('ProjectsView', () => {
     const { wrapper, router } = await mountView('/projects?import=new')
 
     expect(wrapper.get('button[data-test="new-repository"]').attributes()).toHaveProperty('disabled')
-    expect(wrapper.text()).toContain('Repository import is blocked')
+    expect(wrapper.text()).toContain('Project import is blocked')
     expect(wrapper.find('[data-test="import-panel"]').exists()).toBe(false)
     await router.push({ name: 'projects', query: { import: 'new' } })
     await flushPromises()

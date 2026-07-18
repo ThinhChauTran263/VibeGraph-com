@@ -196,16 +196,35 @@ describe('ApiKeysView', () => {
     expect(store.deleteApiKey).toHaveBeenCalledWith('key-1')
   })
 
+  it('lets users enable their own disabled API key', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    await flushPromises()
+
+    await wrapper.get('button[data-test="enable-key-key-2"]').trigger('click')
+    await flushPromises()
+
+    expect(store.enableApiKey).toHaveBeenCalledWith('key-2')
+  })
+
   it('prevents deletion and replacement of an admin-locked key', async () => {
     const { wrapper, pinia } = mountView()
     const store = useAccountStore(pinia)
-    store.apiKeys[0] = { ...store.apiKeys[0]!, locked: true, lockedBy: 'admin@example.com' }
+    store.apiKeys[0] = {
+      ...store.apiKeys[0]!,
+      disabled: true,
+      disabledAt: '2026-07-17T09:00:00Z',
+      disabledBy: 'ADMIN',
+      locked: true,
+      lockedBy: 'admin@example.com',
+    }
     await flushPromises()
 
     expect(wrapper.text()).toContain('Admin locked')
     expect(wrapper.get('button[data-test="delete-key-key-1"]').attributes()).toHaveProperty(
       'disabled',
     )
+    expect(wrapper.find('button[data-test="enable-key-key-1"]').exists()).toBe(false)
     await wrapper.get('button[data-test="create-api-key"]').trigger('click')
     await wrapper.get('#key-name').setValue('Replacement')
     await wrapper.get('#key-project').setValue('project-1')

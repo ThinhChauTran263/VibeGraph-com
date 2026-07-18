@@ -62,6 +62,15 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE ApiKey k
+            SET k.disabledAt = NULL, k.disabledBy = NULL, k.disabledReason = NULL, k.lockedBy = NULL
+            WHERE k.id = :id AND k.userId = :userId AND k.deletedAt IS NULL
+              AND k.disabledBy = com.vibegraph.auth.domain.ApiKeyDisabledBy.USER
+            """)
+    int enableByOwnerIfUserDisabled(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ApiKey k
             SET k.disabledAt = :disabledAt, k.disabledBy = com.vibegraph.auth.domain.ApiKeyDisabledBy.ADMIN,
                 k.disabledReason = :reason, k.lockedBy = :lockedBy
             WHERE k.id = :id AND k.deletedAt IS NULL

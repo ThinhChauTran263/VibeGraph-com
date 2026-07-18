@@ -18,6 +18,7 @@ import com.vibegraph.auth.service.AdminFeatureFlagService;
 import com.vibegraph.auth.service.AdminPlanManagementService;
 import com.vibegraph.auth.service.AdminPricingManagementService;
 import com.vibegraph.auth.service.AdminSecurityMonitorService;
+import com.vibegraph.auth.service.AdminSecurityRequestEventStream;
 import com.vibegraph.auth.service.AdminService;
 import com.vibegraph.auth.service.AdminStorageService;
 import com.vibegraph.auth.service.CreditBalanceService;
@@ -26,6 +27,7 @@ import com.vibegraph.auth.service.JwtService;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 
 @SpringBootTest(classes = AdminSecurityIT.TestConfig.class)
 @DisplayName("Admin Security Integration")
@@ -71,6 +73,7 @@ class AdminSecurityIT {
     @MockitoBean private AdminFeatureFlagService adminFeatureFlagService;
     @MockitoBean private AdminAnnouncementService adminAnnouncementService;
     @MockitoBean private AdminSecurityMonitorService adminSecurityMonitorService;
+    @MockitoBean private AdminSecurityRequestEventStream adminSecurityRequestEventStream;
     @MockitoBean private AdminStorageService adminStorageService;
     @MockitoBean private CreditBalanceService creditBalanceService;
     @MockitoBean private JwtService jwtService;
@@ -175,5 +178,32 @@ class AdminSecurityIT {
                         .contentType("application/json")
                         .content("{\"key\":\"registration\",\"scope\":\"GLOBAL\",\"displayName\":\"Registration\",\"enabled\":true}"))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/security/stream with USER role returns 403")
+    void securityStream_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/security/stream"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("GET /api/admin/security/stream with ADMIN role opens SSE")
+    void securityStream_adminRole_opensSse() throws Exception {
+        org.mockito.Mockito.when(adminSecurityRequestEventStream.subscribe())
+                .thenReturn(new org.springframework.web.servlet.mvc.method.annotation.SseEmitter());
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/security/stream"))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
     }
 }

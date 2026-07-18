@@ -4,6 +4,7 @@ import { useAccountStore } from '@/stores/account'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { ApiKeyCreated } from '@/types/api'
+import { accountApi } from '@/lib/api'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
 const account = useAccountStore(),
   open = ref(false),
@@ -13,6 +14,7 @@ const account = useAccountStore(),
   secret = ref<ApiKeyCreated | null>(null),
   disableId = ref<string | null>(null),
   disabling = ref(false),
+  enablingId = ref<string | null>(null),
   deleteId = ref<string | null>(null),
   deleting = ref(false),
   projectsLoaded = ref(false),
@@ -98,6 +100,24 @@ async function disable() {
     disabling.value = false
   }
 }
+async function enable(id: string) {
+  if (enablingId.value) return
+  enablingId.value = id
+  message.value = ''
+  try {
+    if (typeof account.enableApiKey === 'function') {
+      await account.enableApiKey(id)
+    } else {
+      await accountApi.enableApiKey(id)
+      await account.fetchApiKeys()
+    }
+    message.value = 'API key enabled.'
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : 'Could not enable this API key.'
+  } finally {
+    enablingId.value = null
+  }
+}
 async function remove() {
   if (!deleteId.value || deleting.value) return
   deleting.value = true
@@ -155,7 +175,7 @@ async function copy() {
       <h2>Your keys</h2>
       <div v-if="!account.apiKeys.length" class="empty">No API keys created.</div>
       <article v-for="key in account.apiKeys" :key="key.id">
-        <div>
+        <div class="key-main">
           <strong>{{ key.name }}</strong
           ><code>{{ key.keyPrefix }}</code>
         </div>
@@ -169,6 +189,16 @@ async function copy() {
         </span
         ><time>{{ new Date(key.createdAt).toLocaleDateString() }}</time
         ><div class="key-actions">
+          <button
+            v-if="key.disabled && key.disabledBy !== 'ADMIN' && !key.locked"
+            type="button"
+            :data-test="`enable-key-${key.id}`"
+            :disabled="enablingId === key.id"
+            :aria-label="`Enable API key ${key.name}`"
+            @click="enable(key.id)"
+          >
+            {{ enablingId === key.id ? 'Enabling...' : 'Enable' }}
+          </button>
           <button
             v-if="!key.disabled"
             type="button"
@@ -344,8 +374,10 @@ select {
 }
 .list article {
   display: grid;
-  grid-template-columns: 1.2fr 1.2fr 0.6fr 0.7fr auto;
-  align-items: start;
+  grid-template-columns:
+    minmax(12rem, 1.2fr) minmax(12rem, 1.2fr) minmax(8.5rem, 0.6fr)
+    minmax(7rem, 0.6fr) 12.5rem;
+  align-items: center;
   gap: var(--vg-space-3);
   min-height: 72px;
   padding: var(--vg-space-3) var(--vg-space-4);
@@ -356,19 +388,19 @@ select {
   margin-top: 0;
   line-height: 1.35;
 }
-.list article div {
+.key-main {
   display: grid;
   grid-template-rows: 20px 18px;
   align-items: start;
   gap: 2px;
   margin-top: 0;
 }
-.list article div strong,
-.list article div code {
+.key-main strong,
+.key-main code {
   line-height: inherit;
 }
 .list article button {
-  align-self: start;
+  align-self: center;
   margin-top: 0;
 }
 .list strong {
@@ -394,9 +426,22 @@ select {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
+.key-actions {
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 0.5rem;
+  width: 12.5rem;
+}
+.key-actions button {
+  min-width: 86px;
+  text-align: center;
+}
 .key-state {
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
+  min-height: 44px;
 }
 .key-state small {
   color: var(--vg-text-muted);
@@ -472,8 +517,13 @@ select {
   .list article {
     grid-template-columns: 1fr 1fr;
   }
-  .list article div {
+  .key-main {
     grid-column: 1/-1;
+  }
+  .key-actions {
+    width: auto;
+    justify-self: start;
+    justify-content: flex-start;
   }
 }
 </style>

@@ -97,6 +97,28 @@ public class ApiKeyService {
     }
 
     @Transactional
+    public void enableForCurrentUser(UUID keyId) {
+        UUID userId = currentUserEntity().getId();
+        ApiKey apiKey = apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)
+                .orElseThrow(() -> new ForbiddenException("Access denied"));
+        if (apiKey.getDisabledBy() == ApiKeyDisabledBy.ADMIN) {
+            throw new ApiKeyAdminLockedException("Administrator-locked API keys cannot be changed");
+        }
+        if (apiKey.getDisabledAt() == null) {
+            return;
+        }
+        if (apiKey.getDisabledBy() != ApiKeyDisabledBy.USER) {
+            throw new ForbiddenException("API key cannot be enabled by owner");
+        }
+        int enabled = apiKeyRepository.enableByOwnerIfUserDisabled(keyId, userId);
+        if (enabled == 0) {
+            throw new ForbiddenException("API key cannot be enabled by owner");
+        }
+        auditService.recordCurrentUser("API_KEY_ENABLE", userId, "API_KEY", keyId.toString(),
+                Map.of("projectId", safeProjectId(apiKey)));
+    }
+
+    @Transactional
     public void disableForAnyUser(UUID keyId) {
         assertCurrentUserIsAdmin();
         ApiKey apiKey = apiKeyRepository.findByIdAndDeletedAtIsNull(keyId)

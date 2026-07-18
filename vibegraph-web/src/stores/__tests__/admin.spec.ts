@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAdminStore } from '../admin'
 import * as apiModule from '../../lib/api'
@@ -64,10 +64,60 @@ vi.mock('../../lib/api', async (importOriginal) => {
 
 const mockAdminApi = vi.mocked(apiModule.adminApi)
 
+class MockEventSource {
+  static readonly instances: MockEventSource[] = []
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+  readonly listeners = new Map<string, EventListener[]>()
+  readonly close = vi.fn(() => {
+    this.readyState = MockEventSource.CLOSED
+  })
+  readyState = MockEventSource.CONNECTING
+  onopen: ((event: Event) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+
+  constructor(
+    readonly url: string,
+    readonly options?: EventSourceInit,
+  ) {
+    MockEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: EventListener): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+  }
+
+  emitOpen(): void {
+    this.readyState = MockEventSource.OPEN
+    this.onopen?.(new Event('open'))
+  }
+
+  emitError(): void {
+    this.onError(new Event('error'))
+  }
+
+  emitRequest(data: string): void {
+    const event = new MessageEvent('request-event', { data })
+    for (const listener of this.listeners.get('request-event') ?? []) listener(event)
+  }
+
+  private onError(event: Event): void {
+    this.onerror?.(event)
+  }
+}
+
 describe('Admin Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    MockEventSource.instances.length = 0
+    vi.stubGlobal('EventSource', MockEventSource)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('initializes with default state', () => {
@@ -94,6 +144,8 @@ describe('Admin Store', () => {
       {
         id: 'request-1',
         userId: 'user-1',
+        userDisplayName: 'Alice',
+        userEmail: 'alice@example.com',
         apiKeyRef: null,
         ipAddress: '203.0.113.10',
         route: '/api/projects',
@@ -104,7 +156,16 @@ describe('Admin Store', () => {
       },
     ])
     mockAdminApi.listTopUsers.mockResolvedValueOnce([])
-    mockAdminApi.listTopIps.mockResolvedValueOnce([])
+    mockAdminApi.listTopIps.mockResolvedValueOnce([
+      {
+        ipAddress: '203.0.113.10',
+        minuteBucket: '2026-07-17T09:00:00Z',
+        totalRequests: 42,
+        uniqueUsers: 2,
+        uniqueApiKeys: 1,
+        breakdown: [],
+      },
+    ])
     mockAdminApi.listIpBlocks.mockResolvedValueOnce([])
 
     const store = useAdminStore()
@@ -112,7 +173,112 @@ describe('Admin Store', () => {
 
     expect(mockAdminApi.listRequestEvents).toHaveBeenCalledWith(75)
     expect(store.requestEvents[0]?.status).toBe(429)
+    expect(store.topIps[0]?.uniqueUsers).toBe(2)
     expect(store.loading).toBe(false)
+  })
+
+  it('reports suspicious networks independently when their aggregate request fails', async () => {
+    mockAdminApi.listSecurityEvents.mockResolvedValueOnce([])
+    mockAdminApi.listRequestEvents.mockResolvedValueOnce([])
+    mockAdminApi.listTopUsers.mockResolvedValueOnce([])
+    mockAdminApi.listTopIps.mockRejectedValueOnce(new Error('Network aggregate unavailable'))
+    mockAdminApi.listIpBlocks.mockResolvedValueOnce([])
+
+    const store = useAdminStore()
+
+    await expect(store.fetchSecurityData()).resolves.toContain('suspicious networks')
+  })
+
+  it('prepends live request events and keeps at most 100 rows', () => {
+    const store = useAdminStore()
+    store.requestEvents = Array.from({ length: 100 }, (_, index) => ({
+      id: `existing-${index}`,
+      userId: null,
+      userDisplayName: null,
+      userEmail: null,
+      apiKeyRef: null,
+      ipAddress: '203.0.113.10',
+      route: '/api/projects',
+      method: 'GET',
+      status: 200,
+      eventType: 'REQUEST',
+      occurredAt: `2026-07-19T10:${String(index).padStart(2, '0')}:00Z`,
+    }))
+
+    store.startSecurityStream()
+    const source = MockEventSource.instances[0]
+    source?.emitRequest(JSON.stringify({
+      id: 'live-1',
+      userId: 'user-1',
+      userDisplayName: 'Alice',
+      userEmail: 'alice@example.com',
+      apiKeyRef: 'vbg_live1****',
+      ipAddress: '203.0.113.11',
+      route: '/api/projects',
+      method: 'POST',
+      status: 201,
+      eventType: 'REQUEST',
+      occurredAt: '2026-07-19T11:00:00Z',
+    }))
+
+    expect(store.requestEvents).toHaveLength(100)
+    expect(store.requestEvents[0]?.id).toBe('live-1')
+    expect(store.requestEvents.some((event) => event.id === 'existing-0')).toBe(true)
+    expect(store.requestEvents.some((event) => event.id === 'existing-99')).toBe(false)
+  })
+
+  it('debounces aggregate refresh while request events arrive in a burst', async () => {
+    vi.useFakeTimers()
+    mockAdminApi.listTopUsers.mockResolvedValue([])
+    mockAdminApi.listTopIps.mockResolvedValue([])
+    const store = useAdminStore()
+    store.startSecurityStream()
+    const source = MockEventSource.instances[0]
+    const event = {
+      id: 'live-debounce',
+      userId: null,
+      userDisplayName: null,
+      userEmail: null,
+      apiKeyRef: null,
+      ipAddress: '203.0.113.10',
+      route: '/api/projects',
+      method: 'GET',
+      status: 200,
+      eventType: 'REQUEST',
+      occurredAt: '2026-07-19T11:00:00Z',
+    }
+    source?.emitRequest(JSON.stringify(event))
+    source?.emitRequest(JSON.stringify({ ...event, id: 'live-debounce-2' }))
+
+    await vi.advanceTimersByTimeAsync(1499)
+    expect(mockAdminApi.listTopUsers).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(mockAdminApi.listTopUsers).toHaveBeenCalledTimes(1)
+    expect(mockAdminApi.listTopIps).toHaveBeenCalledTimes(1)
+  })
+
+  it('tracks reconnecting and paused states and closes the stream on stop', () => {
+    const store = useAdminStore()
+    store.startSecurityStream()
+    const source = MockEventSource.instances[0]
+    source?.emitOpen()
+    expect(store.securityLiveStatus).toBe('connected')
+    source?.emitError()
+    expect(store.securityLiveStatus).toBe('reconnecting')
+
+    store.stopSecurityStream()
+
+    expect(source?.close).toHaveBeenCalledTimes(1)
+    expect(store.securityLiveStatus).toBe('paused')
+  })
+
+  it('pauses live state when EventSource is unavailable', () => {
+    vi.stubGlobal('EventSource', undefined)
+    const store = useAdminStore()
+
+    store.startSecurityStream()
+
+    expect(store.securityLiveStatus).toBe('paused')
   })
 
   it('refreshes only IP blocks after create, update, and delete mutations', async () => {

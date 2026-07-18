@@ -11,8 +11,7 @@ import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featur
 const route = useRoute(),
   router = useRouter(),
   projectStore = useProjectStore()
-const projects = ref<Project[]>([]),
-  errorMsg = ref(''),
+const errorMsg = ref(''),
   showImport = ref(route.query.import === 'new'),
   deleteTarget = ref<Project | null>(null),
   deleting = ref(false)
@@ -24,9 +23,10 @@ const importDisabled = computed(
 )
 const importReason = computed(() =>
   importDisabled.value
-    ? 'Repository import is blocked until the account capability contract reports an enabled method.'
+    ? 'Project import is blocked until the account capability contract reports an enabled method.'
     : null,
 )
+const projects = computed(() => projectStore.projects)
 watch(
   () => route.query.import,
   (importQuery) => {
@@ -35,8 +35,13 @@ watch(
 )
 
 async function loadProjects() {
+  if (projectStore.projectsLoaded) return
+  await refreshProjects()
+}
+async function refreshProjects() {
   try {
-    projects.value = await projectApi.list()
+    projectStore.projects = await projectApi.list()
+    projectStore.projectsLoaded = true
     errorMsg.value = ''
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to load repositories.'
@@ -49,6 +54,11 @@ function open(project: Project) {
 }
 function imported(project: Project) {
   showImport.value = false
+  projectStore.projects = [
+    project,
+    ...projectStore.projects.filter((item) => item.id !== project.id),
+  ]
+  projectStore.projectsLoaded = true
   open(project)
 }
 async function confirmDelete() {
@@ -57,7 +67,7 @@ async function confirmDelete() {
   deleting.value = true
   try {
     await projectApi.remove(projectId)
-    projects.value = projects.value.filter((item) => item.id !== projectId)
+    projectStore.projects = projectStore.projects.filter((item) => item.id !== projectId)
     deleteTarget.value = null
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to delete repository.'
@@ -156,16 +166,35 @@ onMounted(() => {
         New Repository
       </button>
     </section>
-    <section v-if="showImport && !importDisabled" class="import-section">
-      <ImportProjectPanel
-        :disabled-methods="{
-          local: local.enabled ? null : local.reason,
-          archive: archive.enabled ? null : archive.reason,
-          github: github.enabled ? null : github.reason,
-        }"
-        @imported="imported"
-      />
-    </section>
+    <div
+      v-if="showImport && !importDisabled"
+      class="import-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="import-modal-title"
+      @click.self="showImport = false"
+      @keydown.esc="showImport = false"
+    >
+      <section class="import-modal__panel">
+        <h2 id="import-modal-title" class="sr-only">Import a project</h2>
+        <button
+          class="icon-button import-modal__close"
+          type="button"
+          aria-label="Close import dialog"
+          @click="showImport = false"
+        >
+          <AppIcon name="close" :size="18" />
+        </button>
+        <ImportProjectPanel
+          :disabled-methods="{
+            local: local.enabled ? null : local.reason,
+            archive: archive.enabled ? null : archive.reason,
+            github: github.enabled ? null : github.reason,
+          }"
+          @imported="imported"
+        />
+      </section>
+    </div>
     <AdminConfirmDialog
       :open="Boolean(deleteTarget)"
       title="Delete repository"
@@ -213,6 +242,15 @@ h2 {
 p {
   color: var(--vg-text-muted);
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 button {
   font: inherit;
 }
@@ -248,9 +286,6 @@ button {
 }
 .error {
   color: var(--vg-danger);
-}
-.import-section {
-  max-width: 62rem;
 }
 .repo-grid {
   display: grid;
@@ -408,12 +443,51 @@ dd {
 .empty p {
   margin-bottom: var(--vg-space-2);
 }
+.import-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  overflow-y: auto;
+  padding: clamp(1rem, 4vh, 2rem) var(--vg-space-4);
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(10px);
+}
+.import-modal__panel {
+  position: relative;
+  width: min(62rem, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-lg);
+  background: color-mix(in srgb, var(--vg-bg) 92%, transparent);
+  box-shadow: var(--vg-shadow);
+}
+.import-modal__panel :deep(.import-panel) {
+  border-color: transparent;
+  border-radius: var(--vg-radius-lg);
+  box-shadow: none;
+}
+.import-modal__close {
+  position: absolute;
+  top: var(--vg-space-3);
+  right: var(--vg-space-3);
+  z-index: 2;
+  flex: 0 0 auto;
+  border-color: var(--vg-border);
+  background: var(--vg-surface);
+}
 @media (max-width: 640px) {
   .page-header {
     flex-direction: column;
   }
   .primary {
     align-self: stretch;
+  }
+  .import-modal {
+    padding: var(--vg-space-3);
   }
 }
 </style>

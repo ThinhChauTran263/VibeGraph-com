@@ -49,6 +49,12 @@ public class AccountApiKeyController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+    @PatchMapping("/{id}/enable")
+    public ResponseEntity<ApiResponse<Void>> enable(@PathVariable UUID id) {
+        apiKeyService.enableForCurrentUser(id);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         apiKeyService.deleteForCurrentUser(id);

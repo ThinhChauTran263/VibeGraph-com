@@ -52,6 +52,13 @@ public class AdminAbuseController {
         return ResponseEntity.ok(ApiResponse.success(securityMonitorService.topIps(minutes, limit)));
     }
 
+    @GetMapping("/suspicious-networks")
+    public ResponseEntity<ApiResponse<List<SuspiciousNetworkResponse>>> suspiciousNetworks(
+            @RequestParam(defaultValue = "60") int minutes,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ResponseEntity.ok(ApiResponse.success(securityMonitorService.suspiciousNetworks(minutes, limit)));
+    }
+
     @GetMapping("/ip-blocks")
     public ResponseEntity<ApiResponse<List<IpBlockResponse>>> ipBlocks(
             @RequestParam(defaultValue = "100") int limit) {

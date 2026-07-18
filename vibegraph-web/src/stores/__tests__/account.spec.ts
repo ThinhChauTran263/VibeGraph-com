@@ -28,6 +28,7 @@ vi.mock('../../lib/api', async (importOriginal) => {
       listApiKeys: vi.fn(),
       createApiKey: vi.fn(),
       disableApiKey: vi.fn(),
+      enableApiKey: vi.fn(),
       deleteApiKey: vi.fn(),
       listReports: vi.fn(),
       createReport: vi.fn(),
@@ -373,6 +374,44 @@ describe('Account Store', () => {
     await store.disableApiKey('key-1')
 
     expect(store.apiKeys[0]?.disabled).toBe(true)
+    expect(store.apiKeys[0]?.disabledBy).toBe('USER')
+  })
+
+  it('enableApiKey calls API and marks a user-disabled key active', async () => {
+    const key: ApiKey = {
+      id: 'key-1',
+      keyPrefix: 'vg-abc12',
+      name: 'To Enable',
+      project: {
+        id: 'project-1',
+        name: 'VibeGraph',
+        sourceType: 'GITHUB',
+        status: 'READY',
+      },
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+      expiresAt: null,
+      disabledAt: new Date().toISOString(),
+      disabledBy: 'USER',
+      disabledReason: null,
+      lockedAt: null,
+      lockedBy: null,
+      locked: false,
+      deletedAt: null,
+      canDelete: true,
+      disabled: true,
+    }
+    mockAccountApi.listApiKeys.mockResolvedValueOnce([key])
+    mockAccountApi.enableApiKey.mockResolvedValueOnce(undefined)
+
+    const store = useAccountStore()
+    await store.fetchApiKeys()
+    await store.enableApiKey('key-1')
+
+    expect(mockAccountApi.enableApiKey).toHaveBeenCalledWith('key-1')
+    expect(store.apiKeys[0]?.disabled).toBe(false)
+    expect(store.apiKeys[0]?.disabledAt).toBeNull()
+    expect(store.apiKeys[0]?.disabledBy).toBeNull()
   })
 
   it('fetchReports populates reports list', async () => {

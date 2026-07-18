@@ -21,6 +21,7 @@ import com.vibegraph.auth.domain.AuditLog;
 import com.vibegraph.auth.domain.AuditRetentionSetting;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
+import com.vibegraph.auth.repository.AuditLogSpecifications;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
 
@@ -95,8 +96,10 @@ public class AuditService {
                 Math.max(0, pageable.getPageNumber()),
                 Math.min(Math.max(1, pageable.getPageSize()), 100),
                 Sort.by(Sort.Direction.DESC, "createdAt"));
-        return auditLogRepository.findAllWithFilters(
-                        normalize(action), normalize(outcome), actorUserId, targetUserId, from, to, safePageable)
+        return auditLogRepository.findAll(
+                        AuditLogSpecifications.withFilters(
+                                normalize(action), normalize(outcome), actorUserId, targetUserId, from, to),
+                        safePageable)
                 .map(AuditLogResponse::from);
     }
 

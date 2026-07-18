@@ -598,6 +598,7 @@ import type {
   AdminCreditOverview,
   AdminRequestEvent,
   AdminRequestAggregate,
+  AdminSuspiciousNetwork,
   AdminIpBlock,
   AdminIpBlockRequest,
   AdminAuditLog,
@@ -639,6 +640,9 @@ export const accountApi = {
   },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  enableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/enable`, undefined)
   },
   deleteApiKey(id: string): Promise<void> {
     return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
@@ -876,9 +880,9 @@ export const adminApi = {
       `/api/admin/security/top-users?minutes=${minutes}&limit=${limit}`,
     )
   },
-  listTopIps(minutes = 60, limit = 20): Promise<AdminRequestAggregate[]> {
-    return api.get<AdminRequestAggregate[]>(
-      `/api/admin/security/top-ips?minutes=${minutes}&limit=${limit}`,
+  listTopIps(minutes = 60, limit = 20): Promise<AdminSuspiciousNetwork[]> {
+    return api.get<AdminSuspiciousNetwork[]>(
+      `/api/admin/security/suspicious-networks?minutes=${minutes}&limit=${limit}`,
     )
   },
   listIpBlocks(limit = 100): Promise<AdminIpBlock[]> {

@@ -3,9 +3,13 @@ package com.vibegraph.abuse;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.vibegraph.auth.domain.User;
+
 public record RequestEventResponse(
         UUID id,
         UUID userId,
+        String userDisplayName,
+        String userEmail,
         String apiKeyRef,
         String ipAddress,
         String route,
@@ -15,8 +19,22 @@ public record RequestEventResponse(
         Instant occurredAt) {
 
     public static RequestEventResponse from(RequestEvent event) {
-        return new RequestEventResponse(event.getId(), event.getUserId(), event.getApiKeyRef(),
-                event.getIpAddress(), event.getRoute(), event.getMethod(), event.getStatus(),
-                event.getEventType(), event.getOccurredAt());
+        return from(event, null);
+    }
+
+    public static RequestEventResponse from(RequestEvent event, User user) {
+        return new RequestEventResponse(event.getId(), event.getUserId(),
+                user != null ? user.getDisplayName() : null,
+                user != null ? user.getEmail() : null,
+                safeApiKeyRef(event.getApiKeyRef()), event.getIpAddress(), event.getRoute(), event.getMethod(),
+                event.getStatus(), event.getEventType(), event.getOccurredAt());
+    }
+
+    static String safeApiKeyRef(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String prefix = value.substring(value.lastIndexOf(':') + 1);
+        return prefix.substring(0, Math.min(prefix.length(), 8)) + "****";
     }
 }

@@ -366,6 +366,8 @@ export interface AdminCreditOverview {
 export interface AdminRequestEvent {
   id: string
   userId: string | null
+  userDisplayName: string | null
+  userEmail: string | null
   apiKeyRef: string | null
   ipAddress: string | null
   route: string
@@ -377,10 +379,29 @@ export interface AdminRequestEvent {
 
 export interface AdminRequestAggregate {
   userId: string | null
+  userDisplayName: string | null
+  userEmail: string | null
   apiKeyRef: string | null
   ipAddress: string | null
   minuteBucket: string
   requestsPerMinute: number
+}
+
+export interface AdminNetworkBreakdown {
+  userId: string | null
+  userDisplayName: string | null
+  userEmail: string | null
+  apiKeyRef: string | null
+  requests: number
+}
+
+export interface AdminSuspiciousNetwork {
+  ipAddress: string
+  minuteBucket: string
+  totalRequests: number
+  uniqueUsers: number
+  uniqueApiKeys: number
+  breakdown: AdminNetworkBreakdown[]
 }
 
 export interface AdminIpBlockRequest {

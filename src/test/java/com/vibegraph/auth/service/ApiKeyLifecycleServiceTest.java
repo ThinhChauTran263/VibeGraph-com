@@ -187,6 +187,34 @@ class ApiKeyLifecycleServiceTest {
     }
 
     @Test
+    void enableForCurrentUser_clearsUserDisabledKeyAndAudits() {
+        UUID keyId = UUID.randomUUID();
+        ApiKey apiKey = key(ApiKeyDisabledBy.USER);
+        apiKey.setId(keyId);
+        apiKey.setDisabledAt(Instant.now());
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)).thenReturn(Optional.of(apiKey));
+        when(apiKeyRepository.enableByOwnerIfUserDisabled(keyId, userId)).thenReturn(1);
+
+        service.enableForCurrentUser(keyId);
+
+        verify(apiKeyRepository).enableByOwnerIfUserDisabled(keyId, userId);
+        verify(auditService).recordCurrentUser("API_KEY_ENABLE", userId, "API_KEY", keyId.toString(),
+                java.util.Map.of("projectId", "project-1"));
+    }
+
+    @Test
+    void enableForCurrentUser_rejectsAdminLockedKey() {
+        UUID keyId = UUID.randomUUID();
+        ApiKey apiKey = key(ApiKeyDisabledBy.ADMIN);
+        apiKey.setId(keyId);
+        apiKey.setDisabledAt(Instant.now());
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)).thenReturn(Optional.of(apiKey));
+
+        assertThrows(ApiKeyAdminLockedException.class, () -> service.enableForCurrentUser(keyId));
+        verify(apiKeyRepository, never()).enableByOwnerIfUserDisabled(any(), any());
+    }
+
+    @Test
     void adminUnlock_clearsLockSoUserCanDeleteBeforeReplacement() {
         UUID adminId = UUID.randomUUID();
         UUID keyId = UUID.randomUUID();

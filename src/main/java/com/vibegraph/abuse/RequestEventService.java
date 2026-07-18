@@ -8,24 +8,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.domain.SecurityEvent;
 import com.vibegraph.auth.repository.SecurityEventRepository;
+import com.vibegraph.auth.service.AdminSecurityRequestEventPublisher;
 
 @Service
 public class RequestEventService {
 
     private final RequestEventRepository requestEventRepository;
     private final SecurityEventRepository securityEventRepository;
+    private final AdminSecurityRequestEventPublisher requestEventPublisher;
 
     public RequestEventService(RequestEventRepository requestEventRepository,
-            SecurityEventRepository securityEventRepository) {
+            SecurityEventRepository securityEventRepository,
+            AdminSecurityRequestEventPublisher requestEventPublisher) {
         this.requestEventRepository = requestEventRepository;
         this.securityEventRepository = securityEventRepository;
+        this.requestEventPublisher = requestEventPublisher;
     }
 
     @Transactional
     public void record(UUID userId, String apiKeyRef, String ipAddress, String route,
             String method, int status, Instant timestamp, String eventType) {
         try {
-            requestEventRepository.save(RequestEvent.builder()
+            RequestEvent saved = requestEventRepository.save(RequestEvent.builder()
                     .userId(userId)
                     .apiKeyRef(apiKeyRef)
                     .ipAddress(ipAddress)
@@ -35,6 +39,7 @@ public class RequestEventService {
                     .eventType(eventType)
                     .occurredAt(timestamp)
                     .build());
+            requestEventPublisher.publishAfterCommit(saved);
             if ("RATE_LIMIT".equals(eventType)) {
                 securityEventRepository.save(SecurityEvent.builder()
                         .eventType("RATE_LIMIT")
