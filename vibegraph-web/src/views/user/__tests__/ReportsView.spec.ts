@@ -8,6 +8,8 @@ import type { Report, ReportRealtimeEvent } from '@/types/api'
 
 const realtime = vi.hoisted(() => ({
   emit: null as ((event: ReportRealtimeEvent) => void) | null,
+  status: null as unknown as ReturnType<typeof ref<string>>,
+  active: null as unknown as ReturnType<typeof ref<boolean>>,
 }))
 
 vi.mock('@/composables/useReportRealtime', () => ({
@@ -16,8 +18,11 @@ vi.mock('@/composables/useReportRealtime', () => ({
     options: { onEvent?: (event: ReportRealtimeEvent) => void } = {},
   ) => {
     realtime.emit = options.onEvent ?? null
+    realtime.status = ref('connected')
+    realtime.active = ref(true)
     return {
-      status: ref('connected'),
+      status: realtime.status,
+      active: realtime.active,
       error: ref<string | null>(null),
       lastError: ref<string | null>(null),
       stop: vi.fn(),
@@ -124,6 +129,57 @@ describe('User ReportsView', () => {
     })
     await nextTick()
     expect(wrapper.text()).toContain('Visible support reply')
+    wrapper.unmount()
+  })
+
+  it('keeps the latest report selected when detail requests resolve out of order', async () => {
+    const first = openReport({ id: 'report-1', title: 'First report' })
+    const second = openReport({ id: 'report-2', title: 'Second report' })
+    let resolveFirst: ((value: Report) => void) | undefined
+    let resolveSecond: ((value: Report) => void) | undefined
+    const wrapper = mountView([first, second])
+    await flushPromises()
+    const store = useAccountStore()
+    vi.mocked(store.fetchReportDetail)
+      .mockImplementationOnce(
+        () => new Promise<Report>((resolve) => {
+          resolveFirst = resolve
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<Report>((resolve) => {
+          resolveSecond = resolve
+        }),
+      )
+
+    const viewButtons = wrapper.findAll('.reports-list button')
+    await viewButtons[0]?.trigger('click')
+    await viewButtons[1]?.trigger('click')
+    resolveSecond?.(second)
+    await flushPromises()
+    resolveFirst?.(first)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Second report')
+    expect(wrapper.text()).not.toContain('First report')
+    wrapper.unmount()
+  })
+
+  it('does not label report realtime as Live until the topic subscription is active', async () => {
+    const report = openReport()
+    const wrapper = mountView([report])
+    await flushPromises()
+    const store = useAccountStore()
+    vi.mocked(store.fetchReportDetail).mockResolvedValue(report)
+    realtime.active.value = false
+
+    await wrapper.get('.reports-list button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.realtime-pill').text()).toBe('Syncing')
+    realtime.active.value = true
+    await nextTick()
+    expect(wrapper.get('.realtime-pill').text()).toBe('Live')
     wrapper.unmount()
   })
 

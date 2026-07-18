@@ -65,6 +65,9 @@ class AccountServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private FeatureGateService featureGateService;
+
     private AccountService accountService;
 
     @BeforeEach
@@ -76,7 +79,9 @@ class AccountServiceTest {
                 creditBalanceService,
                 creditLedgerRepository,
                 projectOwnershipRepository,
-                passwordEncoder);
+                passwordEncoder,
+                featureGateService);
+        lenient().when(featureGateService.capabilities()).thenReturn(java.util.Map.of());
     }
 
     @Test
@@ -118,6 +123,9 @@ class AccountServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(accountSettingsService.findSettings(userId))
                 .thenReturn(UserAccountSettings.builder().userId(userId).build());
+        when(featureGateService.capabilities()).thenReturn(java.util.Map.of(
+                FeatureGateService.IMPORT_LOCAL, com.vibegraph.auth.dto.FeatureCapability.allow(),
+                FeatureGateService.MCP_ENABLED, com.vibegraph.auth.dto.FeatureCapability.allow()));
 
         var state = accountService.sessionState();
 
@@ -127,6 +135,8 @@ class AccountServiceTest {
         assertEquals("USER", state.role());
         assertEquals("ACTIVE", state.accountStatus());
         assertNull(state.safeReason());
+        assertTrue(state.features().get(FeatureGateService.IMPORT_LOCAL).enabled());
+        assertTrue(state.features().get(FeatureGateService.MCP_ENABLED).enabled());
         assertFalse(state.toString().contains("secret-hash"));
     }
 
@@ -150,11 +160,18 @@ class AccountServiceTest {
         when(currentUser.id()).thenReturn(userId);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
+        when(featureGateService.capabilities()).thenReturn(java.util.Map.of(
+                FeatureGateService.REGISTRATION, com.vibegraph.auth.dto.FeatureCapability.allow(),
+                FeatureGateService.IMPORT_LOCAL, com.vibegraph.auth.dto.FeatureCapability.allow(),
+                FeatureGateService.MCP_ENABLED, com.vibegraph.auth.dto.FeatureCapability.allow()));
 
         var state = accountService.sessionState();
 
         assertEquals("BLOCKED", state.accountStatus());
         assertEquals("Policy review", state.safeReason());
+        assertTrue(state.features().get(FeatureGateService.REGISTRATION).enabled());
+        assertFalse(state.features().get(FeatureGateService.IMPORT_LOCAL).enabled());
+        assertEquals("Policy review", state.features().get(FeatureGateService.MCP_ENABLED).reason());
         assertFalse(state.toString().contains("internal fraud score"));
         assertFalse(state.toString().contains("secret-hash"));
     }

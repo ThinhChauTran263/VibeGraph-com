@@ -8,8 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
-
-import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -18,6 +16,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.dto.response.ErrorResponse;
+
+import jakarta.validation.ConstraintViolationException;
 
 /**
  * Global exception handler — maps exceptions to standardized ApiResponse errors.

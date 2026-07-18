@@ -5,8 +5,6 @@ import AppIcon from '@/components/ui/AppIcon.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { ApiKeyCreated } from '@/types/api'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
-const PROJECT_BINDING_REASON =
-  'Repository-bound API key creation is not supported by the current backend contract.'
 const account = useAccountStore(),
   open = ref(false),
   name = ref(''),
@@ -15,29 +13,68 @@ const account = useAccountStore(),
   secret = ref<ApiKeyCreated | null>(null),
   disableId = ref<string | null>(null),
   disabling = ref(false),
+  deleteId = ref<string | null>(null),
+  deleting = ref(false),
+  projectsLoaded = ref(false),
+  projectsLoadError = ref(''),
   message = ref('')
 const capability = useFeatureAvailability('api_keys.create.global')
-const createDisabled = computed(() => true)
-const reason = computed(() => PROJECT_BINDING_REASON)
+const existingProjectIds = computed(
+  () => new Set(account.apiKeys.filter((key) => !key.deletedAt).map((key) => key.project?.id)),
+)
+const selectedProjectKey = computed(() =>
+  account.apiKeys.find((key) => !key.deletedAt && key.project?.id === projectId.value),
+)
+const selectedProjectReason = computed(() => {
+  const key = selectedProjectKey.value
+  if (!key) return null
+  if (key.locked) {
+    return 'This project has an admin-locked key. An administrator must unlock it before replacement.'
+  }
+  return 'Delete the existing key for this project before creating a replacement.'
+})
+const createDisabled = computed(
+  () =>
+    !capability.value.enabled ||
+    !projectsLoaded.value ||
+    Boolean(projectsLoadError.value) ||
+    account.projects.length === 0,
+)
+const reason = computed(() => {
+  if (!capability.value.enabled) return capability.value.reason
+  if (projectsLoadError.value) return projectsLoadError.value
+  if (!projectsLoaded.value) return 'Checking repository availability before creating a key.'
+  if (!account.projects.length) return 'Import a repository before creating a project-bound API key.'
+  return null
+})
+async function loadProjects(): Promise<void> {
+  projectsLoaded.value = false
+  projectsLoadError.value = ''
+  try {
+    await account.fetchProjects()
+    projectsLoaded.value = true
+  } catch (error) {
+    projectsLoadError.value = error instanceof Error ? error.message : 'Repositories could not be loaded.'
+  }
+}
 const canSubmit = computed(
   () =>
     name.value.trim().length > 0 &&
     projectId.value.length > 0 &&
+    !selectedProjectReason.value &&
     !creating.value &&
     !createDisabled.value,
 )
 onMounted(() => {
-  void Promise.allSettled([
-    account.fetchApiKeys(),
-    account.fetchProjects(),
-    refreshFeatureAvailability(),
-  ])
+  void Promise.allSettled([account.fetchApiKeys(), loadProjects(), refreshFeatureAvailability()])
 })
 async function create() {
   if (!canSubmit.value) return
   creating.value = true
+  secret.value = null
+  message.value = ''
   try {
-    secret.value = await account.createApiKey(name.value)
+    secret.value = await account.createApiKey(name.value.trim(), projectId.value)
     open.value = false
     name.value = ''
     projectId.value = ''
@@ -59,6 +96,20 @@ async function disable() {
     message.value = error instanceof Error ? error.message : 'Could not disable this API key.'
   } finally {
     disabling.value = false
+  }
+}
+async function remove() {
+  if (!deleteId.value || deleting.value) return
+  deleting.value = true
+  message.value = ''
+  try {
+    await account.deleteApiKey(deleteId.value)
+    deleteId.value = null
+    message.value = 'API key deleted. You can now create a replacement for this project.'
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : 'Could not delete this API key.'
+  } finally {
+    deleting.value = false
   }
 }
 async function copy() {
@@ -108,18 +159,36 @@ async function copy() {
           <strong>{{ key.name }}</strong
           ><code>{{ key.keyPrefix }}</code>
         </div>
-        <span>No repository binding in the current API contract</span
-        ><span :class="{ off: key.disabled }">{{ key.disabled ? 'Disabled' : 'Active' }}</span
+        <span>
+          {{ key.project ? `Repository: ${key.project.name}` : 'No repository binding' }}
+        </span
+        ><span class="key-state" :class="{ off: key.disabled }">
+          {{ key.disabled ? 'Disabled' : 'Active' }}
+          <strong v-if="key.locked" class="locked-badge">Admin locked</strong>
+          <small v-if="key.disabledBy">Disabled by {{ key.disabledBy }}</small>
+        </span
         ><time>{{ new Date(key.createdAt).toLocaleDateString() }}</time
-        ><button
-          v-if="!key.disabled"
-          type="button"
-          :data-test="`disable-key-${key.id}`"
-          :aria-label="`Disable API key ${key.name}`"
-          @click="disableId = key.id"
-        >
-          Disable
-        </button>
+        ><div class="key-actions">
+          <button
+            v-if="!key.disabled"
+            type="button"
+            :data-test="`disable-key-${key.id}`"
+            :aria-label="`Disable API key ${key.name}`"
+            @click="disableId = key.id"
+          >
+            Disable
+          </button>
+          <button
+            type="button"
+            :data-test="`delete-key-${key.id}`"
+            :disabled="key.canDelete === false || key.locked"
+            :title="key.canDelete === false || key.locked ? 'Admin-locked keys cannot be deleted.' : undefined"
+            :aria-label="`Delete API key ${key.name}`"
+            @click="deleteId = key.id"
+          >
+            Delete
+          </button>
+        </div>
       </article>
     </section>
     <div
@@ -143,11 +212,18 @@ async function copy() {
           >Repository</label
         ><select id="key-project" v-model="projectId" required>
           <option value="" disabled>Select a repository</option>
-          <option v-for="project in account.projects" :key="project.id" :value="project.id">
-            {{ project.name }}
+          <option
+            v-for="project in account.projects"
+            :key="project.id"
+            :value="project.id"
+          >
+            {{ project.name }}{{ existingProjectIds.has(project.id) ? ' - existing key must be deleted' : '' }}
           </option>
         </select>
         <p v-if="!account.projects.length">Import a repository before creating a key.</p>
+        <p v-if="selectedProjectReason" data-test="duplicate-project-reason" class="form-warning">
+          {{ selectedProjectReason }}
+        </p>
         <button class="primary" type="submit" :disabled="!canSubmit">
           {{ creating ? 'Creating...' : 'Create key' }}
         </button>
@@ -162,6 +238,16 @@ async function copy() {
       :busy="disabling"
       @cancel="disableId = null"
       @confirm="disable"
+    />
+    <AdminConfirmDialog
+      :open="Boolean(deleteId)"
+      title="Delete API key"
+      message="Delete this key permanently? A replacement can be created for its project after deletion."
+      confirm-label="Delete key"
+      tone="danger"
+      :busy="deleting"
+      @cancel="deleteId = null"
+      @confirm="remove"
     />
   </section>
 </template>
@@ -297,6 +383,34 @@ select {
   background: transparent;
   color: var(--vg-text);
   cursor: pointer;
+}
+.list article button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.key-state,
+.key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.key-state {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.key-state small {
+  color: var(--vg-text-muted);
+}
+.locked-badge {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 999px;
+  color: var(--vg-danger);
+  font-size: var(--vg-text-xs);
+}
+.form-warning {
+  margin: 0;
+  color: var(--vg-warning);
 }
 .off {
   color: var(--vg-danger);

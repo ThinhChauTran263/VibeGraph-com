@@ -9,6 +9,7 @@ import path from "node:path";
 import { loadIgnoreRules, shouldIgnore } from "./ignore.js";
 import { loadSnapshot, saveSnapshot, diffSnapshot } from "./snapshot.js";
 import { scanDirectory, buildFileStateMap, toPosixRelative } from "./scanner.js";
+import { createPatchRequest, resolveSnapshotId } from "./project-target.js";
 
 const DEBOUNCE_MS = 800;
 
@@ -20,16 +21,17 @@ const DEBOUNCE_MS = 800;
  */
 export async function executeWatch(projectId, options, apiRequest) {
   const rootDir = path.resolve(options.root || ".");
+  const snapshotId = resolveSnapshotId(projectId, options.snapshotId);
   const ignoreRules = await loadIgnoreRules(rootDir);
 
   console.log(`Watching: ${rootDir}`);
-  console.log(`Project: ${projectId}`);
+  console.log(`Project: ${projectId || "API key binding"}`);
   console.log(`Press Ctrl+C to stop.\n`);
 
   // Do initial scan to establish baseline
   const initialScan = await scanDirectory(rootDir, ignoreRules);
   const initialState = buildFileStateMap(initialScan.files);
-  await saveSnapshot(projectId, initialState);
+  await saveSnapshot(snapshotId, initialState);
   console.log(`Baseline: ${initialScan.files.length} files tracked.\n`);
 
   let debounceTimer = null;
@@ -42,7 +44,7 @@ export async function executeWatch(projectId, options, apiRequest) {
     try {
       const scan = await scanDirectory(rootDir, ignoreRules);
       const currentState = buildFileStateMap(scan.files);
-      const previousSnapshot = await loadSnapshot(projectId);
+      const previousSnapshot = await loadSnapshot(snapshotId);
       const { changed, deleted } = diffSnapshot(currentState, previousSnapshot);
 
       if (changed.length === 0 && deleted.length === 0) {
@@ -61,12 +63,10 @@ export async function executeWatch(projectId, options, apiRequest) {
         dryRun: false,
       };
 
-      const result = await apiRequest(
-        `/api/projects/${encodeURIComponent(projectId)}/patch`,
-        { method: "POST", auth: true, body: payload }
-      );
+      const request = createPatchRequest(projectId, payload);
+      const result = await apiRequest(request.endpoint, request.options);
 
-      await saveSnapshot(projectId, currentState);
+      await saveSnapshot(snapshotId, currentState);
 
       const timestamp = new Date().toLocaleTimeString();
       console.log(`[${timestamp}] Pushed: ${changed.length} changed, ${deleted.length} deleted`);
@@ -79,7 +79,7 @@ export async function executeWatch(projectId, options, apiRequest) {
     } catch (error) {
       const msg = error.message || String(error);
       if (msg.includes("401") || msg.includes("Unauthorized")) {
-        console.error(`\n[Error] Authentication expired. Please run: vibegraph login`);
+        console.error(`\n[Error] Authentication failed. Run vibegraph doctor and check the API key or legacy login.`);
         process.exit(3);
       } else if (msg.includes("400") || msg.includes("Bad Request")) {
         console.error(`[Error] Server rejected patch: ${msg}`);

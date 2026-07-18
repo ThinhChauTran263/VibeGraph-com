@@ -14,6 +14,7 @@ import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.MeteredToolCallback;
 import com.vibegraph.mcp.tool.ArchitectureTool;
@@ -64,6 +65,7 @@ public class McpServerConfig {
             ProjectOwnershipGuard ownershipGuard,
             FeatureGateService featureGateService,
             AccountAccessGuard accountAccessGuard,
+            ApiKeyRequestContextAccessor apiKeyContextAccessor,
             ObjectMapper objectMapper) {
         ToolCallbackProvider baseProvider = MethodToolCallbackProvider.builder()
                 .toolObjects(
@@ -92,6 +94,7 @@ public class McpServerConfig {
                         ownershipGuard,
                         featureGateService,
                         accountAccessGuard,
+                        apiKeyContextAccessor,
                         objectMapper))
                 .toList());
     }

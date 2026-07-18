@@ -8,6 +8,8 @@ import type { AdminReport, ReportRealtimeEvent } from '@/types/api'
 
 const realtime = vi.hoisted(() => ({
   emit: null as ((event: ReportRealtimeEvent) => void) | null,
+  status: null as unknown as ReturnType<typeof ref<string>>,
+  active: null as unknown as ReturnType<typeof ref<boolean>>,
 }))
 
 vi.mock('@/composables/useReportRealtime', () => ({
@@ -16,8 +18,11 @@ vi.mock('@/composables/useReportRealtime', () => ({
     options: { onEvent?: (event: ReportRealtimeEvent) => void } = {},
   ) => {
     realtime.emit = options.onEvent ?? null
+    realtime.status = ref('connected')
+    realtime.active = ref(true)
     return {
-      status: ref('connected'),
+      status: realtime.status,
+      active: realtime.active,
       error: ref<string | null>(null),
       lastError: ref<string | null>(null),
       stop: vi.fn(),
@@ -152,6 +157,24 @@ describe('Admin ReportsView', () => {
 
     expect(store.replyToReport).toHaveBeenCalledWith(report.id, 'Reply from support')
     expect(wrapper.text()).toContain('Reply from support')
+    wrapper.unmount()
+  })
+
+  it('does not label report realtime as Live until the topic subscription is active', async () => {
+    const report = openReport()
+    const wrapper = mountView([report])
+    await flushPromises()
+    const store = useAdminStore()
+    vi.mocked(store.fetchReportDetail).mockResolvedValue({ report, messages: [] })
+    realtime.active.value = false
+
+    await wrapper.get('.reports-list button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.realtime-pill').text()).toBe('Syncing')
+    realtime.active.value = true
+    await nextTick()
+    expect(wrapper.get('.realtime-pill').text()).toBe('Live')
     wrapper.unmount()
   })
 

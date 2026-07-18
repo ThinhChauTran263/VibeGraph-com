@@ -1,27 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
+import { useAdminStore } from '@/stores/admin'
 import PlansCreditsView from '../PlansCreditsView.vue'
 import FeatureFlagsView from '../FeatureFlagsView.vue'
 import SecurityView from '../SecurityView.vue'
 import AuditView from '../AuditView.vue'
+
+const capabilityMocks = vi.hoisted(() => ({
+  contract: { value: false as boolean | null },
+  refresh: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/featureAvailability', () => ({
+  featureAvailabilityContract: capabilityMocks.contract,
+  refreshFeatureAvailability: capabilityMocks.refresh,
+}))
 
 const dialogStub = {
   template: '<div class="confirm-dialog" />',
   props: ['open', 'title', 'message', 'confirmLabel', 'tone', 'busy'],
 }
 
-function mountView(component: object, initialState: Record<string, unknown>) {
+type AdminStore = ReturnType<typeof useAdminStore>
+
+function mountView(
+  component: object,
+  initialState: Record<string, unknown>,
+  configureStore?: (store: AdminStore) => void,
+) {
+  const pinia = createTestingPinia({
+    createSpy: vi.fn,
+    stubActions: true,
+    initialState: { admin: initialState },
+  })
+  const store = useAdminStore(pinia)
+  configureStore?.(store)
   return mount(component, {
     global: {
       stubs: { AdminConfirmDialog: dialogStub },
-      plugins: [
-        createTestingPinia({
-          createSpy: vi.fn,
-          stubActions: true,
-          initialState: { admin: initialState },
-        }),
-      ],
+      plugins: [pinia],
     },
   })
 }
@@ -29,6 +47,8 @@ function mountView(component: object, initialState: Record<string, unknown>) {
 describe('Admin operations views', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    capabilityMocks.contract.value = false
+    capabilityMocks.refresh.mockResolvedValue(undefined)
     localStorage.clear()
   })
 
@@ -53,15 +73,79 @@ describe('Admin operations views', () => {
     expect(wrapper.text()).toContain('Reset')
   })
 
-  it('renders canonical global flags and MCP child controls', async () => {
+  it('labels system controls as configuration-only without a runtime capability contract', async () => {
     const wrapper = mountView(FeatureFlagsView, { featureFlags: [] })
     await flushPromises()
 
+    expect(wrapper.text()).toContain('Configuration only')
+    expect(wrapper.text()).toContain('not yet propagated to user-facing runtime capability state')
+    expect(wrapper.text()).toContain('Import methods')
+    expect(wrapper.text()).toContain('CLI push')
+    expect(wrapper.text()).toContain('API key creation')
     expect(wrapper.text()).toContain('Registration')
-    expect(wrapper.text()).toContain('Project analyze')
-    expect(wrapper.text()).toContain('Use case generation')
-    expect(wrapper.text()).toContain('All MCP tools')
-    expect(wrapper.text()).toContain('Impact Analysis')
+    expect(wrapper.text()).toContain('Gen use case')
+    expect(wrapper.text()).toContain('MCP global and child tools')
+  })
+
+  it('shows real runtime propagation state and collapses dense control groups', async () => {
+    capabilityMocks.contract.value = true
+    const wrapper = mountView(FeatureFlagsView, { featureFlags: [] })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Runtime connected')
+    const mcpToggle = wrapper
+      .findAll('button.group-toggle')
+      .find((button) => button.text().includes('MCP global and child tools'))
+    expect(mcpToggle).toBeDefined()
+    expect(mcpToggle?.attributes('aria-expanded')).toBe('true')
+    expect(mcpToggle?.attributes('aria-controls')).toBe('system-group-mcp-global-and-child-tools')
+    expect(wrapper.find('#system-group-mcp-global-and-child-tools').exists()).toBe(true)
+    const mcpGlobalSwitch = wrapper.get('input[aria-label="Toggle All MCP tools"]')
+    await mcpGlobalSwitch.setValue(false)
+    await flushPromises()
+    expect(capabilityMocks.refresh).toHaveBeenCalledTimes(2)
+
+    await mcpToggle?.trigger('click')
+
+    expect(mcpToggle?.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Impact Analysis')
+  })
+
+  it('keeps telemetry retry warnings separate from IP policy mutation success', async () => {
+    const wrapper = mountView(
+      SecurityView,
+      {
+        securityEvents: [],
+        requestEvents: [],
+        topUsers: [],
+        topIps: [],
+        ipBlocks: [],
+      },
+      (store) => {
+        vi.mocked(store.fetchSecurityData).mockResolvedValue(['request events'])
+        vi.mocked(store.fetchRequestEvents).mockResolvedValue(undefined)
+        vi.mocked(store.createIpBlock).mockResolvedValue({ refreshFailed: false })
+      },
+    )
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Some monitoring panels are unavailable')
+    expect(wrapper.text()).toContain('Retry request events')
+    await wrapper.get('input[placeholder="203.0.113.42"]').setValue('203.0.113.42')
+    await wrapper
+      .get('textarea[placeholder="Access temporarily restricted due to unusual request volume."]')
+      .setValue('Unusual request volume.')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('IP block policy created successfully')
+    expect(wrapper.text()).toContain('Some monitoring panels are unavailable')
+    const retry = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Retry request events'))
+    await retry?.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Some monitoring panels are unavailable')
   })
 
   it('renders request telemetry and IP block policies from store state', async () => {

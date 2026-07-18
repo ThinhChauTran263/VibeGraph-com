@@ -12,6 +12,7 @@ const available = ref(true)
 const loading = ref(true)
 const busyId = ref<string | null>(null)
 const errorMsg = ref('')
+let selectionVersion = 0
 
 onMounted(loadNotifications)
 
@@ -35,6 +36,7 @@ async function loadNotifications(): Promise<void> {
 }
 
 async function selectNotification(item: UserNotification): Promise<void> {
+  const currentSelectionVersion = ++selectionVersion
   selected.value = item
   await router.replace({ name: 'notifications', query: { id: item.id } })
   if (item.read) return
@@ -42,11 +44,11 @@ async function selectNotification(item: UserNotification): Promise<void> {
   try {
     const updated = await accountApi.markNotificationRead(item.id)
     replaceNotification(updated)
-    selected.value = updated
+    if (currentSelectionVersion === selectionVersion) selected.value = updated
   } catch (error) {
     errorMsg.value = error instanceof Error ? error.message : 'Could not mark this notification read.'
   } finally {
-    busyId.value = null
+    if (busyId.value === item.id) busyId.value = null
   }
 }
 
@@ -80,10 +82,10 @@ function creatorLabel(item: UserNotification): string {
 </script>
 
 <template>
-  <main class="notifications">
+  <section class="notifications" aria-labelledby="notifications-title">
     <header>
       <span>Inbox</span>
-      <h1>Notifications</h1>
+      <h1 id="notifications-title">Notifications</h1>
       <p>Product announcements and operational updates, newest first.</p>
     </header>
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
@@ -133,7 +135,7 @@ function creatorLabel(item: UserNotification): string {
         </button>
       </article>
     </div>
-  </main>
+  </section>
 </template>
 
 <style scoped>

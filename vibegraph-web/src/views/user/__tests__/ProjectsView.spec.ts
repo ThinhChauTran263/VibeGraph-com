@@ -8,6 +8,10 @@ const apiMocks = vi.hoisted(() => ({
   list: vi.fn(),
   remove: vi.fn(),
 }))
+const featureMocks = vi.hoisted(() => ({
+  enabled: true,
+  reason: null as string | null,
+}))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -22,7 +26,11 @@ vi.mock('@/lib/featureAvailability', async () => {
   return {
     featureAvailabilityContract: ref(true),
     refreshFeatureAvailability: vi.fn().mockResolvedValue(undefined),
-    useFeatureAvailability: (key: string) => computed(() => ({ key, enabled: true, reason: null })),
+    useFeatureAvailability: (key: string) => computed(() => ({
+      key,
+      enabled: featureMocks.enabled,
+      reason: featureMocks.reason,
+    })),
   }
 })
 
@@ -30,6 +38,16 @@ const ImportProjectPanelStub = {
   props: ['disabledMethods'],
   emits: ['imported'],
   template: '<section data-test="import-panel">Import panel</section>',
+}
+const ConfirmDialogStub = {
+  props: ['open', 'busy'],
+  emits: ['confirm', 'cancel'],
+  template: `
+    <div v-if="open">
+      <button data-test="confirm-delete" @click="$emit('confirm')">Confirm</button>
+      <button data-test="cancel-delete" @click="$emit('cancel')">Cancel</button>
+    </div>
+  `,
 }
 
 function makeProject(id: string, name: string) {
@@ -60,7 +78,7 @@ async function mountView(path = '/projects') {
       plugins: [router, createTestingPinia({ createSpy: vi.fn })],
       stubs: {
         ImportProjectPanel: ImportProjectPanelStub,
-        AdminConfirmDialog: true,
+        AdminConfirmDialog: ConfirmDialogStub,
       },
     },
   })
@@ -72,6 +90,8 @@ describe('ProjectsView', () => {
   beforeEach(() => {
     apiMocks.list.mockReset()
     apiMocks.remove.mockReset()
+    featureMocks.enabled = true
+    featureMocks.reason = null
     apiMocks.list.mockResolvedValue([
       makeProject('project-1', 'VibeGraph Web'),
       makeProject('project-2', 'VibeGraph CLI'),
@@ -125,5 +145,37 @@ describe('ProjectsView', () => {
     apiMocks.list.mockRejectedValueOnce(new Error('Repository service unavailable'))
     const failed = await mountView()
     expect(failed.wrapper.get('[role="alert"]').text()).toContain('Repository service unavailable')
+  })
+
+  it('removes the intended repository even if cancel is emitted while deletion is pending', async () => {
+    let resolveDelete: (() => void) | undefined
+    apiMocks.remove.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolveDelete = resolve
+      }),
+    )
+    const { wrapper } = await mountView()
+
+    await wrapper.get('button[aria-label="Delete VibeGraph Web"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await wrapper.get('[data-test="cancel-delete"]').trigger('click')
+    resolveDelete?.()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('VibeGraph Web')
+    expect(wrapper.text()).toContain('VibeGraph CLI')
+  })
+
+  it('fails closed when import capabilities are unavailable', async () => {
+    featureMocks.enabled = false
+    featureMocks.reason = 'Capability contract unavailable.'
+    const { wrapper, router } = await mountView('/projects?import=new')
+
+    expect(wrapper.get('button[data-test="new-repository"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.text()).toContain('Repository import is blocked')
+    expect(wrapper.find('[data-test="import-panel"]').exists()).toBe(false)
+    await router.push({ name: 'projects', query: { import: 'new' } })
+    await flushPromises()
+    expect(wrapper.find('[data-test="import-panel"]').exists()).toBe(false)
   })
 })

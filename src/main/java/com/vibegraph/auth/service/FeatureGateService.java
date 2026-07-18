@@ -1,6 +1,10 @@
 package com.vibegraph.auth.service;
 
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
+
+import com.vibegraph.auth.dto.FeatureCapability;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,24 @@ public class FeatureGateService {
         PROJECT_ANALYZE,
         MCP_ENABLED,
         USECASE_GENERATE
+    };
+
+    private static final String[] MCP_TOOL_KEYS = {
+        "mcp.tool.explain_failure_path",
+        "mcp.tool.find_references",
+        "mcp.tool.find_related_tests",
+        "mcp.tool.get_class_context",
+        "mcp.tool.get_impact_analysis",
+        "mcp.tool.get_layer_pattern",
+        "mcp.tool.get_method_cpg_context",
+        "mcp.tool.get_method_source",
+        "mcp.tool.get_project_architecture",
+        "mcp.tool.get_project_conventions",
+        "mcp.tool.get_source_file",
+        "mcp.tool.plan_code_change",
+        "mcp.tool.search_source",
+        "mcp.tool.suggest_test_plan",
+        "mcp.tool.trace_endpoint"
     };
 
     public static String normalizeMcpToolName(String toolName) {
@@ -74,6 +96,36 @@ public class FeatureGateService {
     public void assertMcpToolEnabled(String toolName) {
         assertEnabled(MCP_ENABLED);
         assertEnabled(MCP_TOOL_PREFIX + normalizeMcpToolName(toolName));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, FeatureCapability> capabilities() {
+        Map<String, Boolean> states = new LinkedHashMap<>();
+        for (String key : GLOBAL_KEYS) {
+            states.put(key, true);
+        }
+        for (String key : MCP_TOOL_KEYS) {
+            states.put(key, true);
+        }
+        featureFlagRepository.findAll().forEach(flag -> {
+            String key = flag.getKey();
+            if (isCanonicalGlobalKey(key) || isCanonicalMcpToolKey(key)) {
+                states.put(key, flag.isEnabled());
+            }
+        });
+
+        boolean isMcpEnabled = states.getOrDefault(MCP_ENABLED, true);
+        Map<String, FeatureCapability> capabilities = new LinkedHashMap<>();
+        states.forEach((key, enabled) -> capabilities.put(
+                key,
+                toCapability(enabled && (!isCanonicalMcpToolKey(key) || isMcpEnabled))));
+        return Map.copyOf(capabilities);
+    }
+
+    private FeatureCapability toCapability(boolean enabled) {
+        return enabled
+                ? FeatureCapability.allow()
+                : FeatureCapability.deny("Disabled by an administrator.");
     }
 
 }

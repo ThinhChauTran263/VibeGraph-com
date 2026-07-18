@@ -28,8 +28,9 @@ vi.mock('../../lib/api', async (importOriginal) => {
       updateQuota: vi.fn(),
       updateApiKeyCreation: vi.fn(),
       listApiKeysForUser: vi.fn(),
-      createApiKeyForUser: vi.fn(),
       disableApiKey: vi.fn(),
+      lockApiKey: vi.fn(),
+      unlockApiKey: vi.fn(),
       getCreditOverview: vi.fn(),
       adjustCredits: vi.fn(),
       listReports: vi.fn(),
@@ -114,7 +115,47 @@ describe('Admin Store', () => {
     expect(store.loading).toBe(false)
   })
 
-  it('refreshes security state after IP block mutations', async () => {
+  it('refreshes only IP blocks after create, update, and delete mutations', async () => {
+    const block = {
+      id: 'block-1',
+      ipAddress: '203.0.113.10',
+      safeReason: 'Excessive requests',
+      expiresAt: null,
+      active: true,
+      createdBy: null,
+      createdAt: null,
+      updatedAt: null,
+    }
+    const updated = { ...block, safeReason: 'Repeated excessive requests' }
+    mockAdminApi.createIpBlock.mockResolvedValueOnce(block)
+    mockAdminApi.updateIpBlock.mockResolvedValueOnce(updated)
+    mockAdminApi.deleteIpBlock.mockResolvedValueOnce(undefined)
+    mockAdminApi.listIpBlocks
+      .mockResolvedValueOnce([block])
+      .mockResolvedValueOnce([updated])
+      .mockResolvedValueOnce([])
+
+    const store = useAdminStore()
+    const payload = {
+      ipAddress: block.ipAddress,
+      safeReason: block.safeReason,
+      expiresAt: null,
+      active: true,
+    }
+
+    await expect(store.createIpBlock(payload)).resolves.toEqual({ refreshFailed: false })
+    await expect(store.updateIpBlock(block.id, { ...payload, safeReason: updated.safeReason })).resolves.toEqual({ refreshFailed: false })
+    await expect(store.deleteIpBlock(block.id)).resolves.toEqual({ refreshFailed: false })
+
+    expect(mockAdminApi.listIpBlocks).toHaveBeenCalledTimes(3)
+    expect(mockAdminApi.listSecurityEvents).not.toHaveBeenCalled()
+    expect(mockAdminApi.listRequestEvents).not.toHaveBeenCalled()
+    expect(mockAdminApi.listTopUsers).not.toHaveBeenCalled()
+    expect(mockAdminApi.listTopIps).not.toHaveBeenCalled()
+    expect(store.ipBlocks).toEqual([])
+  })
+
+  it('keeps a successful IP block write successful when its collection refresh fails', async () => {
     const block = {
       id: 'block-1',
       ipAddress: '203.0.113.10',
@@ -126,23 +167,20 @@ describe('Admin Store', () => {
       updatedAt: null,
     }
     mockAdminApi.createIpBlock.mockResolvedValueOnce(block)
-    mockAdminApi.listSecurityEvents.mockResolvedValue([])
-    mockAdminApi.listRequestEvents.mockResolvedValue([])
-    mockAdminApi.listTopUsers.mockResolvedValue([])
-    mockAdminApi.listTopIps.mockResolvedValue([])
-    mockAdminApi.listIpBlocks.mockResolvedValueOnce([block])
+    mockAdminApi.listIpBlocks.mockRejectedValueOnce(new Error('IP block refresh unavailable'))
 
     const store = useAdminStore()
-    await store.createIpBlock({
-      ipAddress: block.ipAddress,
-      safeReason: block.safeReason,
-      expiresAt: null,
-      active: true,
-    })
+    await expect(
+      store.createIpBlock({
+        ipAddress: block.ipAddress,
+        safeReason: block.safeReason,
+        expiresAt: null,
+        active: true,
+      }),
+    ).resolves.toEqual({ refreshFailed: true })
 
-    expect(mockAdminApi.createIpBlock).toHaveBeenCalledOnce()
-    expect(mockAdminApi.listIpBlocks).toHaveBeenCalled()
     expect(store.ipBlocks).toEqual([block])
+    expect(store.error).toBeNull()
   })
 
   it('refreshes audit logs and retention after retention mutation', async () => {

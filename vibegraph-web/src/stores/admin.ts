@@ -8,7 +8,6 @@ import type {
   AdminPricingRuleRequest,
   AdminUserResponse,
   ApiKey,
-  ApiKeyCreated,
   AdminReport,
   ReportMessage,
   PagedResponse,
@@ -216,12 +215,16 @@ export const useAdminStore = defineStore('admin', () => {
     return keys.map((k) => ({ ...k, disabled: k.disabledAt !== null }))
   }
 
-  async function createApiKeyForUser(userId: string, name: string): Promise<ApiKeyCreated> {
-    return adminApi.createApiKeyForUser(userId, name)
-  }
-
   async function disableApiKey(id: string): Promise<void> {
     await adminApi.disableApiKey(id)
+  }
+
+  async function lockApiKey(id: string): Promise<void> {
+    await adminApi.lockApiKey(id)
+  }
+
+  async function unlockApiKey(id: string): Promise<void> {
+    await adminApi.unlockApiKey(id)
   }
 
   // ─── Admin Reports ────────────────────────────────────────────────────────────
@@ -405,24 +408,40 @@ export const useAdminStore = defineStore('admin', () => {
     })
   }
 
-  async function createIpBlock(data: AdminIpBlockRequest): Promise<void> {
-    await withAdminState(async () => {
-      await adminApi.createIpBlock(data)
-      await refreshSecurity()
+  type IpBlockMutationResult = { refreshFailed: boolean }
+
+  async function refreshIpBlocksAfterMutation(fallback: AdminIpBlock[]): Promise<IpBlockMutationResult> {
+    try {
+      ipBlocks.value = await adminApi.listIpBlocks(securityLimits.ipBlocks)
+      return { refreshFailed: false }
+    } catch {
+      ipBlocks.value = fallback
+      return { refreshFailed: true }
+    }
+  }
+
+  async function createIpBlock(data: AdminIpBlockRequest): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
+      const created = await adminApi.createIpBlock(data)
+      return refreshIpBlocksAfterMutation([...ipBlocks.value, created])
     })
   }
 
-  async function updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<void> {
-    await withAdminState(async () => {
-      await adminApi.updateIpBlock(id, data)
-      await refreshSecurity()
+  async function updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
+      const updated = await adminApi.updateIpBlock(id, data)
+      return refreshIpBlocksAfterMutation(
+        ipBlocks.value.some((block) => block.id === id)
+          ? ipBlocks.value.map((block) => (block.id === id ? updated : block))
+          : [...ipBlocks.value, updated],
+      )
     })
   }
 
-  async function deleteIpBlock(id: string): Promise<void> {
-    await withAdminState(async () => {
+  async function deleteIpBlock(id: string): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
       await adminApi.deleteIpBlock(id)
-      await refreshSecurity()
+      return refreshIpBlocksAfterMutation(ipBlocks.value.filter((block) => block.id !== id))
     })
   }
 
@@ -519,8 +538,9 @@ export const useAdminStore = defineStore('admin', () => {
     adjustCredits,
     updateApiKeyCreation,
     listApiKeysForUser,
-    createApiKeyForUser,
     disableApiKey,
+    lockApiKey,
+    unlockApiKey,
     fetchReports,
     fetchReportDetail,
     replyToReport,

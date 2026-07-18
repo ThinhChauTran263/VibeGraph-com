@@ -186,9 +186,12 @@ function makeFakeWs(opts: { connectRejects?: boolean } = {}) {
   let unsubscribed = false
 
   const subscribe = <T>(topic: string, cb: (payload: T) => void) => {
+    const active = ref(true)
     captured = { topic, cb: cb as unknown as (e: ProjectStatusEvent) => void }
     return {
+      active,
       unsubscribe: () => {
+        active.value = false
         unsubscribed = true
       },
     }

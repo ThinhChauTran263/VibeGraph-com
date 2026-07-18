@@ -1,9 +1,38 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAccountStore } from '@/stores/account'
+import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 
 const accountStore = useAccountStore()
 const displayNameInput = ref('')
+const isProfileLoading = ref(!accountStore.profile)
+const profileLoadError = ref('')
+
+function syncDisplayName(): void {
+  displayNameInput.value = accountStore.profile?.displayName ?? ''
+}
+
+async function loadProfile(): Promise<void> {
+  if (accountStore.profile) {
+    isProfileLoading.value = false
+    profileLoadError.value = ''
+    syncDisplayName()
+    return
+  }
+
+  isProfileLoading.value = true
+  profileLoadError.value = ''
+  try {
+    await accountStore.fetchProfile()
+    syncDisplayName()
+  } catch (error) {
+    if (!accountStore.profile) {
+      profileLoadError.value = error instanceof Error ? error.message : 'Failed to load settings.'
+    }
+  } finally {
+    isProfileLoading.value = false
+  }
+}
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmNewPassword = ref('')
@@ -15,13 +44,8 @@ const profileMessageIsError = ref(false)
 const passwordMessageIsError = ref(false)
 const MIN_PASSWORD_LENGTH = 8
 
-onMounted(async () => {
-  if (!accountStore.profile) {
-    await accountStore.fetchProfile()
-  }
-  if (accountStore.profile) {
-    displayNameInput.value = accountStore.profile.displayName
-  }
+onMounted(() => {
+  void loadProfile()
 })
 
 const updateProfile = async () => {
@@ -91,7 +115,24 @@ async function submitPasswordChange(): Promise<void> {
       <p>Manage account identity and password settings.</p>
     </header>
 
-    <div v-if="accountStore.profile" class="settings-grid">
+    <ErrorAlert
+      v-if="profileLoadError"
+      role="alert"
+      title="Settings unavailable"
+      :message="profileLoadError"
+    >
+      <button
+        data-test="retry-profile"
+        type="button"
+        class="retry-button"
+        :disabled="isProfileLoading"
+        @click="loadProfile"
+      >
+        Retry settings
+      </button>
+    </ErrorAlert>
+    <div v-if="isProfileLoading" class="loading">Loading settings...</div>
+    <div v-else-if="accountStore.profile" class="settings-grid">
       <section class="settings-card">
         <h3>Account</h3>
         <div class="info-group">
@@ -197,7 +238,6 @@ async function submitPasswordChange(): Promise<void> {
         </form>
       </section>
     </div>
-    <div v-else class="loading">Loading settings...</div>
   </div>
 </template>
 
@@ -323,6 +363,18 @@ async function submitPasswordChange(): Promise<void> {
 
 .loading {
   color: var(--vg-text-dim);
+}
+
+.retry-button {
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--vg-danger);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-danger);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 780px) {

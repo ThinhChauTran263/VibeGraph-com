@@ -7,6 +7,7 @@ import path from "node:path";
 import { loadIgnoreRules } from "./ignore.js";
 import { loadSnapshot, saveSnapshot, diffSnapshot } from "./snapshot.js";
 import { scanDirectory, buildFileStateMap } from "./scanner.js";
+import { createPatchRequest, resolveSnapshotId } from "./project-target.js";
 
 /**
  * Execute the push command.
@@ -16,6 +17,7 @@ import { scanDirectory, buildFileStateMap } from "./scanner.js";
  */
 export async function executePush(projectId, options, apiRequest) {
   const rootDir = path.resolve(options.root || ".");
+  const snapshotId = resolveSnapshotId(projectId, options.snapshotId);
 
   // Load ignore rules
   const ignoreRules = await loadIgnoreRules(rootDir);
@@ -31,7 +33,7 @@ export async function executePush(projectId, options, apiRequest) {
   const currentState = buildFileStateMap(scan.files);
 
   // Load previous snapshot to detect deletions
-  const previousSnapshot = await loadSnapshot(projectId);
+  const previousSnapshot = await loadSnapshot(snapshotId);
 
   // Diff to find changed and deleted
   const { changed, deleted } = diffSnapshot(currentState, previousSnapshot);
@@ -58,10 +60,8 @@ export async function executePush(projectId, options, apiRequest) {
   if (options.dryRun) {
     // Send to backend with dryRun=true
     try {
-      const result = await apiRequest(
-        `/api/projects/${encodeURIComponent(projectId)}/patch`,
-        { method: "POST", auth: true, body: payload }
-      );
+      const request = createPatchRequest(projectId, payload);
+      const result = await apiRequest(request.endpoint, request.options);
       console.log(`Dry run: ${summary.changed} changed, ${summary.deleted} deleted, ${summary.skipped} skipped`);
       if (result?.rejected?.length) {
         console.log(`Rejected by server: ${result.rejected.length} files`);
@@ -90,13 +90,11 @@ export async function executePush(projectId, options, apiRequest) {
     return summary;
   }
 
-  const result = await apiRequest(
-    `/api/projects/${encodeURIComponent(projectId)}/patch`,
-    { method: "POST", auth: true, body: payload }
-  );
+  const request = createPatchRequest(projectId, payload);
+  const result = await apiRequest(request.endpoint, request.options);
 
   // Update snapshot after successful push
-  await saveSnapshot(projectId, currentState);
+  await saveSnapshot(snapshotId, currentState);
 
   console.log(`Pushed patch: ${summary.changed} changed, ${summary.deleted} deleted`);
   if (result?.rejected?.length) {

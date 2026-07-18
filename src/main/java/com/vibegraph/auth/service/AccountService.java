@@ -1,5 +1,7 @@
 package com.vibegraph.auth.service;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.PageRequest;
@@ -18,6 +20,7 @@ import com.vibegraph.auth.dto.AccountProjectResponse;
 import com.vibegraph.auth.dto.AccountProjectsPageResponse;
 import com.vibegraph.auth.dto.AccountSessionStateResponse;
 import com.vibegraph.auth.dto.AccountUsageResponse;
+import com.vibegraph.auth.dto.FeatureCapability;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.CreditLedgerRepository;
@@ -38,6 +41,7 @@ public class AccountService {
     private final CreditLedgerRepository creditLedgerRepository;
     private final ProjectOwnershipRepository projectOwnershipRepository;
     private final PasswordEncoder passwordEncoder;
+    private final FeatureGateService featureGateService;
 
     @Transactional(readOnly = true)
     public UserResponse profile() {
@@ -47,7 +51,23 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public AccountSessionStateResponse sessionState() {
-        return AccountSessionStateResponse.from(toUserResponse(currentUserEntity()));
+        UserResponse user = toUserResponse(currentUserEntity());
+        Map<String, FeatureCapability> features = featureGateService.capabilities();
+        if (!"ACTIVE".equals(user.accountStatus())) {
+            features = restrictProductCapabilities(features, user.safeReason());
+        }
+        return AccountSessionStateResponse.from(user, features);
+    }
+
+    private Map<String, FeatureCapability> restrictProductCapabilities(
+            Map<String, FeatureCapability> features,
+            String reason) {
+        Map<String, FeatureCapability> restricted = new LinkedHashMap<>(features);
+        restricted.replaceAll((key, capability) -> FeatureGateService.REGISTRATION.equals(key)
+                ? capability
+                : FeatureCapability.deny(
+                        reason == null || reason.isBlank() ? "Account access is restricted" : reason));
+        return Map.copyOf(restricted);
     }
 
     @Transactional

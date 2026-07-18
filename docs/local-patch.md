@@ -50,22 +50,35 @@ Verify:
 vibegraph help
 ```
 
-## 3. Configure and authenticate
+## 3. Configure and authenticate with a project-bound API key
 
 ```bash
 vibegraph config set-url http://localhost:8080
-vibegraph register --email you@example.com --password "YourPass123!" --name "Your Name"
+vibegraph auth set-key vbg_...
 ```
 
-Or login to an existing account:
+Create the key in the VibeGraph web app:
+
+1. Open the repository/project in your user console.
+2. Create an API key for that repository.
+3. Copy the key once and store it with `vibegraph auth set-key`.
+
+Verify the local configuration without revealing the full key:
+
+```bash
+vibegraph auth status
+vibegraph config show
+vibegraph doctor
+```
+
+`VIBEGRAPH_API_KEY` overrides the stored key, and `VIBEGRAPH_API_URL` overrides the configured API
+URL. Push and watch send `X-API-Key` and do not send a Bearer token when a key is available.
+
+Legacy login remains available for compatibility and development commands that still use a
+project ID:
 
 ```bash
 vibegraph login --email you@example.com --password "YourPass123!"
-```
-
-Verify:
-
-```bash
 vibegraph me
 ```
 
@@ -118,14 +131,15 @@ Output:
 }
 ```
 
-Save the `id` — you'll use it for all subsequent commands.
+The web-created API key is already bound to this project, so root-only push/watch commands do not
+need the project ID. Keep the ID only for legacy project-management commands.
 
 ## 6. Push a patch
 
 Edit the file on your host (in your IDE or editor), then push:
 
 ```bash
-vibegraph projects push <projectId> --root ./projects/demo
+vibegraph push --root ./projects/demo
 ```
 
 Output:
@@ -137,7 +151,13 @@ Pushed patch: 1 changed, 0 deleted
 Preview without sending:
 
 ```bash
-vibegraph projects push <projectId> --root ./projects/demo --dry-run
+vibegraph push --root ./projects/demo --dry-run
+```
+
+Legacy compatibility form:
+
+```bash
+vibegraph projects push <projectId> --root ./projects/demo
 ```
 
 ## 7. Re-analyze
@@ -165,14 +185,14 @@ Output:
 Auto-push on every file save:
 
 ```bash
-vibegraph watch <projectId> --root ./projects/demo
+vibegraph watch --root ./projects/demo
 ```
 
 The watcher detects changes, pushes patches, and prints timestamps:
 
 ```
 Watching: D:\...\projects\demo
-Project: <projectId>
+Project: API key binding
 Press Ctrl+C to stop.
 
 Baseline: 1 files tracked.
@@ -226,8 +246,8 @@ The backend independently enforces:
 
 | Error | Meaning | Fix |
 |-------|---------|-----|
-| `HTTP 401` / exit code 3 | Token expired or invalid | Run `vibegraph login` again |
-| `HTTP 403` | Not the project owner | Check you're logged in as the correct user |
+| `HTTP 401` / exit code 3 | API key invalid/deleted or legacy token expired | Run `vibegraph doctor`, then set a valid key |
+| `HTTP 403` | API key disabled/locked, account blocked, or project mismatch | Check the key status in the web app or contact support |
 | `HTTP 404` | Project ID not found | Verify with `vibegraph projects list` |
 | `PATCH_REJECTED` | Backend rejected unsafe file/path | Check file is not in blocked list |
 | `fetch failed` / `ECONNREFUSED` | Backend not reachable | Ensure `docker compose ps` shows healthy |
@@ -249,6 +269,9 @@ The `--root` flag always uses the **host** path (where your files are). The `--p
 vibegraph help
 vibegraph config show
 vibegraph config set-url <url>
+vibegraph auth set-key <apiKey>
+vibegraph auth status
+vibegraph auth clear
 vibegraph register --email <e> --password <p> --name <n>
 vibegraph login --email <e> --password <p>
 vibegraph logout
@@ -256,10 +279,12 @@ vibegraph me
 vibegraph doctor
 vibegraph projects list
 vibegraph projects import-local --path <containerPath> --name <name>
+vibegraph push --root <hostPath> [--dry-run]
 vibegraph projects push <projectId> --root <hostPath> [--dry-run]
 vibegraph projects analyze <projectId>
 vibegraph projects status <projectId>
 vibegraph projects delete <projectId>
+vibegraph watch --root <hostPath>
 vibegraph watch <projectId> --root <hostPath>
 vibegraph ignore init [--root <path>]
 ```

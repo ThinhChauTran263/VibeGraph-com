@@ -79,4 +79,50 @@ class FeatureGateServiceTest {
 
         verify(featureFlagRepository, never()).existsByKeyAndEnabledFalse("mcp.tool.source_file");
     }
+
+    @Test
+    @DisplayName("capabilities expose canonical global and persisted MCP child flags")
+    void capabilities_returnsSafeEffectiveMap() {
+        FeatureGateService service = new FeatureGateService(featureFlagRepository);
+        var child = com.vibegraph.auth.domain.FeatureFlag.builder()
+                .key("mcp.tool.source_file")
+                .scope("MCP_TOOL")
+                .displayName("Source file")
+                .enabled(false)
+                .description("admin-only description")
+                .build();
+        when(featureFlagRepository.findAll()).thenReturn(java.util.List.of(child));
+
+        var capabilities = service.capabilities();
+
+        org.assertj.core.api.Assertions.assertThat(capabilities)
+                .containsKeys(FeatureGateService.IMPORT_LOCAL, FeatureGateService.MCP_ENABLED,
+                        "mcp.tool.source_file");
+        org.assertj.core.api.Assertions.assertThat(capabilities.get("mcp.tool.source_file").enabled()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(capabilities.toString()).doesNotContain("admin-only description");
+    }
+
+    @Test
+    @DisplayName("disabled MCP global flag makes child capabilities fail closed")
+    void capabilities_globalMcpDisabled_disablesChildren() {
+        FeatureGateService service = new FeatureGateService(featureFlagRepository);
+        var child = com.vibegraph.auth.domain.FeatureFlag.builder()
+                .key("mcp.tool.source_file")
+                .scope("MCP_TOOL")
+                .displayName("Source file")
+                .enabled(true)
+                .build();
+        var global = com.vibegraph.auth.domain.FeatureFlag.builder()
+                .key(FeatureGateService.MCP_ENABLED)
+                .scope("GLOBAL")
+                .displayName("MCP")
+                .enabled(false)
+                .build();
+        when(featureFlagRepository.findAll()).thenReturn(java.util.List.of(global, child));
+
+        var capabilities = service.capabilities();
+
+        org.assertj.core.api.Assertions.assertThat(capabilities.get(FeatureGateService.MCP_ENABLED).enabled()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(capabilities.get("mcp.tool.source_file").enabled()).isFalse();
+    }
 }

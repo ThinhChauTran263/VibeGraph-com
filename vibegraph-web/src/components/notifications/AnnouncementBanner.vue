@@ -12,6 +12,8 @@ const errorMsg = ref('')
 onMounted(loadActiveNotification)
 
 async function loadActiveNotification(): Promise<void> {
+  busy.value = true
+  errorMsg.value = ''
   try {
     const items = await accountApi.listNotifications(20)
     notification.value =
@@ -20,6 +22,8 @@ async function loadActiveNotification(): Promise<void> {
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null
   } catch {
     errorMsg.value = 'Announcements are temporarily unavailable.'
+  } finally {
+    busy.value = false
   }
 }
 
@@ -57,7 +61,24 @@ async function read(): Promise<void> {
 
 <template>
   <aside
-    v-if="notification"
+    v-if="errorMsg && !notification"
+    class="banner banner-error"
+    role="alert"
+    aria-live="assertive"
+  >
+    <div class="copy">
+      <span>Announcements</span>
+      <strong>Could not load announcements</strong>
+      <p>{{ errorMsg }}</p>
+    </div>
+    <div class="actions">
+      <button type="button" :disabled="busy" @click="loadActiveNotification">
+        {{ busy ? 'Retrying...' : 'Retry' }}
+      </button>
+    </div>
+  </aside>
+  <aside
+    v-else-if="notification"
     class="banner"
     :class="`severity-${notification.severity.toLowerCase()}`"
     aria-live="polite"
@@ -105,6 +126,11 @@ async function read(): Promise<void> {
   border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
   border-left-color: var(--vg-danger);
   background: color-mix(in srgb, var(--vg-danger) 10%, var(--vg-surface));
+}
+.banner-error {
+  border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
+  border-left-color: var(--vg-danger);
+  background: color-mix(in srgb, var(--vg-danger) 9%, var(--vg-surface));
 }
 .copy {
   min-width: 0;

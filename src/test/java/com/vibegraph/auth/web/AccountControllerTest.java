@@ -16,6 +16,7 @@ import com.vibegraph.auth.dto.AccountProjectResponse;
 import com.vibegraph.auth.dto.AccountProjectsPageResponse;
 import com.vibegraph.auth.dto.AccountSessionStateResponse;
 import com.vibegraph.auth.dto.AccountUsageResponse;
+import com.vibegraph.auth.dto.FeatureCapability;
 import com.vibegraph.auth.dto.AccountCreditLedgerResponse;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.service.AccountService;
@@ -68,7 +69,10 @@ class AccountControllerTest {
                 "Blocked User",
                 "USER",
                 "BLOCKED",
-                "Policy review"));
+                "Policy review",
+                java.util.Map.of(
+                        "import.local", FeatureCapability.deny("Policy review"),
+                        "registration", FeatureCapability.allow())));
 
         mockMvc.perform(get("/api/account/session-state"))
                 .andExpect(status().isOk())

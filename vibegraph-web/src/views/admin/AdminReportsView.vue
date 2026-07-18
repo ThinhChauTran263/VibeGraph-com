@@ -30,10 +30,13 @@ const reportRealtime = useReportRealtime(selectedReportId, {
   },
 })
 const reportRealtimeStatus = reportRealtime.status
+const reportRealtimeActive = reportRealtime.active
 const reportRealtimeLabel = computed(() => {
-  if (reportRealtimeStatus.value === 'connected') return 'Live'
+  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) return 'Live'
   if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
-  if (reportRealtimeStatus.value === 'connecting') return 'Syncing'
+  if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
+    return 'Syncing'
+  }
   return 'Offline'
 })
 

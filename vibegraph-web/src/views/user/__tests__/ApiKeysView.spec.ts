@@ -4,37 +4,52 @@ import { createTestingPinia } from '@pinia/testing'
 import ApiKeysView from '../ApiKeysView.vue'
 import { useAccountStore } from '@/stores/account'
 
+const featureMocks = vi.hoisted(() => ({
+  enabled: true,
+  reason: null as string | null,
+}))
+
 vi.mock('@/lib/featureAvailability', async () => {
   const { computed, ref } = await import('vue')
   return {
-    featureAvailabilityContract: ref(false),
+    featureAvailabilityContract: ref(true),
     refreshFeatureAvailability: vi.fn().mockResolvedValue(undefined),
     useFeatureAvailability: (key: string) =>
       computed(() => ({
         key,
-        enabled: false,
-        reason: 'Repository-bound API key creation is not supported by the current backend contract.',
+        enabled: featureMocks.enabled,
+        reason: featureMocks.reason,
       })),
   }
 })
 
 const dialogStub = {
-  props: ['open'],
+  props: ['open', 'title'],
   emits: ['confirm', 'cancel'],
-  template: '<button v-if="open" data-test="confirm-disable" @click="$emit(\'confirm\')">Confirm disable</button>',
+  template:
+    '<button v-if="open" :data-test="title === \'Delete API key\' ? \'confirm-delete\' : \'confirm-disable\'" @click="$emit(\'confirm\')">Confirm {{ title }}</button>',
 }
 
-function mountView() {
+function mountView(projectsError?: Error) {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
     initialState: {
       account: {
-        projects: [{ id: 'project-1', name: 'VibeGraph Web' }],
+        projects: [
+          { id: 'project-1', name: 'VibeGraph Web' },
+          { id: 'project-2', name: 'Fresh Project' },
+        ],
         apiKeys: [
           {
             id: 'key-1',
             keyPrefix: 'vbg_live_12',
             name: 'Production CLI',
+            project: {
+              id: 'project-1',
+              name: 'VibeGraph Web',
+              sourceType: 'GITHUB',
+              status: 'READY',
+            },
             createdAt: '2026-07-17T10:00:00Z',
             lastUsedAt: null,
             expiresAt: null,
@@ -44,7 +59,8 @@ function mountView() {
           {
             id: 'key-2',
             keyPrefix: 'vbg_old_34',
-            name: 'Disabled key',
+            name: 'Legacy unbound key',
+            project: null,
             createdAt: '2026-07-16T10:00:00Z',
             lastUsedAt: null,
             expiresAt: null,
@@ -55,6 +71,9 @@ function mountView() {
       },
     },
   })
+  if (projectsError) {
+    vi.mocked(useAccountStore(pinia).fetchProjects).mockRejectedValueOnce(projectsError)
+  }
   return {
     wrapper: mount(ApiKeysView, {
       global: { plugins: [pinia], stubs: { AdminConfirmDialog: dialogStub } },
@@ -66,31 +85,74 @@ function mountView() {
 describe('ApiKeysView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    featureMocks.enabled = true
+    featureMocks.reason = null
   })
 
-  it('renders key metadata without exposing a list secret or invented project binding', async () => {
+  it('renders repository bindings without exposing a list secret', async () => {
     const { wrapper } = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Production CLI')
     expect(wrapper.text()).toContain('vbg_live_12')
-    expect(wrapper.text()).toContain('Active')
-    expect(wrapper.text()).toContain('Disabled')
-    expect(wrapper.text()).toContain('No repository binding in the current API contract')
-    expect(wrapper.text()).not.toContain('VibeGraph Web')
+    expect(wrapper.text()).toContain('Repository: VibeGraph Web')
+    expect(wrapper.text()).toContain('No repository binding')
     expect(wrapper.text()).not.toContain('secretKey')
   })
 
-  it('keeps project-bound key creation visibly disabled and non-interactive', async () => {
+  it('selects a repository before creating a project-bound key', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    vi.mocked(store.createApiKey).mockResolvedValueOnce({
+      id: 'key-new',
+      keyPrefix: 'vbg_new_56',
+      name: 'CI key',
+      secretKey: 'vbg-secret',
+      project: {
+        id: 'project-2',
+        name: 'Fresh Project',
+        sourceType: 'GITHUB',
+        status: 'READY',
+      },
+      createdAt: '2026-07-18T10:00:00Z',
+      expiresAt: null,
+    })
+    await flushPromises()
+
+    await wrapper.get('button[data-test="create-api-key"]').trigger('click')
+    await wrapper.get('#key-name').setValue('  CI key  ')
+    expect(wrapper.get('form button[type="submit"]').attributes()).toHaveProperty('disabled')
+    await wrapper.get('#key-project').setValue('project-2')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(store.createApiKey).toHaveBeenCalledWith('CI key', 'project-2')
+    expect(wrapper.text()).toContain('vbg-secret')
+  })
+
+  it('fails closed when repository availability cannot be refreshed', async () => {
+    const { wrapper, pinia } = mountView(new Error('Repositories unavailable'))
+    const store = useAccountStore(pinia)
+    await flushPromises()
+
+    const createButton = wrapper.get('button[data-test="create-api-key"]')
+    expect(createButton.attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('#key-disabled').text()).toContain('Repositories unavailable')
+    expect(store.projects).toHaveLength(2)
+    await createButton.trigger('click')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('fails closed when API key capability is unavailable', async () => {
+    featureMocks.enabled = false
+    featureMocks.reason = 'API key creation is disabled by an administrator.'
     const { wrapper, pinia } = mountView()
     const store = useAccountStore(pinia)
     await flushPromises()
 
     const createButton = wrapper.get('button[data-test="create-api-key"]')
     expect(createButton.attributes()).toHaveProperty('disabled')
-    expect(wrapper.get('#key-disabled').text()).toContain(
-      'Repository-bound API key creation is not supported by the current backend contract.',
-    )
+    expect(wrapper.get('#key-disabled').text()).toContain('disabled by an administrator')
     await createButton.trigger('click')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     expect(store.createApiKey).not.toHaveBeenCalled()
@@ -105,6 +167,52 @@ describe('ApiKeysView', () => {
     await wrapper.get('[data-test="confirm-disable"]').trigger('click')
 
     expect(store.disableApiKey).toHaveBeenCalledWith('key-1')
+  })
+
+  it('blocks creation until the existing project key is deleted', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    await flushPromises()
+
+    await wrapper.get('button[data-test="create-api-key"]').trigger('click')
+    await wrapper.get('#key-name').setValue('Replacement')
+    await wrapper.get('#key-project').setValue('project-1')
+
+    expect(wrapper.get('[data-test="duplicate-project-reason"]').text()).toContain(
+      'Delete the existing key',
+    )
+    expect(wrapper.get('form button[type="submit"]').attributes()).toHaveProperty('disabled')
+    expect(store.createApiKey).not.toHaveBeenCalled()
+  })
+
+  it('deletes a key through a custom confirmation dialog', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    await flushPromises()
+
+    await wrapper.get('button[data-test="delete-key-key-1"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+
+    expect(store.deleteApiKey).toHaveBeenCalledWith('key-1')
+  })
+
+  it('prevents deletion and replacement of an admin-locked key', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    store.apiKeys[0] = { ...store.apiKeys[0]!, locked: true, lockedBy: 'admin@example.com' }
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Admin locked')
+    expect(wrapper.get('button[data-test="delete-key-key-1"]').attributes()).toHaveProperty(
+      'disabled',
+    )
+    await wrapper.get('button[data-test="create-api-key"]').trigger('click')
+    await wrapper.get('#key-name').setValue('Replacement')
+    await wrapper.get('#key-project').setValue('project-1')
+    expect(wrapper.get('[data-test="duplicate-project-reason"]').text()).toContain(
+      'admin-locked key',
+    )
+    expect(store.deleteApiKey).not.toHaveBeenCalled()
   })
 
   it('keeps the disable dialog recoverable when the request fails', async () => {

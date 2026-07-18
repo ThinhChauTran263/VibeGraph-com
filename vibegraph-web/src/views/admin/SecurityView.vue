@@ -7,7 +7,10 @@ import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 const admin = useAdminStore()
 const loading = ref(true)
 const saving = ref(false)
-const error = ref('')
+const retryingPanel = ref('')
+const mutationError = ref('')
+const mutationSuccess = ref('')
+const unavailablePanels = ref<string[]>([])
 const editingId = ref<string | null>(null)
 const pendingDelete = ref<AdminIpBlock | null>(null)
 const form = ref({ ipAddress: '', safeReason: '', expiresAt: '', active: true })
@@ -24,14 +27,35 @@ onMounted(load)
 
 async function load(): Promise<void> {
   loading.value = true
-  error.value = ''
+  mutationError.value = ''
   try {
-    const unavailable = await admin.fetchSecurityData(100)
-    if (unavailable.length) error.value = `Unavailable from the running backend: ${unavailable.join(', ')}.`
+    unavailablePanels.value = (await admin.fetchSecurityData(100)) ?? []
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Failed to load security operations.'
+    mutationError.value = cause instanceof Error ? cause.message : 'Failed to load security operations.'
   } finally {
     loading.value = false
+  }
+}
+
+const panelRetryActions: Record<string, () => Promise<void>> = {
+  'security events': () => admin.fetchSecurityEvents(),
+  'request events': () => admin.fetchRequestEvents(),
+  'top users': () => admin.fetchTopUsers(),
+  'top IPs': () => admin.fetchTopIps(),
+  'IP blocks': () => admin.fetchIpBlocks(),
+}
+
+async function retryPanel(panel: string): Promise<void> {
+  const retry = panelRetryActions[panel]
+  if (!retry) return
+  retryingPanel.value = panel
+  try {
+    await retry()
+    unavailablePanels.value = unavailablePanels.value.filter((item) => item !== panel)
+  } catch {
+    // Keep the panel in the warning list so the operator can retry again.
+  } finally {
+    retryingPanel.value = ''
   }
 }
 
@@ -46,13 +70,22 @@ function toPayload(): AdminIpBlockRequest {
 
 async function saveBlock(): Promise<void> {
   saving.value = true
-  error.value = ''
+  mutationError.value = ''
+  mutationSuccess.value = ''
+  const wasEditing = Boolean(editingId.value)
   try {
-    if (editingId.value) await admin.updateIpBlock(editingId.value, toPayload())
-    else await admin.createIpBlock(toPayload())
+    const result = editingId.value
+      ? await admin.updateIpBlock(editingId.value, toPayload())
+      : await admin.createIpBlock(toPayload())
+    mutationSuccess.value = `IP block policy ${wasEditing ? 'updated' : 'created'} successfully.${
+      result.refreshFailed ? ' The policy list could not be refreshed; retry that panel.' : ''
+    }`
+    if (result.refreshFailed && !unavailablePanels.value.includes('IP blocks')) {
+      unavailablePanels.value = [...unavailablePanels.value, 'IP blocks']
+    }
     resetForm()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Failed to save IP block.'
+    mutationError.value = cause instanceof Error ? cause.message : 'Failed to save IP block.'
   } finally {
     saving.value = false
   }
@@ -76,12 +109,21 @@ function resetForm(): void {
 async function deleteBlock(): Promise<void> {
   if (!pendingDelete.value) return
   saving.value = true
+  mutationError.value = ''
+  mutationSuccess.value = ''
   try {
-    await admin.deleteIpBlock(pendingDelete.value.id)
-    if (editingId.value === pendingDelete.value.id) resetForm()
+    const deletedId = pendingDelete.value.id
+    const result = await admin.deleteIpBlock(deletedId)
+    mutationSuccess.value = `IP block policy removed successfully.${
+      result.refreshFailed ? ' The policy list could not be refreshed; retry that panel.' : ''
+    }`
+    if (result.refreshFailed && !unavailablePanels.value.includes('IP blocks')) {
+      unavailablePanels.value = [...unavailablePanels.value, 'IP blocks']
+    }
+    if (editingId.value === deletedId) resetForm()
     pendingDelete.value = null
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Failed to remove IP block.'
+    mutationError.value = cause instanceof Error ? cause.message : 'Failed to remove IP block.'
   } finally {
     saving.value = false
   }
@@ -104,7 +146,26 @@ function formatDate(value: string | null): string {
       <div><span class="eyebrow">Operations</span><h1>Security</h1><p>Monitor request pressure, abuse signals, and exact IP policy.</p></div>
       <button type="button" class="secondary" :disabled="loading" @click="load">{{ loading ? 'Loading...' : 'Refresh data' }}</button>
     </header>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
+    <p v-if="mutationError" class="notice error" role="alert">{{ mutationError }}</p>
+    <p v-if="mutationSuccess" class="notice success" role="status">{{ mutationSuccess }}</p>
+    <section v-if="unavailablePanels.length" class="notice warning" role="status">
+      <div>
+        <strong>Some monitoring panels are unavailable</strong>
+        <p>Policy writes remain independent. Retry only the stale panel.</p>
+      </div>
+      <div class="retry-actions">
+        <button
+          v-for="panel in unavailablePanels"
+          :key="panel"
+          type="button"
+          class="secondary"
+          :disabled="Boolean(retryingPanel)"
+          @click="retryPanel(panel)"
+        >
+          {{ retryingPanel === panel ? 'Retrying...' : `Retry ${panel}` }}
+        </button>
+      </div>
+    </section>
 
     <section class="metrics" aria-label="Security status">
       <article><span>Request sample</span><strong>{{ totalRequests }}</strong><small>latest events</small></article>
@@ -161,6 +222,11 @@ h2 { font-size: var(--vg-text-lg); }
 p { margin: var(--vg-space-1) 0 0; color: var(--vg-text-muted); }
 .notice, .panel { padding: var(--vg-space-4); border: 1px solid var(--vg-border); border-radius: var(--vg-radius); background: var(--vg-surface); }
 .notice.error { color: var(--vg-danger); border-color: rgba(239,68,68,.3); }
+.notice.success { color: var(--vg-green-bright); border-color: rgba(34,197,94,.3); }
+.notice.warning { display: flex; align-items: center; justify-content: space-between; gap: var(--vg-space-4); border-color: rgba(245,158,11,.38); background: rgba(245,158,11,.08); }
+.notice.warning strong { color: var(--vg-text); }
+.notice.warning p { margin-top: var(--vg-space-1); }
+.retry-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--vg-space-2); }
 button, input, textarea { min-height: 2.75rem; border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); font: inherit; }
 button { padding: 0 var(--vg-space-3); background: var(--vg-blue); border-color: var(--vg-blue); color: white; cursor: pointer; font-weight: 800; }
 button.secondary { background: var(--vg-surface-2); border-color: var(--vg-border); color: var(--vg-text); }
@@ -199,5 +265,5 @@ th { background: var(--vg-surface-2); color: var(--vg-text-muted); font-size: va
 .block-list footer { justify-content: flex-end; margin-top: var(--vg-space-3); }
 .empty { color: var(--vg-text-muted); text-align: center; }
 @media (max-width: 1000px) { .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .rank-grid, .policy-grid { grid-template-columns: 1fr; } }
-@media (max-width: 620px) { .page-header, .panel-heading { grid-template-columns: 1fr; } .metrics { grid-template-columns: 1fr; } .editor-panel form { grid-template-columns: 1fr; } .editor-panel .wide { grid-column: auto; } .switch-row { padding-top: 0; } }
+@media (max-width: 620px) { .page-header, .panel-heading { grid-template-columns: 1fr; } .notice.warning { align-items: stretch; flex-direction: column; } .retry-actions { justify-content: stretch; } .retry-actions button { width: 100%; } .metrics { grid-template-columns: 1fr; } .editor-panel form { grid-template-columns: 1fr; } .editor-panel .wide { grid-column: auto; } .switch-row { padding-top: 0; } }
 </style>

@@ -2,11 +2,25 @@ package com.vibegraph.auth.service;
 
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -16,7 +30,6 @@ import com.vibegraph.auth.domain.Plan;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.domain.UserAccountSettings;
-import com.vibegraph.auth.dto.AdminApiKeyCreateRequest;
 import com.vibegraph.auth.dto.ApiKeyCreateRequest;
 import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;
@@ -28,11 +41,6 @@ import com.vibegraph.common.exception.ApiKeysDisabledException;
 import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.ForbiddenException;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
-
 @ExtendWith(MockitoExtension.class)
 @DisplayName("API key service")
 class ApiKeyServiceTest {
@@ -42,6 +50,9 @@ class ApiKeyServiceTest {
 
     @Mock
     private ApiKeyRepository apiKeyRepository;
+
+    @Mock
+    private com.vibegraph.auth.repository.ProjectOwnershipRepository projectOwnershipRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -71,6 +82,7 @@ class ApiKeyServiceTest {
         apiKeyService = new ApiKeyService(
                 currentUser,
                 apiKeyRepository,
+                projectOwnershipRepository,
                 userRepository,
                 accountSettingsService,
                 passwordEncoder,
@@ -85,6 +97,7 @@ class ApiKeyServiceTest {
                 .build();
 
         authenticatedUser = new AuthenticatedUser(userId, "user@test.local", Role.USER);
+        lenient().when(userRepository.findByIdForUpdate(userId)).thenReturn(java.util.Optional.of(user));
 
         freePlan = Plan.builder()
                 .id(UUID.randomUUID())
@@ -98,15 +111,22 @@ class ApiKeyServiceTest {
                 .plan(freePlan)
                 .apiKeyCreationDisabled(false)
                 .build();
+        lenient().when(projectOwnershipRepository.findByProjectIdAndOwnerId("project-1", userId))
+                .thenReturn(java.util.Optional.of(com.vibegraph.auth.domain.ProjectOwnership.builder()
+                        .projectId("project-1")
+                        .ownerId(userId)
+                        .name("Project One")
+                        .sourceType(com.vibegraph.auth.domain.ProjectSourceType.LOCAL)
+                        .status(com.vibegraph.auth.domain.ProjectOwnershipStatus.ANALYZED)
+                        .build()));
     }
 
     @Test
     @DisplayName("createForCurrentUser returns secret key once")
     void createForCurrentUser_returnsSecretKeyOnce() {
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(apiKeyRepository.countByUserIdAndDisabledAtIsNull(userId)).thenReturn(0);
+        when(apiKeyRepository.countByUserIdAndDeletedAtIsNull(userId)).thenReturn(0);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
             ApiKey key = invocation.getArgument(0);
@@ -116,25 +136,40 @@ class ApiKeyServiceTest {
         });
 
         ApiKeyCreateResponse response = apiKeyService.createForCurrentUser(
-                new ApiKeyCreateRequest("Test Key"));
+                new ApiKeyCreateRequest("Test Key", "project-1"));
 
         assertNotNull(response.secretKey());
         assertTrue(response.secretKey().startsWith("vbg_"));
         assertEquals(36, response.secretKey().length()); // vbg_ (4) + 32 chars
         assertNotNull(response.keyPrefix());
         assertEquals("Test Key", response.name());
+        assertEquals("project-1", response.project().id());
+        assertEquals("Project One", response.project().name());
         verify(passwordEncoder).encode(argThat(secret ->
                 secret.toString().startsWith("vbg_") && secret.length() == 36));
         verify(apiKeyRepository).save(any(ApiKey.class));
     }
 
     @Test
+    @DisplayName("createForCurrentUser rejects a project not owned by the user")
+    void createForCurrentUser_wrongProjectOwner_throws() {
+        when(currentUser.id()).thenReturn(userId);
+        when(accountSettingsService.findSettings(userId)).thenReturn(settings);
+        when(projectOwnershipRepository.findByProjectIdAndOwnerId("other-project", userId))
+                .thenReturn(java.util.Optional.empty());
+
+        assertThrows(ForbiddenException.class, () -> apiKeyService.createForCurrentUser(
+                new ApiKeyCreateRequest("Test Key", "other-project")));
+
+        verify(apiKeyRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("createForCurrentUser stores only hash, never raw key")
     void createForCurrentUser_storesHashOnly() {
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(apiKeyRepository.countByUserIdAndDisabledAtIsNull(userId)).thenReturn(0);
+        when(apiKeyRepository.countByUserIdAndDeletedAtIsNull(userId)).thenReturn(0);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
             ApiKey key = invocation.getArgument(0);
@@ -143,7 +178,7 @@ class ApiKeyServiceTest {
             return key;
         });
 
-        apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key"));
+        apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key", "project-1"));
 
         verify(apiKeyRepository).save(argThat(apiKey ->
                 apiKey.getKeyHash().equals("$2a$10$hashedValue") &&
@@ -157,7 +192,7 @@ class ApiKeyServiceTest {
                 .when(featureGateService).assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
 
         assertThrows(FeatureDisabledException.class,
-                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
+                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key", "project-1")));
 
         verifyNoInteractions(currentUser, userRepository, accountSettingsService, passwordEncoder, apiKeyRepository);
     }
@@ -166,12 +201,11 @@ class ApiKeyServiceTest {
     @DisplayName("createForCurrentUser throws when blocked")
     void createForCurrentUser_blockedUser_throws() {
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
         doThrow(new AccountBlockedException("Blocked", "Account is blocked"))
                 .when(accountSettingsService).assertNotBlocked(userId);
 
         assertThrows(AccountBlockedException.class,
-                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
+                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key", "project-1")));
         verify(apiKeyRepository, never()).save(any());
     }
 
@@ -180,11 +214,10 @@ class ApiKeyServiceTest {
     void createForCurrentUser_creationDisabled_throws() {
         settings.setApiKeyCreationDisabled(true);
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
 
         assertThrows(ApiKeysDisabledException.class,
-                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
+                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key", "project-1")));
         verify(apiKeyRepository, never()).save(any());
     }
 
@@ -192,12 +225,11 @@ class ApiKeyServiceTest {
     @DisplayName("createForCurrentUser throws when plan limit reached")
     void createForCurrentUser_planLimitReached_throws() {
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(apiKeyRepository.countByUserIdAndDisabledAtIsNull(userId)).thenReturn(3);
+        when(apiKeyRepository.countByUserIdAndDeletedAtIsNull(userId)).thenReturn(3);
 
         assertThrows(ApiKeyPlanLimitReachedException.class,
-                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key")));
+                () -> apiKeyService.createForCurrentUser(new ApiKeyCreateRequest("Test Key", "project-1")));
         verify(apiKeyRepository, never()).save(any());
     }
 
@@ -222,8 +254,8 @@ class ApiKeyServiceTest {
                 .build();
 
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
-        when(apiKeyRepository.findByUserId(userId)).thenReturn(java.util.List.of(key1, key2));
+        lenient().when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
+        when(apiKeyRepository.findByUserIdAndDeletedAtIsNull(userId)).thenReturn(java.util.List.of(key1, key2));
 
         java.util.List<ApiKeyResponse> responses = apiKeyService.listForCurrentUser();
 
@@ -239,8 +271,9 @@ class ApiKeyServiceTest {
     void disableForCurrentUser_wrongOwner_throws() {
         UUID keyId = UUID.randomUUID();
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
-        when(apiKeyRepository.findByIdAndUserId(keyId, userId)).thenReturn(java.util.Optional.empty());
+        lenient().when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId))
+                .thenReturn(java.util.Optional.empty());
 
         assertThrows(ForbiddenException.class,
                 () -> apiKeyService.disableForCurrentUser(keyId));
@@ -261,49 +294,15 @@ class ApiKeyServiceTest {
                 .build();
 
         when(currentUser.id()).thenReturn(userId);
-        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
-        when(apiKeyRepository.findByIdAndUserId(keyId, userId)).thenReturn(java.util.Optional.of(apiKey));
+        lenient().when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId))
+                .thenReturn(java.util.Optional.of(apiKey));
+        when(apiKeyRepository.disableByOwnerUnlessAdminLocked(eq(keyId), eq(userId), any()))
+                .thenReturn(1);
 
         apiKeyService.disableForCurrentUser(keyId);
 
-        assertNotNull(apiKey.getDisabledAt());
-        verify(apiKeyRepository).save(apiKey);
-    }
-
-    @Test
-    @DisplayName("createForUser as admin succeeds")
-    void createForUser_asAdmin_succeeds() {
-        UUID adminId = UUID.randomUUID();
-        AuthenticatedUser adminPrincipal = new AuthenticatedUser(adminId, "admin@test.local", Role.ADMIN);
-
-        when(currentUser.principal()).thenReturn(adminPrincipal);
-        when(userRepository.existsById(userId)).thenReturn(true);
-        when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(apiKeyRepository.countByUserIdAndDisabledAtIsNull(userId)).thenReturn(0);
-        when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashedValue");
-        when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> {
-            ApiKey key = invocation.getArgument(0);
-            key.setId(UUID.randomUUID());
-            key.setCreatedAt(java.time.Instant.now());
-            return key;
-        });
-
-        ApiKeyCreateResponse response = apiKeyService.createForUser(
-                new AdminApiKeyCreateRequest(userId, "Admin Created Key"));
-
-        assertNotNull(response.secretKey());
-        assertTrue(response.secretKey().startsWith("vbg_"));
-        verify(apiKeyRepository).save(argThat(key -> key.getUserId().equals(userId)));
-    }
-
-    @Test
-    @DisplayName("createForUser as non-admin throws")
-    void createForUser_asNonAdmin_throws() {
-        when(currentUser.principal()).thenReturn(authenticatedUser);
-
-        assertThrows(ForbiddenException.class,
-                () -> apiKeyService.createForUser(new AdminApiKeyCreateRequest(userId, "Test")));
-        verify(apiKeyRepository, never()).save(any());
+        verify(apiKeyRepository).disableByOwnerUnlessAdminLocked(eq(keyId), eq(userId), any());
     }
 
     @Test
@@ -322,7 +321,7 @@ class ApiKeyServiceTest {
                 .build();
 
         when(currentUser.principal()).thenReturn(adminPrincipal);
-        when(apiKeyRepository.findByUserId(userId)).thenReturn(java.util.List.of(key));
+        when(apiKeyRepository.findByUserIdAndDeletedAtIsNull(userId)).thenReturn(java.util.List.of(key));
 
         java.util.List<ApiKeyResponse> responses = apiKeyService.listForUser(userId);
 
@@ -355,12 +354,12 @@ class ApiKeyServiceTest {
                 .build();
 
         when(currentUser.principal()).thenReturn(adminPrincipal);
-        when(apiKeyRepository.findById(keyId)).thenReturn(java.util.Optional.of(apiKey));
+        when(apiKeyRepository.findByIdAndDeletedAtIsNull(keyId)).thenReturn(java.util.Optional.of(apiKey));
+        when(apiKeyRepository.disableByAdmin(eq(keyId), any(), anyString(), anyString())).thenReturn(1);
 
         apiKeyService.disableForAnyUser(keyId);
 
-        assertNotNull(apiKey.getDisabledAt());
-        verify(apiKeyRepository).save(apiKey);
+        verify(apiKeyRepository).disableByAdmin(eq(keyId), any(), anyString(), anyString());
     }
 
     @Test

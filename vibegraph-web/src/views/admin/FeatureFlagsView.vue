@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAdminStore } from '@/stores/admin'
+import {
+  featureAvailabilityContract,
+  refreshFeatureAvailability,
+} from '@/lib/featureAvailability'
 import type { AdminFeatureFlag, AdminFeatureFlagRequest } from '@/types/api'
 
 const adminStore = useAdminStore()
 const loading = ref(true)
 const errorMsg = ref('')
+const capabilityError = ref('')
+const runtimeContractConnected = computed(() => featureAvailabilityContract.value === true)
 
 const form = ref<AdminFeatureFlagRequest>({
   key: '',
@@ -49,7 +55,7 @@ const templates: TemplateFlag[] = [
     note: 'Disable without impacting local/archive import.',
   },
   {
-    group: 'CLI and API',
+    group: 'CLI push',
     key: 'cli.push',
     scope: 'GLOBAL',
     displayName: 'CLI push',
@@ -58,7 +64,7 @@ const templates: TemplateFlag[] = [
     note: 'Useful when patch writes or credit preflight need maintenance.',
   },
   {
-    group: 'Analysis and generation',
+    group: 'Project analysis',
     key: 'project.analyze',
     scope: 'GLOBAL',
     displayName: 'Project analyze',
@@ -67,7 +73,7 @@ const templates: TemplateFlag[] = [
     note: 'Disable during analyzer incidents without blocking repository browsing.',
   },
   {
-    group: 'Analysis and generation',
+    group: 'Gen use case',
     key: 'usecase.generate',
     scope: 'GLOBAL',
     displayName: 'Use case generation',
@@ -76,7 +82,7 @@ const templates: TemplateFlag[] = [
     note: 'Disable generation without disabling graph exploration.',
   },
   {
-    group: 'CLI and API',
+    group: 'API key creation',
     key: 'api_keys.create.global',
     scope: 'GLOBAL',
     displayName: 'New API keys',
@@ -85,7 +91,7 @@ const templates: TemplateFlag[] = [
     note: 'User-level disable still overrides this.',
   },
   {
-    group: 'Platform access',
+    group: 'Registration',
     key: 'registration',
     scope: 'GLOBAL',
     displayName: 'Registration',
@@ -94,7 +100,7 @@ const templates: TemplateFlag[] = [
     note: 'Turn off during abuse spikes or private beta.',
   },
   {
-    group: 'MCP tool controls',
+    group: 'MCP global and child tools',
     key: 'mcp.enabled',
     scope: 'GLOBAL',
     displayName: 'All MCP tools',
@@ -119,7 +125,7 @@ const templates: TemplateFlag[] = [
     'explain_failure_path',
     'get_project_conventions',
   ].map((toolName) => ({
-    group: 'MCP tool controls',
+    group: 'MCP global and child tools',
     key: `mcp.tool.${toolName}`,
     scope: 'MCP_TOOL' as const,
     displayName: toolName.replace(/_/g, ' ').replace(/(^|\s)\S/g, (letter: string) => letter.toUpperCase()),
@@ -163,13 +169,30 @@ const extraFlags = computed(() =>
 onMounted(loadFlags)
 
 async function loadFlags(): Promise<void> {
+  const [flagsResult, capabilityResult] = await Promise.allSettled([
+    adminStore.fetchFeatureFlags(),
+    refreshFeatureAvailability(),
+  ])
+  errorMsg.value =
+    flagsResult.status === 'rejected'
+      ? flagsResult.reason instanceof Error
+        ? flagsResult.reason.message
+        : 'Failed to load feature flags.'
+      : ''
+  capabilityError.value =
+    capabilityResult.status === 'rejected'
+      ? 'Runtime capability state could not be verified. Controls remain configuration-only.'
+      : ''
+  loading.value = false
+}
+
+async function refreshRuntimeCapabilityState(): Promise<void> {
   try {
-    await adminStore.fetchFeatureFlags()
-    errorMsg.value = ''
-  } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load feature flags.'
-  } finally {
-    loading.value = false
+    await refreshFeatureAvailability()
+    capabilityError.value = ''
+  } catch {
+    capabilityError.value =
+      'Runtime capability state could not be verified. Controls remain configuration-only.'
   }
 }
 
@@ -180,6 +203,7 @@ async function submitFlag(): Promise<void> {
       key: form.value.key.trim(),
       displayName: form.value.displayName.trim(),
     })
+    await refreshRuntimeCapabilityState()
     form.value = { key: '', scope: 'GLOBAL', displayName: '', enabled: true, description: '' }
     errorMsg.value = ''
   } catch (e) {
@@ -192,6 +216,7 @@ async function toggleFlag(flagKey: string, checked: boolean): Promise<void> {
   if (!flag) return
   try {
     await adminStore.setFeatureFlagEnabled(flag, checked)
+    await refreshRuntimeCapabilityState()
     errorMsg.value = ''
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to update feature flag.'
@@ -208,10 +233,15 @@ async function toggleTemplate(template: TemplateFlag, checked: boolean): Promise
       enabled: checked,
       description: existing?.description ?? template.description,
     })
+    await refreshRuntimeCapabilityState()
     errorMsg.value = ''
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to update system control.'
   }
+}
+
+function groupId(group: string): string {
+  return `system-group-${group.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
 }
 
 function currentFlag(template: TemplateFlag): AdminFeatureFlag | null {
@@ -239,13 +269,36 @@ function currentEnabled(template: TemplateFlag): boolean {
           creation.
         </p>
       </div>
-      <span class="api-state" :class="{ unavailable: errorMsg }">{{
-        errorMsg ? 'API error' : 'API connected'
+      <span
+        class="api-state"
+        :class="{ unavailable: errorMsg, connected: runtimeContractConnected }"
+      >{{
+        errorMsg
+          ? 'Flag API error'
+          : runtimeContractConnected
+            ? 'Runtime connected'
+            : 'Configuration only'
       }}</span>
     </div>
 
-    <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
-    <div v-if="loading" class="notice">Loading feature flags...</div>
+    <div v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</div>
+    <div v-if="loading" class="notice" role="status">Loading feature flags...</div>
+    <div
+      v-else-if="!runtimeContractConnected"
+      class="notice warning"
+      role="status"
+    >
+      <strong>Configuration-only controls</strong>
+      <p>
+        Flag values are stored by the admin API but are not yet propagated to user-facing runtime
+        capability state. Do not treat these switches as active protection.
+      </p>
+      <small v-if="capabilityError">{{ capabilityError }}</small>
+    </div>
+    <div v-else class="notice success" role="status">
+      <strong>Runtime capability propagation connected</strong>
+      <p>User-facing controls consume the real session capability contract.</p>
+    </div>
 
     <section class="panel">
       <div class="panel-heading">
@@ -313,12 +366,17 @@ function currentEnabled(template: TemplateFlag): boolean {
           class="group-toggle"
           type="button"
           :aria-expanded="!collapsedGroups[group]"
+          :aria-controls="groupId(group)"
           @click="toggleGroup(group)"
         >
           <h3>{{ group }}</h3>
           <span aria-hidden="true">{{ collapsedGroups[group] ? '›' : '⌄' }}</span>
         </button>
-        <div v-if="!collapsedGroups[group]" class="toggle-list">
+        <div
+          v-if="!collapsedGroups[group]"
+          :id="groupId(group)"
+          class="toggle-list"
+        >
           <label
             v-for="template in templates.filter((item) => item.group === group)"
             :key="template.key"
@@ -421,6 +479,10 @@ button {
 }
 
 .api-state {
+  color: #d97706;
+}
+
+.api-state.connected {
   color: var(--vg-green-bright);
 }
 
@@ -435,6 +497,34 @@ button {
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   padding: var(--vg-space-4);
+}
+
+.notice p {
+  margin: var(--vg-space-1) 0 0;
+  color: var(--vg-text-muted);
+}
+
+.notice.warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.notice.warning strong {
+  color: var(--vg-text);
+}
+
+.notice.warning small {
+  display: block;
+  margin-top: var(--vg-space-2);
+  color: #d97706;
+}
+
+.notice.success {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.notice.success strong {
+  color: var(--vg-green-bright);
 }
 
 .system-grid {
@@ -605,14 +695,22 @@ button {
 
 .group-toggle {
   width: 100%;
+  min-height: 2.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0;
+  padding: var(--vg-space-2) 0;
   border: 0;
   background: transparent;
   color: var(--vg-text);
   cursor: pointer;
+}
+
+.group-toggle:focus-visible,
+.switch-wrap:focus-within,
+.mini-switch:focus-within {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 3px;
 }
 
 .group-toggle span {

@@ -33,21 +33,33 @@ afterEach(() => {
 })
 
 describe('Phase 7 account API contract', () => {
-  it('creates API keys with the name-only backend request contract', async () => {
+  it('creates project-bound API keys with the repository id', async () => {
     fetchMock.mockResolvedValueOnce(
       success({
         id: 'key-1',
         keyPrefix: 'vg-abc12',
         name: 'CLI key',
         secretKey: 'secret',
+        project: { id: 'project-1', name: 'VibeGraph', sourceType: 'GITHUB', status: 'READY' },
         createdAt: '2026-07-17T09:00:00Z',
         expiresAt: null,
       }),
     )
 
-    await accountApi.createApiKey('CLI key')
+    const created = await accountApi.createApiKey({
+      name: 'CLI key',
+      projectId: 'project-1',
+    })
 
-    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ name: 'CLI key' }))
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ name: 'CLI key', projectId: 'project-1' }),
+    )
+    expect(created.project).toEqual({
+      id: 'project-1',
+      name: 'VibeGraph',
+      sourceType: 'GITHUB',
+      status: 'READY',
+    })
   })
 
   it('uses the real notification and announcement routes with cookie authentication', async () => {
@@ -75,6 +87,24 @@ describe('Phase 7 account API contract', () => {
 })
 
 describe('Phase 7 admin security and audit API contract', () => {
+  it('does not expose an admin API key creation contract', () => {
+    expect(adminApi).not.toHaveProperty('createApiKey')
+    expect(adminApi).not.toHaveProperty('createApiKeyForUser')
+  })
+
+  it('never posts to the admin API key collection', async () => {
+    fetchMock.mockResolvedValue(success([]))
+    const postSpy = vi.spyOn(api, 'post')
+
+    await adminApi.listApiKeysForUser('user-1')
+    await adminApi.disableApiKey('key-1')
+    await adminApi.lockApiKey('key-1')
+    await adminApi.unlockApiKey('key-1')
+
+    expect(postSpy).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).not.toContain('POST')
+  })
+
   it('sends exact security queries and IP block mutations', async () => {
     fetchMock.mockResolvedValue(success([]))
     const block = {

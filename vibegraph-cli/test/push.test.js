@@ -142,3 +142,28 @@ test("no files to push emits a no-op, does not call backend when nothing changed
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("project-bound push without projectId uses the current-project endpoint and API-key auth", async () => {
+  const root = await makeProjectRoot();
+  const snapDir = await mkdtemp(path.join(tmpdir(), "vg-push-cfg-"));
+  const prevConfig = process.env.VIBEGRAPH_CONFIG_DIR;
+  try {
+    process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
+    await writeFile(path.join(root, "Current.java"), "class Current {}\n");
+    const stub = makeStubApi();
+
+    await executePush(null, {
+      root,
+      dryRun: false,
+      snapshotId: "api-key-1234",
+    }, stub.apiRequest);
+
+    assert.equal(stub.calls[0].url, "/api/projects/current/patch");
+    assert.equal(stub.calls[0].options.auth, "api-key-first");
+  } finally {
+    if (prevConfig === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = prevConfig;
+    await rm(snapDir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});

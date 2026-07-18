@@ -602,6 +602,7 @@ import type {
   AdminIpBlockRequest,
   AdminAuditLog,
   AdminAuditRetention,
+  ApiKeyCreateRequest,
 } from '@/types/api'
 
 /**
@@ -633,11 +634,14 @@ export const accountApi = {
   listApiKeys(): Promise<ApiKey[]> {
     return api.get<ApiKey[]>('/api/account/api-keys')
   },
-  createApiKey(name: string): Promise<ApiKeyCreated> {
-    return api.post<ApiKeyCreated>('/api/account/api-keys', { name })
+  createApiKey(request: ApiKeyCreateRequest): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>('/api/account/api-keys', request)
   },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  deleteApiKey(id: string): Promise<void> {
+    return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
   },
   listReports(): Promise<Report[]> {
     return api.get<Report[]>('/api/account/reports')
@@ -792,11 +796,14 @@ export const adminApi = {
   listApiKeysForUser(userId: string): Promise<ApiKey[]> {
     return api.get<ApiKey[]>(`/api/admin/api-keys?userId=${encodeURIComponent(userId)}`)
   },
-  createApiKeyForUser(userId: string, name: string): Promise<ApiKeyCreated> {
-    return api.post<ApiKeyCreated>('/api/admin/api-keys', { userId, name })
-  },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  lockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/lock`, undefined)
+  },
+  unlockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/unlock`, undefined)
   },
   listReports(
     params: { status?: string; q?: string; page?: number; size?: number } = {},

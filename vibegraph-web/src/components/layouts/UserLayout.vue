@@ -13,6 +13,7 @@ const router = useRouter(),
 const collapsed = ref(false),
   mobile = ref(false),
   isMobileViewport = ref(false),
+  accountStateReady = ref(false),
   menuButton = ref<HTMLButtonElement | null>(null),
   sidebar = ref<HTMLElement | null>(null),
   mobileCloseButton = ref<HTMLButtonElement | null>(null)
@@ -107,15 +108,23 @@ function handleSidebarKeydown(event: KeyboardEvent): void {
     first.focus()
   }
 }
-async function refreshAccountState() {
-  try {
-    await account.fetchSessionState()
-    if (!account.accountRestricted) {
-      await Promise.allSettled([account.fetchProfile(), account.fetchUsage()])
+let accountRefreshPromise: Promise<void> | null = null
+async function refreshAccountState(): Promise<void> {
+  if (accountRefreshPromise) return accountRefreshPromise
+  accountRefreshPromise = (async () => {
+    try {
+      await account.fetchSessionState()
+      accountStateReady.value = true
+      if (!account.accountRestricted) {
+        await Promise.allSettled([account.fetchProfile(), account.fetchUsage()])
+      }
+    } catch {
+      // Global HTTP handling owns authentication failures; keep the last safe account state.
+    } finally {
+      accountRefreshPromise = null
     }
-  } catch {
-    // Global HTTP handling owns authentication failures; keep the last safe account state.
-  }
+  })()
+  return accountRefreshPromise
 }
 async function signOut() {
   await auth.logout()
@@ -213,8 +222,11 @@ async function signOut() {
       </button>
     </aside>
     <main :inert="mobile ? true : undefined">
-      <AnnouncementBanner v-if="!restricted" />
-      <section v-if="restricted" class="restriction-banner" role="alert">
+      <AnnouncementBanner v-if="accountStateReady && !restricted" />
+      <section v-if="!accountStateReady" class="account-loading" role="status">
+        Checking account access...
+      </section>
+      <section v-else-if="restricted" class="restriction-banner" role="alert">
         <div>
           <span>Account status</span>
           <strong>{{ restrictionTitle }}</strong>
@@ -222,8 +234,12 @@ async function signOut() {
         </div>
         <RouterLink v-if="!reportsRouteActive" to="/reports">Contact support</RouterLink>
       </section>
-      <RouterView v-if="!restricted || reportsRouteActive" />
-      <section v-else class="restricted-state" aria-labelledby="restricted-title">
+      <RouterView v-if="accountStateReady && (!restricted || reportsRouteActive)" />
+      <section
+        v-else-if="accountStateReady && restricted"
+        class="restricted-state"
+        aria-labelledby="restricted-title"
+      >
         <AppIcon name="shield" :size="30" />
         <h1 id="restricted-title">Product controls are unavailable</h1>
         <p>{{ restrictionReason }}</p>
@@ -406,6 +422,12 @@ nav svg,
   width: 100%;
   margin: 0;
   padding: var(--vg-space-3);
+}
+.account-loading {
+  min-height: 12rem;
+  display: grid;
+  place-items: center;
+  color: var(--vg-text-muted);
 }
 .restriction-banner {
   display: flex;

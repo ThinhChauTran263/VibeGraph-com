@@ -9,6 +9,7 @@ import { useReportRealtime } from '@/composables/useReportRealtime'
 const accountStore = useAccountStore()
 
 const selectedReport = ref<Report | null>(null)
+let reportSelectionVersion = 0
 const newCategory = ref<FeedbackCategory>('BUG')
 const newTitle = ref('')
 const newMessage = ref('')
@@ -42,10 +43,13 @@ const reportRealtime = useReportRealtime(selectedReportId, {
   },
 })
 const reportRealtimeStatus = reportRealtime.status
+const reportRealtimeActive = reportRealtime.active
 const reportRealtimeLabel = computed(() => {
-  if (reportRealtimeStatus.value === 'connected') return 'Live'
+  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) return 'Live'
   if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
-  if (reportRealtimeStatus.value === 'connecting') return 'Syncing'
+  if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
+    return 'Syncing'
+  }
   return 'Offline'
 })
 
@@ -66,31 +70,35 @@ const submitReport = async () => {
 }
 
 const selectReport = async (report: Report) => {
+  const selectionVersion = ++reportSelectionVersion
   try {
     const full = await accountStore.fetchReportDetail(report.id)
-    selectedReport.value = full
+    if (selectionVersion === reportSelectionVersion) selectedReport.value = full
   } catch {
-    selectedReport.value = report
+    if (selectionVersion === reportSelectionVersion) selectedReport.value = report
   }
 }
 
 const backToList = async () => {
+  reportSelectionVersion += 1
   selectedReport.value = null
   await accountStore.fetchReports()
 }
 
 const sendReply = async () => {
-  if (!replyMessage.value.trim() || !selectedReport.value) return
+  const report = selectedReport.value
+  const body = replyMessage.value.trim()
+  if (!body || !report) return
+  const reportId = report.id
   isSending.value = true
   try {
-    const msg: ReportMessage = await accountStore.addMessage(
-      selectedReport.value.id,
-      replyMessage.value,
-    )
-    if (!selectedReport.value.messages.some((item) => item.id === msg.id)) {
-      selectedReport.value.messages.push(msg)
+    const msg: ReportMessage = await accountStore.addMessage(reportId, body)
+    if (selectedReport.value?.id === reportId) {
+      if (!selectedReport.value.messages.some((item) => item.id === msg.id)) {
+        selectedReport.value.messages.push(msg)
+      }
+      replyMessage.value = ''
     }
-    replyMessage.value = ''
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to send reply'
   } finally {

@@ -16,6 +16,7 @@ import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 
 public final class MeteredToolCallback implements ToolCallback {
@@ -29,6 +30,7 @@ public final class MeteredToolCallback implements ToolCallback {
     private final ProjectOwnershipGuard ownershipGuard;
     private final FeatureGateService featureGateService;
     private final AccountAccessGuard accountAccessGuard;
+    private final ApiKeyRequestContextAccessor apiKeyContextAccessor;
     private final ObjectMapper objectMapper;
 
     public MeteredToolCallback(
@@ -39,6 +41,7 @@ public final class MeteredToolCallback implements ToolCallback {
             ProjectOwnershipGuard ownershipGuard,
             FeatureGateService featureGateService,
             AccountAccessGuard accountAccessGuard,
+            ApiKeyRequestContextAccessor apiKeyContextAccessor,
             ObjectMapper objectMapper) {
         this.delegate = delegate;
         this.currentUser = currentUser;
@@ -47,6 +50,7 @@ public final class MeteredToolCallback implements ToolCallback {
         this.ownershipGuard = ownershipGuard;
         this.featureGateService = featureGateService;
         this.accountAccessGuard = accountAccessGuard;
+        this.apiKeyContextAccessor = apiKeyContextAccessor;
         this.objectMapper = objectMapper;
     }
 
@@ -76,6 +80,7 @@ public final class MeteredToolCallback implements ToolCallback {
         featureGateService.assertMcpToolEnabled(delegate.getToolDefinition().name());
         String projectId = extractProjectId(toolInput);
         if (projectId != null) {
+            apiKeyContextAccessor.assertProjectMatches(projectId);
             ownershipGuard.assertOwner(projectId, userId);
         }
 

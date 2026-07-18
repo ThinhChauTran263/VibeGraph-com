@@ -3,9 +3,12 @@ package com.vibegraph.common.ownership;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
+import com.vibegraph.common.exception.ApiKeyAdminLockedException;
 import com.vibegraph.common.exception.PartialDeletionException;
 import com.vibegraph.graph.service.ProjectService;
 
@@ -42,6 +45,7 @@ public class ProjectDeletionOrchestrator {
 
     private final ProjectService projectService;
     private final ProjectOwnershipRepository ownershipRepository;
+    private final ApiKeyRepository apiKeyRepository;
     private final CurrentUser currentUser;
 
     /**
@@ -51,7 +55,14 @@ public class ProjectDeletionOrchestrator {
      * @throws PartialDeletionException if the control-plane row cannot be removed after the data
      *                                  plane was deleted (→ 500 DELETE_PARTIAL_FAILED)
      */
+    @Transactional
     public void delete(String projectId) {
+        apiKeyRepository.lockLiveKeysForProject(projectId);
+        if (apiKeyRepository.existsAdminLockedKeyForProject(projectId)) {
+            throw new ApiKeyAdminLockedException(
+                    "Administrator-locked API key must be unlocked before deleting this project");
+        }
+
         // 1) Data plane first. On failure, propagate; the Postgres ownership row is untouched.
         projectService.deleteProject(projectId);
 

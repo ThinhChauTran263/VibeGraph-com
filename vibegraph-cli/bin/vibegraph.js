@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
@@ -27,6 +28,9 @@ const SHELL_COMMANDS = [
   { command: "exit", description: "Exit the VibeGraph shell" },
   { command: "quit", description: "Exit the VibeGraph shell" },
   { command: "doctor", description: "Check backend health" },
+  { command: "auth set-key ", description: "Store a project-bound API key" },
+  { command: "auth status", description: "Show masked API-key status" },
+  { command: "auth clear", description: "Clear the stored API key" },
   { command: "me", description: "Show the current authenticated user" },
   { command: "logout", description: "Clear local auth state" },
   { command: "config show", description: "Show API URL and auth state" },
@@ -39,8 +43,10 @@ const SHELL_COMMANDS = [
   { command: "projects analyze ", description: "Analyze a project graph" },
   { command: "projects delete ", description: "Delete a project" },
   { command: "projects push ", description: "Push local file changes" },
+  { command: "push --root ", description: "Push using the API-key project binding" },
   { command: "projects status ", description: "Show project status" },
   { command: "watch ", description: "Watch a local project and push changes" },
+  { command: "watch --root ", description: "Watch using the API-key project binding" },
   { command: "ignore init", description: "Create a .vibegraphignore file" },
   { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
 ];
@@ -102,6 +108,9 @@ async function dispatchCommand(args) {
     case "config":
       await handleConfig(rest);
       return;
+    case "auth":
+      await handleAuth(rest);
+      return;
     case "register":
       await handleRegister(rest);
       return;
@@ -117,6 +126,9 @@ async function dispatchCommand(args) {
       return;
     case "projects":
       await handleProjects(rest);
+      return;
+    case "push":
+      await handlePush(rest);
       return;
     case "watch":
       await handleWatch(rest);
@@ -153,6 +165,9 @@ function renderHelpBody() {
   return `Usage:
   vibegraph config show
   vibegraph config set-url <url>
+  vibegraph auth set-key <apiKey>
+  vibegraph auth status
+  vibegraph auth clear
   vibegraph register --email <email> --password <password> --name <displayName>
   vibegraph login --email <email> --password <password>
   vibegraph logout
@@ -169,7 +184,9 @@ Projects:
   vibegraph projects status <projectId>
 
 Watch:
+  vibegraph push --root <localPath> [--dry-run]
   vibegraph watch <projectId> --root <localPath>
+  vibegraph watch --root <localPath>
 
 Ignore:
   vibegraph ignore init [--root <path>]`;
@@ -374,7 +391,12 @@ export {
   isShellHelpCommand,
   completeShellLine,
   getShellSuggestions,
+  apiRequest,
+  handleDoctor,
+  maskApiKey,
+  parsePushCommandArgs,
   parseShellArgs,
+  parseWatchCommandArgs,
   renderShellSuggestionPanel,
   renderInteractiveHeader,
 };
@@ -421,9 +443,13 @@ async function handleConfig(args) {
   const config = await loadConfig();
 
   if (subcommand === "show") {
+    const apiKey = configuredApiKey(config);
     console.log(JSON.stringify({
       apiUrl: apiUrl(config),
       authenticated: Boolean(config.token),
+      apiKey: maskApiKey(apiKey),
+      apiKeyConfigured: Boolean(apiKey),
+      apiKeySource: process.env.VIBEGRAPH_API_KEY ? "env" : (config.apiKey ? "config" : null),
       user: config.user || null,
       configFile: CONFIG_FILE
     }, null, 2));
@@ -448,6 +474,41 @@ async function handleConfig(args) {
   }
 
   throw new CliError(`Unknown config command: ${subcommand}`, 2);
+}
+
+async function handleAuth(args) {
+  const subcommand = args.shift() || "status";
+  const config = await loadConfig();
+
+  if (subcommand === "set-key") {
+    const apiKey = args.shift();
+    if (!apiKey || apiKey.startsWith("--")) {
+      throw new CliError("Usage: vibegraph auth set-key <apiKey>", 2);
+    }
+    validateApiKey(apiKey);
+    await saveConfig({ ...config, apiKey });
+    console.log(`API key saved: ${maskApiKey(apiKey)}`);
+    return;
+  }
+
+  if (subcommand === "clear") {
+    await saveConfig({ ...config, apiKey: undefined });
+    console.log("Stored API key cleared.");
+    return;
+  }
+
+  if (subcommand === "status") {
+    const apiKey = configuredApiKey(config);
+    console.log(JSON.stringify({
+      apiKey: maskApiKey(apiKey),
+      configured: Boolean(apiKey),
+      source: process.env.VIBEGRAPH_API_KEY ? "env" : (config.apiKey ? "config" : null),
+      legacyTokenConfigured: Boolean(config.token),
+    }, null, 2));
+    return;
+  }
+
+  throw new CliError(`Unknown auth command: ${subcommand}`, 2);
 }
 
 async function handleRegister(args) {
@@ -559,19 +620,11 @@ async function handleProjects(args) {
   }
 
   if (subcommand === "push") {
-    const projectId = args.shift();
-    if (!projectId) {
+    const parsed = parsePushCommandArgs(args);
+    if (!parsed.projectId) {
       throw new CliError("Usage: vibegraph projects push <projectId> --root <path> [--dry-run]", 2);
     }
-    const options = parseOptions(args);
-    if (!options.root) {
-      throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
-    }
-    const { executePush } = await libImport("push.js");
-    await executePush(projectId, {
-      root: options.root,
-      dryRun: Boolean(options["dry-run"]),
-    }, apiRequest);
+    await executePushCommand(parsed);
     return;
   }
 
@@ -597,16 +650,54 @@ async function handleProjects(args) {
 }
 
 async function handleWatch(args) {
-  const projectId = args.shift();
-  if (!projectId) {
-    throw new CliError("Usage: vibegraph watch <projectId> --root <path>", 2);
-  }
-  const options = parseOptions(args);
-  if (!options.root) {
-    throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
-  }
+  const parsed = parseWatchCommandArgs(args);
+  await assertPatchAuth(parsed.projectId);
   const { executeWatch } = await libImport("watch.js");
-  await executeWatch(projectId, { root: options.root }, apiRequest);
+  await executeWatch(parsed.projectId, {
+    root: parsed.root,
+    snapshotId: await snapshotIdentity(parsed.projectId),
+  }, apiRequest);
+}
+
+async function handlePush(args) {
+  const parsed = parsePushCommandArgs(args);
+  await executePushCommand(parsed);
+}
+
+async function executePushCommand(parsed) {
+  await assertPatchAuth(parsed.projectId);
+  const { executePush } = await libImport("push.js");
+  await executePush(parsed.projectId, {
+    root: parsed.root,
+    dryRun: parsed.dryRun,
+    snapshotId: await snapshotIdentity(parsed.projectId),
+  }, apiRequest);
+}
+
+async function assertPatchAuth(projectId) {
+  const config = await loadConfig();
+  const apiKey = configuredApiKey(config);
+  if (!projectId && !apiKey) {
+    throw new CliError(
+      "Root-only push/watch requires a project-bound API key. Run: vibegraph auth set-key <apiKey>",
+      2,
+    );
+  }
+  if (!apiKey && !config.token) {
+    throw new CliError(
+      "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+      2,
+    );
+  }
+  if (!apiKey && projectId) {
+    console.warn("Warning: no API key configured; using the legacy Bearer token. Run: vibegraph auth set-key <apiKey>");
+  }
+}
+
+async function snapshotIdentity(projectId) {
+  if (projectId) return projectId;
+  const config = await loadConfig();
+  return `key-${createHash("sha256").update(configuredApiKey(config)).digest("hex").slice(0, 16)}`;
 }
 
 async function handleIgnore(args) {
@@ -643,11 +734,30 @@ async function handleDoctor() {
     throw new CliError(`Backend health failed: HTTP ${response.status}`, 1);
   }
   const health = await response.json();
+  const apiKey = configuredApiKey(config);
+  let apiKeyStatus = "not configured";
+  if (apiKey) {
+    try {
+      await apiRequest("/api/projects/current/patch", {
+        method: "POST",
+        auth: "api-key-only",
+        body: { files: [], deletions: [], dryRun: true },
+      });
+      apiKeyStatus = "active";
+    } catch (error) {
+      apiKeyStatus = classifyApiKeyError(error);
+    }
+  }
   console.log(JSON.stringify({
     apiUrl: apiUrl(config),
     health: health.status,
-    authenticated: Boolean(config.token)
+    authenticated: Boolean(config.token),
+    apiKey: maskApiKey(apiKey),
+    apiKeyStatus,
   }, null, 2));
+  if (apiKey && apiKeyStatus !== "active") {
+    throw new CliError("API key authentication failed. Run: vibegraph auth status or set a replacement key.", 3);
+  }
 }
 
 async function apiRequest(endpoint, options = {}) {
@@ -658,10 +768,19 @@ async function apiRequest(endpoint, options = {}) {
   };
 
   if (options.auth) {
-    if (!config.token) {
-      throw new CliError("Not logged in. Run: vibegraph login --email <email> --password <password>", 2);
+    const apiKey = configuredApiKey(config);
+    const apiKeyOnly = options.auth === "api-key-only";
+    const apiKeyFirst = options.auth === "api-key-first";
+    if (apiKey && (apiKeyOnly || apiKeyFirst || !config.token)) {
+      headers["X-API-Key"] = apiKey;
+    } else if (config.token && !apiKeyOnly) {
+      headers.Authorization = `Bearer ${config.token}`;
+    } else {
+      throw new CliError(
+        "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+        2,
+      );
     }
-    headers.Authorization = `Bearer ${config.token}`;
   }
 
   const response = await fetch(`${apiUrl(config)}${endpoint}`, {
@@ -719,10 +838,35 @@ async function saveConfig(config) {
   await mkdir(CONFIG_DIR, { recursive: true });
   const cleaned = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined));
   await writeFile(CONFIG_FILE, `${JSON.stringify(cleaned, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_FILE, 0o600);
 }
 
 function apiUrl(config) {
   return trimTrailingSlash(process.env.VIBEGRAPH_API_URL || config.apiUrl || DEFAULT_API_URL);
+}
+
+function configuredApiKey(config) {
+  const value = process.env.VIBEGRAPH_API_KEY || config.apiKey;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function validateApiKey(apiKey) {
+  if (!apiKey.startsWith("vbg_") || apiKey.length < 12 || /\s/.test(apiKey)) {
+    throw new CliError("Invalid API key format. Expected a vbg_... key.", 2);
+  }
+}
+
+function maskApiKey(apiKey) {
+  if (!apiKey) return null;
+  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+  return `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+}
+
+function classifyApiKeyError(error) {
+  const message = error?.message || "request failed";
+  if (message.includes("HTTP 401")) return "invalid";
+  if (message.includes("HTTP 403")) return "disabled-or-locked";
+  return "unavailable";
 }
 
 function trimTrailingSlash(value) {
@@ -754,6 +898,27 @@ function requiredOption(options, name) {
     throw new CliError(`Missing --${name} <value>`, 2);
   }
   return value;
+}
+
+function parsePushCommandArgs(args) {
+  const remaining = [...args];
+  const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
+  const options = parseOptions(remaining);
+  return {
+    projectId,
+    root: requiredOption(options, "root"),
+    dryRun: Boolean(options["dry-run"]),
+  };
+}
+
+function parseWatchCommandArgs(args) {
+  const remaining = [...args];
+  const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
+  const options = parseOptions(remaining);
+  return {
+    projectId,
+    root: requiredOption(options, "root"),
+  };
 }
 
 function printProject(project) {

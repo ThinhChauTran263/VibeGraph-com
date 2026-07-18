@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAccountStore } from '@/stores/account'
+import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 import QuotaMeter from '@/components/ui/QuotaMeter.vue'
 
 const accountStore = useAccountStore()
+const isUsageLoading = ref(!accountStore.usage)
+const isLedgerLoading = ref(false)
+const usageError = ref('')
+const ledgerError = ref('')
 
 interface UsageDisplay {
   usedMb?: number
@@ -35,11 +40,41 @@ const creditBalanceLabel = computed(() => {
   return `${Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)} credits`
 })
 
-onMounted(async () => {
-  await Promise.all([
-    accountStore.usage ? Promise.resolve() : accountStore.fetchUsage(),
-    accountStore.fetchCreditLedger(10),
-  ])
+async function loadUsage(): Promise<void> {
+  if (accountStore.usage) {
+    isUsageLoading.value = false
+    usageError.value = ''
+    return
+  }
+
+  isUsageLoading.value = true
+  usageError.value = ''
+  try {
+    await accountStore.fetchUsage()
+  } catch (error) {
+    if (!accountStore.usage) {
+      usageError.value = error instanceof Error ? error.message : 'Failed to load usage data.'
+    }
+  } finally {
+    isUsageLoading.value = false
+  }
+}
+
+async function loadLedger(): Promise<void> {
+  isLedgerLoading.value = true
+  ledgerError.value = ''
+  try {
+    await accountStore.fetchCreditLedger(10)
+  } catch (error) {
+    ledgerError.value = error instanceof Error ? error.message : 'Failed to load credit activity.'
+  } finally {
+    isLedgerLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadUsage()
+  void loadLedger()
 })
 
 function formatOperation(operationCode: string): string {
@@ -68,7 +103,19 @@ function formatDate(value: string | null): string {
       <p>Current plan, source storage quota, and credit availability from account APIs.</p>
     </header>
 
-    <div v-if="usage" class="usage-grid">
+    <ErrorAlert v-if="usageError" role="alert" title="Usage unavailable" :message="usageError">
+      <button
+        data-test="retry-usage"
+        type="button"
+        class="retry-button"
+        :disabled="isUsageLoading"
+        @click="loadUsage"
+      >
+        Retry usage
+      </button>
+    </ErrorAlert>
+    <div v-if="isUsageLoading" class="loading">Loading usage data...</div>
+    <div v-else-if="usage" class="usage-grid">
       <section class="usage-card">
         <span class="usage-card__label">Current plan</span>
         <strong>{{ usage.planName }}</strong>
@@ -89,18 +136,31 @@ function formatDate(value: string | null): string {
           <h3>Source storage quota</h3>
           <span>{{ remainingMb }} MB remaining</span>
         </div>
-        <QuotaMeter
-          :used="usedMb"
-          :total="limitMb"
-          unit="MB"
-        />
+        <QuotaMeter :used="usedMb" :total="limitMb" unit="MB" />
       </section>
 
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
           <h3>Recent credit ledger</h3>
         </div>
-        <div v-if="accountStore.creditLedger.length" class="ledger-list">
+        <ErrorAlert
+          v-if="ledgerError"
+          role="alert"
+          title="Credit activity unavailable"
+          :message="ledgerError"
+        >
+          <button
+            data-test="retry-ledger"
+            type="button"
+            class="retry-button"
+            :disabled="isLedgerLoading"
+            @click="loadLedger"
+          >
+            Retry ledger
+          </button>
+        </ErrorAlert>
+        <div v-else-if="isLedgerLoading" class="loading">Loading credit activity...</div>
+        <div v-else-if="accountStore.creditLedger.length" class="ledger-list">
           <article v-for="entry in accountStore.creditLedger" :key="entry.id" class="ledger-row">
             <div>
               <strong>{{ formatOperation(entry.operationCode) }}</strong>
@@ -125,7 +185,6 @@ function formatDate(value: string | null): string {
         <div v-else class="empty-state">No credit activity yet.</div>
       </section>
     </div>
-    <div v-else class="loading">Loading usage data...</div>
   </div>
 </template>
 
@@ -267,6 +326,18 @@ function formatDate(value: string | null): string {
 
 .loading {
   color: var(--vg-text-dim);
+}
+
+.retry-button {
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--vg-danger);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-danger);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 700px) {

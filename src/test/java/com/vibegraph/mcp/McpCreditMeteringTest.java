@@ -62,6 +62,7 @@ class McpCreditMeteringTest {
     @Mock ProjectOwnershipGuard ownershipGuard;
     @Mock FeatureGateService featureGateService;
     @Mock AccountAccessGuard accountAccessGuard;
+    @Mock com.vibegraph.auth.web.ApiKeyRequestContextAccessor apiKeyContextAccessor;
 
     private UUID userId;
     private MeteredToolCallback callback;
@@ -71,6 +72,7 @@ class McpCreditMeteringTest {
         userId = UUID.randomUUID();
         org.mockito.Mockito.lenient().when(currentUser.id()).thenReturn(userId);
         org.mockito.Mockito.lenient().when(delegate.getToolDefinition()).thenReturn(NON_PROJECT_TOOL);
+        org.mockito.Mockito.lenient().doNothing().when(apiKeyContextAccessor).assertProjectMatches(org.mockito.ArgumentMatchers.anyString());
         callback = new MeteredToolCallback(
                 delegate,
                 currentUser,
@@ -79,6 +81,7 @@ class McpCreditMeteringTest {
                 ownershipGuard,
                 featureGateService,
                 accountAccessGuard,
+                apiKeyContextAccessor,
                 new ObjectMapper());
     }
 
@@ -153,6 +156,21 @@ class McpCreditMeteringTest {
         verify(accountAccessGuard).assertProductAccess(userId);
         verifyNoInteractions(ownershipGuard, creditPricingService, creditBalanceService);
         verify(delegate, never()).call("{}");
+    }
+
+    @Test
+    @DisplayName("API-key project mismatch is forbidden before ownership and metering")
+    void projectCall_apiKeyProjectMismatch_blocksWork() {
+        when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        doThrow(new ForbiddenException("Access denied"))
+                .when(apiKeyContextAccessor).assertProjectMatches("p1");
+
+        assertThatThrownBy(() -> callback.call("{\"projectId\":\"p1\"}"))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Access denied");
+
+        verifyNoInteractions(ownershipGuard, creditPricingService, creditBalanceService);
+        verify(delegate, never()).call("{\"projectId\":\"p1\"}");
     }
 
     @Test

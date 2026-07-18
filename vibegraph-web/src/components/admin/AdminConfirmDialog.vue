@@ -72,7 +72,12 @@ onBeforeUnmount(() => previousFocus?.focus())
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" role="presentation" @click.self="emit('cancel')">
+    <div
+      v-if="open"
+      class="dialog-backdrop"
+      role="presentation"
+      @click.self="!busy && emit('cancel')"
+    >
       <section
         ref="dialog"
         class="dialog"

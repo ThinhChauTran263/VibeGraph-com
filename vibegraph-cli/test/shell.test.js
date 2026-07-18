@@ -11,7 +11,9 @@ import {
   getShellSuggestions,
   isShellExitCommand,
   isShellHelpCommand,
+  parsePushCommandArgs,
   parseShellArgs,
+  parseWatchCommandArgs,
   renderInteractiveHeader,
   renderShellSuggestionPanel,
 } from "../bin/vibegraph.js";
@@ -97,12 +99,13 @@ test("symlinked bin invocation still runs the CLI", async (t) => {
 
 test("interactive header is compact and omits long usage", () => {
   const output = renderInteractiveHeader({ apiUrl: "http://api.example.test" }, "D:\\Projects\\demo");
+  const plainOutput = output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "");
 
-  assert.match(output, /VibeGraph CLI v0\.1\.0/);
-  assert.match(output, /D:\\Projects\\demo/);
-  assert.match(output, /http:\/\/api\.example\.test/);
-  assert.match(output, /Type \/help for commands, \/exit to quit\./);
-  assert.doesNotMatch(output, /Usage:/);
+  assert.match(plainOutput, /VibeGraph CLI v0\.1\.0/);
+  assert.match(plainOutput, /D:\\Projects\\demo/);
+  assert.match(plainOutput, /http:\/\/api\.example\.test/);
+  assert.match(plainOutput, /Type \/help for commands, \/exit to quit\./);
+  assert.doesNotMatch(plainOutput, /Usage:/);
 });
 
 test("shell command helpers recognize help and exit aliases", () => {
@@ -136,6 +139,13 @@ test("shell completer suggests slash commands and command templates", () => {
     "  config show",
     "  config set-url ",
   ], "  config s"]);
+  assert.deepEqual(completeShellLine("auth "), [[
+    "auth set-key ",
+    "auth status",
+    "auth clear",
+  ], "auth "]);
+  assert.deepEqual(completeShellLine("push "), [["push --root "], "push "]);
+  assert.deepEqual(completeShellLine("watch --"), [["watch --root "], "watch --"]);
 });
 
 test("live shell suggestions filter as the user types", () => {
@@ -206,4 +216,25 @@ test("parseShellArgs rejects unclosed quotes", () => {
     () => parseShellArgs('config set-url "http://localhost:8080'),
     /Unclosed quote/,
   );
+});
+
+test("push and watch parsers accept project-bound root-only commands and legacy project IDs", () => {
+  assert.deepEqual(parsePushCommandArgs(["--root", "./repo", "--dry-run"]), {
+    projectId: null,
+    root: "./repo",
+    dryRun: true,
+  });
+  assert.deepEqual(parsePushCommandArgs(["project-1", "--root", "./repo"]), {
+    projectId: "project-1",
+    root: "./repo",
+    dryRun: false,
+  });
+  assert.deepEqual(parseWatchCommandArgs(["--root", "./repo"]), {
+    projectId: null,
+    root: "./repo",
+  });
+  assert.deepEqual(parseWatchCommandArgs(["project-1", "--root", "./repo"]), {
+    projectId: "project-1",
+    root: "./repo",
+  });
 });

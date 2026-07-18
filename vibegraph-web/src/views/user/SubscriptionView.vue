@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAccountStore } from '@/stores/account'
+import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 
 const accountStore = useAccountStore()
+const isLoading = ref(!accountStore.usage)
+const loadError = ref('')
 
 interface SubscriptionUsage {
   limitMb?: number
@@ -22,16 +25,34 @@ const storageRemainingMb = computed(() =>
 )
 const remainingCredits = computed(() => {
   if (typeof usage.value?.creditsRemaining === 'number') return usage.value.creditsRemaining
-  if (typeof usage.value?.creditsLimit === 'number' && typeof usage.value.creditsUsed === 'number') {
+  if (typeof usage.value?.creditsLimit === 'number' && typeof usage.value?.creditsUsed === 'number') {
     return Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)
   }
   return null
 })
 
-onMounted(async () => {
-  if (!accountStore.usage) {
-    await accountStore.fetchUsage()
+async function loadUsage(): Promise<void> {
+  if (accountStore.usage) {
+    isLoading.value = false
+    loadError.value = ''
+    return
   }
+
+  isLoading.value = true
+  loadError.value = ''
+  try {
+    await accountStore.fetchUsage()
+  } catch (error) {
+    if (!accountStore.usage) {
+      loadError.value = error instanceof Error ? error.message : 'Failed to load subscription data.'
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadUsage()
 })
 </script>
 
@@ -42,7 +63,25 @@ onMounted(async () => {
       <p>Review your current plan and account quota from the account usage API.</p>
     </header>
 
-    <section class="current-plan">
+    <ErrorAlert
+      v-if="loadError && !usage"
+      role="alert"
+      title="Subscription unavailable"
+      :message="loadError"
+    >
+      <button
+        data-test="retry-subscription"
+        type="button"
+        class="retry-button"
+        :disabled="isLoading"
+        @click="loadUsage"
+      >
+        Retry subscription
+      </button>
+    </ErrorAlert>
+    <div v-else-if="isLoading && !usage" class="loading">Loading subscription data...</div>
+
+    <section v-if="usage || (!isLoading && !loadError)" class="current-plan">
       <span class="current-plan__label">Current plan</span>
       <strong>{{ usage?.planName ?? 'Unavailable' }}</strong>
       <dl v-if="usage">
@@ -66,7 +105,7 @@ onMounted(async () => {
       <p v-else>Plan details are unavailable until the account usage API responds.</p>
     </section>
 
-    <section class="empty-state">
+    <section v-if="!isLoading && !loadError" class="empty-state">
       A public plan catalog is not available from the current user API. Upgrade options, including
       Enterprise contact sales, remain unavailable until the backend exposes that contract.
     </section>
@@ -145,5 +184,21 @@ dd {
 .empty-state {
   padding: var(--vg-space-5);
   text-align: center;
+}
+
+.loading {
+  color: var(--vg-text-dim);
+}
+
+.retry-button {
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--vg-danger);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-danger);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
 </style>

@@ -8,7 +8,7 @@
  * rendered `embedded` (no card chrome / header) and the panel owns the title,
  * tabs, accent and per-method description.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
 import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
@@ -66,8 +66,20 @@ const tabs: MethodTab[] = [
   },
 ]
 
-const active = ref<Method>('local')
-const activeTab = computed<MethodTab>(() => tabs.find((t) => t.id === active.value) ?? tabs[0]!)
+const enabledTabs = computed(() => tabs.filter((tab) => !props.disabledMethods[tab.id]))
+const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
+const active = ref<Method>(enabledTabs.value[0]?.id ?? 'local')
+const activeTab = computed<MethodTab>(() => tabs.find((tab) => tab.id === active.value) ?? tabs[0]!)
+
+watch(
+  () => props.disabledMethods,
+  () => {
+    if (props.disabledMethods[active.value]) {
+      active.value = enabledTabs.value[0]?.id ?? 'local'
+    }
+  },
+  { deep: true, immediate: true },
+)
 
 function onImported(project: Project): void {
   emit('imported', project)
@@ -102,7 +114,9 @@ function iconPath(id: Method): string {
         <h2 id="import-panel-heading" class="import-panel__title">Import a project</h2>
         <span class="import-panel__badge">Java</span>
       </div>
-      <p class="import-panel__desc">{{ activeTab.description }}</p>
+      <p class="import-panel__desc">
+        {{ hasEnabledMethod ? activeTab.description : 'No import method is currently available.' }}
+      </p>
     </header>
 
     <div class="import-panel__tabs" role="tablist" aria-label="Import method">
@@ -141,8 +155,9 @@ function iconPath(id: Method): string {
       </button>
     </div>
 
-    <p v-if="props.disabledMethods[active]" class="import-panel__disabled" role="status">
-      {{ props.disabledMethods[active] }}
+    <p v-if="!hasEnabledMethod" class="import-panel__disabled" role="status">
+      No import method is currently available. Import is blocked until the account capability
+      contract reports an enabled method.
     </p>
 
     <div v-else class="import-panel__body">

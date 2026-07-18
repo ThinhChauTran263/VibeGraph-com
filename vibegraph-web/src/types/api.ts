@@ -67,6 +67,11 @@ export interface UserProfile {
 }
 
 /** Safe account state returned by GET /api/account/session-state. */
+export interface FeatureCapability {
+  enabled: boolean
+  reason: string | null
+}
+
 export interface AccountSessionState {
   id: string
   email: string
@@ -74,6 +79,7 @@ export interface AccountSessionState {
   role: string
   accountStatus: string
   safeReason: string | null
+  features: Record<string, FeatureCapability>
 }
 
 /**
@@ -151,18 +157,38 @@ export interface Project {
 
 // ─── API Keys ──────────────────────────────────────────────────────────────────
 
+export interface ApiKeyProjectBinding {
+  id: string
+  name: string
+  sourceType: string | null
+  status: string | null
+}
+
+export interface ApiKeyCreateRequest {
+  name: string
+  projectId: string
+}
+
 /** API key metadata returned by list endpoints (ApiKeyResponse). */
 export interface ApiKey {
   id: string
   /** The masked prefix shown to users, e.g. "vg-abc12" */
   keyPrefix: string
   name: string
+  project: ApiKeyProjectBinding | null
   createdAt: string
   lastUsedAt: string | null
   expiresAt: string | null
   /** Non-null means the key is disabled */
   disabledAt: string | null
-  /** Convenience getter: true when disabledAt is set */
+  disabledBy?: 'USER' | 'ADMIN' | null
+  disabledReason?: string | null
+  lockedAt?: string | null
+  lockedBy?: string | null
+  locked?: boolean
+  deletedAt?: string | null
+  canDelete?: boolean
+  /** Convenience getter derived by the frontend store. */
   disabled: boolean
 }
 
@@ -171,6 +197,7 @@ export interface ApiKeyCreated {
   id: string
   keyPrefix: string
   name: string
+  project: ApiKeyProjectBinding
   /** The full secret — shown exactly once, never retrievable again */
   secretKey: string
   createdAt: string

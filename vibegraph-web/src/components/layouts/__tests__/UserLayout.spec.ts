@@ -4,6 +4,7 @@ import { nextTick } from 'vue'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import UserLayout from '../UserLayout.vue'
+import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
@@ -12,7 +13,7 @@ const routes = [
   { path: '/api-keys', component: { template: '<div>API Keys page</div>' } },
   { path: '/usage', component: { template: '<div>Usage page</div>' } },
   { path: '/subscription', component: { template: '<div>Subscription page</div>' } },
-  { path: '/reports', component: { template: '<div>Reports page</div>' } },
+  { path: '/reports', name: 'reports', component: { template: '<div>Reports page</div>' } },
   { path: '/settings', component: { template: '<div>Settings page</div>' } },
   { path: '/login', name: 'login', component: { template: '<div>Login page</div>' } },
 ]
@@ -21,7 +22,12 @@ function makeRouter() {
   return createRouter({ history: createWebHistory(), routes })
 }
 
-async function mountLayout() {
+interface MountLayoutOptions {
+  sessionState?: Record<string, unknown> | null
+  sessionStateError?: Error
+}
+
+async function mountLayout(options: MountLayoutOptions = {}) {
   const router = makeRouter()
   await router.push('/dashboard')
   await router.isReady()
@@ -52,6 +58,9 @@ async function mountLayout() {
       },
     },
   })
+  const account = useAccountStore(pinia)
+  if (options.sessionState !== undefined) account.sessionState = options.sessionState as typeof account.sessionState
+  if (options.sessionStateError) vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
   const wrapper = mount(UserLayout, { attachTo: document.body, global: { plugins: [router, pinia] } })
   await flushPromises()
   return { wrapper, router, pinia }
@@ -141,5 +150,39 @@ describe('UserLayout', () => {
 
     expect(auth.logout).toHaveBeenCalledOnce()
     expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('fails closed while account access cannot be verified', async () => {
+    const { wrapper } = await mountLayout({
+      sessionState: null,
+      sessionStateError: new Error('Session state unavailable'),
+    })
+
+    expect(wrapper.get('[role="status"]').text()).toContain('Checking account access')
+    expect(wrapper.text()).not.toContain('Overview page')
+  })
+
+  it('keeps support reports usable and explains disabled routes for restricted accounts', async () => {
+    const { wrapper, router } = await mountLayout({
+      sessionState: {
+        id: 'user-1',
+        email: 'user@vibegraph.io',
+        displayName: 'User One',
+        role: 'USER',
+        accountStatus: 'BLOCKED',
+        safeReason: 'Contact support to restore access.',
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.get('a[aria-label="Reports"]').attributes('href')).toBe('/reports')
+    const disabledRepositories = wrapper.get('[aria-label="Repositories unavailable"]')
+    expect(disabledRepositories.attributes('aria-disabled')).toBe('true')
+    expect(disabledRepositories.attributes('title')).toBe('Contact support to restore access.')
+    expect(wrapper.text()).toContain('Contact support')
+
+    await router.push('/reports')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Reports page')
   })
 })

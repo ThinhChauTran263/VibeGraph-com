@@ -1,6 +1,6 @@
-# Kiro - Admin Security IP Block Mutation Fix
+# Kiro - Admin Security IP Block And System Feature UX Fix
 
-You are `Kiro`, fixing FE-6 admin security request changes.
+You are `Kiro`, fixing FE-6 admin security and system UX request changes.
 
 Repo: `D:\Users\User\IdeaProjects\VibeGraph`
 
@@ -16,11 +16,12 @@ Autonomy:
 
 Scope:
 - admin security/IP block UI and store behavior
+- admin system/feature flag UI behavior
 - focused tests
 - Do not edit backend.
 
 Fix:
-- IP-block mutations can currently report failure after the write succeeds because they call all-or-nothing `refreshSecurity()`.
+1. IP-block mutations can currently report failure after the write succeeds because they call all-or-nothing `refreshSecurity()`.
 - After create/update/delete IP block, refresh only the affected IP block collection or refresh panels independently.
 - A telemetry/request-events failure must not turn a successful IP-block write into a save failure.
 - UI should show:
@@ -28,6 +29,19 @@ Fix:
   - separate warning if telemetry refresh failed
   - retry action for failed panels
 - Preserve real API integration; no mock business behavior.
+
+2. Admin System / Feature Flags UX must not imply fake protection:
+- Feature flag controls must clearly show whether runtime capability propagation is connected.
+- If the backend capability DTO is available, wire visible admin flag changes to user-facing disabled controls through the real contract.
+- If the backend capability DTO is not available yet, show an admin warning that controls are configuration-only and not fully enforced in frontend capability state.
+- Do not fake capability propagation.
+- Make grouped feature cards collapsible/expandable where forms are dense:
+  - import methods
+  - CLI push
+  - MCP global and child tools
+  - API key creation
+  - registration
+  - gen use case
 
 Run:
 - `cd vibegraph-web && npm run type-check`
@@ -38,6 +52,8 @@ Run:
 Chrome QA:
 - admin Security page
 - create/update/delete IP block
+- admin System page feature flag enabled/disabled states
+- grouped feature cards collapsed/expanded
 - failed telemetry panel state if practical
 - responsive at 320/768/1024/1440
 

@@ -24,7 +24,7 @@ const importDisabled = computed(
 )
 const importReason = computed(() =>
   importDisabled.value
-    ? 'Repository import is unavailable because no import method is currently enabled.'
+    ? 'Repository import is blocked until the account capability contract reports an enabled method.'
     : null,
 )
 watch(
@@ -53,10 +53,11 @@ function imported(project: Project) {
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return
+  const projectId = deleteTarget.value.id
   deleting.value = true
   try {
-    await projectApi.remove(deleteTarget.value.id)
-    projects.value = projects.value.filter((item) => item.id !== deleteTarget.value?.id)
+    await projectApi.remove(projectId)
+    projects.value = projects.value.filter((item) => item.id !== projectId)
     deleteTarget.value = null
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to delete repository.'
@@ -172,7 +173,7 @@ onMounted(() => {
       confirm-label="Delete repository"
       tone="danger"
       :busy="deleting"
-      @cancel="deleteTarget = null"
+      @cancel="!deleting && (deleteTarget = null)"
       @confirm="confirmDelete"
     />
   </section>
