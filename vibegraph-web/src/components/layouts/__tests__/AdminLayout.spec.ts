@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+﻿import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AdminLayout from '../AdminLayout.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { createPinia } from 'pinia'
+import i18n, { setLocale } from '@/language'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -17,11 +18,12 @@ const router = createRouter({
 
 describe('AdminLayout', () => {
   it('renders admin navigation and router-view', async () => {
+    setLocale('en-US')
     router.push('/admin')
     await router.isReady()
     const wrapper = mount(AdminLayout, {
       global: {
-        plugins: [router, createPinia()],
+        plugins: [router, createPinia(), i18n],
       },
     })
 

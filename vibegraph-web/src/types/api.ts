@@ -439,7 +439,7 @@ export interface AdminAuditLog {
   outcome: string
   ipAddress: string | null
   details: string | null
-  createdAt: string
+  createdAt: string | null
 }
 
 export interface AdminAuditRetention {

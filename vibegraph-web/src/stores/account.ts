@@ -29,7 +29,9 @@ export const useAccountStore = defineStore('account', () => {
   const usage = ref<UserUsage | null>(null)
   const creditLedger = ref<CreditLedgerEntry[]>([])
   const projects = ref<Project[]>([])
+  const projectsLoaded = ref(false)
   const apiKeys = ref<ApiKey[]>([])
+  const apiKeysLoaded = ref(false)
   const reports = ref<Report[]>([])
   const sessionState = ref<AccountSessionState | null>(null)
   const notifications = ref<UserNotification[]>([])
@@ -38,6 +40,8 @@ export const useAccountStore = defineStore('account', () => {
   const error = ref<Error | null>(null)
   let notificationLimit = 50
   let sessionStateRequestId = 0
+  let projectsRequest: Promise<void> | null = null
+  let apiKeysRequest: Promise<void> | null = null
   const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read))
   const accountRestricted = computed(() => {
     const status = sessionState.value?.accountStatus?.toUpperCase()
@@ -203,31 +207,61 @@ export const useAccountStore = defineStore('account', () => {
 
   // ─── Projects ───────────────────────────────────────────────────────────────
 
-  async function fetchProjects(): Promise<void> {
+  async function fetchProjects(options: { force?: boolean } = {}): Promise<void> {
+    if (projectsLoaded.value && !options.force) return
+    if (projectsRequest) return projectsRequest
+
     const pageSize = 100
-    const firstPage = await accountApi.getProjects(0, pageSize)
-    const remainingPages = await Promise.all(
-      Array.from({ length: Math.max(firstPage.totalPages - 1, 0) }, (_, index) =>
-        accountApi.getProjects(index + 1, pageSize),
-      ),
-    )
-    const projectItems = [firstPage, ...remainingPages].flatMap(
-      (page) => page.items ?? page.content ?? [],
-    )
-    projects.value = projectItems.map((project) => ({
-      ...project,
-      lastAnalyzedAt: project.updatedAt,
-    }))
+    projectsRequest = (async () => {
+      const firstPage = await accountApi.getProjects(0, pageSize)
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(firstPage.totalPages - 1, 0) }, (_, index) =>
+          accountApi.getProjects(index + 1, pageSize),
+        ),
+      )
+      const projectItems = [firstPage, ...remainingPages].flatMap(
+        (page) => page.items ?? page.content ?? [],
+      )
+      setProjects(
+        projectItems.map((project) => ({
+          ...project,
+          lastAnalyzedAt: project.updatedAt,
+        })),
+      )
+    })()
+
+    try {
+      await projectsRequest
+    } finally {
+      projectsRequest = null
+    }
+  }
+
+  function setProjects(nextProjects: Project[]): void {
+    projects.value = nextProjects
+    projectsLoaded.value = true
   }
 
   // ─── API Keys ────────────────────────────────────────────────────────────────
 
-  async function fetchApiKeys(): Promise<void> {
-    const keys = await accountApi.listApiKeys()
-    apiKeys.value = keys.map((k) => ({
-      ...k,
-      disabled: k.disabledAt !== null,
-    }))
+  async function fetchApiKeys(options: { force?: boolean } = {}): Promise<void> {
+    if (apiKeysLoaded.value && !options.force) return
+    if (apiKeysRequest) return apiKeysRequest
+
+    apiKeysRequest = (async () => {
+      const keys = await accountApi.listApiKeys()
+      apiKeys.value = keys.map((k) => ({
+        ...k,
+        disabled: k.disabledAt !== null,
+      }))
+      apiKeysLoaded.value = true
+    })()
+
+    try {
+      await apiKeysRequest
+    } finally {
+      apiKeysRequest = null
+    }
   }
 
   /**
@@ -256,6 +290,7 @@ export const useAccountStore = defineStore('account', () => {
       disabled: false,
     }
     apiKeys.value = [listEntry, ...apiKeys.value]
+    apiKeysLoaded.value = true
     return created
   }
 
@@ -267,6 +302,7 @@ export const useAccountStore = defineStore('account', () => {
         ? { ...key, disabledAt, disabledBy: 'USER', disabledReason: null, disabled: true }
         : key,
     )
+    apiKeysLoaded.value = true
   }
 
   async function enableApiKey(id: string): Promise<void> {
@@ -285,11 +321,13 @@ export const useAccountStore = defineStore('account', () => {
           }
         : key,
     )
+    apiKeysLoaded.value = true
   }
 
   async function deleteApiKey(id: string): Promise<void> {
     await accountApi.deleteApiKey(id)
     apiKeys.value = apiKeys.value.filter((key) => key.id !== id)
+    apiKeysLoaded.value = true
   }
 
   // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -365,7 +403,9 @@ export const useAccountStore = defineStore('account', () => {
     usage,
     creditLedger,
     projects,
+    projectsLoaded,
     apiKeys,
+    apiKeysLoaded,
     reports,
     planName,
     fetchProfile,
@@ -381,6 +421,7 @@ export const useAccountStore = defineStore('account', () => {
     fetchUsage,
     fetchCreditLedger,
     fetchProjects,
+    setProjects,
     fetchApiKeys,
     createApiKey,
     disableApiKey,

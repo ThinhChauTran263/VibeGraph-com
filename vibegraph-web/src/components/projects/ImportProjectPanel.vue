@@ -9,6 +9,7 @@
  * tabs, accent and per-method description.
  */
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
 import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
@@ -16,6 +17,7 @@ import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 
 type Method = 'local' | 'archive' | 'github'
 
+const { t } = useI18n({ useScope: 'global' })
 const props = withDefaults(
   defineProps<{
     disabledMethods?: Partial<Record<Method, string | null>>
@@ -36,22 +38,20 @@ interface MethodTab {
   accentSoft: string
 }
 
-const tabs: MethodTab[] = [
+const tabs = computed<MethodTab[]>(() => [
   {
     id: 'local',
-    label: 'Local folder',
-    short: 'Local',
-    description:
-      'Analyze a folder already on the machine running VibeGraph — the graph updates in realtime as you edit, no zip needed.',
+    label: t('user.projects.localFolder'),
+    short: t('user.projects.localShort'),
+    description: t('user.projects.localDescription'),
     accent: 'var(--vg-blue-bright)',
     accentSoft: 'rgba(96, 165, 250, 0.16)',
   },
   {
     id: 'archive',
-    label: 'Archive',
-    short: 'Archive',
-    description:
-      'Upload a Java project archive (.zip, .tar, .tar.gz, .tgz). VibeGraph extracts and analyzes it for you.',
+    label: t('user.projects.archive'),
+    short: t('user.projects.archive'),
+    description: t('user.projects.archiveDescription'),
     accent: 'var(--vg-cyan)',
     accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
@@ -59,17 +59,16 @@ const tabs: MethodTab[] = [
     id: 'github',
     label: 'GitHub',
     short: 'GitHub',
-    description:
-      'Point VibeGraph at any public GitHub repository by its HTTPS URL and it clones, indexes and maps it.',
+    description: t('user.projects.githubDescription'),
     accent: 'var(--vg-violet)',
     accentSoft: 'rgba(167, 139, 250, 0.16)',
   },
-]
+])
 
-const enabledTabs = computed(() => tabs.filter((tab) => !props.disabledMethods[tab.id]))
+const enabledTabs = computed(() => tabs.value.filter((tab) => !props.disabledMethods[tab.id]))
 const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
 const active = ref<Method>(enabledTabs.value[0]?.id ?? 'local')
-const activeTab = computed<MethodTab>(() => tabs.find((tab) => tab.id === active.value) ?? tabs[0]!)
+const activeTab = computed<MethodTab>(() => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!)
 
 watch(
   () => props.disabledMethods,
@@ -111,15 +110,15 @@ function iconPath(id: Method): string {
   >
     <header class="import-panel__head">
       <div class="import-panel__title-row">
-        <h2 id="import-panel-heading" class="import-panel__title">Import a project</h2>
+        <h2 id="import-panel-heading" class="import-panel__title">{{ t('user.projects.importDialogTitle') }}</h2>
         <span class="import-panel__badge">Java</span>
       </div>
       <p class="import-panel__desc">
-        {{ hasEnabledMethod ? activeTab.description : 'No import method is currently available.' }}
+        {{ hasEnabledMethod ? activeTab.description : t('user.projects.noImportMethod') }}
       </p>
     </header>
 
-    <div class="import-panel__tabs" role="tablist" aria-label="Import method">
+    <div class="import-panel__tabs" role="tablist" :aria-label="t('user.projects.importMethod')">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -156,8 +155,7 @@ function iconPath(id: Method): string {
     </div>
 
     <p v-if="!hasEnabledMethod" class="import-panel__disabled" role="status">
-      No import method is currently available. Import is blocked until the account capability
-      contract reports an enabled method.
+      {{ t('user.projects.noImportMethodDescription') }}
     </p>
 
     <div v-else class="import-panel__body">

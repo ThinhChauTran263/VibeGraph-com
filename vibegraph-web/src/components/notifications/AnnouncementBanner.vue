@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
 
 const router = useRouter()
+const { t } = useI18n({ useScope: 'global' })
 const notification = ref<UserNotification | null>(null)
 const busy = ref(false)
 const errorMsg = ref('')
@@ -21,7 +23,7 @@ async function loadActiveNotification(): Promise<void> {
         .filter((item) => !item.read && !item.dismissedAt)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null
   } catch {
-    errorMsg.value = 'Announcements are temporarily unavailable.'
+    errorMsg.value = t('user.notifications.announcementUnavailable')
   } finally {
     busy.value = false
   }
@@ -35,7 +37,7 @@ async function close(): Promise<void> {
     await accountApi.dismissNotification(notification.value.id)
     notification.value = null
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not dismiss this notice.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.dismissFallback')
   } finally {
     busy.value = false
   }
@@ -52,7 +54,7 @@ async function read(): Promise<void> {
     await router.push({ name: 'notifications', query: { id } })
     notification.value = null
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not open this notice.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.readFallback')
   } finally {
     busy.value = false
   }
@@ -67,13 +69,13 @@ async function read(): Promise<void> {
     aria-live="assertive"
   >
     <div class="copy">
-      <span>Announcements</span>
-      <strong>Could not load announcements</strong>
+      <span>{{ t('nav.announcements') }}</span>
+      <strong>{{ t('user.notifications.unavailableTitle') }}</strong>
       <p>{{ errorMsg }}</p>
     </div>
     <div class="actions">
       <button type="button" :disabled="busy" @click="loadActiveNotification">
-        {{ busy ? 'Retrying...' : 'Retry' }}
+        {{ busy ? t('user.notifications.loading') : t('common.retry') }}
       </button>
     </div>
   </aside>
@@ -90,14 +92,14 @@ async function read(): Promise<void> {
       <small v-if="errorMsg" role="alert">{{ errorMsg }}</small>
     </div>
     <div class="actions">
-      <button type="button" :disabled="busy" @click="read">Read</button>
+      <button type="button" :disabled="busy" @click="read">{{ t('common.view') }}</button>
       <button
         v-if="notification.dismissible"
         type="button"
         :disabled="busy"
         @click="close"
       >
-        Close
+        {{ t('common.close') }}
       </button>
     </div>
   </aside>

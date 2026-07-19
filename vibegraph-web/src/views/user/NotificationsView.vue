@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n({ useScope: 'global' })
 const items = ref<UserNotification[]>([])
 const selected = ref<UserNotification | null>(null)
 const available = ref(true)
@@ -28,7 +30,7 @@ async function loadNotifications(): Promise<void> {
     if (error instanceof ApiError && [404, 405, 501].includes(error.status)) {
       available.value = false
     } else {
-      errorMsg.value = error instanceof Error ? error.message : 'Notifications could not be loaded.'
+      errorMsg.value = error instanceof Error ? error.message : t('user.notifications.loadFallback')
     }
   } finally {
     loading.value = false
@@ -46,7 +48,7 @@ async function selectNotification(item: UserNotification): Promise<void> {
     replaceNotification(updated)
     if (currentSelectionVersion === selectionVersion) selected.value = updated
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not mark this notification read.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.readFallback')
   } finally {
     if (busyId.value === item.id) busyId.value = null
   }
@@ -65,41 +67,40 @@ async function dismissSelected(): Promise<void> {
       query: selected.value ? { id: selected.value.id } : {},
     })
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not dismiss this notification.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.dismissFallback')
   } finally {
     busyId.value = null
   }
 }
 
 function replaceNotification(updated: UserNotification): void {
-  const index = items.value.findIndex((item) => item.id === updated.id)
-  if (index >= 0) items.value[index] = updated
+  items.value = items.value.map((item) => (item.id === updated.id ? updated : item))
 }
 
 function creatorLabel(item: UserNotification): string {
-  return item.creatorDisplayName || item.creatorName || item.creatorEmail || 'VibeGraph team'
+  return item.creatorDisplayName || item.creatorName || item.creatorEmail || t('user.notifications.creatorFallback')
 }
 </script>
 
 <template>
   <section class="notifications" aria-labelledby="notifications-title">
     <header>
-      <span>Inbox</span>
-      <h1 id="notifications-title">Notifications</h1>
-      <p>Product announcements and operational updates, newest first.</p>
+      <span>{{ t('user.notifications.inbox') }}</span>
+      <h1 id="notifications-title">{{ t('user.notifications.title') }}</h1>
+      <p>{{ t('user.notifications.description') }}</p>
     </header>
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
-    <section v-if="loading" class="empty">Loading notifications...</section>
+    <section v-if="loading" class="empty">{{ t('user.notifications.loading') }}</section>
     <section v-else-if="!available" class="empty">
-      <h2>Notifications are unavailable</h2>
-      <p>The backend notification contract is not available for this environment.</p>
+      <h2>{{ t('user.notifications.unavailableTitle') }}</h2>
+      <p>{{ t('user.notifications.unavailableDescription') }}</p>
     </section>
     <section v-else-if="!items.length" class="empty">
-      <h2>All quiet</h2>
-      <p>There are no active notifications for your account.</p>
+      <h2>{{ t('user.notifications.emptyTitle') }}</h2>
+      <p>{{ t('user.notifications.emptyDescription') }}</p>
     </section>
     <div v-else class="grid">
-      <ol aria-label="Notifications">
+      <ol :aria-label="t('user.notifications.listLabel')">
         <li v-for="item in items" :key="item.id">
           <button
             type="button"
@@ -131,7 +132,7 @@ function creatorLabel(item: UserNotification): string {
           :disabled="busyId === selected.id"
           @click="dismissSelected"
         >
-          {{ busyId === selected.id ? 'Updating...' : 'Dismiss' }}
+          {{ busyId === selected.id ? t('user.notifications.updating') : t('user.notifications.dismiss') }}
         </button>
       </article>
     </div>

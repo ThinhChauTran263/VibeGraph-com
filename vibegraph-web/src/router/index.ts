@@ -4,17 +4,20 @@ import HomeView from '@/views/HomeView.vue'
 import LandingView from '@/views/LandingView.vue'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * Route meta:
  * - requiresAuth: route requires a valid token (redirect to /login otherwise)
- * - requiresAdmin: route requires the stored session user to have ADMIN role
+ * - requiresAdmin: route requires the current session user to have ADMIN role
+ * - requiresUser: route is for regular user product pages; admins are redirected to admin
  * - guestOnly: route is only for unauthenticated users (redirect to the role dashboard if logged in)
  */
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     requiresAdmin?: boolean
+    requiresUser?: boolean
     guestOnly?: boolean
   }
 }
@@ -42,7 +45,7 @@ const router = createRouter({
     {
       path: '/',
       component: () => import('../components/layouts/UserLayout.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresUser: true },
       children: [
         {
           path: 'dashboard',
@@ -161,31 +164,40 @@ const router = createRouter({
 })
 
 // ─── Navigation guard ──────────────────────────────────────────────────────────
-router.beforeEach((to) => {
-  const isAuthenticated = !!getStoredUserRole()
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (to.meta.requiresAuth || to.meta.guestOnly) {
+    await ensureSessionLoaded(auth)
+  }
+  const role = auth.user?.role?.toUpperCase() ?? ''
+  const isAuthenticated = !!auth.user
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.requiresAdmin && getStoredUserRole() !== 'ADMIN') {
+  if (to.meta.requiresAdmin && role !== 'ADMIN') {
     return { name: 'dashboard' }
   }
 
+  if (to.meta.requiresUser && role === 'ADMIN') {
+    return adminRedirectForUserRoute(String(to.name ?? ''))
+  }
+
   if (to.meta.guestOnly && isAuthenticated) {
-    return getStoredUserRole() === 'ADMIN' ? { name: 'admin-dashboard' } : { name: 'dashboard' }
+    return role === 'ADMIN' ? { name: 'admin-dashboard' } : { name: 'dashboard' }
   }
 })
 
-function getStoredUserRole(): string {
-  const raw = localStorage.getItem('vg_user')
-  if (!raw) return ''
-  try {
-    const parsed = JSON.parse(raw) as { role?: unknown }
-    return typeof parsed.role === 'string' ? parsed.role.toUpperCase() : ''
-  } catch {
-    return ''
-  }
+async function ensureSessionLoaded(auth: ReturnType<typeof useAuthStore>): Promise<void> {
+  if (auth.user) return
+  await auth.fetchCurrentUser()
+}
+
+function adminRedirectForUserRoute(routeName: string) {
+  if (routeName === 'settings' || routeName === 'profile') return { name: 'admin-settings' }
+  if (routeName === 'reports') return { name: 'admin-reports' }
+  return { name: 'admin-dashboard' }
 }
 
 export default router

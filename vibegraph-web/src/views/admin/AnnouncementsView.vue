@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminAnnouncementRequest } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 
 const adminStore = useAdminStore()
+const { locale, t } = useI18n({ useScope: 'global' })
 const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
@@ -12,26 +14,35 @@ const pendingDisableId = ref<string | null>(null)
 const pendingDeleteId = ref<string | null>(null)
 const editingId = ref<string | null>(null)
 
-const typeOptions = [
-  { value: 'MAINTENANCE', label: 'Maintenance' },
-  { value: 'PLAN_CHANGE', label: 'Plan changes' },
-  { value: 'DISK_WARNING', label: 'Disk warnings' },
-  { value: 'CLI_UPDATE', label: 'CLI updates' },
-  { value: 'SECURITY', label: 'Security notices' },
-  { value: 'GENERAL', label: 'General notices' },
+const typeValues = [
+  'MAINTENANCE',
+  'PLAN_CHANGE',
+  'DISK_WARNING',
+  'CLI_UPDATE',
+  'SECURITY',
+  'GENERAL',
 ] as const
+const severityValues = ['INFO', 'WARNING', 'CRITICAL'] as const
+const targetValues = ['ALL', 'USER', 'ADMIN'] as const
 
-const severityOptions = [
-  { value: 'INFO', label: 'Info' },
-  { value: 'WARNING', label: 'Warning' },
-  { value: 'CRITICAL', label: 'Critical' },
-] as const
-
-const targetOptions = [
-  { value: 'ALL', label: 'All users' },
-  { value: 'USER', label: 'Users only' },
-  { value: 'ADMIN', label: 'Admins only' },
-] as const
+const typeOptions = computed(() =>
+  typeValues.map((value) => ({
+    value,
+    label: t(`admin.announcements.types.${value.toLowerCase()}`),
+  })),
+)
+const severityOptions = computed(() =>
+  severityValues.map((value) => ({
+    value,
+    label: t(`admin.announcements.severities.${value.toLowerCase()}`),
+  })),
+)
+const targetOptions = computed(() =>
+  targetValues.map((value) => ({
+    value,
+    label: t(`admin.announcements.targets.${value.toLowerCase()}`),
+  })),
+)
 
 const form = ref<AdminAnnouncementRequest>({
   type: 'GENERAL',
@@ -67,7 +78,7 @@ async function loadAnnouncements(): Promise<void> {
     await adminStore.fetchAnnouncements()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load announcements.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.announcements.errors.load')
   } finally {
     loading.value = false
   }
@@ -77,14 +88,15 @@ async function submitAnnouncement(): Promise<void> {
   const title = form.value.title.trim()
   const body = form.value.body.trim()
   if (!title || !body) {
-    errorMsg.value = 'Title and message are required.'
+    errorMsg.value = t('admin.announcements.errors.required')
     return
   }
   const duplicate = adminStore.announcements.some(
-    (item) => item.title.trim().toLowerCase() === title.toLowerCase() && item.id !== editingId.value,
+    (item) =>
+      item.title.trim().toLowerCase() === title.toLowerCase() && item.id !== editingId.value,
   )
   if (duplicate) {
-    errorMsg.value = 'An announcement with this title already exists.'
+    errorMsg.value = t('admin.announcements.errors.duplicate')
     return
   }
   saving.value = true
@@ -101,7 +113,7 @@ async function submitAnnouncement(): Promise<void> {
     resetForm()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to save announcement.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.announcements.errors.save')
   } finally {
     saving.value = false
   }
@@ -112,14 +124,14 @@ function editAnnouncement(id: string): void {
   if (!item) return
   editingId.value = id
   form.value = {
-    type: typeOptions.some((option) => option.value === item.type)
-      ? (item.type as (typeof typeOptions)[number]['value'])
+    type: typeValues.some((value) => value === item.type)
+      ? (item.type as (typeof typeValues)[number])
       : 'GENERAL',
-    severity: severityOptions.some((option) => option.value === item.severity)
-      ? (item.severity as (typeof severityOptions)[number]['value'])
+    severity: severityValues.some((value) => value === item.severity)
+      ? (item.severity as (typeof severityValues)[number])
       : 'INFO',
-    target: targetOptions.some((option) => option.value === item.target)
-      ? (item.target as (typeof targetOptions)[number]['value'])
+    target: targetValues.some((value) => value === item.target)
+      ? (item.target as (typeof targetValues)[number])
       : 'ALL',
     title: item.title,
     body: item.body,
@@ -139,7 +151,7 @@ async function disablePending(): Promise<void> {
     pendingDisableId.value = null
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to disable announcement.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.announcements.errors.disable')
   } finally {
     saving.value = false
   }
@@ -154,14 +166,26 @@ async function deletePending(): Promise<void> {
     if (editingId.value) resetForm()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to delete announcement.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.announcements.errors.delete')
   } finally {
     saving.value = false
   }
 }
 
 function typeLabel(value: string): string {
-  return typeOptions.find((option) => option.value === value)?.label ?? value
+  return typeOptions.value.find((option) => option.value === value)?.label ?? value
+}
+
+function severityLabel(value: string): string {
+  return severityOptions.value.find((option) => option.value === value)?.label ?? value
+}
+
+function targetLabel(value: string): string {
+  return targetOptions.value.find((option) => option.value === value)?.label ?? value
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString(locale.value)
 }
 
 function toInstant(value: string | null | undefined): string | null {
@@ -181,21 +205,28 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
   <div class="admin-page">
     <div class="page-title">
       <div>
-        <h2>Announcements</h2>
-        <p>
-          Manage in-app notices for maintenance, plan changes, storage warnings, and CLI updates.
-        </p>
+        <h2>{{ t('admin.announcements.title') }}</h2>
+        <p>{{ t('admin.announcements.description') }}</p>
       </div>
-      <span v-if="errorMsg" class="api-state unavailable">API error</span>
+      <span v-if="errorMsg" class="api-state unavailable">{{
+        t('admin.announcements.apiError')
+      }}</span>
     </div>
 
     <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
-    <div v-if="loading" class="notice">Loading announcements...</div>
+    <div v-if="loading" class="notice">{{ t('admin.announcements.loading') }}</div>
 
-    <section class="panel composer-panel" :aria-label="editingId ? 'Edit announcement' : 'Create announcement'">
+    <section
+      class="panel composer-panel"
+      :aria-label="
+        editingId
+          ? t('admin.announcements.form.editAria')
+          : t('admin.announcements.form.createAria')
+      "
+    >
       <form class="composer" @submit.prevent="submitAnnouncement">
         <label class="field">
-          <span>Type</span>
+          <span>{{ t('admin.announcements.form.type') }}</span>
           <select id="announcement-type" v-model="form.type" name="announcementType">
             <option v-for="option in typeOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -203,7 +234,7 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
           </select>
         </label>
         <label class="field">
-          <span>Severity</span>
+          <span>{{ t('admin.announcements.form.severity') }}</span>
           <select id="announcement-severity" v-model="form.severity" name="announcementSeverity">
             <option v-for="option in severityOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -211,7 +242,7 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
           </select>
         </label>
         <label class="field">
-          <span>Target</span>
+          <span>{{ t('admin.announcements.form.target') }}</span>
           <select id="announcement-target" v-model="form.target" name="announcementTarget">
             <option v-for="option in targetOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -219,18 +250,18 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
           </select>
         </label>
         <label class="field title-field">
-          <span>Title</span>
+          <span>{{ t('admin.announcements.form.title') }}</span>
           <input
             id="announcement-title"
             v-model="form.title"
             name="announcementTitle"
             required
             maxlength="160"
-            placeholder="Maintenance window"
+            :placeholder="t('admin.announcements.form.titlePlaceholder')"
           />
         </label>
         <label class="field full">
-          <span>Message</span>
+          <span>{{ t('admin.announcements.form.message') }}</span>
           <textarea
             id="announcement-body"
             v-model="form.body"
@@ -238,11 +269,11 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
             required
             rows="4"
             maxlength="2000"
-            placeholder="Write a plain-text announcement"
+            :placeholder="t('admin.announcements.form.messagePlaceholder')"
           ></textarea>
         </label>
         <label class="field schedule-field">
-          <span>Starts at</span>
+          <span>{{ t('admin.announcements.form.startsAt') }}</span>
           <input
             id="announcement-starts-at"
             v-model="form.startsAt"
@@ -251,7 +282,7 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
           />
         </label>
         <label class="field schedule-field">
-          <span>Ends at</span>
+          <span>{{ t('admin.announcements.form.endsAt') }}</span>
           <input
             id="announcement-ends-at"
             v-model="form.endsAt"
@@ -269,7 +300,7 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
                 type="checkbox"
               />
               <span class="toggle-track" aria-hidden="true"><span></span></span>
-              <strong>Dismissible</strong>
+              <strong>{{ t('admin.announcements.form.dismissible') }}</strong>
             </label>
             <label class="compact-switch" :class="{ active: form.active }">
               <input
@@ -279,47 +310,77 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
                 type="checkbox"
               />
               <span class="toggle-track" aria-hidden="true"><span></span></span>
-              <strong>Active</strong>
+              <strong>{{ t('admin.announcements.form.active') }}</strong>
             </label>
           </div>
           <button type="submit" :disabled="saving">
-            {{ saving ? 'Saving...' : editingId ? 'Save changes' : 'Create notice' }}
+            {{
+              saving
+                ? t('admin.announcements.actions.saving')
+                : editingId
+                  ? t('admin.announcements.actions.saveChanges')
+                  : t('admin.announcements.actions.create')
+            }}
           </button>
-          <button v-if="editingId" type="button" class="secondary-action" :disabled="saving" @click="resetForm">
-            Cancel edit
+          <button
+            v-if="editingId"
+            type="button"
+            class="secondary-action"
+            :disabled="saving"
+            @click="resetForm"
+          >
+            {{ t('admin.announcements.actions.cancelEdit') }}
           </button>
         </div>
       </form>
     </section>
 
     <section class="panel">
-      <h3>Published notices</h3>
-      <p v-if="adminStore.announcements.length === 0" class="empty-state">No announcements yet.</p>
+      <h3>{{ t('admin.announcements.publishedTitle') }}</h3>
+      <p v-if="adminStore.announcements.length === 0" class="empty-state">
+        {{ t('admin.announcements.empty') }}
+      </p>
       <div v-else class="announcement-list">
         <article v-for="item in adminStore.announcements" :key="item.id" class="announcement-row">
           <div class="announcement-copy">
             <div class="announcement-meta">
-              <span class="severity" :class="item.severity.toLowerCase()">{{ item.severity }}</span>
+              <span class="severity" :class="item.severity.toLowerCase()">{{
+                severityLabel(item.severity)
+              }}</span>
               <span>{{ typeLabel(item.type) }}</span>
-              <span>{{ item.target }}</span>
+              <span>{{ targetLabel(item.target) }}</span>
             </div>
             <strong class="announcement-title">{{ item.title }}</strong>
             <p>{{ item.body }}</p>
             <small>
               {{
                 item.startsAt
-                  ? `Starts ${new Date(item.startsAt).toLocaleString()}`
-                  : 'Starts immediately'
+                  ? t('admin.announcements.schedule.starts', {
+                      date: formatDateTime(item.startsAt),
+                    })
+                  : t('admin.announcements.schedule.startsImmediately')
               }}
               <span aria-hidden="true"> / </span>
-              {{ item.endsAt ? `Ends ${new Date(item.endsAt).toLocaleString()}` : 'No end date' }}
+              {{
+                item.endsAt
+                  ? t('admin.announcements.schedule.ends', {
+                      date: formatDateTime(item.endsAt),
+                    })
+                  : t('admin.announcements.schedule.noEndDate')
+              }}
             </small>
           </div>
           <div class="row-actions">
-            <button type="button" class="secondary-action" @click="editAnnouncement(item.id)">Edit</button>
-            <button v-if="item.active" type="button" @click="pendingDisableId = item.id">Disable</button>
-            <span v-else class="status-chip">Disabled</span>
-            <button type="button" class="delete-action" @click="pendingDeleteId = item.id">Delete</button>
+            <button type="button" class="secondary-action" @click="editAnnouncement(item.id)">
+              {{ t('admin.announcements.actions.edit') }}
+            </button>
+            <button v-if="item.active" type="button" @click="pendingDisableId = item.id">
+              {{ t('admin.announcements.actions.disable') }}
+            </button>
+            <span v-else class="status-chip">{{ t('admin.announcements.states.disabled') }}</span>
+            <button type="button" class="delete-action" @click="pendingDeleteId = item.id">
+              {{ t('admin.announcements.actions.delete') }}
+            </button>
           </div>
         </article>
       </div>
@@ -327,9 +388,9 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
 
     <AdminConfirmDialog
       :open="Boolean(pendingDisableId)"
-      title="Disable announcement"
-      message="This announcement will stop showing in the app for its target audience."
-      confirm-label="Disable"
+      :title="t('admin.announcements.dialogs.disable.title')"
+      :message="t('admin.announcements.dialogs.disable.message')"
+      :confirm-label="t('admin.announcements.actions.disable')"
       tone="danger"
       :busy="saving"
       @cancel="pendingDisableId = null"
@@ -337,9 +398,9 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
     />
     <AdminConfirmDialog
       :open="Boolean(pendingDeleteId)"
-      title="Delete announcement"
-      message="Delete this announcement permanently? Existing user notification history may no longer be available."
-      confirm-label="Delete announcement"
+      :title="t('admin.announcements.dialogs.delete.title')"
+      :message="t('admin.announcements.dialogs.delete.message')"
+      :confirm-label="t('admin.announcements.dialogs.delete.confirm')"
       tone="danger"
       :busy="saving"
       @cancel="pendingDeleteId = null"

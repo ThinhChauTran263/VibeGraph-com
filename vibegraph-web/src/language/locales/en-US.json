@@ -1,0 +1,1649 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "disable": "Disable",
+    "enable": "Enable",
+    "search": "Search",
+    "close": "Close",
+    "create": "Create",
+    "update": "Update",
+    "retry": "Retry"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "vietnamese": "Vietnamese"
+  },
+  "planNames": {
+    "FREE": "Free",
+    "PRO": "Pro",
+    "PRO_PLUS": "Pro Plus",
+    "MAX": "Max",
+    "ENTERPRISE": "Enterprise"
+  },
+  "landing": {
+    "nav": {
+      "goals": "Goals",
+      "features": "Features",
+      "howItWorks": "How it works",
+      "guide": "Guide"
+    },
+    "actions": {
+      "openDashboard": "Open Dashboard",
+      "seeHow": "See how it works"
+    },
+    "hero": {
+      "pill": "Source-code intelligence for Java",
+      "titleLead": "See your code as a",
+      "titleHighlight": "living graph",
+      "description": "VibeGraph turns a Java codebase into an explorable map of structure, dependencies and execution flows, then keeps it in sync as you vibe code. Understand impact before you change a thing."
+    },
+    "stats": {
+      "symbols": "symbols mapped per project",
+      "relationships": "relationships traced",
+      "flows": "execution flows surfaced",
+      "realtimeValue": "Realtime",
+      "realtimeLabel": "graph updates as you code"
+    },
+    "tour": {
+      "label": "Guided Tour Demo"
+    },
+    "graph": {
+      "header": "Interactive Blast-Radius Sandbox",
+      "telemetry": {
+        "targetSymbol": "Target Symbol",
+        "symbolType": "Symbol Type",
+        "blastRadius": "Blast Radius",
+        "affected": "{count} affected",
+        "riskLevel": "Risk Level",
+        "placeholder": "Click any graph node to simulate real-time impact analysis"
+      },
+      "risk": {
+        "critical": "CRITICAL RISK",
+        "high": "HIGH RISK",
+        "low": "LOW / SAFE"
+      }
+    },
+    "challenge": {
+      "eyebrow": "The Challenge",
+      "title": "The messy middle of codebase comprehension",
+      "items": {
+        "overload": {
+          "title": "Cognitive Overload",
+          "body": "Searching through raw files and text is slow, confusing, and fails to reveal actual execution context."
+        },
+        "refactor": {
+          "title": "Fear of Refactoring",
+          "body": "Editing a method or route could break multiple upstream dependencies or tests without warning."
+        },
+        "agent": {
+          "title": "AI Agent Blindspots",
+          "body": "Coding agents lack full call-graph awareness, which leads to broken edits and regression issues."
+        }
+      }
+    },
+    "solution": {
+      "eyebrow": "Our Solution",
+      "title": "High-fidelity graph intelligence",
+      "items": {
+        "maps": {
+          "title": "Interactive Code Maps",
+          "body": "We render your Java codebase as an explorable network, showing classes, methods, and routes visually."
+        },
+        "impact": {
+          "title": "Instant Blast-Radius Reports",
+          "body": "Query exact callers, trace execution flows, and assess impact in milliseconds before editing code."
+        },
+        "mcp": {
+          "title": "Model Context Protocol (MCP)",
+          "body": "Expose structure directly to LLMs, so coding agents query context, predict blast-radii, and edit safely."
+        }
+      }
+    },
+    "features": {
+      "eyebrow": "What it does",
+      "title": "Everything you need to read a codebase fast",
+      "description": "Built for the messy middle of real projects, where the architecture lives in everyone's head and nowhere else.",
+      "cards": {
+        "graph": {
+          "tag": "Graph",
+          "title": "Code as a living graph",
+          "body": "Classes, methods, fields and routes rendered as an explorable force-directed graph. Pan, zoom and focus to follow any call chain."
+        },
+        "impact": {
+          "tag": "Impact",
+          "title": "Blast-radius analysis",
+          "body": "Pick any node and see exactly what breaks if you change it: direct callers, affected flows and risk level, before you touch a line."
+        },
+        "realtime": {
+          "tag": "Realtime",
+          "title": "Updates as you vibe",
+          "body": "Point VibeGraph at a local folder and the graph re-draws itself the moment you save. No re-import, no zip."
+        },
+        "diagrams": {
+          "tag": "Diagrams",
+          "title": "Architecture diagrams",
+          "body": "Reverse-engineered UML use-case and class diagrams generated straight from the source: design-vs-code verification, not hand-drawn fiction."
+        },
+        "import": {
+          "tag": "Import",
+          "title": "Folder, archive or GitHub",
+          "body": "Analyze a local path, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds."
+        }
+      }
+    },
+    "how": {
+      "eyebrow": "How it works",
+      "title": "From repo to insight in three steps",
+      "steps": {
+        "import": {
+          "title": "Import your project",
+          "body": "Local folder, archive, or a public GitHub repo. VibeGraph parses the source and builds the index."
+        },
+        "explore": {
+          "title": "Explore the graph",
+          "body": "Navigate structure visually, search any symbol, and trace execution flows across the whole codebase."
+        },
+        "analyze": {
+          "title": "Analyze impact",
+          "body": "Before refactoring, run blast-radius analysis to see what your change touches and ship with confidence."
+        }
+      },
+      "mock": {
+        "client": "VibeGraph Client",
+        "dropFolder": "Drop your codebase folder",
+        "pasteGithub": "Or paste a GitHub repository endpoint",
+        "analyze": "Analyze Repository",
+        "projectStructure": "Project Structure",
+        "panZoom": "Interactive pan and zoom active",
+        "blastTriggered": "Blast Radius Triggered",
+        "downstreamAffected": "12 downstream callers affected in ProjectController",
+        "upstreamRiskHigh": "Upstream risk: HIGH"
+      }
+    },
+    "guide": {
+      "eyebrow": "Quick Start & Installation",
+      "title": "Install & Vibe Code in 2 Minutes",
+      "description": "How to install, run analysis, and integrate VibeGraph with your developer workflow.",
+      "tabsAria": "Setup guide tabs",
+      "tabs": {
+        "run": "Run VibeGraph",
+        "import": "Import a project",
+        "agent": "Connect your AI agent"
+      },
+      "step1": {
+        "title": "Step 1: Start VibeGraph locally",
+        "body": "VibeGraph is a Spring Boot backend with a Vue web client, backed by a Neo4j graph database. Start Neo4j, run the backend, then the web client.",
+        "terminal": "Terminal (bash)",
+        "envLead": "Set",
+        "envAnd": "and",
+        "envTail": "in .env, or bring the whole stack up at once with docker compose up -d."
+      },
+      "step2": {
+        "title": "Step 2: Import your project",
+        "bodyLead": "Open the dashboard at",
+        "bodyTail": "and import a Java project straight from the UI. No analyzer CLI required. Pick one of three methods:",
+        "localTitle": "Local folder",
+        "localBody": "point VibeGraph at a folder on the same machine; the graph re-draws in realtime as you edit.",
+        "archiveTitle": "Archive",
+        "archiveBodyLead": "upload a",
+        "archiveBodyOr": "or",
+        "archiveBodyTail": "of the project.",
+        "githubBody": "paste a public HTTPS repo URL and VibeGraph clones, indexes and maps it.",
+        "note": "The backend parses the source, stores the call graph in Neo4j, and the Vue client renders it with Sigma.js. Search any symbol, double-click a node to focus, or select one to see its blast radius."
+      },
+      "step3": {
+        "title": "Step 3: Connect your AI agent over MCP",
+        "bodyLead": "VibeGraph runs a Model Context Protocol server over",
+        "bodyTail": ", so agents like Claude, Cursor and Kiro can query the graph and run impact analysis. Point your agent at the endpoint:",
+        "configTitle": "AI client config (mcp.json)",
+        "noteLead": "The server exposes 15 tools: impact analysis, class and method context, references, related tests, endpoint trace, project conventions and more. The exact config key may differ per client, for example",
+        "noteTail": "."
+      }
+    },
+    "engine": {
+      "eyebrow": "The Engine",
+      "title": "How VibeGraph reads your code",
+      "description": "A self-hosted AST-and-graph engine. VibeGraph parses your Java source and serves the result to both the web UI and your AI agent.",
+      "bodyLead": "VibeGraph parses your Java source into abstract syntax trees, resolves call and usage relationships, and stores the whole graph in",
+      "bodyTail": "on your own machine. Source never leaves the host.",
+      "items": {
+        "private": {
+          "title": "Local & private",
+          "body": "parsing and the Neo4j graph stay on your infrastructure; no code is sent to the cloud."
+        },
+        "incremental": {
+          "title": "Incremental",
+          "body": "a file watcher re-parses only what changed, so local projects update in near real-time."
+        },
+        "mcp": {
+          "title": "MCP-native",
+          "body": "the same graph is exposed to AI agents through a Spring AI MCP server for impact-safe edits."
+        }
+      }
+    },
+    "agents": {
+      "eyebrow": "Works with your AI agent",
+      "title": "Code intelligence, one MCP call away",
+      "description": "VibeGraph exposes its graph through the Model Context Protocol, so your AI coding agent can query structure, trace flows and run impact analysis right inside your editor.",
+      "terminalTitle": "MCP Client Session",
+      "running": "Running analysis...",
+      "logoAria": "Supported AI coding agents"
+    },
+    "stack": {
+      "eyebrow": "Built with",
+      "title": "A modern, no-nonsense stack",
+      "logoAria": "Technology stack"
+    },
+    "cta": {
+      "title": "Ready to map your codebase?",
+      "description": "Open the dashboard and import your first project. It takes seconds."
+    },
+    "footer": {
+      "note": "Source-code intelligence for the vibe-coding era.",
+      "product": "Product",
+      "installation": "Installation",
+      "resources": "Resources",
+      "githubRepo": "GitHub Repo",
+      "engine": "How the engine works",
+      "copyright": "© 2026 VibeGraph. All rights reserved."
+    }
+  },
+  "nav": {
+    "overview": "Overview",
+    "repositories": "Repositories",
+    "apiKeys": "API Keys",
+    "usage": "Usage",
+    "subscription": "Subscription",
+    "reports": "Reports",
+    "settings": "Settings",
+    "users": "Users",
+    "feedbackReports": "Feedback / Reports",
+    "plansCredits": "Plans & Credits",
+    "security": "Security",
+    "audit": "Audit",
+    "system": "System",
+    "announcements": "Announcements"
+  },
+  "auth": {
+    "signInTitle": "Sign in to VibeGraph",
+    "signInSubtitle": "Analyze and visualize your Java codebase",
+    "email": "Email",
+    "password": "Password",
+    "missingCredentials": "Please enter email and password.",
+    "connectionError": "Unable to connect. Please try again.",
+    "signIn": "Sign in",
+    "signingIn": "Signing in...",
+    "noAccount": "Don't have an account?",
+    "createAccount": "Create one",
+    "signOut": "Sign Out",
+    "homeAria": "VibeGraph home",
+    "registerTitle": "Create your account",
+    "registerSubtitle": "Start analyzing Java projects with VibeGraph",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Your name",
+    "emailPlaceholder": "you{'@'}example.com",
+    "passwordPlaceholder": "Minimum 8 characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Repeat password",
+    "displayNameRequired": "Display name is required.",
+    "emailRequired": "Email is required.",
+    "validEmail": "Please enter a valid email.",
+    "passwordMinimum": "Password must be at least 8 characters.",
+    "passwordMismatch": "Passwords do not match.",
+    "register": "Create account",
+    "registering": "Creating account...",
+    "hasAccount": "Already have an account?",
+    "signInLink": "Sign in"
+  },
+  "user": {
+    "layout": {
+      "account": "Account",
+      "signedIn": "Signed in",
+      "planUnavailable": "Plan unavailable",
+      "unavailable": "Unavailable",
+      "openNavigation": "Open navigation",
+      "closeNavigation": "Close navigation",
+      "navigationLabel": "User navigation",
+      "overviewLinkLabel": "VibeGraph overview",
+      "expandSidebar": "Expand sidebar",
+      "collapseSidebar": "Collapse sidebar",
+      "navUnavailable": "{label} unavailable",
+      "accountTitle": "{displayName}, {plan}, {credits} credits remaining",
+      "accountCollapsedTitle": "{displayName} · {plan} · {credits} credits",
+      "credits": "credits",
+      "checkingAccess": "Checking account access...",
+      "accessVerificationFailed": "Cannot verify account access",
+      "accessVerificationRetryHint": "Product controls stay locked until VibeGraph can verify your current account state.",
+      "retryAccessVerification": "Retry",
+      "accountStatus": "Account status",
+      "accountDeactivated": "Account deactivated",
+      "accountRestricted": "Account access restricted",
+      "restrictionFallback": "This account cannot use product features right now.",
+      "contactSupport": "Contact support",
+      "productUnavailable": "Product controls are unavailable",
+      "openSupportReport": "Open a support report"
+    },
+    "overview": {
+      "eyebrow": "Overview",
+      "welcome": "Welcome back, {name}",
+      "description": "A focused summary of your VibeGraph workspace.",
+      "summaryLabel": "Workspace summary",
+      "repositories": "Repositories",
+      "importedProjects": "Imported projects",
+      "credits": "Credits",
+      "usedThisMonth": "{count} used this month",
+      "usageUnavailable": "Usage details unavailable",
+      "plan": "Plan",
+      "currentPlan": "Your current workspace plan",
+      "unavailable": "Unavailable",
+      "nextStep": "Next step",
+      "quickActions": "Quick actions",
+      "newRepository": "New repository",
+      "createApiKey": "Create API key",
+      "openReports": "Open reports"
+    },
+    "projects": {
+      "workspace": "Workspace",
+      "title": "Repositories",
+      "description": "Imported Java projects, ready for graph exploration.",
+      "close": "Close",
+      "newRepository": "New Repository",
+      "importedRepositories": "Imported repositories",
+      "ready": "Ready",
+      "files": "Files",
+      "nodes": "Nodes",
+      "updated": "Updated",
+      "exploreGraph": "Explore Graph",
+      "deleteAria": "Delete {name}",
+      "emptyTitle": "No repositories yet",
+      "emptyDescription": "Import your first Java project to build its graph.",
+      "importDialogTitle": "Import a project",
+      "closeImportDialog": "Close import dialog",
+      "deleteTitle": "Delete repository",
+      "deleteMessage": "Delete {name}? This cannot be undone.",
+      "deleteConfirm": "Delete repository",
+      "loadFallback": "Failed to load repositories.",
+      "deleteFallback": "Failed to delete repository.",
+      "importBlocked": "Project import is blocked until the account capability contract reports an enabled method.",
+      "notAnalyzed": "Not analyzed yet",
+      "daysAgo": "{count}d ago",
+      "hoursAgo": "{count}h ago",
+      "justNow": "Just now",
+      "localFolder": "Local folder",
+      "localShort": "Local",
+      "localDescription": "Analyze a folder on this machine and keep its graph current without an archive.",
+      "archive": "Archive",
+      "archiveDescription": "Upload a Java project archive (.zip, .tar, .tar.gz, .tgz) for analysis.",
+      "githubDescription": "Import a public GitHub repository using its HTTPS URL.",
+      "noImportMethod": "No import method is currently available.",
+      "noImportMethodDescription": "No import method is currently available. Import is blocked until the account capability contract reports an enabled method.",
+      "importMethod": "Import method"
+    },
+    "import": {
+      "finalizing": "Finalizing graph…",
+      "analyzing": "Analyzing repository…",
+      "importing": "Importing…",
+      "githubTitle": "Add project from GitHub",
+      "githubHint": "Import a public repository using its HTTPS URL. Example:",
+      "githubUrl": "GitHub repository URL",
+      "githubPlaceholder": "https://github.com/owner/repo",
+      "importGithub": "Import GitHub repo",
+      "reset": "Reset",
+      "localTitle": "Add project from a local folder",
+      "localHint": "Analyze a folder that already exists on this machine. The graph updates as you edit files — no zip needed.",
+      "folderPath": "Project folder path",
+      "browse": "Browse",
+      "displayNameOptional": "Display name (optional)",
+      "importFolder": "Import folder",
+      "analyzingFolder": "Analyzing folder...",
+      "uploading": "Uploading...",
+      "uploadArchive": "Upload archive",
+      "archiveTitle": "Add project from archive",
+      "archiveHint": "Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Max {max}.",
+      "projectName": "Project name",
+      "archiveFile": "Archive file",
+      "selectedFile": "Selected:",
+      "noFile": "No file selected.",
+      "successFor": "Imported",
+      "directoryFallback": "Failed to list directory.",
+      "chooseFolder": "Choose a project folder",
+      "up": "Up",
+      "pathPlaceholder": "This PC — paste a path and press Enter",
+      "currentPath": "Current folder path",
+      "go": "Go",
+      "loading": "Loading...",
+      "noSubfolders": "No sub-folders here.",
+      "currentDefault": "Current default: {path}",
+      "noDefault": "No default set",
+      "defaultFolder": "Default folder",
+      "setDefault": "Set as default",
+      "useFolder": "Use this folder"
+    },
+    "apiKeys": {
+      "eyebrow": "Developer access",
+      "title": "API Keys",
+      "description": "Keys identify a repository when tools connect to VibeGraph.",
+      "create": "Create key",
+      "secretTitle": "Copy this secret now",
+      "secretDescription": "It is shown once and is never stored in this list.",
+      "secretCopy": "Copy secret",
+      "secretCopied": "Secret copied.",
+      "secretCopyFailed": "Could not copy the secret. Select it and copy it manually.",
+      "yourKeys": "Your keys",
+      "empty": "No API keys created.",
+      "repository": "Repository: {name}",
+      "noRepository": "No repository binding",
+      "disabled": "Disabled",
+      "active": "Active",
+      "adminLocked": "Admin locked",
+      "disabledBy": "Disabled by {actor}",
+      "enable": "Enable",
+      "enabling": "Enabling...",
+      "disable": "Disable",
+      "delete": "Delete",
+      "enableAria": "Enable API key {name}",
+      "disableAria": "Disable API key {name}",
+      "deleteAria": "Delete API key {name}",
+      "lockedDelete": "Admin-locked keys cannot be deleted.",
+      "createTitle": "Create project API key",
+      "closeDialog": "Close create key dialog",
+      "keyName": "Key name",
+      "keyPlaceholder": "Production CLI",
+      "repositoryLabel": "Repository",
+      "selectRepository": "Select a repository",
+      "existingKey": "existing key must be deleted",
+      "importFirst": "Import a repository before creating a key.",
+      "creating": "Creating...",
+      "disableTitle": "Disable API key",
+      "disableMessage": "This key will stop working immediately.",
+      "disableConfirm": "Disable key",
+      "deleteTitle": "Delete API key",
+      "deleteMessage": "Delete this key permanently? A replacement can be created for its project after deletion.",
+      "deleteConfirm": "Delete key",
+      "duplicateLocked": "This project has an admin-locked key. An administrator must unlock it before replacement.",
+      "duplicateExisting": "Delete the existing key for this project before creating a replacement.",
+      "checkingRepositories": "Checking repository availability before creating a key.",
+      "loadFallback": "Repositories could not be loaded.",
+      "createFallback": "API key creation failed.",
+      "disableFallback": "Could not disable this API key.",
+      "enableFallback": "Could not enable this API key.",
+      "deleteFallback": "Could not delete this API key.",
+      "disabledMessage": "API key disabled.",
+      "enabledMessage": "API key enabled.",
+      "deletedMessage": "API key deleted. You can now create a replacement for this project."
+    },
+    "usage": {
+      "title": "Usage",
+      "description": "Current plan, source storage quota, and credit availability from account APIs.",
+      "unavailable": "Usage unavailable",
+      "retry": "Retry usage",
+      "loading": "Loading usage data...",
+      "currentPlan": "Current plan",
+      "activePlan": "Active account plan",
+      "creditBalance": "Credit balance",
+      "credits": "credits",
+      "usedCycle": "{used} / {limit} credits used this cycle",
+      "sourceStorage": "Source storage quota",
+      "remaining": "{count} MB remaining",
+      "ledger": "Recent credit ledger",
+      "activityUnavailable": "Credit activity unavailable",
+      "retryLedger": "Retry ledger",
+      "loadingActivity": "Loading credit activity...",
+      "emptyActivity": "No credit activity yet.",
+      "loadFallback": "Failed to load usage data.",
+      "ledgerFallback": "Failed to load credit activity.",
+      "operations": {
+        "MCP_TOOL_CALL": "MCP tool call",
+        "CLI_PUSH": "CLI push",
+        "PROJECT_ANALYZE": "Project analysis",
+        "IMPORT_ARCHIVE": "Archive import",
+        "IMPORT_GITHUB": "GitHub import",
+        "IMPORT_LOCAL": "Local import",
+        "LOCAL_PATCH": "Local patch",
+        "ADMIN_ADJUSTMENT": "Admin adjustment",
+        "QUOTA_RESET": "Quota reset"
+      }
+    },
+    "subscription": {
+      "title": "Subscription",
+      "description": "Review your current plan and account quota from the account usage API.",
+      "unavailable": "Subscription unavailable",
+      "retry": "Retry subscription",
+      "loading": "Loading subscription data...",
+      "currentPlan": "Current plan",
+      "unavailableValue": "Unavailable",
+      "planCode": "Plan",
+      "sourceStorage": "Source storage quota",
+      "remainingStorage": "Remaining storage",
+      "remainingCredits": "Remaining credits",
+      "credits": "credits",
+      "detailsUnavailable": "Plan details are unavailable until the account usage API responds.",
+      "catalogUnavailable": "A public plan catalog is not available from the current user API. Upgrade options, including Enterprise contact sales, remain unavailable until the backend exposes that contract.",
+      "loadFallback": "Failed to load subscription data."
+    },
+    "reports": {
+      "bug": "Bug Report",
+      "project": "Project Issue",
+      "quota": "Quota / Billing",
+      "feature": "Feature Request",
+      "other": "Other",
+      "live": "Live",
+      "realtimeUnavailable": "Realtime unavailable",
+      "syncing": "Syncing",
+      "offline": "Offline",
+      "title": "My Reports",
+      "subtitle": "Submit feedback or report an issue",
+      "submitTitle": "Submit Report",
+      "category": "Category",
+      "subject": "Subject",
+      "message": "Message",
+      "submitting": "Submitting...",
+      "submit": "Submit",
+      "previous": "Previous Reports",
+      "empty": "No reports found.",
+      "status": "Status",
+      "lastUpdated": "Last Updated",
+      "action": "Action",
+      "view": "View",
+      "back": "Back to reports",
+      "support": "VibeGraph support",
+      "you": "You",
+      "supportTeam": "Support Team",
+      "justNow": "Just now",
+      "reply": "Reply",
+      "continue": "Continue this support conversation",
+      "replyPlaceholder": "Type a reply...",
+      "sending": "Sending...",
+      "send": "Send",
+      "close": "Close report",
+      "closed": "This report is closed.",
+      "scheduledDeletion": "Scheduled for deletion after {date}.",
+      "closeMessage": "Close this report thread? You can still view the conversation until the retention date.",
+      "loadFallback": "Failed to load reports",
+      "submitFallback": "Failed to submit report",
+      "replyFallback": "Failed to send reply",
+      "closeFallback": "Failed to close report"
+    },
+    "profile": {
+      "title": "Settings",
+      "description": "Manage account identity and password settings.",
+      "unavailable": "Settings unavailable",
+      "retry": "Retry settings",
+      "loading": "Loading settings...",
+      "account": "Account",
+      "email": "Email",
+      "role": "Role",
+      "displayName": "Display name",
+      "update": "Update",
+      "updating": "Updating...",
+      "password": "Password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "changePassword": "Change password",
+      "changing": "Changing...",
+      "displayNameRequired": "Display name is required.",
+      "displayNameUpdated": "Display name updated.",
+      "profileFallback": "Profile update failed.",
+      "passwordFieldsRequired": "Enter your current password, new password, and confirmation.",
+      "passwordMinimum": "New password must be at least {count} characters.",
+      "passwordMismatch": "New password and confirmation do not match.",
+      "passwordChanged": "Password changed.",
+      "passwordFallback": "Password change failed.",
+      "loadFallback": "Failed to load settings.",
+      "roleNames": {
+        "admin": "Admin",
+        "user": "User",
+        "unknown": "Unknown"
+      }
+    },
+    "notifications": {
+      "inbox": "Inbox",
+      "title": "Notifications",
+      "description": "Product announcements and operational updates, newest first.",
+      "loading": "Loading notifications...",
+      "unavailableTitle": "Notifications are unavailable",
+      "unavailableDescription": "The backend notification contract is not available for this environment.",
+      "emptyTitle": "All quiet",
+      "emptyDescription": "There are no active notifications for your account.",
+      "listLabel": "Notifications",
+      "updating": "Updating...",
+      "dismiss": "Dismiss",
+      "creatorFallback": "VibeGraph team",
+      "loadFallback": "Notifications could not be loaded.",
+      "announcementUnavailable": "Announcements are temporarily unavailable.",
+      "readFallback": "Could not mark this notification read.",
+      "dismissFallback": "Could not dismiss this notification."
+    },
+    "quota": {
+      "used": "used",
+      "remaining": "remaining",
+      "unavailable": "Quota unavailable",
+      "value": "{used} of {total} {unit} used"
+    },
+    "tutorial": {
+      "title": "Tutorial",
+      "description": "Follow the core VibeGraph workflow from import to impact analysis.",
+      "importTitle": "Import a repository",
+      "importDescription": "Open Repositories and import a Java project from a local folder, archive, or GitHub URL.",
+      "graphTitle": "Open the graph",
+      "graphDescription": "Choose an analyzed repository to inspect packages, classes, methods, and relationships.",
+      "impactTitle": "Run impact analysis",
+      "impactDescription": "Select a symbol and analyze upstream dependents before changing code.",
+      "reportsTitle": "Use reports when stuck",
+      "reportsDescription": "Send a report thread with project or quota issues so support can follow up."
+    }
+  },
+  "admin": {
+    "console": "Admin Console",
+    "operations": "Operations",
+    "layout": {
+      "openNavigation": "Open admin navigation",
+      "closeNavigation": "Close admin navigation",
+      "navigationLabel": "Admin navigation",
+      "overviewLinkLabel": "VibeGraph admin overview",
+      "expandSidebar": "Expand admin sidebar",
+      "collapseSidebar": "Collapse admin sidebar",
+      "adminAccount": "Admin account",
+      "adminRole": "Admin",
+      "signedIn": "Signed in",
+      "signOut": "Sign Out",
+      "console": "Admin Console",
+      "operations": "Operations",
+      "nav": {
+        "overview": "Overview",
+        "users": "Users",
+        "feedbackReports": "Feedback / Reports",
+        "plansCredits": "Plans & Credits",
+        "security": "Security",
+        "audit": "Audit",
+        "system": "System",
+        "announcements": "Announcements",
+        "settings": "Settings"
+      }
+    },
+    "system": {
+      "title": "System",
+      "description": "Operational switches for imports, CLI, MCP tools, registration, and global API key creation.",
+      "loading": "Loading feature flags...",
+      "apiState": {
+        "error": "Flag API error",
+        "connected": "Runtime connected",
+        "configurationOnly": "Configuration only"
+      },
+      "errors": {
+        "load": "Failed to load feature flags.",
+        "runtimeVerification": "Runtime capability state could not be verified. Controls remain configuration-only.",
+        "save": "Failed to save feature flag.",
+        "updateFlag": "Failed to update feature flag.",
+        "updateControl": "Failed to update system control."
+      },
+      "runtime": {
+        "configurationOnlyTitle": "Configuration-only controls",
+        "configurationOnlyDescription": "Flag values are stored by the admin API but are not yet propagated to user-facing runtime capability state. Do not treat these switches as active protection.",
+        "connectedTitle": "Runtime capability propagation connected",
+        "connectedDescription": "User-facing controls consume the real session capability contract."
+      },
+      "form": {
+        "title": "Create or update system control",
+        "description": "Use this for new feature gates that are not listed in the default groups below.",
+        "key": "Key",
+        "keyPlaceholder": "cli.push",
+        "scope": "Scope",
+        "displayName": "Display name",
+        "displayNamePlaceholder": "CLI push",
+        "flagDescription": "Description",
+        "descriptionPlaceholder": "Optional operator note"
+      },
+      "scopes": {
+        "global": "Global",
+        "mcpTool": "MCP tool"
+      },
+      "states": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+      },
+      "actions": {
+        "saveFlag": "Save flag",
+        "toggle": "Toggle {name}"
+      },
+      "groups": {
+        "importMethods": "Import methods",
+        "cliPush": "CLI push",
+        "projectAnalysis": "Project analysis",
+        "useCaseGeneration": "Gen use case",
+        "apiKeyCreation": "API key creation",
+        "registration": "Registration",
+        "mcpTools": "MCP global and child tools"
+      },
+      "controls": {
+        "localImport": {
+          "name": "Local import",
+          "note": "Pause local-folder import if the project import flow is degraded."
+        },
+        "archiveImport": {
+          "name": "Archive import",
+          "note": "Disable if archive parsing or storage is degraded."
+        },
+        "githubImport": {
+          "name": "GitHub import",
+          "note": "Disable without impacting local/archive import."
+        },
+        "cliPush": {
+          "name": "CLI push",
+          "note": "Pause CLI push while patch writes or credit preflight are under maintenance."
+        },
+        "projectAnalyze": {
+          "name": "Project analyze",
+          "note": "Disable during analyzer incidents without blocking repository browsing."
+        },
+        "useCaseGeneration": {
+          "name": "Use case generation",
+          "note": "Disable generation without disabling graph exploration."
+        },
+        "newApiKeys": {
+          "name": "New API keys",
+          "note": "Pauses creation only; existing keys remain unchanged. User-level policy still takes precedence."
+        },
+        "registration": {
+          "name": "Registration",
+          "note": "Allow new account registration."
+        },
+        "allMcpTools": {
+          "name": "All MCP tools",
+          "note": "Allow MCP tool execution."
+        },
+        "mcpChildTool": {
+          "name": "MCP tool",
+          "note": "Child control; the MCP global switch overrides this state."
+        }
+      },
+      "otherControls": {
+        "title": "Other configured controls",
+        "noDescription": "No description provided."
+      }
+    },
+    "audit": {
+      "eyebrow": "Traceability",
+      "title": "Audit logs",
+      "description": "Inspect administrative actions, outcomes, targets, and retention policy.",
+      "status": {
+        "liveConnected": "Live connected",
+        "polling": "Auto-refreshing",
+        "reconnecting": "Reconnecting",
+        "livePaused": "Live paused"
+      },
+      "errors": {
+        "loadData": "Failed to load audit data.",
+        "loadDetail": "Failed to load audit detail.",
+        "updateRetention": "Failed to update retention."
+      },
+      "messages": {
+        "retentionUpdated": "Retention updated to {days} days."
+      },
+      "liveWarning": {
+        "title": "Live audit updates are temporarily unavailable.",
+        "description": "The current page stays unchanged while the stream reconnects."
+      },
+      "polling": {
+        "title": "Audit logs are auto-refreshing.",
+        "description": "The live stream is reconnecting, so this page refreshes every 10 seconds."
+      },
+      "retention": {
+        "title": "Retention policy",
+        "description": "Keep audit history for 1 to 3,650 days.",
+        "lastUpdated": "Last updated {date}.",
+        "days": "Days"
+      },
+      "filters": {
+        "action": "Action",
+        "actionPlaceholder": "USER_BLOCK",
+        "outcome": "Outcome",
+        "allOutcomes": "All outcomes",
+        "success": "Success",
+        "failure": "Failure",
+        "from": "From",
+        "to": "To"
+      },
+      "actions": {
+        "loading": "Loading...",
+        "refresh": "Refresh",
+        "saving": "Saving...",
+        "saveRetention": "Save retention",
+        "retryLiveUpdates": "Retry live updates",
+        "apply": "Apply",
+        "reset": "Reset",
+        "inspect": "Inspect",
+        "previous": "Previous",
+        "next": "Next",
+        "closeDetail": "Close detail"
+      },
+      "table": {
+        "action": "Action",
+        "outcome": "Outcome",
+        "actor": "Actor",
+        "target": "Target",
+        "ip": "IP",
+        "created": "Created",
+        "detail": "Detail",
+        "empty": "No audit entries match these filters."
+      },
+      "labels": {
+        "system": "System"
+      },
+      "pagination": {
+        "entries": "{count} entries",
+        "page": "Page {current} / {total}"
+      },
+      "detail": {
+        "eyebrow": "Selected event",
+        "outcome": "Outcome",
+        "actor": "Actor",
+        "targetUser": "Target user",
+        "target": "Target",
+        "ipAddress": "IP address",
+        "created": "Created",
+        "redactedDetails": "Redacted details",
+        "noAdditionalDetails": "No additional details."
+      }
+    },
+    "overview": {
+      "title": "Overview",
+      "accessibility": {
+        "analyticsCharts": "Analytics charts",
+        "chartAggregation": "Chart aggregation",
+        "chartType": "{chartTitle} chart type",
+        "summaryMetrics": "Summary metrics",
+        "supportingDetails": "Supporting details"
+      },
+      "analytics": {
+        "subtitle": "Compare account growth, credit activity, and service capacity over time.",
+        "title": "Platform Analytics"
+      },
+      "chartLabels": {
+        "quarter": "Q{quarter}"
+      },
+      "chartModes": {
+        "bar": "Bar",
+        "line": "Line",
+        "pie": "Pie"
+      },
+      "charts": {
+        "credits": {
+          "empty": "No credits found.",
+          "ledgerTotals": "Ledger totals across {buckets}",
+          "noneForPeriod": "No credit activity in this period",
+          "title": "Credits"
+        },
+        "noData": "No data",
+        "onlineUsers": {
+          "empty": "No online users found.",
+          "eyebrow": "Realtime activity",
+          "minuteAbbreviation": "{count} min",
+          "ofLastWindow": "of the last {minutes} minutes",
+          "onlineCount": "{formattedCount} online · {count}",
+          "onlineNow": "Online now",
+          "samplesInWindow": "{count} samples in the last {minutes} minutes",
+          "title": "Online Users"
+        },
+        "storage": {
+          "availableLabel": "Available",
+          "serverDisk": "Server Disk",
+          "title": "Storage",
+          "unavailable": "Unavailable",
+          "unavailableEnvironment": "Storage metrics are unavailable for this environment.",
+          "usedLabel": "Used",
+          "usedOf": "{used} used of {total}",
+          "usedPercent": "{percent}% used"
+        },
+        "totalUsers": {
+          "empty": "No total users found.",
+          "newUsersAcross": "{formattedCount} new users across {buckets} · {count}",
+          "title": "Total Users"
+        }
+      },
+      "details": {
+        "planDistribution": {
+          "count": "Count · {count}",
+          "empty": "No plan distribution found.",
+          "title": "Plan Distribution"
+        },
+        "securityAlerts": {
+          "count": "Count · {count}",
+          "empty": "No security alerts found. · {count} · {formattedCount}",
+          "noTimestamp": "Timestamp unavailable",
+          "title": "Security / Abuse Alerts"
+        },
+        "topStorageProjects": {
+          "count": "Count · {count}",
+          "empty": "No top storage projects found.",
+          "title": "Top Storage Projects"
+        },
+        "topStorageUsers": {
+          "count": "Count · {count}",
+          "empty": "No top storage users found.",
+          "title": "Top Storage Users"
+        }
+      },
+      "errors": {
+        "loadFailed": "Failed to load the admin overview."
+      },
+      "loading": "Loading overview...",
+      "months": {
+        "apr": "Apr",
+        "aug": "Aug",
+        "dec": "Dec",
+        "feb": "Feb",
+        "jan": "Jan",
+        "jul": "Jul",
+        "jun": "Jun",
+        "mar": "Mar",
+        "may": "May",
+        "nov": "Nov",
+        "oct": "Oct",
+        "sep": "Sep"
+      },
+      "periodBuckets": {
+        "day": "{count} days",
+        "month": "{count} months",
+        "quarter": "{count} quarters",
+        "year": "{count} years"
+      },
+      "periods": {
+        "day": "Day",
+        "month": "Month",
+        "quarter": "Quarter",
+        "year": "Year"
+      },
+      "polling": {
+        "everySeconds": "Refreshes every {seconds} seconds",
+        "unavailable": "Live refresh unavailable"
+      },
+      "subtitle": "Monitor users, usage, storage, and security signals.",
+      "summary": {
+        "importedRepositories": {
+          "subtitle": "Repositories available for graph analysis",
+          "title": "Imported Repositories"
+        },
+        "onlineUsers": {
+          "subtitle": "Active sessions in the latest sample",
+          "title": "Online Users"
+        },
+        "securityAlerts": {
+          "subtitle": "Recent requests requiring review",
+          "title": "Security Alerts"
+        },
+        "totalUsers": {
+          "title": "Total Users"
+        }
+      },
+      "trend": {
+        "newUsersInView": "{formattedCount} new users in view · {count}",
+        "noNewUsers": "No new users",
+        "waitingForSamples": "Waiting for activity samples"
+      },
+      "units": {
+        "bytes": "{value} bytes",
+        "gb": "{value} GB",
+        "kb": "{value} KB",
+        "mb": "{value} MB",
+        "tb": "{value} TB"
+      }
+    },
+    "users": {
+      "title": "Users",
+      "actions": {
+        "block": "Block",
+        "cancel": "Cancel",
+        "create": "Create",
+        "creating": "Creating...",
+        "detail": "Detail",
+        "next": "Next",
+        "previous": "Previous",
+        "search": "Search",
+        "unblock": "Unblock"
+      },
+      "aria": {
+        "closeCreateModal": "Close create-user dialog",
+        "createUser": "Create User",
+        "createUserPlan": "Plan for new user",
+        "createUserRole": "Role for new user",
+        "filterByPlan": "Filter users by plan",
+        "filterByStatus": "Filter users by status",
+        "searchUsers": "Search users"
+      },
+      "create": {
+        "description": "Create an account with an initial role, plan, and temporary password.",
+        "displayName": "Display name",
+        "displayNamePlaceholder": "Enter the user's name",
+        "email": "Email",
+        "emailPlaceholder": "user@example.com",
+        "kicker": "Account provisioning",
+        "plan": "Plan",
+        "planDescription": "{storageMb} MB storage · {credits} credits per month",
+        "role": "Role",
+        "roles": {
+          "admin": {
+            "description": "Full access to administrative and user features.",
+            "label": "Administrator"
+          },
+          "user": {
+            "description": "Standard access to repositories and developer tools.",
+            "label": "User"
+          }
+        },
+        "temporaryPassword": "Temporary password",
+        "temporaryPasswordPlaceholder": "Enter a temporary password",
+        "title": "Create user"
+      },
+      "description": "Search users and manage account access.",
+      "dialogs": {
+        "block": {
+          "confirm": "Block user",
+          "description": "Block {email} and provide a user-visible reason.",
+          "title": "Block user"
+        },
+        "unblock": {
+          "confirm": "Unblock user",
+          "message": "Restore access for {email}?",
+          "title": "Unblock user"
+        }
+      },
+      "errors": {
+        "blockUser": "Failed to block user.",
+        "createUser": "Failed to create user.",
+        "unblockUser": "Failed to unblock user."
+      },
+      "fallback": {
+        "emptyValue": "Not provided",
+        "thisUser": "This user"
+      },
+      "filters": {
+        "allPlans": "All plans",
+        "allStatuses": "All statuses",
+        "searchPlaceholder": "Search by email or display name"
+      },
+      "pagination": {
+        "page": "Page {current} of {total}",
+        "showing": "Showing {visible} of {total} users"
+      },
+      "status": {
+        "active": "Active",
+        "blocked": "Blocked",
+        "deactivated": "Deactivated"
+      },
+      "table": {
+        "actions": "Actions",
+        "email": "Email",
+        "name": "Name",
+        "plan": "Plan",
+        "reason": "Reason",
+        "role": "Role",
+        "status": "Status"
+      }
+    },
+    "userDetail": {
+      "header": {
+        "kicker": "Admin user detail",
+        "adminControl": "Account administration"
+      },
+      "actions": {
+        "adjusting": "Applying...",
+        "allowCreation": "Allow key creation",
+        "applyCreditAdjustment": "Apply credit adjustment",
+        "blockUser": "Block user",
+        "close": "Close",
+        "deactivateAccount": "Deactivate account",
+        "disable": "Disable",
+        "lock": "Lock",
+        "pauseCreation": "Pause key creation",
+        "saveCreditLimit": "Save credit limit",
+        "saveStorageLimit": "Save storage limit",
+        "saving": "Saving...",
+        "unblockUser": "Unblock user",
+        "unlock": "Unlock",
+        "updatePlan": "Update plan"
+      },
+      "apiKeyCreation": {
+        "allowed": "Allowed",
+        "allowedHelp": "The user can create new API keys, subject to global system controls.",
+        "currentPolicy": "Current creation policy",
+        "description": "Pause or allow creation of new API keys for this user. Existing keys are not disabled.",
+        "paused": "Paused",
+        "pausedHelp": "New key creation is paused. Existing active keys continue to work.",
+        "policyAllowed": "New API key creation is allowed.",
+        "policyPaused": "New API key creation is paused; existing keys are unchanged.",
+        "title": "API key creation"
+      },
+      "apiKeys": {
+        "created": "Created {date}",
+        "description": "Review this user's API keys and apply disable, lock, or unlock controls.",
+        "disabledBy": "Disabled by {actor}",
+        "empty": "No API keys found.",
+        "expires": "Expires {date}",
+        "lastUsed": "Last used {date}",
+        "locked": "Administrator locked. {details}",
+        "lockedBy": "Locked by {actor}.",
+        "lockedByAdministrator": "Locked by administrator",
+        "lockedOn": "Locked on {date}.",
+        "noRepository": "No repository assigned",
+        "prefix": "Prefix: {prefix}",
+        "repository": "Repository: {name}",
+        "secretHelp": "Secrets are never displayed after key creation.",
+        "sourceUnknown": "Source unavailable",
+        "status": {
+          "active": "Active",
+          "deleted": "Deleted",
+          "disabled": "Disabled",
+          "expired": "Expired",
+          "locked": "Locked"
+        },
+        "statusUnknown": "Unknown status",
+        "table": {
+          "apiKey": "API key",
+          "name": "Name",
+          "status": "Status"
+        },
+        "title": "API key metadata"
+      },
+      "aria": {
+        "closeUserDetail": "Close user details",
+        "plan": "Plan",
+        "selectedUserDetail": "Selected user details",
+        "storageQuotaUsage": "Storage quota usage",
+        "userCreditBalance": "User credit balance"
+      },
+      "credits": {
+        "adjustment": "Adjustment",
+        "adminAdjustment": "Administrative adjustment",
+        "creditsRemaining": "Credits remaining",
+        "description": "Adjust the credit balance or set a user-specific monthly limit.",
+        "internalReason": "Internal audit reason",
+        "limit": "Limit",
+        "quotaOverride": "Credit limit override",
+        "remaining": "{count} credits remaining",
+        "title": "Credits",
+        "used": "Used"
+      },
+      "dialogs": {
+        "block": {
+          "confirm": "Block user",
+          "description": "Block this account and enter a reason the user can see.",
+          "title": "Block user"
+        },
+        "deactivate": {
+          "confirm": "Deactivate account",
+          "description": "Permanently deactivate this account and record both user-visible and internal reasons.",
+          "title": "Deactivate account"
+        },
+        "disableApiKey": {
+          "confirm": "Disable key",
+          "message": "Disable this API key? Requests using it will fail immediately.",
+          "title": "Disable API Key"
+        },
+        "lockApiKey": {
+          "confirm": "Lock key",
+          "message": "Lock this API key for administrative review? The user cannot re-enable or delete it while locked.",
+          "title": "Lock API Key"
+        },
+        "unblock": {
+          "confirm": "Unblock user",
+          "message": "Unblock this account and restore sign-in access?",
+          "title": "Unblock"
+        },
+        "unlockApiKey": {
+          "confirm": "Unlock key",
+          "message": "Unlock this API key? Its disabled state will remain unchanged.",
+          "title": "Unlock API Key"
+        }
+      },
+      "errors": {
+        "adjustCredits": "Failed to adjust credits.",
+        "applyAction": "Failed to apply action.",
+        "blockUser": "Failed to block user.",
+        "deactivateUser": "Failed to deactivate user.",
+        "invalidCreditAdjustment": "Enter a valid non-zero credit adjustment.",
+        "quotaBelowUsage": "Quota cannot be lower than current usage ({usedMb} MB).",
+        "toggleApiKeyCreation": "Failed to toggle API key creation.",
+        "updatePlan": "Failed to update plan.",
+        "updateQuota": "Failed to update quota."
+      },
+      "fallback": {
+        "emptyValue": "Not provided"
+      },
+      "placeholders": {
+        "creditAdjustment": "Enter a positive or negative amount",
+        "internalReason": "Reason recorded in the audit log",
+        "usePlanDefault": "Use plan default"
+      },
+      "sections": {
+        "actions": "Actions",
+        "plan": "Plan"
+      },
+      "status": {
+        "active": "Active",
+        "blocked": "Blocked",
+        "deactivated": "Deactivated"
+      },
+      "storage": {
+        "description": "Review storage use and set a user-specific quota override.",
+        "overrideLabel": "Storage quota override",
+        "quota": "Quota",
+        "title": "Storage",
+        "used": "Used"
+      },
+      "summary": {
+        "accountState": "Account status",
+        "blockedReason": "Blocked reason: {reason}",
+        "creditsRemaining": "Credits remaining",
+        "deactivatedReason": "Deactivation reason: {reason}",
+        "quota": "Quota",
+        "storage": "Storage",
+        "used": "Used"
+      }
+    },
+    "security": {
+      "title": "Security",
+      "actions": {
+        "createBlock": "Create block",
+        "createIpBlock": "Block IP or CIDR",
+        "created": "created",
+        "edit": "Edit",
+        "editIpBlock": "Edit IP block",
+        "loading": "Loading...",
+        "refresh": "Refresh",
+        "remove": "Remove",
+        "reset": "Reset",
+        "retry": "Retry {panel}",
+        "retrying": "Retrying...",
+        "saving": "Saving...",
+        "toggleNetwork": "Toggle details for {ipAddress}",
+        "updateBlock": "Update block",
+        "updated": "updated"
+      },
+      "columns": {
+        "event": "Event",
+        "ip": "IP",
+        "methodRoute": "Method / route",
+        "occurred": "Occurred",
+        "route": "Route",
+        "status": "Status",
+        "userKey": "User / API key"
+      },
+      "confirm": {
+        "removeIpBlock": {
+          "confirm": "Remove block",
+          "message": "Remove the block for {ipAddress}?",
+          "title": "Remove IP Block"
+        }
+      },
+      "description": "Review request activity, suspicious networks, and enforced IP or CIDR blocks.",
+      "empty": {
+        "ipBlocks": "No IP blocks configured.",
+        "requestEvents": "No request events found.",
+        "suspiciousNetworks": "No suspicious networks detected.",
+        "userAggregates": "No user request aggregates found."
+      },
+      "errors": {
+        "load": "Failed to load.",
+        "removeBlock": "Failed to remove block.",
+        "saveBlock": "Failed to save block."
+      },
+      "eyebrow": "Traffic protection",
+      "fields": {
+        "expiresAt": "Expires at",
+        "ipAddressCidr": "IP address or CIDR",
+        "safeReason": "User-visible reason"
+      },
+      "ipBlockEditor": {
+        "help": "Create or edit an IP/CIDR block and its optional expiration."
+      },
+      "ipBlockPolicies": {
+        "help": "Review active and paused IP/CIDR enforcement policies.",
+        "title": "IP Block Policies"
+      },
+      "labels": {
+        "apiKey": "API key",
+        "apiKeys": "API keys",
+        "eventCount": "{count} events",
+        "expires": "Expires",
+        "never": "Never",
+        "noApiKey": "No API key",
+        "policyCount": "{count} policies",
+        "request": "request",
+        "requests": "requests",
+        "risk": "Risk",
+        "sharedNetwork": "Shared network",
+        "system": "System",
+        "thisAddress": "This address",
+        "user": "user",
+        "users": "users"
+      },
+      "messages": {
+        "policyRemoved": "IP block policy removed successfully",
+        "policySaved": "IP block policy {action} successfully",
+        "refreshPanel": "Refresh this panel to retry."
+      },
+      "metrics": {
+        "abuseState": "Abuse protection status",
+        "activeIpBlocks": "Active IP Blocks",
+        "ariaLabel": "Security metrics",
+        "blockedLimited": "Blocked or rate-limited",
+        "enforcedPolicies": "Enforced Policies",
+        "httpBlockedStatuses": "Blocked HTTP responses",
+        "latestEvents": "Recent request events",
+        "liveSignals": "Realtime signals",
+        "requestSample": "Requests sampled"
+      },
+      "placeholders": {
+        "ipAddress": "203.0.113.42",
+        "safeReason": "Access temporarily restricted due to unusual request volume."
+      },
+      "requestEvents": {
+        "help": "Inspect raw method, route, status, user, API key, IP, and event type data.",
+        "title": "Request Events"
+      },
+      "status": {
+        "active": "Active",
+        "critical": "Critical",
+        "defending": "Defending",
+        "liveConnected": "Live connected",
+        "livePaused": "Live paused",
+        "paused": "Paused",
+        "policyActive": "Policy Active",
+        "policyPaused": "Policy Paused",
+        "reconnecting": "Reconnecting",
+        "stable": "Stable"
+      },
+      "suspiciousNetworks": {
+        "help": "Networks grouped from recent request and enforcement signals.",
+        "title": "Suspicious Networks"
+      },
+      "topUsers": {
+        "help": "Users ranked by recent request volume and risk signals.",
+        "title": "Top Users"
+      },
+      "unavailable": {
+        "help": "Retry individual panels without interrupting the monitoring data that is still available.",
+        "title": "Some monitoring panels are unavailable"
+      },
+      "panels": {
+        "securityEvents": "security events",
+        "requestEvents": "request events",
+        "topUsers": "top users",
+        "suspiciousNetworks": "suspicious networks",
+        "ipBlocks": "IP blocks",
+        "userIdentities": "user identities"
+      }
+    },
+    "plansCredits": {
+      "title": "Plans & Credits",
+      "actions": {
+        "confirm": "Confirm",
+        "createPlan": "Create Plan",
+        "createRule": "Create Rule",
+        "deactivate": "Deactivate",
+        "delete": "Deactivate",
+        "disable": "Disable",
+        "edit": "Edit",
+        "newRule": "New Rule",
+        "reset": "Reset",
+        "resetForm": "Reset form",
+        "updatePlan": "Update Plan",
+        "updateRule": "Update Rule"
+      },
+      "apiError": "The admin API is unavailable.",
+      "columns": {
+        "actions": "Actions",
+        "apiKeys": "API Keys",
+        "base": "Base",
+        "code": "Code",
+        "creditsPerMonth": "Credits Per Month",
+        "minimum": "Minimum",
+        "name": "Name",
+        "operation": "Operation",
+        "per1kNodes": "Per 1K nodes",
+        "perFile": "Per File",
+        "perMb": "Per MB",
+        "sales": "Sales",
+        "status": "Status",
+        "storage": "Storage"
+      },
+      "confirm": {
+        "deactivatePlan": {
+          "message": "Deactivate plan {code}? Existing assignments remain, but the plan will no longer be available for new selection.",
+          "title": "Deactivate Plan"
+        },
+        "disableRule": {
+          "message": "Disable pricing rule {operationCode}? It will no longer be used for new credit calculations.",
+          "title": "Disable Rule"
+        }
+      },
+      "description": "Configure account plans, quotas, and operation-based credit pricing.",
+      "empty": {
+        "plans": "No plans configured.",
+        "rules": "No pricing rules configured."
+      },
+      "errors": {
+        "deletePlan": "Failed to deactivate plan.",
+        "deleteRule": "Failed to disable pricing rule.",
+        "loadCatalogs": "Failed to load catalogs.",
+        "savePlan": "Failed to save plan.",
+        "saveRule": "Failed to save rule."
+      },
+      "fields": {
+        "apiKeys": "API key limit",
+        "base": "Base",
+        "code": "Code",
+        "displayName": "Display name",
+        "minimum": "Minimum",
+        "monthlyCredits": "Monthly credits",
+        "name": "Name",
+        "operationCode": "Operation code",
+        "per1kNodes": "Per 1K nodes",
+        "perFile": "Per File",
+        "perMb": "Per MB",
+        "storageMb": "Storage (MB)"
+      },
+      "loading": "Loading plans and pricing...",
+      "placeholders": {
+        "displayName": "Customer-facing plan name",
+        "planName": "Internal plan name"
+      },
+      "plans": {
+        "help": "Create or update plan quotas and availability. Deleting a plan deactivates it.",
+        "title": "Plans"
+      },
+      "rules": {
+        "help": "Define credit costs by operation. Deleting a rule disables it.",
+        "title": "Pricing rules"
+      },
+      "status": {
+        "active": "Active",
+        "contactSales": "Contact Sales",
+        "disabled": "Disabled",
+        "paused": "Paused",
+        "selfService": "Self Service"
+      }
+    },
+    "announcements": {
+      "title": "Announcements",
+      "actions": {
+        "cancelEdit": "Cancel editing",
+        "create": "Create",
+        "delete": "Delete",
+        "disable": "Disable",
+        "edit": "Edit",
+        "saveChanges": "Save changes",
+        "saving": "Saving..."
+      },
+      "apiError": "The admin API is unavailable.",
+      "description": "Create, schedule, target, disable, or delete user-visible announcements.",
+      "dialogs": {
+        "delete": {
+          "confirm": "Delete announcement",
+          "message": "Delete this announcement permanently?",
+          "title": "Delete announcement"
+        },
+        "disable": {
+          "message": "Disable this announcement? It will no longer be shown to its target audience.",
+          "title": "Disable announcement"
+        }
+      },
+      "empty": "No announcements found.",
+      "errors": {
+        "delete": "Failed to delete announcement.",
+        "disable": "Failed to disable announcement.",
+        "duplicate": "An announcement with this title already exists.",
+        "load": "Failed to load announcements.",
+        "required": "Complete all required fields.",
+        "save": "Failed to save announcement."
+      },
+      "form": {
+        "active": "Active",
+        "createAria": "Create announcement",
+        "dismissible": "Dismissible",
+        "editAria": "Edit announcement",
+        "endsAt": "Ends At",
+        "message": "Message",
+        "messagePlaceholder": "Enter the announcement body",
+        "severity": "Severity",
+        "startsAt": "Starts At",
+        "target": "Target",
+        "title": "Announcement editor",
+        "titlePlaceholder": "Enter the announcement title",
+        "type": "Type"
+      },
+      "loading": "Loading announcements...",
+      "publishedTitle": "Published announcements",
+      "schedule": {
+        "ends": "Ends {date}",
+        "noEndDate": "No end date",
+        "starts": "Starts {date}",
+        "startsImmediately": "Starts immediately"
+      },
+      "severities": {
+        "critical": "Critical",
+        "info": "Info",
+        "warning": "Warning"
+      },
+      "states": {
+        "disabled": "Disabled"
+      },
+      "targets": {
+        "admin": "Admin",
+        "all": "All",
+        "user": "User"
+      },
+      "types": {
+        "cli_update": "CLI Update",
+        "disk_warning": "Disk Warning",
+        "general": "General",
+        "maintenance": "Maintenance",
+        "plan_change": "Plan Change",
+        "security": "Security"
+      }
+    },
+    "reports": {
+      "title": "Reports",
+      "actions": {
+        "backToReports": "Back to reports",
+        "closeReport": "Close report",
+        "closing": "Closing...",
+        "sendReply": "Send reply",
+        "sending": "Sending...",
+        "view": "View"
+      },
+      "closed": {
+        "deletesAfter": "Deletes after {date}",
+        "description": "This support thread is closed and remains readable until its deletion date."
+      },
+      "confirmClose": {
+        "confirm": "Close report",
+        "message": "Close this support thread? It will remain readable until its scheduled deletion date.",
+        "title": "Close report"
+      },
+      "description": "Review support and feedback threads, reply to users, and close resolved reports.",
+      "errors": {
+        "closeReport": "Failed to close report.",
+        "loadReport": "Failed to load report.",
+        "loadReports": "Failed to load reports.",
+        "sendReply": "Failed to send reply."
+      },
+      "labels": {
+        "justNow": "Just now"
+      },
+      "list": {
+        "empty": "No support reports found.",
+        "showing": "Showing {visible} of {total} reports"
+      },
+      "realtime": {
+        "live": "Live",
+        "offline": "Offline",
+        "syncing": "Syncing",
+        "unavailable": "Unavailable"
+      },
+      "reply": {
+        "description": "Send a support response in this report thread.",
+        "label": "Reply message",
+        "placeholder": "Type a reply to the user...",
+        "title": "Reply to report"
+      },
+      "roles": {
+        "admin": "Admin",
+        "support": "Support",
+        "user": "User"
+      },
+      "table": {
+        "action": "Action",
+        "category": "Category",
+        "lastUpdated": "Last Updated",
+        "status": "Status",
+        "subject": "Subject"
+      },
+      "thread": {
+        "empty": "No messages in this report thread."
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Update your administrator profile and password.",
+      "eyebrow": "Administrator account",
+      "messages": {
+        "passwordChangeFailed": "Could not change the password.",
+        "passwordChanged": "Password changed.",
+        "passwordMismatch": "New password and confirmation do not match.",
+        "profileLoadFailed": "Could not load the administrator profile.",
+        "profileUpdateFailed": "Could not update the profile.",
+        "profileUpdated": "Profile updated."
+      },
+      "password": {
+        "confirm": "Confirm new password",
+        "current": "Current password",
+        "new": "New password",
+        "submit": "Change password",
+        "title": "Password"
+      },
+      "profile": {
+        "displayName": "Display name",
+        "email": "Email",
+        "save": "Save profile",
+        "title": "Profile"
+      }
+    },
+    "dialogs": {
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "confirm": "Confirm",
+      "internalReason": "Internal audit reason",
+      "internalReasonPlaceholder": "Reason visible only to administrators",
+      "understandAccessDisabled": "I understand this disables account access",
+      "userVisibleReason": "User-visible reason",
+      "userVisibleReasonPlaceholder": "Explain why access is changing",
+      "working": "Applying..."
+    }
+  }
+}

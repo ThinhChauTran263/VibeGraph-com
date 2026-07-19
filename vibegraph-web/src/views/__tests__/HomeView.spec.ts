@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import HomeView from '../HomeView.vue'
+import i18n from '@/language'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
@@ -35,6 +36,7 @@ function mountHome() {
             },
           },
         }),
+        i18n,
       ],
     },
   })

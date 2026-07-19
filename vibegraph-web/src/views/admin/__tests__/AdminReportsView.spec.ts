@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { nextTick, ref } from 'vue'
 import AdminReportsView from '../AdminReportsView.vue'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminReport, ReportRealtimeEvent } from '@/types/api'
+import i18n, { setLocale } from '@/language'
 
 const realtime = vi.hoisted(() => ({
   emit: null as ((event: ReportRealtimeEvent) => void) | null,
@@ -60,6 +61,7 @@ function mountView(reports: AdminReport[] = []) {
             },
           },
         }),
+        i18n,
       ],
     },
   })
@@ -71,6 +73,8 @@ afterEach(() => {
 })
 
 describe('Admin ReportsView', () => {
+  beforeEach(() => setLocale('en-US'))
+
   it('renders report detail and ignores another users realtime report event', async () => {
     const report = openReport()
     const wrapper = mountView([report])

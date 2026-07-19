@@ -170,6 +170,8 @@ class AdminServiceTest {
         assertEquals("USER", response.role());
         verify(userRepository).save(any(User.class));
         verify(settingsRepository).save(any(UserAccountSettings.class));
+        verify(auditService).recordCurrentUser("USER_CREATE", savedUser.getId(), "USER", savedUser.getId().toString(),
+                java.util.Map.of("email", savedUser.getEmail(), "role", savedUser.getRole().name(), "planCode", "FREE"));
         verifyNoInteractions(creditBalanceRepository);
     }
 
@@ -229,6 +231,8 @@ class AdminServiceTest {
         verify(creditBalanceService).applyAdminAdjustment(userId, 25, "bonus");
         verify(creditBalanceRepository, never()).save(any());
         verify(creditLedgerRepository, never()).save(any());
+        verify(auditService).recordCurrentUser("CREDIT_UPDATE", userId, "USER", userId.toString(),
+                java.util.Map.of("creditsDelta", 25, "reasonProvided", true));
     }
 
     @Test
@@ -248,6 +252,8 @@ class AdminServiceTest {
         assertEquals("Spam", response.blockedReason());
         assertEquals("Spam Policy violation", response.blockedReasonSafe());
         verify(settingsRepository).save(settings);
+        verify(auditService).recordCurrentUser("USER_BLOCK", userId, "USER", userId.toString(),
+                java.util.Map.of("safeReason", "Spam Policy violation"));
     }
 
     @Test
@@ -264,6 +270,8 @@ class AdminServiceTest {
 
         assertTrue(response.deactivated());
         verify(userRepository).save(user);
+        verify(auditService).recordCurrentUser("USER_DEACTIVATE", userId, "USER", userId.toString(),
+                java.util.Map.of("safeReason", "Account closed"));
     }
 
     @Test
@@ -377,6 +385,8 @@ class AdminServiceTest {
 
         assertTrue(response.apiKeyCreationDisabled());
         verify(settingsRepository).save(settings);
+        verify(auditService).recordCurrentUser("API_KEY_CREATION_TOGGLE", userId, "USER", userId.toString(),
+                java.util.Map.of("disabled", true, "previousDisabled", false));
     }
 
     @Test

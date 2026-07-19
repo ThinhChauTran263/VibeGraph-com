@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { useAdminStore } from '@/stores/admin'
+import i18n, { setLocale } from '@/language'
 import PlansCreditsView from '../PlansCreditsView.vue'
 import FeatureFlagsView from '../FeatureFlagsView.vue'
 import SecurityView from '../SecurityView.vue'
@@ -39,7 +40,7 @@ function mountView(
   return mount(component, {
     global: {
       stubs: { AdminConfirmDialog: dialogStub },
-      plugins: [pinia],
+      plugins: [pinia, i18n],
     },
   })
 }
@@ -50,6 +51,7 @@ describe('Admin operations views', () => {
     capabilityMocks.contract.value = false
     capabilityMocks.refresh.mockResolvedValue(undefined)
     localStorage.clear()
+    setLocale('en-US')
   })
 
   it('renders plan storage in MB and exposes reset actions', async () => {
@@ -418,5 +420,51 @@ describe('Admin operations views', () => {
     expect(wrapper.text()).toContain('Retention policy')
     expect((wrapper.find('#audit-retention-days').element as HTMLInputElement).value).toBe('120')
     expect(wrapper.text()).toContain('Redacted details')
+    expect(wrapper.find('input[placeholder="USER_BLOCK"]').exists()).toBe(true)
+  })
+
+  it('starts live audit updates on mount and cleans them up on unmount', async () => {
+    const wrapper = mountView(AuditView, {
+      auditLogs: [],
+      auditLogDetail: null,
+      auditRetention: { retentionDays: 90, updatedBy: null, updatedAt: null },
+      auditLiveStatus: 'reconnecting',
+      auditPagination: {
+        totalElements: 0,
+        totalPages: 0,
+        pageNumber: 0,
+        pageSize: 50,
+      },
+    })
+    const store = useAdminStore()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Reconnecting')
+    expect(wrapper.text()).not.toContain('Retry live updates')
+    expect(store.startAuditStream).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+
+    expect(store.stopAuditStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows auto-refresh copy for audit polling fallback', async () => {
+    const wrapper = mountView(AuditView, {
+      auditLogs: [],
+      auditLogDetail: null,
+      auditRetention: { retentionDays: 90, updatedBy: null, updatedAt: null },
+      auditLiveStatus: 'polling',
+      auditPagination: {
+        totalElements: 0,
+        totalPages: 0,
+        pageNumber: 0,
+        pageSize: 50,
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Auto-refreshing')
+    expect(wrapper.text()).toContain('Audit logs are auto-refreshing.')
+    expect(wrapper.text()).not.toContain('Live audit updates are temporarily unavailable.')
   })
 })

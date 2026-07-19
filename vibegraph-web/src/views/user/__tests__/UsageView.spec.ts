@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import UsageView from '../UsageView.vue'
 import { useAccountStore } from '@/stores/account'
+import i18n from '@/language'
 
 interface MountUsageOptions {
   usageError?: Error
@@ -23,7 +24,7 @@ function mountUsage(
   if (options.ledgerError) {
     vi.mocked(store.fetchCreditLedger).mockRejectedValueOnce(options.ledgerError)
   }
-  return { wrapper: mount(UsageView, { global: { plugins: [pinia] } }), store }
+  return { wrapper: mount(UsageView, { global: { plugins: [pinia, i18n] } }), store }
 }
 
 describe('UsageView', () => {
@@ -58,7 +59,7 @@ describe('UsageView', () => {
     expect(wrapper.text()).toContain('750MB remaining')
     expect(wrapper.text()).toContain('380 credits')
     expect(wrapper.text()).toContain('120 / 500 credits used this cycle')
-    expect(wrapper.text()).toContain('Cli Push')
+    expect(wrapper.text()).toContain('CLI push')
     expect(wrapper.text()).toContain('-2 credits')
     expect(wrapper.text()).not.toContain('NaN')
   })

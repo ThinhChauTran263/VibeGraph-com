@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
 import ErrorAlert from '@/components/ui/ErrorAlert.vue'
+import { displayPlanName } from '@/lib/planDisplay'
 
 const accountStore = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
 const isLoading = ref(!accountStore.usage)
 const loadError = ref('')
 
@@ -20,16 +23,29 @@ const usage = computed(
   () => accountStore.usage as (typeof accountStore.usage & SubscriptionUsage) | null,
 )
 const storageLimitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
-const storageRemainingMb = computed(() =>
-  usage.value?.remainingMb ?? Math.max(storageLimitMb.value - (usage.value?.sourceStorageUsed ?? 0), 0),
+const storageRemainingMb = computed(
+  () =>
+    usage.value?.remainingMb ??
+    Math.max(storageLimitMb.value - (usage.value?.sourceStorageUsed ?? 0), 0),
 )
 const remainingCredits = computed(() => {
   if (typeof usage.value?.creditsRemaining === 'number') return usage.value.creditsRemaining
-  if (typeof usage.value?.creditsLimit === 'number' && typeof usage.value?.creditsUsed === 'number') {
+  if (
+    typeof usage.value?.creditsLimit === 'number' &&
+    typeof usage.value?.creditsUsed === 'number'
+  ) {
     return Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)
   }
   return null
 })
+const planLabel = computed(() =>
+  displayPlanName(
+    t,
+    usage.value?.planCode,
+    usage.value?.planName,
+    t('user.subscription.unavailableValue'),
+  ),
+)
 
 async function loadUsage(): Promise<void> {
   if (accountStore.usage) {
@@ -44,7 +60,7 @@ async function loadUsage(): Promise<void> {
     await accountStore.fetchUsage()
   } catch (error) {
     if (!accountStore.usage) {
-      loadError.value = error instanceof Error ? error.message : 'Failed to load subscription data.'
+      loadError.value = error instanceof Error ? error.message : t('user.subscription.loadFallback')
     }
   } finally {
     isLoading.value = false
@@ -59,14 +75,14 @@ onMounted(() => {
 <template>
   <div class="subscription-view">
     <header class="page-header">
-      <h1>Subscription</h1>
-      <p>Review your current plan and account quota from the account usage API.</p>
+      <h1>{{ t('user.subscription.title') }}</h1>
+      <p>{{ t('user.subscription.description') }}</p>
     </header>
 
     <ErrorAlert
       v-if="loadError && !usage"
       role="alert"
-      title="Subscription unavailable"
+      :title="t('user.subscription.unavailable')"
       :message="loadError"
     >
       <button
@@ -76,38 +92,43 @@ onMounted(() => {
         :disabled="isLoading"
         @click="loadUsage"
       >
-        Retry subscription
+        {{ t('user.subscription.retry') }}
       </button>
     </ErrorAlert>
-    <div v-else-if="isLoading && !usage" class="loading">Loading subscription data...</div>
+    <div v-else-if="isLoading && !usage" class="loading">{{ t('user.subscription.loading') }}</div>
 
     <section v-if="usage || (!isLoading && !loadError)" class="current-plan">
-      <span class="current-plan__label">Current plan</span>
-      <strong>{{ usage?.planName ?? 'Unavailable' }}</strong>
+      <span class="current-plan__label">{{ t('user.subscription.currentPlan') }}</span>
+      <strong>{{ planLabel }}</strong>
       <dl v-if="usage">
         <div>
-          <dt>Plan code</dt>
-          <dd>{{ usage.planCode }}</dd>
+          <dt>{{ t('user.subscription.planCode') }}</dt>
+          <dd>{{ planLabel }}</dd>
         </div>
         <div>
-          <dt>Source storage quota</dt>
+          <dt>{{ t('user.subscription.sourceStorage') }}</dt>
           <dd>{{ storageLimitMb }} MB</dd>
         </div>
         <div>
-          <dt>Remaining storage</dt>
+          <dt>{{ t('user.subscription.remainingStorage') }}</dt>
           <dd>{{ storageRemainingMb }} MB</dd>
         </div>
         <div>
-          <dt>Remaining credits</dt>
-          <dd>{{ remainingCredits === null ? 'Unavailable' : `${remainingCredits} credits` }}</dd>
+          <dt>{{ t('user.subscription.remainingCredits') }}</dt>
+          <dd>
+            {{
+              remainingCredits === null
+                ? t('user.subscription.unavailableValue')
+                : `${remainingCredits} ${t('user.subscription.credits')}`
+            }}
+          </dd>
         </div>
       </dl>
-      <p v-else>Plan details are unavailable until the account usage API responds.</p>
+      <p v-else>{{ t('user.subscription.detailsUnavailable') }}</p>
     </section>
 
     <section v-if="!isLoading && !loadError" class="empty-state">
-      A public plan catalog is not available from the current user API. Upgrade options, including
-      Enterprise contact sales, remain unavailable until the backend exposes that contract.
+      {{ t('user.subscription.catalogUnavailable') }}
     </section>
   </div>
 </template>

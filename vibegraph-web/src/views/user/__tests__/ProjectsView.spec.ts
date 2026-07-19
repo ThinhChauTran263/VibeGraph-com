@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import ProjectsView from '../ProjectsView.vue'
 import { useProjectStore } from '@/stores/project'
+import i18n from '@/language'
 
 const apiMocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -76,7 +77,7 @@ async function mountView(path = '/projects', pinia = createTestingPinia({ create
   await router.isReady()
   const wrapper = mount(ProjectsView, {
     global: {
-      plugins: [router, pinia],
+      plugins: [router, pinia, i18n],
       stubs: {
         ImportProjectPanel: ImportProjectPanelStub,
         AdminConfirmDialog: ConfirmDialogStub,

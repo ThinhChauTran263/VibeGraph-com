@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminReport, ReportMessage, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
 
+const { locale, t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
 const selectedReport = ref<AdminReport | null>(null)
 const selectedMessages = ref<ReportMessage[]>([])
@@ -20,7 +22,7 @@ onMounted(async () => {
   try {
     await adminStore.fetchReports()
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load reports'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.reports.errors.loadReports')
   }
 })
 
@@ -32,12 +34,14 @@ const reportRealtime = useReportRealtime(selectedReportId, {
 const reportRealtimeStatus = reportRealtime.status
 const reportRealtimeActive = reportRealtime.active
 const reportRealtimeLabel = computed(() => {
-  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) return 'Live'
-  if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
-  if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
-    return 'Syncing'
+  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) {
+    return t('admin.reports.realtime.live')
   }
-  return 'Offline'
+  if (reportRealtimeStatus.value === 'error') return t('admin.reports.realtime.unavailable')
+  if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
+    return t('admin.reports.realtime.syncing')
+  }
+  return t('admin.reports.realtime.offline')
 })
 
 const selectReport = async (report: AdminReport) => {
@@ -47,7 +51,7 @@ const selectReport = async (report: AdminReport) => {
     selectedReport.value = detail.report
     selectedMessages.value = detail.messages
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load report'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.reports.errors.loadReport')
     selectedReport.value = report
     selectedMessages.value = []
   }
@@ -71,7 +75,7 @@ const sendReply = async () => {
     selectedMessages.value = detail.messages
     replyMessage.value = ''
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to send reply'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.reports.errors.sendReply')
   } finally {
     isSending.value = false
   }
@@ -93,7 +97,7 @@ const confirmCloseReport = async () => {
     selectedMessages.value = detail.messages
     closeDialogOpen.value = false
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to close report'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.reports.errors.closeReport')
   } finally {
     isClosing.value = false
   }
@@ -125,35 +129,45 @@ const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
 const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   ...message,
   isAdmin: message.senderRole === 'ADMIN',
-  senderName: message.senderRole === 'ADMIN' ? 'Admin' : 'User',
+  senderName:
+    message.senderName ||
+    (message.senderRole === 'ADMIN'
+      ? t('admin.reports.roles.admin')
+      : t('admin.reports.roles.user')),
 })
 
 const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) return 'Just now'
+  if (!value) return t('admin.reports.labels.justNow')
   const timestamp = Date.parse(value)
-  return Number.isNaN(timestamp) ? 'Just now' : new Date(timestamp).toLocaleString()
+  return Number.isNaN(timestamp)
+    ? t('admin.reports.labels.justNow')
+    : new Date(timestamp).toLocaleString(locale.value)
 }
+
+const formatDate = (value: string): string => new Date(value).toLocaleDateString(locale.value)
 </script>
 
 <template>
   <div class="admin-reports-view">
     <div v-if="!selectedReport" class="list-container">
       <div class="header">
-        <h2>Admin Reports Management</h2>
-        <p class="subtitle">View and respond to user feedback</p>
+        <h2>{{ t('admin.reports.title') }}</h2>
+        <p class="subtitle">{{ t('admin.reports.description') }}</p>
       </div>
 
       <div class="card reports-list">
-        <div v-if="adminStore.reports.length === 0" class="empty-state">No active reports.</div>
+        <div v-if="adminStore.reports.length === 0" class="empty-state">
+          {{ t('admin.reports.list.empty') }}
+        </div>
         <div v-else class="table-responsive">
           <table class="table">
             <thead>
               <tr>
-                <th>Subject</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Last Updated</th>
-                <th>Action</th>
+                <th>{{ t('admin.reports.table.subject') }}</th>
+                <th>{{ t('admin.reports.table.category') }}</th>
+                <th>{{ t('admin.reports.table.status') }}</th>
+                <th>{{ t('admin.reports.table.lastUpdated') }}</th>
+                <th>{{ t('admin.reports.table.action') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -164,14 +178,22 @@ const formatDateTime = (value: string | null | undefined): string => {
                 <td class="text-muted">
                   {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
-                <td><button class="btn-secondary btn-sm" @click="selectReport(r)">View</button></td>
+                <td>
+                  <button class="btn-secondary btn-sm" @click="selectReport(r)">
+                    {{ t('admin.reports.actions.view') }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="pagination-info" v-if="adminStore.reportsPagination.totalElements > 0">
-          Showing {{ adminStore.reports.length }} of
-          {{ adminStore.reportsPagination.totalElements }} reports
+          {{
+            t('admin.reports.list.showing', {
+              visible: adminStore.reports.length,
+              total: adminStore.reportsPagination.totalElements,
+            })
+          }}
         </div>
       </div>
     </div>
@@ -194,7 +216,7 @@ const formatDateTime = (value: string | null | undefined): string => {
             <path d="M15 18l-6-6 6-6" />
             <path d="M9 12h10" />
           </svg>
-          <span>Back to reports</span>
+          <span>{{ t('admin.reports.actions.backToReports') }}</span>
         </button>
         <div class="detail-header__title">
           <h2>{{ selectedReport.title }}</h2>
@@ -210,7 +232,7 @@ const formatDateTime = (value: string | null | undefined): string => {
 
       <div class="thread">
         <div v-if="selectedMessages.length === 0" class="empty-state">
-          No messages in this thread.
+          {{ t('admin.reports.thread.empty') }}
         </div>
         <article
           v-for="msg in selectedMessages"
@@ -224,9 +246,13 @@ const formatDateTime = (value: string | null | undefined): string => {
             <header class="message-meta">
               <div>
                 <strong>{{ msg.senderName }}</strong>
-                <span class="message-role">{{ msg.isAdmin ? 'VibeGraph support' : 'User' }}</span>
+                <span class="message-role">{{
+                  msg.isAdmin ? t('admin.reports.roles.support') : t('admin.reports.roles.user')
+                }}</span>
               </div>
-              <time :datetime="msg.createdAt || undefined">{{ formatDateTime(msg.createdAt) }}</time>
+              <time :datetime="msg.createdAt || undefined">{{
+                formatDateTime(msg.createdAt)
+              }}</time>
             </header>
             <p class="message-content">{{ msg.body }}</p>
           </div>
@@ -235,41 +261,53 @@ const formatDateTime = (value: string | null | undefined): string => {
 
       <div v-if="selectedReport.status !== 'CLOSED'" class="reply-box">
         <div class="reply-box__heading">
-          <strong>Admin reply</strong>
-          <span>Respond to this support request</span>
+          <strong>{{ t('admin.reports.reply.title') }}</strong>
+          <span>{{ t('admin.reports.reply.description') }}</span>
         </div>
         <form @submit.prevent="sendReply" class="reply-form">
-          <label class="sr-only" for="admin-report-reply">Admin reply</label>
+          <label class="sr-only" for="admin-report-reply">
+            {{ t('admin.reports.reply.label') }}
+          </label>
           <textarea
             id="admin-report-reply"
             v-model="replyMessage"
             class="reply-input"
-            placeholder="Type a reply..."
+            :placeholder="t('admin.reports.reply.placeholder')"
             rows="1"
             required
           ></textarea>
           <button type="submit" class="btn-primary" :disabled="isSending || !replyMessage">
-            {{ isSending ? 'Sending...' : 'Send Reply' }}
+            {{
+              isSending ? t('admin.reports.actions.sending') : t('admin.reports.actions.sendReply')
+            }}
           </button>
           <button type="button" class="btn-danger" @click="closeReport" :disabled="isClosing">
-            {{ isClosing ? 'Closing...' : 'Close Report' }}
+            {{
+              isClosing
+                ? t('admin.reports.actions.closing')
+                : t('admin.reports.actions.closeReport')
+            }}
           </button>
           <div v-if="errorMsg" class="error-text reply-error">{{ errorMsg }}</div>
         </form>
       </div>
       <div v-else class="closed-notice">
-        This report is closed. <br />
+        {{ t('admin.reports.closed.description') }} <br />
         <small v-if="selectedReport.deleteAfter" class="text-danger">
-          Deletes after {{ new Date(selectedReport.deleteAfter).toLocaleDateString() }}.
+          {{
+            t('admin.reports.closed.deletesAfter', {
+              date: formatDate(selectedReport.deleteAfter),
+            })
+          }}
         </small>
       </div>
     </div>
 
     <AdminConfirmDialog
       :open="closeDialogOpen"
-      title="Close report"
-      message="Close this report thread? Both admin and user will see it as resolved, and cleanup becomes eligible after the retention date."
-      confirm-label="Close report"
+      :title="t('admin.reports.confirmClose.title')"
+      :message="t('admin.reports.confirmClose.message')"
+      :confirm-label="t('admin.reports.confirmClose.confirm')"
       :busy="isClosing"
       @cancel="closeDialogOpen = false"
       @confirm="confirmCloseReport"

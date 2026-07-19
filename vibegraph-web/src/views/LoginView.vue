@@ -4,14 +4,17 @@
  * On success, navigates to the role-appropriate dashboard. Shows inline error on failure.
  */
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/lib/api'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const email = ref('')
 const password = ref('')
@@ -21,7 +24,7 @@ const loading = ref(false)
 async function handleLogin() {
   error.value = ''
   if (!email.value.trim() || !password.value) {
-    error.value = 'Please enter email and password.'
+    error.value = t('auth.missingCredentials')
     return
   }
 
@@ -34,7 +37,7 @@ async function handleLogin() {
     if (e instanceof ApiError) {
       error.value = e.message
     } else {
-      error.value = 'Unable to connect. Please try again.'
+      error.value = t('auth.connectionError')
     }
   } finally {
     loading.value = false
@@ -54,31 +57,32 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
 <template>
   <main class="auth-page">
     <header class="auth-page__header">
-      <RouterLink class="auth-brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
+      <RouterLink class="auth-brand" :to="{ name: 'home' }" :aria-label="t('auth.homeAria')">
         <BrandMark :size="30" :show-wordmark="true" />
       </RouterLink>
+      <LanguageSelector />
     </header>
 
     <div class="auth-card">
-      <h1 class="auth-card__title">Sign in to VibeGraph</h1>
-      <p class="auth-card__subtitle">Analyze and visualize your Java codebase</p>
+      <h1 class="auth-card__title">{{ t('auth.signInTitle') }}</h1>
+      <p class="auth-card__subtitle">{{ t('auth.signInSubtitle') }}</p>
 
       <form class="auth-form" @submit.prevent="handleLogin" novalidate>
         <div class="auth-form__field">
-          <label for="login-email" class="auth-form__label">Email</label>
+          <label for="login-email" class="auth-form__label">{{ t('auth.email') }}</label>
           <input
             id="login-email"
             v-model="email"
             type="email"
             class="auth-form__input"
-            placeholder="you@example.com"
+            :placeholder="t('auth.emailPlaceholder')"
             autocomplete="email"
             required
           />
         </div>
 
         <div class="auth-form__field">
-          <label for="login-password" class="auth-form__label">Password</label>
+          <label for="login-password" class="auth-form__label">{{ t('auth.password') }}</label>
           <input
             id="login-password"
             v-model="password"
@@ -95,13 +99,13 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
         </div>
 
         <button type="submit" class="auth-form__submit" :disabled="loading">
-          {{ loading ? 'Signing in…' : 'Sign in' }}
+          {{ loading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
       </form>
 
       <p class="auth-card__footer">
-        Don't have an account?
-        <RouterLink :to="{ name: 'register' }" class="auth-link">Create one</RouterLink>
+        {{ t('auth.noAccount') }}
+        <RouterLink :to="{ name: 'register' }" class="auth-link">{{ t('auth.createAccount') }}</RouterLink>
       </p>
     </div>
   </main>
@@ -120,6 +124,7 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
 .auth-page__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   min-height: 44px;
 }
 

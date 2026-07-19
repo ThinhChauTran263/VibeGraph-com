@@ -3,12 +3,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import SubscriptionView from '../SubscriptionView.vue'
 import { useAccountStore } from '@/stores/account'
+import i18n from '@/language'
 
 function mountEmptySubscription(usageError?: Error) {
   const pinia = createTestingPinia({ createSpy: vi.fn, initialState: { account: {} } })
   const store = useAccountStore(pinia)
   if (usageError) vi.mocked(store.fetchUsage).mockRejectedValueOnce(usageError)
-  return { wrapper: mount(SubscriptionView, { global: { plugins: [pinia] } }), store }
+  return { wrapper: mount(SubscriptionView, { global: { plugins: [pinia, i18n] } }), store }
 }
 
 describe('SubscriptionView', () => {
@@ -33,6 +34,7 @@ describe('SubscriptionView', () => {
               },
             },
           }),
+          i18n,
         ],
       },
     })
@@ -40,7 +42,7 @@ describe('SubscriptionView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Current plan')
     expect(wrapper.text()).toContain('Pro')
-    expect(wrapper.text()).toContain('PRO')
+    expect(wrapper.text()).not.toContain('PRO')
     expect(wrapper.text()).toContain('500 MB')
     expect(wrapper.text()).toContain('375 MB')
     expect(wrapper.text()).toContain('800 credits')

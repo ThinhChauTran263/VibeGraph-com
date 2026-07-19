@@ -11,19 +11,18 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.AuditLog;
 import com.vibegraph.auth.domain.AuditRetentionSetting;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
 import com.vibegraph.auth.repository.AuditLogSpecifications;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
+import com.vibegraph.common.exception.UnauthorizedException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -36,11 +35,10 @@ public class AuditService {
 
     private final AuditLogRepository auditLogRepository;
     private final AuditRetentionSettingRepository retentionRepository;
-    private final AuditRedactor redactor;
+    private final AuditLogWriter auditLogWriter;
     private final Clock clock;
     private final CurrentUser currentUser;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AuditLogResponse record(
             String action,
             UUID actorUserId,
@@ -49,18 +47,8 @@ public class AuditService {
             String targetId,
             String outcome,
             Map<String, ?> details) {
-        String redactedDetails = redactor.redact(details == null ? Map.of() : details);
-        AuditLog saved = auditLogRepository.save(AuditLog.builder()
-                .action(action)
-                .actorUserId(actorUserId)
-                .targetUserId(targetUserId)
-                .targetType(targetType)
-                .targetId(limit(targetId, 160))
-                .outcome(outcome)
-                .ipAddress(requestIp())
-                .details(limit(redactedDetails, 4000))
-                .build());
-        return AuditLogResponse.from(saved);
+        return auditLogWriter.write(
+                action, actorUserId, targetUserId, targetType, targetId, outcome, requestIp(), details);
     }
 
     public AuditLogResponse recordCurrentUser(
@@ -72,8 +60,8 @@ public class AuditService {
         UUID actor = null;
         try {
             actor = currentUser.id();
-        } catch (RuntimeException ignored) {
-            // Anonymous actions intentionally keep actor_user_id null.
+        } catch (UnauthorizedException ignored) {
+            // Authentication failures intentionally keep actor_user_id null.
         }
         return record(action, actor, targetUserId, targetType, targetId, "SUCCESS", details);
     }
@@ -132,6 +120,8 @@ public class AuditService {
         setting.setUpdatedBy(currentUser.id());
         setting.setUpdatedAt(Instant.now(clock));
         AuditRetentionSetting saved = retentionRepository.save(setting);
+        recordCurrentUser("AUDIT_RETENTION_UPDATE", null, "AUDIT_RETENTION", null,
+                Map.of("retentionDays", retentionDays));
         return new AuditRetentionResponse(saved.getRetentionDays(), saved.getUpdatedBy(), saved.getUpdatedAt());
     }
 
@@ -147,10 +137,7 @@ public class AuditService {
             return null;
         }
         HttpServletRequest request = attributes.getRequest();
-        String forwarded = request.getHeader("X-Forwarded-For");
-        String ip = forwarded == null || forwarded.isBlank()
-                ? request.getRemoteAddr()
-                : forwarded.split(",", 2)[0].trim();
+        String ip = request.getRemoteAddr();
         return ip == null ? null : ip.substring(0, Math.min(ip.length(), 64));
     }
 
@@ -158,10 +145,4 @@ public class AuditService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength);
-    }
 }

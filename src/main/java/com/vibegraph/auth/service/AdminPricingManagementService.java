@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminPricingManagementService {
 
     private final CreditPricingRuleRepository pricingRuleRepository;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<AdminPricingRuleResponse> list() {
@@ -31,8 +32,11 @@ public class AdminPricingManagementService {
         if (pricingRuleRepository.existsByOperationCode(request.operationCode())) {
             throw new IllegalArgumentException("Pricing rule already exists");
         }
-        return AdminPricingRuleResponse.from(pricingRuleRepository.save(
+        AdminPricingRuleResponse response = AdminPricingRuleResponse.from(pricingRuleRepository.save(
                 toRule(CreditPricingRule.builder().build(), request)));
+        auditService.recordCurrentUser("PRICING_RULE_CREATE", null, "PRICING_RULE",
+                response.operationCode(), pricingDetails(response));
+        return response;
     }
 
     @Transactional
@@ -42,7 +46,11 @@ public class AdminPricingManagementService {
         }
         CreditPricingRule rule = pricingRuleRepository.findByOperationCode(operationCode)
                 .orElseThrow(() -> new IllegalArgumentException("Pricing rule not found: " + operationCode));
-        return AdminPricingRuleResponse.from(pricingRuleRepository.save(toRule(rule, request)));
+        AdminPricingRuleResponse response = AdminPricingRuleResponse.from(
+                pricingRuleRepository.save(toRule(rule, request)));
+        auditService.recordCurrentUser("PRICING_RULE_UPDATE", null, "PRICING_RULE",
+                operationCode, pricingDetails(response));
+        return response;
     }
 
     @Transactional
@@ -51,6 +59,19 @@ public class AdminPricingManagementService {
                 .orElseThrow(() -> new IllegalArgumentException("Pricing rule not found: " + operationCode));
         rule.setActive(false);
         pricingRuleRepository.save(rule);
+        auditService.recordCurrentUser("PRICING_RULE_DEACTIVATE", null, "PRICING_RULE", operationCode,
+                java.util.Map.of("active", false));
+    }
+
+    private java.util.Map<String, Object> pricingDetails(AdminPricingRuleResponse response) {
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("baseCredits", response.baseCredits());
+        details.put("perFileCredits", response.perFileCredits());
+        details.put("perMbCredits", response.perMbCredits());
+        details.put("per1kNodesCredits", response.per1kNodesCredits());
+        details.put("minimumCredits", response.minimumCredits());
+        details.put("active", response.active());
+        return details;
     }
 
     private CreditPricingRule toRule(CreditPricingRule rule, AdminPricingRuleUpsertRequest request) {

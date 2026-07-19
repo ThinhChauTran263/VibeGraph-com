@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ProfileView from '../ProfileView.vue'
 import { useAccountStore } from '@/stores/account'
+import i18n from '@/language'
 
 interface MountViewOptions {
   withProfile?: boolean
@@ -27,7 +28,7 @@ function mountView(options: MountViewOptions = {}) {
   if (options.profileError) {
     vi.mocked(store.fetchProfile).mockRejectedValueOnce(options.profileError)
   }
-  return { wrapper: mount(ProfileView, { global: { plugins: [pinia] } }), pinia }
+  return { wrapper: mount(ProfileView, { global: { plugins: [pinia, i18n] } }), pinia }
 }
 
 describe('ProfileView', () => {

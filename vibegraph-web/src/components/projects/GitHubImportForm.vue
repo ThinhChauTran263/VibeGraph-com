@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
 import { useGitHubImport } from '@/composables/useGitHubImport'
 import Spinner from '@/components/ui/Spinner.vue'
 
+const { t } = useI18n({ useScope: 'global' })
 const emit = defineEmits<{
   imported: [project: Project]
 }>()
@@ -18,11 +20,15 @@ const { status, errorMessage, importedProject, progress, isImporting, importGith
 const canSubmit = computed(() => repoUrl.value.trim().length > 0 && !isImporting.value)
 const progressPct = computed(() => Math.round(progress.value))
 const progressLabel = computed(() =>
-  progressPct.value >= 98 ? 'Finalizing graph…' : `Analyzing repository… ${progressPct.value}%`,
+  progressPct.value >= 98
+    ? t('user.import.finalizing')
+    : `${t('user.import.analyzing')} ${progressPct.value}%`,
 )
 // Button caption mirrors progress so the percentage is visible on the button too.
 const submitLabel = computed(() =>
-  progressPct.value >= 98 ? 'Finalizing…' : `Importing… ${progressPct.value}%`,
+  progressPct.value >= 98
+    ? t('user.import.finalizing')
+    : `${t('user.import.importing')} ${progressPct.value}%`,
 )
 
 async function onSubmit(): Promise<void> {
@@ -54,9 +60,9 @@ function clearForm(): void {
         </svg>
       </span>
       <div class="github-import__heading-group">
-        <h2 id="github-import-heading">Add project from GitHub</h2>
+        <h2 id="github-import-heading">{{ t('user.import.githubTitle') }}</h2>
         <p class="github-import__hint">
-          Import a public repository using its HTTPS URL. Example:
+          {{ t('user.import.githubHint') }}
           https://github.com/spring-projects/spring-petclinic
         </p>
       </div>
@@ -64,13 +70,13 @@ function clearForm(): void {
 
     <form class="github-import__form" @submit.prevent="onSubmit">
       <label class="github-import__field">
-        <span class="github-import__label">GitHub repository URL</span>
+        <span class="github-import__label">{{ t('user.import.githubUrl') }}</span>
         <input
           v-model="repoUrl"
           class="github-import__text-input"
           type="url"
           name="repoUrl"
-          placeholder="https://github.com/owner/repo"
+          :placeholder="t('user.import.githubPlaceholder')"
           :disabled="isImporting"
           aria-required="true"
           autocomplete="off"
@@ -89,7 +95,7 @@ function clearForm(): void {
             <Spinner size="sm" aria-hidden="true" />
             <span>{{ submitLabel }}</span>
           </span>
-          <span v-else>Import GitHub repo</span>
+          <span v-else>{{ t('user.import.importGithub') }}</span>
         </button>
         <button
           type="button"
@@ -97,7 +103,7 @@ function clearForm(): void {
           :disabled="isImporting"
           @click="clearForm"
         >
-          Reset
+          {{ t('user.import.reset') }}
         </button>
       </div>
 

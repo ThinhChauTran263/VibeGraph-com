@@ -19,6 +19,7 @@ import com.vibegraph.auth.service.AdminPlanManagementService;
 import com.vibegraph.auth.service.AdminPricingManagementService;
 import com.vibegraph.auth.service.AdminSecurityMonitorService;
 import com.vibegraph.auth.service.AdminSecurityRequestEventStream;
+import com.vibegraph.auth.service.AuditLogEventStream;
 import com.vibegraph.auth.service.AdminService;
 import com.vibegraph.auth.service.AdminStorageService;
 import com.vibegraph.auth.service.CreditBalanceService;
@@ -74,6 +75,7 @@ class AdminSecurityIT {
     @MockitoBean private AdminAnnouncementService adminAnnouncementService;
     @MockitoBean private AdminSecurityMonitorService adminSecurityMonitorService;
     @MockitoBean private AdminSecurityRequestEventStream adminSecurityRequestEventStream;
+    @MockitoBean private AuditLogEventStream auditLogEventStream;
     @MockitoBean private AdminStorageService adminStorageService;
     @MockitoBean private CreditBalanceService creditBalanceService;
     @MockitoBean private JwtService jwtService;
@@ -203,6 +205,33 @@ class AdminSecurityIT {
                 .build();
 
         mockMvc.perform(get("/api/admin/security/stream"))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/audit-logs/stream with USER role returns 403")
+    void auditStream_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/audit-logs/stream"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("GET /api/admin/audit-logs/stream with ADMIN role opens SSE")
+    void auditStream_adminRole_opensSse() throws Exception {
+        org.mockito.Mockito.when(auditLogEventStream.subscribe())
+                .thenReturn(new org.springframework.web.servlet.mvc.method.annotation.SseEmitter());
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/audit-logs/stream"))
                 .andExpect(status().isOk())
                 .andExpect(request().asyncStarted());
     }

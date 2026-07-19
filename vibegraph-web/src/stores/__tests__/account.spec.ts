@@ -75,7 +75,9 @@ describe('Account Store', () => {
     expect(store.usage).toBeNull()
     expect(store.creditLedger).toEqual([])
     expect(store.projects).toEqual([])
+    expect(store.projectsLoaded).toBe(false)
     expect(store.apiKeys).toEqual([])
+    expect(store.apiKeysLoaded).toBe(false)
     expect(store.reports).toEqual([])
     expect(store.notifications).toEqual([])
     expect(store.notificationDetail).toBeNull()
@@ -301,6 +303,35 @@ describe('Account Store', () => {
     expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(1, 0, 100)
     expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(2, 1, 100)
     expect(store.projects.map((project) => project.id)).toEqual(['project-1', 'project-2'])
+    expect(store.projectsLoaded).toBe(true)
+  })
+
+  it('reuses the loaded repository cache unless a refresh is forced', async () => {
+    mockAccountApi.getProjects.mockResolvedValue({
+      content: [
+        {
+          id: 'project-1',
+          name: 'One',
+          sourceType: 'GITHUB',
+          sizeBytes: 1,
+          status: 'READY',
+          createdAt: null,
+          updatedAt: null,
+          lastAnalyzedAt: null,
+        },
+      ],
+      totalElements: 1,
+      totalPages: 1,
+      pageNumber: 0,
+      pageSize: 100,
+    })
+
+    const store = useAccountStore()
+    await store.fetchProjects()
+    await store.fetchProjects()
+    await store.fetchProjects({ force: true })
+
+    expect(mockAccountApi.getProjects).toHaveBeenCalledTimes(2)
   })
 
   it('changePassword forwards old, new, and confirmation passwords to the API', async () => {
@@ -412,6 +443,18 @@ describe('Account Store', () => {
     expect(store.apiKeys[0]?.disabled).toBe(false)
     expect(store.apiKeys[0]?.disabledAt).toBeNull()
     expect(store.apiKeys[0]?.disabledBy).toBeNull()
+    expect(store.apiKeysLoaded).toBe(true)
+  })
+
+  it('reuses the loaded API key cache until forced', async () => {
+    mockAccountApi.listApiKeys.mockResolvedValue([])
+
+    const store = useAccountStore()
+    await store.fetchApiKeys()
+    await store.fetchApiKeys()
+    await store.fetchApiKeys({ force: true })
+
+    expect(mockAccountApi.listApiKeys).toHaveBeenCalledTimes(2)
   })
 
   it('fetchReports populates reports list', async () => {

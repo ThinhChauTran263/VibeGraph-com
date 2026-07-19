@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
 import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 
 const accountStore = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
 const displayNameInput = ref('')
 const isProfileLoading = ref(!accountStore.profile)
 const profileLoadError = ref('')
@@ -27,7 +29,8 @@ async function loadProfile(): Promise<void> {
     syncDisplayName()
   } catch (error) {
     if (!accountStore.profile) {
-      profileLoadError.value = error instanceof Error ? error.message : 'Failed to load settings.'
+      profileLoadError.value =
+        error instanceof Error ? error.message : t('user.profile.loadFallback')
     }
   } finally {
     isProfileLoading.value = false
@@ -43,6 +46,12 @@ const isChangingPassword = ref(false)
 const profileMessageIsError = ref(false)
 const passwordMessageIsError = ref(false)
 const MIN_PASSWORD_LENGTH = 8
+const roleLabel = computed(() => {
+  const role = accountStore.profile?.role?.trim().toUpperCase()
+  if (!role) return t('user.profile.roleNames.unknown')
+  const roleKey = `user.profile.roleNames.${role.toLowerCase()}`
+  return t(roleKey)
+})
 
 onMounted(() => {
   void loadProfile()
@@ -53,7 +62,7 @@ const updateProfile = async () => {
   profileMessage.value = ''
   profileMessageIsError.value = false
   if (!displayName) {
-    profileMessage.value = 'Display name is required.'
+    profileMessage.value = t('user.profile.displayNameRequired')
     profileMessageIsError.value = true
     return
   }
@@ -61,9 +70,10 @@ const updateProfile = async () => {
   isSubmitting.value = true
   try {
     await accountStore.updateDisplayName(displayName)
-    profileMessage.value = 'Display name updated.'
+    profileMessage.value = t('user.profile.displayNameUpdated')
   } catch (error) {
-    profileMessage.value = error instanceof Error ? error.message : 'Profile update failed.'
+    profileMessage.value =
+      error instanceof Error ? error.message : t('user.profile.profileFallback')
     profileMessageIsError.value = true
   } finally {
     isSubmitting.value = false
@@ -74,17 +84,17 @@ async function submitPasswordChange(): Promise<void> {
   passwordMessage.value = ''
   passwordMessageIsError.value = false
   if (!currentPassword.value || !newPassword.value || !confirmNewPassword.value) {
-    passwordMessage.value = 'Enter your current password, new password, and confirmation.'
+    passwordMessage.value = t('user.profile.passwordFieldsRequired')
     passwordMessageIsError.value = true
     return
   }
   if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
-    passwordMessage.value = `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+    passwordMessage.value = t('user.profile.passwordMinimum', { count: MIN_PASSWORD_LENGTH })
     passwordMessageIsError.value = true
     return
   }
   if (newPassword.value !== confirmNewPassword.value) {
-    passwordMessage.value = 'New password and confirmation do not match.'
+    passwordMessage.value = t('user.profile.passwordMismatch')
     passwordMessageIsError.value = true
     return
   }
@@ -98,9 +108,9 @@ async function submitPasswordChange(): Promise<void> {
     currentPassword.value = ''
     newPassword.value = ''
     confirmNewPassword.value = ''
-    passwordMessage.value = 'Password changed.'
+    passwordMessage.value = t('user.profile.passwordChanged')
   } catch (e) {
-    passwordMessage.value = e instanceof Error ? e.message : 'Password change failed.'
+    passwordMessage.value = e instanceof Error ? e.message : t('user.profile.passwordFallback')
     passwordMessageIsError.value = true
   } finally {
     isChangingPassword.value = false
@@ -111,14 +121,14 @@ async function submitPasswordChange(): Promise<void> {
 <template>
   <div class="settings-view">
     <header class="page-header">
-      <h1>Settings</h1>
-      <p>Manage account identity and password settings.</p>
+      <h1>{{ t('user.profile.title') }}</h1>
+      <p>{{ t('user.profile.description') }}</p>
     </header>
 
     <ErrorAlert
       v-if="profileLoadError"
       role="alert"
-      title="Settings unavailable"
+      :title="t('user.profile.unavailable')"
       :message="profileLoadError"
     >
       <button
@@ -128,26 +138,26 @@ async function submitPasswordChange(): Promise<void> {
         :disabled="isProfileLoading"
         @click="loadProfile"
       >
-        Retry settings
+        {{ t('user.profile.retry') }}
       </button>
     </ErrorAlert>
-    <div v-if="isProfileLoading" class="loading">Loading settings...</div>
+    <div v-if="isProfileLoading" class="loading">{{ t('user.profile.loading') }}</div>
     <div v-else-if="accountStore.profile" class="settings-grid">
       <section class="settings-card">
-        <h3>Account</h3>
+        <h3>{{ t('user.profile.account') }}</h3>
         <div class="info-group">
-          <span class="info-label">Email</span>
+          <span class="info-label">{{ t('user.profile.email') }}</span>
           <div class="info-value">{{ accountStore.profile.email }}</div>
         </div>
 
         <div class="info-group">
-          <span class="info-label">Role</span>
-          <div class="info-value role-badge">{{ accountStore.profile.role }}</div>
+          <span class="info-label">{{ t('user.profile.role') }}</span>
+          <div class="info-value role-badge">{{ roleLabel }}</div>
         </div>
 
         <form class="update-form" @submit.prevent="updateProfile">
           <div class="field">
-            <label for="displayName">Display name</label>
+            <label for="displayName">{{ t('user.profile.displayName') }}</label>
             <div class="input-row">
               <input
                 id="displayName"
@@ -160,7 +170,7 @@ async function submitPasswordChange(): Promise<void> {
                 :aria-describedby="profileMessage ? 'profile-message' : undefined"
               />
               <button type="submit" class="btn-primary" :disabled="isSubmitting">
-                {{ isSubmitting ? 'Updating...' : 'Update' }}
+                {{ isSubmitting ? t('user.profile.updating') : t('user.profile.update') }}
               </button>
             </div>
           </div>
@@ -177,10 +187,10 @@ async function submitPasswordChange(): Promise<void> {
       </section>
 
       <section class="settings-card">
-        <h3>Password</h3>
+        <h3>{{ t('user.profile.password') }}</h3>
         <form class="password-form" @submit.prevent="submitPasswordChange">
           <label class="field" for="current-password">
-            <span>Current password</span>
+            <span>{{ t('user.profile.currentPassword') }}</span>
             <input
               id="current-password"
               v-model="currentPassword"
@@ -194,7 +204,7 @@ async function submitPasswordChange(): Promise<void> {
             />
           </label>
           <label class="field" for="new-password">
-            <span>New password</span>
+            <span>{{ t('user.profile.newPassword') }}</span>
             <input
               id="new-password"
               v-model="newPassword"
@@ -209,7 +219,7 @@ async function submitPasswordChange(): Promise<void> {
             />
           </label>
           <label class="field" for="confirm-new-password">
-            <span>Confirm new password</span>
+            <span>{{ t('user.profile.confirmPassword') }}</span>
             <input
               id="confirm-new-password"
               v-model="confirmNewPassword"
@@ -233,7 +243,7 @@ async function submitPasswordChange(): Promise<void> {
             {{ passwordMessage }}
           </p>
           <button type="submit" class="btn-primary" :disabled="isChangingPassword">
-            {{ isChangingPassword ? 'Changing...' : 'Change password' }}
+            {{ isChangingPassword ? t('user.profile.changing') : t('user.profile.changePassword') }}
           </button>
         </form>
       </section>
@@ -305,7 +315,7 @@ async function submitPasswordChange(): Promise<void> {
   padding: 0.25rem 0.75rem;
   border-radius: var(--vg-radius-sm);
   font-size: var(--vg-text-sm);
-  text-transform: capitalize;
+  text-transform: none;
   color: var(--vg-blue-bright);
 }
 

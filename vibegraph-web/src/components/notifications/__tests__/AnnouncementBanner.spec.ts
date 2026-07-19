@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AnnouncementBanner from '../AnnouncementBanner.vue'
 import type { UserNotification } from '@/types/api'
+import i18n from '@/language'
 
 const mocks = vi.hoisted(() => ({
   listNotifications: vi.fn(),
@@ -49,7 +50,7 @@ describe('AnnouncementBanner', () => {
       .mockRejectedValueOnce(new Error('network unavailable'))
       .mockResolvedValueOnce([announcement])
 
-    const wrapper = mount(AnnouncementBanner)
+    const wrapper = mount(AnnouncementBanner, { global: { plugins: [i18n] } })
     await flushPromises()
 
     expect(wrapper.get('[role="alert"]').text()).toContain(

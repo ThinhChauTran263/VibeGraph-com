@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import UsersTableView from '../UsersTableView.vue'
 import type { AdminUserResponse } from '@/types/api'
+import i18n, { setLocale } from '@/language'
 
 // Stub child components to keep tests focused on UsersTableView logic
 const stubs = {
@@ -34,6 +35,8 @@ const makeUser = (overrides: Partial<AdminUserResponse> = {}): AdminUserResponse
 })
 
 describe('Admin UsersTableView', () => {
+  beforeEach(() => setLocale('en-US'))
+
   it('renders users list correctly', async () => {
     const wrapper = mount(UsersTableView, {
       global: {
@@ -56,6 +59,7 @@ describe('Admin UsersTableView', () => {
               },
             },
           }),
+          i18n,
         ],
       },
     })
@@ -73,7 +77,10 @@ describe('Admin UsersTableView', () => {
     const wrapper = mount(UsersTableView, {
       global: {
         stubs,
-        plugins: [createTestingPinia({ createSpy: vi.fn, initialState: { admin: { users: [] } } })],
+        plugins: [
+          createTestingPinia({ createSpy: vi.fn, initialState: { admin: { users: [] } } }),
+          i18n,
+        ],
       },
     })
     await flushPromises()
@@ -84,7 +91,10 @@ describe('Admin UsersTableView', () => {
     const wrapper = mount(UsersTableView, {
       global: {
         stubs,
-        plugins: [createTestingPinia({ createSpy: vi.fn, initialState: { admin: { users: [] } } })],
+        plugins: [
+          createTestingPinia({ createSpy: vi.fn, initialState: { admin: { users: [] } } }),
+          i18n,
+        ],
       },
     })
     await flushPromises()

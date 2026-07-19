@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import UserLayout from '../UserLayout.vue'
+import i18n, { setLocale } from '@/language'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 
@@ -61,7 +62,10 @@ async function mountLayout(options: MountLayoutOptions = {}) {
   const account = useAccountStore(pinia)
   if (options.sessionState !== undefined) account.sessionState = options.sessionState as typeof account.sessionState
   if (options.sessionStateError) vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
-  const wrapper = mount(UserLayout, { attachTo: document.body, global: { plugins: [router, pinia] } })
+  const wrapper = mount(UserLayout, {
+    attachTo: document.body,
+    global: { plugins: [router, pinia, i18n] },
+  })
   await flushPromises()
   return { wrapper, router, pinia }
 }
@@ -69,6 +73,7 @@ async function mountLayout(options: MountLayoutOptions = {}) {
 describe('UserLayout', () => {
   beforeEach(() => {
     localStorage.clear()
+    setLocale('en-US')
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('900px'),
       media: query,
@@ -152,13 +157,14 @@ describe('UserLayout', () => {
     expect(router.currentRoute.value.name).toBe('login')
   })
 
-  it('fails closed while account access cannot be verified', async () => {
+  it('fails closed with a retry affordance while account access cannot be verified', async () => {
     const { wrapper } = await mountLayout({
       sessionState: null,
       sessionStateError: new Error('Session state unavailable'),
     })
 
-    expect(wrapper.get('[role="status"]').text()).toContain('Checking account access')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Cannot verify account access')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Retry'))).toBe(true)
     expect(wrapper.text()).not.toContain('Overview page')
   })
 

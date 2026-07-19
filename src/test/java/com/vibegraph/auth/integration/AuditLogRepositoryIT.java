@@ -8,18 +8,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.repository.AuditLogRepository;
+import com.vibegraph.auth.service.AuditLogEventPublisher;
+import com.vibegraph.auth.service.AuditLogEventStream;
+import com.vibegraph.auth.service.AuditLogWriter;
+import com.vibegraph.auth.service.AuditRedactor;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = AuditLogRepositoryIT.TestConfig.class)
@@ -49,10 +56,47 @@ class AuditLogRepositoryIT {
     @EntityScan("com.vibegraph.auth.domain")
     @EnableJpaRepositories("com.vibegraph.auth.repository")
     static class TestConfig {
+        @Bean
+        AuditRedactor auditRedactor() {
+            return new AuditRedactor(new ObjectMapper());
+        }
+
+        @Bean
+        AuditLogEventStream auditLogEventStream() {
+            return new AuditLogEventStream();
+        }
+
+        @Bean
+        AuditLogEventPublisher auditLogEventPublisher(AuditLogEventStream stream) {
+            return new AuditLogEventPublisher(stream, java.time.Clock.systemUTC());
+        }
+
+        @Bean
+        AuditLogWriter auditLogWriter(
+                AuditLogRepository repository, AuditRedactor redactor, AuditLogEventPublisher publisher) {
+            return new AuditLogWriter(repository, redactor, publisher);
+        }
     }
 
     @Autowired AuditLogRepository auditLogRepository;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired TransactionTemplate transactionTemplate;
+    @Autowired AuditLogWriter auditLogWriter;
+
+    @Test
+    @DisplayName("audit survives rollback of the surrounding business transaction")
+    void write_outerTransactionRollsBack_auditRemainsCommitted() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () ->
+                transactionTemplate.executeWithoutResult(status -> {
+                    auditLogWriter.write(
+                            "PLAN_DELETE", null, null, "PLAN", "LEGACY", "SUCCESS", null,
+                            java.util.Map.of("operation", "DELETE"));
+                    throw new IllegalStateException("rollback business transaction");
+                }));
+
+        assertThat(auditLogRepository.findAll())
+                .anySatisfy(log -> assertThat(log.getAction()).isEqualTo("PLAN_DELETE"));
+    }
 
     @Test
     @DisplayName("listing without optional filters works on PostgreSQL")
@@ -67,8 +111,6 @@ class AuditLogRepositoryIT {
                 PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         assertThat(result.getContent())
-                .hasSize(1)
-                .first()
-                .satisfies(log -> assertThat(log.getAction()).isEqualTo("LOGIN"));
+                .anySatisfy(log -> assertThat(log.getAction()).isEqualTo("LOGIN"));
     }
 }

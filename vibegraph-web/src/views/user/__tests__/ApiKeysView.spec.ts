@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ApiKeysView from '../ApiKeysView.vue'
 import { useAccountStore } from '@/stores/account'
+import i18n, { setLocale } from '@/language'
 
 const featureMocks = vi.hoisted(() => ({
   enabled: true,
@@ -30,11 +31,13 @@ const dialogStub = {
     '<button v-if="open" :data-test="title === \'Delete API key\' ? \'confirm-delete\' : \'confirm-disable\'" @click="$emit(\'confirm\')">Confirm {{ title }}</button>',
 }
 
-function mountView(projectsError?: Error) {
+function mountView(projectsError?: Error, loaded = false) {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
     initialState: {
       account: {
+        projectsLoaded: loaded,
+        apiKeysLoaded: loaded,
         projects: [
           { id: 'project-1', name: 'VibeGraph Web' },
           { id: 'project-2', name: 'Fresh Project' },
@@ -76,7 +79,7 @@ function mountView(projectsError?: Error) {
   }
   return {
     wrapper: mount(ApiKeysView, {
-      global: { plugins: [pinia], stubs: { AdminConfirmDialog: dialogStub } },
+      global: { plugins: [pinia, i18n], stubs: { AdminConfirmDialog: dialogStub } },
     }),
     pinia,
   }
@@ -98,6 +101,17 @@ describe('ApiKeysView', () => {
     expect(wrapper.text()).toContain('Repository: VibeGraph Web')
     expect(wrapper.text()).toContain('No repository binding')
     expect(wrapper.text()).not.toContain('secretKey')
+  })
+
+  it('uses cached keys and repositories when returning to the page', async () => {
+    const { wrapper, pinia } = mountView(undefined, true)
+    const store = useAccountStore(pinia)
+    await flushPromises()
+
+    expect(store.fetchApiKeys).not.toHaveBeenCalled()
+    expect(store.fetchProjects).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Production CLI')
+    expect(wrapper.text()).toContain('Repository: VibeGraph Web')
   })
 
   it('selects a repository before creating a project-bound key', async () => {

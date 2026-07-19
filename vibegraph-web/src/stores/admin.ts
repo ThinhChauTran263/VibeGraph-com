@@ -28,10 +28,11 @@ import type {
 } from '../types/api'
 import { adminApi, api } from '../lib/api'
 
-export type SecurityLiveStatus = 'connected' | 'reconnecting' | 'paused'
+export type SecurityLiveStatus = 'connected' | 'reconnecting' | 'polling' | 'paused'
 
 const SECURITY_EVENT_LIMIT = 100
 const SECURITY_AGGREGATE_DEBOUNCE_MS = 1500
+const AUDIT_POLLING_INTERVAL_MS = 10000
 
 export const useAdminStore = defineStore('admin', () => {
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ export const useAdminStore = defineStore('admin', () => {
   const auditLogs = ref<AdminAuditLog[]>([])
   const auditLogDetail = ref<AdminAuditLog | null>(null)
   const auditRetention = ref<AdminAuditRetention | null>(null)
+  const auditLiveStatus = ref<SecurityLiveStatus>('paused')
   const loading = ref(false)
   const error = ref<Error | null>(null)
   const securityLimits = {
@@ -81,7 +83,9 @@ export const useAdminStore = defineStore('admin', () => {
     pageSize: 20,
   })
   let securityEventSource: EventSource | null = null
+  let auditEventSource: EventSource | null = null
   let securityAggregateRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  let auditPollTimer: ReturnType<typeof setInterval> | null = null
 
   // ─── Overview ─────────────────────────────────────────────────────────────────
 
@@ -549,6 +553,108 @@ export const useAdminStore = defineStore('admin', () => {
     auditPagination.value = paginationMeta(result)
   }
 
+  function startAuditStream(): void {
+    if (auditEventSource) return
+    if (typeof EventSource === 'undefined') {
+      startAuditPolling()
+      return
+    }
+    auditLiveStatus.value = 'reconnecting'
+    const source = new EventSource(`${api.baseUrl}/api/admin/audit-logs/stream`, {
+      withCredentials: true,
+    })
+    auditEventSource = source
+    source.onopen = () => {
+      if (auditEventSource !== source) return
+      stopAuditPolling()
+      auditLiveStatus.value = 'connected'
+    }
+    source.onerror = () => {
+      if (auditEventSource !== source) return
+      startAuditPolling()
+      if (source.readyState === EventSource.CLOSED) {
+        source.close()
+        if (auditEventSource === source) auditEventSource = null
+      }
+    }
+    source.addEventListener('audit-log', handleLiveAuditLog)
+  }
+
+  function stopAuditStream(): void {
+    auditEventSource?.close()
+    auditEventSource = null
+    stopAuditPolling()
+    auditLiveStatus.value = 'paused'
+  }
+
+  function startAuditPolling(): void {
+    auditLiveStatus.value = 'polling'
+    if (auditPollTimer) return
+    auditPollTimer = setInterval(() => {
+      void fetchAuditLogs(auditQuery).catch(() => {
+        if (!auditEventSource) auditLiveStatus.value = 'paused'
+      })
+    }, AUDIT_POLLING_INTERVAL_MS)
+  }
+
+  function stopAuditPolling(): void {
+    if (auditPollTimer) clearInterval(auditPollTimer)
+    auditPollTimer = null
+  }
+
+  function handleLiveAuditLog(event: Event): void {
+    const data = 'data' in event && typeof event.data === 'string' ? event.data : null
+    if (!data) return
+    try {
+      const parsed: unknown = JSON.parse(data)
+      if (!isAdminAuditLog(parsed) || !matchesAuditQuery(parsed)) return
+      const currentPage = auditPagination.value.pageNumber ?? auditPagination.value.page ?? auditQuery.page ?? 0
+      if (currentPage !== 0) return
+      const existing = auditLogs.value.some((log) => log.id === parsed.id)
+      const size = auditPagination.value.pageSize ?? auditPagination.value.size ?? auditQuery.size ?? 50
+      auditLogs.value = [parsed, ...auditLogs.value.filter((log) => log.id !== parsed.id)].slice(0, size)
+      if (!existing) updateAuditPaginationForNewRow(size)
+    } catch {
+      // Ignore malformed stream frames while keeping the connection alive.
+    }
+  }
+
+  function matchesAuditQuery(log: AdminAuditLog): boolean {
+    if (auditQuery.action && log.action !== auditQuery.action) return false
+    if (auditQuery.outcome && log.outcome !== auditQuery.outcome) return false
+    if (auditQuery.actorUserId && log.actorUserId !== auditQuery.actorUserId) return false
+    if (auditQuery.targetUserId && log.targetUserId !== auditQuery.targetUserId) return false
+    if (!log.createdAt) return !auditQuery.from && !auditQuery.to
+    const createdAt = Date.parse(log.createdAt)
+    if (auditQuery.from && createdAt < Date.parse(auditQuery.from)) return false
+    return !auditQuery.to || createdAt <= Date.parse(auditQuery.to)
+  }
+
+  function updateAuditPaginationForNewRow(pageSize: number): void {
+    const totalElements = auditPagination.value.totalElements + 1
+    auditPagination.value = {
+      ...auditPagination.value,
+      totalElements,
+      totalPages: Math.ceil(totalElements / pageSize),
+    }
+  }
+
+  function isAdminAuditLog(value: unknown): value is AdminAuditLog {
+    if (!isRecord(value)) return false
+    return (
+      typeof value.id === 'string' &&
+      typeof value.action === 'string' &&
+      isNullableString(value.actorUserId) &&
+      isNullableString(value.targetUserId) &&
+      isNullableString(value.targetType) &&
+      isNullableString(value.targetId) &&
+      typeof value.outcome === 'string' &&
+      isNullableString(value.ipAddress) &&
+      isNullableString(value.details) &&
+      isNullableString(value.createdAt)
+    )
+  }
+
   async function refreshAudit(): Promise<void> {
     await Promise.all([fetchAuditLogs(auditQuery), fetchAuditRetention()])
   }
@@ -613,6 +719,7 @@ export const useAdminStore = defineStore('admin', () => {
     auditLogs,
     auditLogDetail,
     auditRetention,
+    auditLiveStatus,
     auditPagination,
     loading,
     error,
@@ -665,6 +772,8 @@ export const useAdminStore = defineStore('admin', () => {
     updateIpBlock,
     deleteIpBlock,
     fetchAuditLogs,
+    startAuditStream,
+    stopAuditStream,
     refreshAudit,
     fetchAuditLogDetail,
     fetchAuditRetention,

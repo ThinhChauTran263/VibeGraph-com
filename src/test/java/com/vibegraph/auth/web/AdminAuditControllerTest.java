@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
+import com.vibegraph.auth.service.AuditLogEventStream;
 import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 
@@ -30,13 +31,25 @@ class AdminAuditControllerTest {
 
     private MockMvc mockMvc;
     private AuditService auditService;
+    private AuditLogEventStream auditLogEventStream;
 
     @BeforeEach
     void setUp() {
         auditService = Mockito.mock(AuditService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new AdminAuditController(auditService))
+        auditLogEventStream = Mockito.mock(AuditLogEventStream.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new AdminAuditController(auditService, auditLogEventStream))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    @DisplayName("stream opens an SSE response")
+    void stream_succeeds() throws Exception {
+        when(auditLogEventStream.subscribe()).thenReturn(new org.springframework.web.servlet.mvc.method.annotation.SseEmitter());
+
+        mockMvc.perform(get("/api/admin/audit-logs/stream"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted());
     }
 
     @Test

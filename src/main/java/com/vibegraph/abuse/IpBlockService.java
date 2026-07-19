@@ -21,11 +21,6 @@ public class IpBlockService {
     private final Clock clock;
     private final AuditService auditService;
 
-    public IpBlockService(IpBlockRepository repository, CurrentUser currentUser, Clock clock) {
-        this(repository, currentUser, clock, null);
-    }
-
-    @org.springframework.beans.factory.annotation.Autowired
     public IpBlockService(IpBlockRepository repository, CurrentUser currentUser, Clock clock,
             AuditService auditService) {
         this.repository = repository;
@@ -75,11 +70,10 @@ public class IpBlockService {
 
     @Transactional
     public void remove(UUID id) {
-        if (!repository.existsById(id)) {
-            throw new IllegalArgumentException("IP block not found");
-        }
-        repository.deleteById(id);
-        audit("IP_UNBLOCK", id.toString());
+        IpBlock block = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("IP block not found"));
+        repository.delete(block);
+        audit("IP_UNBLOCK", block.getIpAddress());
     }
 
     private String exactIp(String value) {
@@ -94,8 +88,6 @@ public class IpBlockService {
     }
 
     private void audit(String action, String target) {
-        if (auditService != null) {
-            auditService.recordCurrentUser(action, null, "IP_ADDRESS", target, java.util.Map.of());
-        }
+        auditService.recordCurrentUser(action, null, "IP_ADDRESS", target, java.util.Map.of());
     }
 }

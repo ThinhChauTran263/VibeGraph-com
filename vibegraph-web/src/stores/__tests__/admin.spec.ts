@@ -102,6 +102,11 @@ class MockEventSource {
     for (const listener of this.listeners.get('request-event') ?? []) listener(event)
   }
 
+  emitAudit(data: string): void {
+    const event = new MessageEvent('audit-log', { data })
+    for (const listener of this.listeners.get('audit-log') ?? []) listener(event)
+  }
+
   private onError(event: Event): void {
     this.onerror?.(event)
   }
@@ -375,6 +380,125 @@ describe('Admin Store', () => {
     expect(mockAdminApi.listAuditLogs).toHaveBeenCalled()
     expect(mockAdminApi.getAuditRetention).toHaveBeenCalled()
     expect(store.auditRetention?.retentionDays).toBe(180)
+  })
+
+  it('prepends matching live audit rows only on the first filtered page', async () => {
+    const existing = {
+      id: 'audit-existing',
+      action: 'USER_BLOCK',
+      actorUserId: 'admin-1',
+      targetUserId: 'user-1',
+      targetType: 'USER',
+      targetId: 'user-1',
+      outcome: 'SUCCESS',
+      ipAddress: '127.0.0.1',
+      details: '{}',
+      createdAt: '2026-07-19T09:00:00Z',
+    }
+    mockAdminApi.listAuditLogs.mockResolvedValueOnce({
+      content: [existing],
+      totalElements: 1,
+      totalPages: 1,
+      pageNumber: 0,
+      pageSize: 2,
+    })
+    const store = useAdminStore()
+    await store.fetchAuditLogs({ action: 'USER_BLOCK', outcome: 'SUCCESS', page: 0, size: 2 })
+    store.auditLogDetail = existing
+    store.startAuditStream()
+    const source = MockEventSource.instances[0]
+    const live = {
+      ...existing,
+      id: 'audit-live',
+      targetUserId: 'user-2',
+      targetId: 'user-2',
+      details: null,
+      createdAt: '2026-07-19T10:00:00Z',
+    }
+
+    source?.emitAudit(JSON.stringify(live))
+
+    expect(store.auditLogs.map((log) => log.id)).toEqual(['audit-live', 'audit-existing'])
+    expect(store.auditPagination.totalElements).toBe(2)
+    expect(store.auditLogDetail?.id).toBe('audit-existing')
+
+    source?.emitAudit(JSON.stringify({ ...live, id: 'audit-nonmatch', action: 'USER_UNBLOCK' }))
+    expect(store.auditLogs.map((log) => log.id)).toEqual(['audit-live', 'audit-existing'])
+  })
+
+  it('keeps later audit pages unchanged when a live row arrives', async () => {
+    const pageRow = {
+      id: 'audit-page-two',
+      action: 'USER_BLOCK',
+      actorUserId: 'admin-1',
+      targetUserId: 'user-3',
+      targetType: 'USER',
+      targetId: 'user-3',
+      outcome: 'SUCCESS',
+      ipAddress: '127.0.0.1',
+      details: '{}',
+      createdAt: '2026-07-18T10:00:00Z',
+    }
+    mockAdminApi.listAuditLogs.mockResolvedValueOnce({
+      content: [pageRow],
+      totalElements: 51,
+      totalPages: 2,
+      pageNumber: 1,
+      pageSize: 50,
+    })
+    const store = useAdminStore()
+    await store.fetchAuditLogs({ action: 'USER_BLOCK', page: 1, size: 50 })
+    store.startAuditStream()
+
+    MockEventSource.instances[0]?.emitAudit(JSON.stringify({ ...pageRow, id: 'audit-live' }))
+
+    expect(store.auditLogs).toEqual([pageRow])
+    expect(store.auditPagination.pageNumber).toBe(1)
+  })
+
+  it('tracks audit stream connection state, falls back to polling, and closes it on stop', async () => {
+    vi.useFakeTimers()
+    mockAdminApi.listAuditLogs.mockResolvedValue({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      pageNumber: 0,
+      pageSize: 50,
+    })
+    const store = useAdminStore()
+    store.startAuditStream()
+    const source = MockEventSource.instances[0]
+    source?.emitOpen()
+    expect(store.auditLiveStatus).toBe('connected')
+
+    source?.emitError()
+    expect(store.auditLiveStatus).toBe('polling')
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockAdminApi.listAuditLogs).toHaveBeenCalledWith({ page: 0, size: 50 })
+
+    store.stopAuditStream()
+    expect(source?.close).toHaveBeenCalledTimes(1)
+    expect(store.auditLiveStatus).toBe('paused')
+  })
+
+  it('uses audit polling when EventSource is unavailable', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('EventSource', undefined)
+    mockAdminApi.listAuditLogs.mockResolvedValue({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      pageNumber: 0,
+      pageSize: 50,
+    })
+    const store = useAdminStore()
+
+    store.startAuditStream()
+
+    expect(store.auditLiveStatus).toBe('polling')
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockAdminApi.listAuditLogs).toHaveBeenCalledWith({ page: 0, size: 50 })
+    store.stopAuditStream()
   })
 
   it('stores and rethrows admin request errors', async () => {

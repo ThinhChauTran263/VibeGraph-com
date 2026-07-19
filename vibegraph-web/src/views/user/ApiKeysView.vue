@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { ApiKeyCreated } from '@/types/api'
 import { accountApi } from '@/lib/api'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+const { t } = useI18n({ useScope: 'global' })
 const account = useAccountStore(),
   open = ref(false),
   name = ref(''),
@@ -17,7 +19,7 @@ const account = useAccountStore(),
   enablingId = ref<string | null>(null),
   deleteId = ref<string | null>(null),
   deleting = ref(false),
-  projectsLoaded = ref(false),
+  projectsLoaded = ref(account.projectsLoaded),
   projectsLoadError = ref(''),
   message = ref('')
 const capability = useFeatureAvailability('api_keys.create.global')
@@ -30,10 +32,8 @@ const selectedProjectKey = computed(() =>
 const selectedProjectReason = computed(() => {
   const key = selectedProjectKey.value
   if (!key) return null
-  if (key.locked) {
-    return 'This project has an admin-locked key. An administrator must unlock it before replacement.'
-  }
-  return 'Delete the existing key for this project before creating a replacement.'
+  if (key.locked) return t('user.apiKeys.duplicateLocked')
+  return t('user.apiKeys.duplicateExisting')
 })
 const createDisabled = computed(
   () =>
@@ -45,19 +45,28 @@ const createDisabled = computed(
 const reason = computed(() => {
   if (!capability.value.enabled) return capability.value.reason
   if (projectsLoadError.value) return projectsLoadError.value
-  if (!projectsLoaded.value) return 'Checking repository availability before creating a key.'
-  if (!account.projects.length) return 'Import a repository before creating a project-bound API key.'
+  if (!projectsLoaded.value) return t('user.apiKeys.checkingRepositories')
+  if (!account.projects.length) return t('user.apiKeys.importFirst')
   return null
 })
 async function loadProjects(): Promise<void> {
+  if (account.projectsLoaded) {
+    projectsLoaded.value = true
+    projectsLoadError.value = ''
+    return
+  }
   projectsLoaded.value = false
   projectsLoadError.value = ''
   try {
     await account.fetchProjects()
     projectsLoaded.value = true
   } catch (error) {
-    projectsLoadError.value = error instanceof Error ? error.message : 'Repositories could not be loaded.'
+    projectsLoadError.value = error instanceof Error ? error.message : t('user.apiKeys.loadFallback')
   }
+}
+async function loadApiKeys(): Promise<void> {
+  if (account.apiKeysLoaded) return
+  await account.fetchApiKeys()
 }
 const canSubmit = computed(
   () =>
@@ -68,7 +77,7 @@ const canSubmit = computed(
     !createDisabled.value,
 )
 onMounted(() => {
-  void Promise.allSettled([account.fetchApiKeys(), loadProjects(), refreshFeatureAvailability()])
+  void Promise.allSettled([loadApiKeys(), loadProjects(), refreshFeatureAvailability()])
 })
 async function create() {
   if (!canSubmit.value) return
@@ -81,7 +90,7 @@ async function create() {
     name.value = ''
     projectId.value = ''
   } catch (e) {
-    message.value = e instanceof Error ? e.message : 'API key creation failed.'
+    message.value = e instanceof Error ? e.message : t('user.apiKeys.createFallback')
   } finally {
     creating.value = false
   }
@@ -93,9 +102,9 @@ async function disable() {
   try {
     await account.disableApiKey(disableId.value)
     disableId.value = null
-    message.value = 'API key disabled.'
+    message.value = t('user.apiKeys.disabledMessage')
   } catch (error) {
-    message.value = error instanceof Error ? error.message : 'Could not disable this API key.'
+    message.value = error instanceof Error ? error.message : t('user.apiKeys.disableFallback')
   } finally {
     disabling.value = false
   }
@@ -111,9 +120,9 @@ async function enable(id: string) {
       await accountApi.enableApiKey(id)
       await account.fetchApiKeys()
     }
-    message.value = 'API key enabled.'
+    message.value = t('user.apiKeys.enabledMessage')
   } catch (error) {
-    message.value = error instanceof Error ? error.message : 'Could not enable this API key.'
+    message.value = error instanceof Error ? error.message : t('user.apiKeys.enableFallback')
   } finally {
     enablingId.value = null
   }
@@ -125,9 +134,9 @@ async function remove() {
   try {
     await account.deleteApiKey(deleteId.value)
     deleteId.value = null
-    message.value = 'API key deleted. You can now create a replacement for this project.'
+    message.value = t('user.apiKeys.deletedMessage')
   } catch (error) {
-    message.value = error instanceof Error ? error.message : 'Could not delete this API key.'
+    message.value = error instanceof Error ? error.message : t('user.apiKeys.deleteFallback')
   } finally {
     deleting.value = false
   }
@@ -136,9 +145,9 @@ async function copy() {
   if (!secret.value) return
   try {
     await navigator.clipboard.writeText(secret.value.secretKey)
-    message.value = 'Secret copied.'
+    message.value = t('user.apiKeys.secretCopied')
   } catch {
-    message.value = 'Could not copy the secret. Select it and copy it manually.'
+    message.value = t('user.apiKeys.secretCopyFailed')
   }
 }
 </script>
@@ -146,9 +155,9 @@ async function copy() {
   <section class="keys" aria-labelledby="api-keys-title">
     <header>
       <div>
-        <span class="eyebrow">Developer access</span>
-        <h1 id="api-keys-title">API Keys</h1>
-        <p>Keys identify a repository when tools connect to VibeGraph.</p>
+        <span class="eyebrow">{{ t('user.apiKeys.eyebrow') }}</span>
+        <h1 id="api-keys-title">{{ t('user.apiKeys.title') }}</h1>
+        <p>{{ t('user.apiKeys.description') }}</p>
       </div>
       <button
         data-test="create-api-key"
@@ -158,34 +167,34 @@ async function copy() {
         :aria-describedby="createDisabled ? 'key-disabled' : undefined"
         @click="open = true"
       >
-        <AppIcon name="plus" />Create key
+        <AppIcon name="plus" />{{ t('user.apiKeys.create') }}
       </button>
     </header>
     <p v-if="reason" id="key-disabled" class="disabled-note">{{ reason }}</p>
     <section v-if="secret" class="secret" aria-labelledby="secret-title">
       <div>
-        <h2 id="secret-title">Copy this secret now</h2>
-        <p>It is shown once and is never stored in this list.</p>
+        <h2 id="secret-title">{{ t('user.apiKeys.secretTitle') }}</h2>
+        <p>{{ t('user.apiKeys.secretDescription') }}</p>
       </div>
       <code>{{ secret.secretKey }}</code
-      ><button type="button" @click="copy">Copy secret</button>
+      ><button type="button" @click="copy">{{ t('user.apiKeys.secretCopy') }}</button>
     </section>
     <p v-if="message" role="status" class="note">{{ message }}</p>
     <section class="list">
-      <h2>Your keys</h2>
-      <div v-if="!account.apiKeys.length" class="empty">No API keys created.</div>
+      <h2>{{ t('user.apiKeys.yourKeys') }}</h2>
+      <div v-if="!account.apiKeys.length" class="empty">{{ t('user.apiKeys.empty') }}</div>
       <article v-for="key in account.apiKeys" :key="key.id">
         <div class="key-main">
           <strong>{{ key.name }}</strong
           ><code>{{ key.keyPrefix }}</code>
         </div>
         <span>
-          {{ key.project ? `Repository: ${key.project.name}` : 'No repository binding' }}
+          {{ key.project ? t('user.apiKeys.repository', { name: key.project.name }) : t('user.apiKeys.noRepository') }}
         </span
         ><span class="key-state" :class="{ off: key.disabled }">
-          {{ key.disabled ? 'Disabled' : 'Active' }}
-          <strong v-if="key.locked" class="locked-badge">Admin locked</strong>
-          <small v-if="key.disabledBy">Disabled by {{ key.disabledBy }}</small>
+          {{ key.disabled ? t('user.apiKeys.disabled') : t('user.apiKeys.active') }}
+          <strong v-if="key.locked" class="locked-badge">{{ t('user.apiKeys.adminLocked') }}</strong>
+          <small v-if="key.disabledBy">{{ t('user.apiKeys.disabledBy', { actor: key.disabledBy }) }}</small>
         </span
         ><time>{{ new Date(key.createdAt).toLocaleDateString() }}</time
         ><div class="key-actions">
@@ -194,29 +203,29 @@ async function copy() {
             type="button"
             :data-test="`enable-key-${key.id}`"
             :disabled="enablingId === key.id"
-            :aria-label="`Enable API key ${key.name}`"
+            :aria-label="t('user.apiKeys.enableAria', { name: key.name })"
             @click="enable(key.id)"
           >
-            {{ enablingId === key.id ? 'Enabling...' : 'Enable' }}
+            {{ enablingId === key.id ? t('user.apiKeys.enabling') : t('user.apiKeys.enable') }}
           </button>
           <button
             v-if="!key.disabled"
             type="button"
             :data-test="`disable-key-${key.id}`"
-            :aria-label="`Disable API key ${key.name}`"
+            :aria-label="t('user.apiKeys.disableAria', { name: key.name })"
             @click="disableId = key.id"
           >
-            Disable
+            {{ t('user.apiKeys.disable') }}
           </button>
           <button
             type="button"
             :data-test="`delete-key-${key.id}`"
             :disabled="key.canDelete === false || key.locked"
-            :title="key.canDelete === false || key.locked ? 'Admin-locked keys cannot be deleted.' : undefined"
-            :aria-label="`Delete API key ${key.name}`"
+            :title="key.canDelete === false || key.locked ? t('user.apiKeys.lockedDelete') : undefined"
+            :aria-label="t('user.apiKeys.deleteAria', { name: key.name })"
             @click="deleteId = key.id"
           >
-            Delete
+            {{ t('user.apiKeys.delete') }}
           </button>
         </div>
       </article>
@@ -231,39 +240,39 @@ async function copy() {
     >
       <form @submit.prevent="create">
         <div class="modal__head">
-          <h2 id="create-key-title">Create project API key</h2>
-          <button type="button" aria-label="Close create key dialog" @click="open = false">
+          <h2 id="create-key-title">{{ t('user.apiKeys.createTitle') }}</h2>
+          <button type="button" :aria-label="t('user.apiKeys.closeDialog')" @click="open = false">
             <AppIcon name="close" />
           </button>
         </div>
-        <label for="key-name">Key name</label
-        ><input id="key-name" v-model="name" required placeholder="Production CLI" /><label
+        <label for="key-name">{{ t('user.apiKeys.keyName') }}</label
+        ><input id="key-name" v-model="name" required :placeholder="t('user.apiKeys.keyPlaceholder')" /><label
           for="key-project"
-          >Repository</label
+          >{{ t('user.apiKeys.repositoryLabel') }}</label
         ><select id="key-project" v-model="projectId" required>
-          <option value="" disabled>Select a repository</option>
+          <option value="" disabled>{{ t('user.apiKeys.selectRepository') }}</option>
           <option
             v-for="project in account.projects"
             :key="project.id"
             :value="project.id"
           >
-            {{ project.name }}{{ existingProjectIds.has(project.id) ? ' - existing key must be deleted' : '' }}
+            {{ project.name }}{{ existingProjectIds.has(project.id) ? ` - ${t('user.apiKeys.existingKey')}` : '' }}
           </option>
         </select>
-        <p v-if="!account.projects.length">Import a repository before creating a key.</p>
+        <p v-if="!account.projects.length">{{ t('user.apiKeys.importFirst') }}</p>
         <p v-if="selectedProjectReason" data-test="duplicate-project-reason" class="form-warning">
           {{ selectedProjectReason }}
         </p>
         <button class="primary" type="submit" :disabled="!canSubmit">
-          {{ creating ? 'Creating...' : 'Create key' }}
+          {{ creating ? t('user.apiKeys.creating') : t('user.apiKeys.create') }}
         </button>
       </form>
     </div>
     <AdminConfirmDialog
       :open="Boolean(disableId)"
-      title="Disable API key"
-      message="This key will stop working immediately."
-      confirm-label="Disable key"
+      :title="t('user.apiKeys.disableTitle')"
+      :message="t('user.apiKeys.disableMessage')"
+      :confirm-label="t('user.apiKeys.disableConfirm')"
       tone="danger"
       :busy="disabling"
       @cancel="disableId = null"
@@ -271,9 +280,9 @@ async function copy() {
     />
     <AdminConfirmDialog
       :open="Boolean(deleteId)"
-      title="Delete API key"
-      message="Delete this key permanently? A replacement can be created for its project after deletion."
-      confirm-label="Delete key"
+      :title="t('user.apiKeys.deleteTitle')"
+      :message="t('user.apiKeys.deleteMessage')"
+      :confirm-label="t('user.apiKeys.deleteConfirm')"
       tone="danger"
       :busy="deleting"
       @cancel="deleteId = null"

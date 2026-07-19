@@ -5,6 +5,7 @@ import DashboardView from '../DashboardView.vue'
 import { buildPeriodSeries } from '../dashboard-chart-utils'
 import type { AdminOverview } from '@/types/api'
 import { useAdminStore } from '@/stores/admin'
+import i18n, { setLocale } from '@/language'
 
 vi.mock('vue-echarts', () => ({
   default: {
@@ -17,6 +18,7 @@ vi.mock('vue-echarts', () => ({
 describe('Admin DashboardView', () => {
   beforeEach(() => {
     sessionStorage.clear()
+    setLocale('en-US')
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 6, 17, 13, 5, 30))
     setVisibility('visible')
@@ -37,6 +39,7 @@ describe('Admin DashboardView', () => {
               admin: { overview: createOverview() },
             },
           }),
+          i18n,
         ],
       },
     })
@@ -117,6 +120,7 @@ describe('Admin DashboardView', () => {
               },
             },
           }),
+          i18n,
         ],
       },
     })
@@ -143,6 +147,7 @@ describe('Admin DashboardView', () => {
             createSpy: vi.fn,
             initialState: { admin: { overview: createOverview() } },
           }),
+          i18n,
         ],
       },
     })
@@ -226,6 +231,7 @@ function mountDashboard(overview: AdminOverview) {
           createSpy: vi.fn,
           initialState: { admin: { overview } },
         }),
+        i18n,
       ],
     },
   })

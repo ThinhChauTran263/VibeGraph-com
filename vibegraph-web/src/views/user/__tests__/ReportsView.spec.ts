@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { nextTick, ref } from 'vue'
 import ReportsView from '../ReportsView.vue'
 import { useAccountStore } from '@/stores/account'
 import type { Report, ReportRealtimeEvent } from '@/types/api'
+import i18n from '@/language'
 
 const realtime = vi.hoisted(() => ({
   emit: null as ((event: ReportRealtimeEvent) => void) | null,
@@ -49,6 +50,7 @@ function mountView(reports: Report[] = []) {
           createSpy: vi.fn,
           initialState: { account: { reports } },
         }),
+        i18n,
       ],
     },
   })

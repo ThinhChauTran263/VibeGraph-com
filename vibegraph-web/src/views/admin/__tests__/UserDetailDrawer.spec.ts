@@ -4,6 +4,7 @@ import { createTestingPinia } from '@pinia/testing'
 import UserDetailDrawer from '../UserDetailDrawer.vue'
 import type { AdminUserResponse } from '@/types/api'
 import { useAdminStore } from '@/stores/admin'
+import i18n, { setLocale } from '@/language'
 
 const stubs = {
   StatusChip: {
@@ -41,6 +42,7 @@ const makeUser = (overrides: Partial<AdminUserResponse> = {}): AdminUserResponse
 describe('Admin UserDetailDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setLocale('en-US')
   })
 
   const mountDrawer = (user: AdminUserResponse | null = makeUser()) => {
@@ -50,7 +52,7 @@ describe('Admin UserDetailDrawer', () => {
     return { wrapper: mount(UserDetailDrawer, {
       global: {
         stubs,
-        plugins: [pinia],
+        plugins: [pinia, i18n],
       },
       props: {
         isOpen: true,
@@ -139,7 +141,7 @@ describe('Admin UserDetailDrawer', () => {
 
   it('does not render when closed', () => {
     const wrapper = mount(UserDetailDrawer, {
-      global: { stubs, plugins: [createTestingPinia({ createSpy: vi.fn })] },
+      global: { stubs, plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
       props: { isOpen: false, user: makeUser() },
     })
     expect(wrapper.find('.drawer-overlay').exists()).toBe(false)

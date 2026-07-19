@@ -14,6 +14,7 @@ import com.vibegraph.auth.CurrentUser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,5 +70,8 @@ class AdminAnnouncementServiceTest {
 
         assertEquals("Ops Admin", response.creatorDisplayName());
         assertEquals("ops@test.local", response.creatorEmail());
+        verify(auditService).recordCurrentUser(
+                "ANNOUNCEMENT_CREATE", null, "ANNOUNCEMENT", response.id().toString(),
+                java.util.Map.of("type", "GENERAL", "severity", "INFO"));
     }
 }

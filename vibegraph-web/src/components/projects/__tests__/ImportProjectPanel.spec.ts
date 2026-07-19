@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ImportProjectPanel from '../ImportProjectPanel.vue'
+import i18n from '@/language'
 
 const formStubs = {
   AddProjectLocal: { template: '<div data-test="local-form" />' },
@@ -12,7 +13,7 @@ describe('ImportProjectPanel', () => {
   it('selects the first enabled method instead of rendering a disabled form', async () => {
     const wrapper = mount(ImportProjectPanel, {
       props: { disabledMethods: { local: 'Local imports are disabled.' } },
-      global: { stubs: formStubs },
+      global: { plugins: [i18n], stubs: formStubs },
     })
 
     expect(wrapper.get('[data-test="import-tab-local"]').attributes()).toHaveProperty('disabled')
@@ -29,7 +30,7 @@ describe('ImportProjectPanel', () => {
           github: 'Capability unavailable.',
         },
       },
-      global: { stubs: formStubs },
+      global: { plugins: [i18n], stubs: formStubs },
     })
 
     expect(wrapper.get('[role="status"]').text()).toContain('No import method is currently available')
