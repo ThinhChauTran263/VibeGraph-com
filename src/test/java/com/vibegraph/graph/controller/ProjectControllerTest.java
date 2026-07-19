@@ -22,7 +22,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.hamcrest.Matchers.containsString;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
@@ -36,8 +38,12 @@ import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
+import com.vibegraph.auth.dto.ApiKeyCreateResponse;
+import com.vibegraph.auth.dto.ProjectBindingResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -61,6 +67,7 @@ class ProjectControllerTest {
     private AccountSettingsService accountSettingsService;
     private com.vibegraph.auth.service.FeatureGateService featureGateService;
     private com.vibegraph.auth.service.ProjectUsageService projectUsageService;
+    private CliRepositoryService cliRepositoryService;
 
     @BeforeEach
     void setUp() {
@@ -74,12 +81,42 @@ class ProjectControllerTest {
         accountSettingsService = Mockito.mock(AccountSettingsService.class);
         featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
         projectUsageService = Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class);
+        cliRepositoryService = Mockito.mock(CliRepositoryService.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator, currentUser, accountSettingsService, featureGateService, projectUsageService);
+                deletionOrchestrator, currentUser, accountSettingsService, featureGateService, projectUsageService,
+                cliRepositoryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/cli-setup returns one-time key and no-store cache policy")
+    void shouldCreateCliRepositorySetup() throws Exception {
+        ProjectResponse project = ProjectResponse.builder()
+                .id("cli123").name("CLI Repo").rootPath("/tmp/cli/source").status("CREATED").build();
+        ApiKeyCreateResponse apiKey = new ApiKeyCreateResponse(
+                UUID.randomUUID(),
+                "vbg_abcd1234",
+                "CLI Repo CLI",
+                "vbg_fullsecret",
+                new ProjectBindingResponse("cli123", "CLI Repo", "LOCAL", "ANALYZING"),
+                java.time.Instant.now(),
+                null);
+        when(cliRepositoryService.create(any())).thenReturn(new CliRepositorySetupResponse(
+                project,
+                apiKey,
+                List.of("vibegraph login vbg_fullsecret", "vibegraph push", "vibegraph watch")));
+
+        mockMvc.perform(post("/api/projects/cli-setup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"CLI Repo\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.project.id").value("cli123"))
+                .andExpect(jsonPath("$.data.apiKey.secretKey").value("vbg_fullsecret"))
+                .andExpect(jsonPath("$.data.commands[1]").value("vibegraph push"))
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
     }
 
     @Test

@@ -8,6 +8,17 @@ public record ApiKeyCreateResponse(
         String keyPrefix,
         String name,
         String secretKey,
+        ProjectBindingResponse project,
         Instant createdAt,
         Instant expiresAt) {
+
+    public ApiKeyCreateResponse(
+            UUID id,
+            String keyPrefix,
+            String name,
+            String secretKey,
+            Instant createdAt,
+            Instant expiresAt) {
+        this(id, keyPrefix, name, secretKey, null, createdAt, expiresAt);
+    }
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { accountApi, adminApi, ApiError, api } from '../api'
+import { accountApi, adminApi, ApiError, api, diagramApi } from '../api'
 
 function success(data: unknown): Response {
   return {
@@ -33,21 +33,33 @@ afterEach(() => {
 })
 
 describe('Phase 7 account API contract', () => {
-  it('creates API keys with the name-only backend request contract', async () => {
+  it('creates project-bound API keys with the repository id', async () => {
     fetchMock.mockResolvedValueOnce(
       success({
         id: 'key-1',
         keyPrefix: 'vg-abc12',
         name: 'CLI key',
         secretKey: 'secret',
+        project: { id: 'project-1', name: 'VibeGraph', sourceType: 'GITHUB', status: 'READY' },
         createdAt: '2026-07-17T09:00:00Z',
         expiresAt: null,
       }),
     )
 
-    await accountApi.createApiKey('CLI key')
+    const created = await accountApi.createApiKey({
+      name: 'CLI key',
+      projectId: 'project-1',
+    })
 
-    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ name: 'CLI key' }))
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ name: 'CLI key', projectId: 'project-1' }),
+    )
+    expect(created.project).toEqual({
+      id: 'project-1',
+      name: 'VibeGraph',
+      sourceType: 'GITHUB',
+      status: 'READY',
+    })
   })
 
   it('uses the real notification and announcement routes with cookie authentication', async () => {
@@ -72,9 +84,40 @@ describe('Phase 7 account API contract', () => {
       expect(init?.headers).not.toHaveProperty('Authorization')
     }
   })
+
+  it('uses the real owner API key enable route', async () => {
+    fetchMock.mockResolvedValue(success(null))
+
+    await accountApi.enableApiKey('key/1')
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/api\/account\/api-keys\/key%2F1\/enable$/,
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('PATCH')
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe('include')
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization')
+  })
 })
 
 describe('Phase 7 admin security and audit API contract', () => {
+  it('does not expose an admin API key creation contract', () => {
+    expect(adminApi).not.toHaveProperty('createApiKey')
+    expect(adminApi).not.toHaveProperty('createApiKeyForUser')
+  })
+
+  it('never posts to the admin API key collection', async () => {
+    fetchMock.mockResolvedValue(success([]))
+    const postSpy = vi.spyOn(api, 'post')
+
+    await adminApi.listApiKeysForUser('user-1')
+    await adminApi.disableApiKey('key-1')
+    await adminApi.lockApiKey('key-1')
+    await adminApi.unlockApiKey('key-1')
+
+    expect(postSpy).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).not.toContain('POST')
+  })
+
   it('sends exact security queries and IP block mutations', async () => {
     fetchMock.mockResolvedValue(success([]))
     const block = {
@@ -93,7 +136,7 @@ describe('Phase 7 admin security and audit API contract', () => {
     const urls = fetchMock.mock.calls.map(([url]) => String(url))
     expect(urls[0]).toMatch(/request-events\?limit=75$/)
     expect(urls[1]).toMatch(/top-users\?minutes=30&limit=5$/)
-    expect(urls[2]).toMatch(/top-ips\?minutes=45&limit=7$/)
+    expect(urls[2]).toMatch(/suspicious-networks\?minutes=45&limit=7$/)
     expect(urls[3]).toMatch(/\/api\/admin\/security\/ip-blocks$/)
     expect(urls[4]).toMatch(/\/api\/admin\/security\/ip-blocks\/block%2F1$/)
     expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(JSON.stringify(block))
@@ -119,6 +162,12 @@ describe('Phase 7 admin security and audit API contract', () => {
     expect(auditUrl.searchParams.get('page')).toBe('2')
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ retentionDays: 180 }))
+  })
+})
+
+describe('diagram API contract', () => {
+  it('only exposes the supported use-case diagram endpoint', () => {
+    expect(Object.keys(diagramApi).sort()).toEqual(['umlUseCase'])
   })
 })
 

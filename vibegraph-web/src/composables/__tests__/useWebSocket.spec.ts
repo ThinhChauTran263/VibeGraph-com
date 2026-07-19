@@ -48,6 +48,12 @@ class FakeStompClient {
     this.onConnect?.()
   }
 
+  /** Test helper: simulate a transport close that drops broker subscriptions. */
+  fireClose(): void {
+    this.subscriptions = []
+    this.onWebSocketClose?.()
+  }
+
   /** Test helper: deliver a message body to a subscribed topic. */
   deliver(topic: string, body: string): void {
     for (const s of this.subscriptions.filter((s) => s.topic === topic)) {
@@ -84,6 +90,18 @@ describe('useWebSocket', () => {
     expect(ws.status.value).toBe('connected')
   })
 
+  it('reuses the in-flight connection when connect() is called repeatedly', async () => {
+    const { fake, ws } = setup()
+
+    const first = ws.connect()
+    const second = ws.connect()
+
+    expect(second).toBe(first)
+    expect(fake.activated).toBe(true)
+    fake.fireConnect()
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined])
+  })
+
   it('subscribe() parses the JSON body and invokes the callback', async () => {
     const { fake, ws } = setup()
     const p = ws.connect()
@@ -113,6 +131,34 @@ describe('useWebSocket', () => {
 
     fake.deliver('/topic/pending', JSON.stringify({ msg: 'hello' }))
     expect(seen).toEqual(['hello'])
+  })
+
+  it('replays desired subscriptions after the STOMP client reconnects', async () => {
+    const { fake, ws } = setup()
+    const seen: number[] = []
+    const subscription = ws.subscribe<{ sequence: number }>('/topic/reports/report-1', (event) => {
+      seen.push(event.sequence)
+    })
+    expect(subscription.active.value).toBe(false)
+
+    const connectPromise = ws.connect()
+    fake.fireConnect()
+    await connectPromise
+    expect(subscription.active.value).toBe(true)
+    fake.deliver('/topic/reports/report-1', JSON.stringify({ sequence: 1 }))
+
+    fake.fireClose()
+    expect(ws.status.value).toBe('disconnected')
+    expect(subscription.active.value).toBe(false)
+
+    fake.fireConnect()
+    expect(subscription.active.value).toBe(true)
+    fake.deliver('/topic/reports/report-1', JSON.stringify({ sequence: 2 }))
+
+    expect(seen).toEqual([1, 2])
+    expect(fake.subscriptions.filter((entry) => entry.topic === '/topic/reports/report-1')).toHaveLength(
+      1,
+    )
   })
 
   it('does not invoke the callback on a malformed (non-JSON) body', async () => {

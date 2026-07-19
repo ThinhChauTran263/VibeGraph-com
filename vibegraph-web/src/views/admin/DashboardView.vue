@@ -5,6 +5,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
 import type {
@@ -46,6 +47,7 @@ interface OnlineSample extends AdminSeriesPoint {
 }
 
 const adminStore = useAdminStore()
+const { locale, t } = useI18n({ useScope: 'global' })
 const loading = ref(true)
 const errorMsg = ref('')
 const period = ref<Period>('month')
@@ -61,20 +63,6 @@ const chartUpdateOptions = {
 }
 
 let pollInterval: ReturnType<typeof setInterval> | undefined
-const MONTH_LABELS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-]
 const MINUTE_MS = 60 * 1000
 const ONLINE_DISPLAY_BUCKETS = 10
 const POLL_INTERVAL_MS = 30 * 1000
@@ -103,18 +91,22 @@ const planDistribution = computed(() => overview.value?.planDistribution ?? [])
 const topStorageUsers = computed(() => overview.value?.topStorageUsers ?? [])
 const topStorageProjects = computed(() => overview.value?.topStorageProjects ?? [])
 const securityAlerts = computed(() => overview.value?.securityAlerts ?? [])
-const topStorageProjectChartOption = computed(() =>
-  createHorizontalBarOption(
+const topStorageProjectChartOption = computed(() => {
+  const activeLocale = locale.value
+  return createHorizontalBarOption(
     topStorageProjects.value.map((project) => ({
       label: project.name,
       value: project.usedBytes,
     })),
-    formatBytes,
-  ),
-)
-const planDistributionChartOption = computed(() =>
-  createHorizontalBarOption(planDistribution.value, formatNumber),
-)
+    (value) => formatBytes(value, activeLocale),
+  )
+})
+const planDistributionChartOption = computed(() => {
+  const activeLocale = locale.value
+  return createHorizontalBarOption(planDistribution.value, (value) =>
+    formatNumber(value, activeLocale),
+  )
+})
 
 const storagePercent = computed(() => {
   if (!storage.value?.totalBytes) return 0
@@ -132,7 +124,12 @@ const onlineUserPoints = computed<AdminDistributionPoint[]>(() => {
       value: sample.value,
     }))
   }
-  return [{ label: 'Online now', value: overview.value?.onlineUsers ?? 0 }]
+  return [
+    {
+      label: t('admin.overview.charts.onlineUsers.onlineNow'),
+      value: overview.value?.onlineUsers ?? 0,
+    },
+  ]
 })
 
 const creditPoints = computed<AdminDistributionPoint[]>(() => {
@@ -144,58 +141,75 @@ const storagePoints = computed<AdminDistributionPoint[]>(() => {
   const used = storage.value.usedBytes
   const available = Math.max(storage.value.totalBytes - used, 0)
   return [
-    { label: 'Used', value: used },
-    { label: 'Available', value: available },
+    { label: t('admin.overview.charts.storage.usedLabel'), value: used },
+    { label: t('admin.overview.charts.storage.availableLabel'), value: available },
   ]
 })
 
 const dashboardCharts = computed<DashboardChart[]>(() => [
   {
     id: 'totalUsers',
-    title: 'Total Users',
-    eyebrow: period.value,
+    title: t('admin.overview.charts.totalUsers.title'),
+    eyebrow: periodLabel(period.value),
     value: formatNumber(overview.value?.totalUsers),
-    subtitle: `${formatNumber(sumPoints(totalUserPoints.value))} new users across ${periodBucketText(period.value, totalUserPoints.value.length)}`,
+    subtitle: t('admin.overview.charts.totalUsers.newUsersAcross', {
+      count: sumPoints(totalUserPoints.value),
+      formattedCount: formatNumber(sumPoints(totalUserPoints.value)),
+      buckets: periodBucketText(period.value, totalUserPoints.value.length),
+    }),
     points: totalUserPoints.value,
-    emptyText: 'No user growth data yet.',
+    emptyText: t('admin.overview.charts.totalUsers.empty'),
     tone: 'blue',
     valueKind: 'number',
   },
   {
     id: 'onlineUsers',
-    title: 'Online Users',
-    eyebrow: 'Realtime polling',
+    title: t('admin.overview.charts.onlineUsers.title'),
+    eyebrow: t('admin.overview.charts.onlineUsers.eyebrow'),
     value: formatNumber(overview.value?.onlineUsers),
-    subtitle: `${onlineSamples.value.length} samples in the last 10 minutes`,
+    subtitle: t('admin.overview.charts.onlineUsers.samplesInWindow', {
+      count: onlineSamples.value.length,
+      minutes: ONLINE_DISPLAY_BUCKETS,
+    }),
     points: onlineUserPoints.value,
-    emptyText: 'No online user samples yet.',
+    emptyText: t('admin.overview.charts.onlineUsers.empty'),
     tone: 'green',
     valueKind: 'number',
   },
   {
     id: 'credits',
-    title: 'Credit Consumption',
-    eyebrow: period.value,
+    title: t('admin.overview.charts.credits.title'),
+    eyebrow: periodLabel(period.value),
     value: formatNumber(sumPoints(creditPoints.value)),
     subtitle:
       sumPoints(creditPoints.value) > 0
-        ? `${periodBucketText(period.value, creditPoints.value.length)} with backend ledger totals`
-        : 'No credit consumption recorded for this period',
+        ? t('admin.overview.charts.credits.ledgerTotals', {
+            buckets: periodBucketText(period.value, creditPoints.value.length),
+          })
+        : t('admin.overview.charts.credits.noneForPeriod'),
     points: creditPoints.value,
-    emptyText: 'No credit consumption data for this period yet.',
+    emptyText: t('admin.overview.charts.credits.empty'),
     tone: 'cyan',
     valueKind: 'number',
   },
   {
     id: 'storage',
-    title: 'System Storage',
-    eyebrow: storage.value?.sourceLabel || storage.value?.mountPath || 'Server disk',
-    value: storage.value ? `${storagePercent.value}% used` : 'Unavailable',
+    title: t('admin.overview.charts.storage.title'),
+    eyebrow:
+      storage.value?.sourceLabel ||
+      storage.value?.mountPath ||
+      t('admin.overview.charts.storage.serverDisk'),
+    value: storage.value
+      ? t('admin.overview.charts.storage.usedPercent', { percent: storagePercent.value })
+      : t('admin.overview.charts.storage.unavailable'),
     subtitle: storage.value
-      ? `${formatBytes(storage.value.usedBytes)} used of ${formatBytes(storage.value.totalBytes)}`
-      : 'System storage data is unavailable for this environment',
+      ? t('admin.overview.charts.storage.usedOf', {
+          used: formatBytes(storage.value.usedBytes),
+          total: formatBytes(storage.value.totalBytes),
+        })
+      : t('admin.overview.charts.storage.unavailableEnvironment'),
     points: storagePoints.value,
-    emptyText: 'System storage data is unavailable for this environment.',
+    emptyText: t('admin.overview.charts.storage.unavailableEnvironment'),
     tone: 'amber',
     valueKind: 'bytes',
   },
@@ -243,23 +257,30 @@ async function loadOverview(): Promise<void> {
     await adminStore.fetchOverview()
     errorMsg.value = ''
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load admin overview'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.overview.errors.loadFailed')
   } finally {
     loading.value = false
   }
 }
 
-function formatNumber(value: number | undefined): string {
-  return new Intl.NumberFormat().format(value ?? 0)
+function formatNumber(value: number | undefined, activeLocale = locale.value): string {
+  return new Intl.NumberFormat(activeLocale).format(value ?? 0)
 }
 
-function formatBytes(value: number | undefined): string {
+function formatBytes(value: number | undefined, activeLocale = locale.value): string {
   const bytes = value ?? 0
-  if (bytes >= 1_099_511_627_776) return `${(bytes / 1_099_511_627_776).toFixed(1)} TB`
-  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${bytes} B`
+  const formatUnit = (unitValue: number, unitKey: string) =>
+    t(`admin.overview.units.${unitKey}`, {
+      value: new Intl.NumberFormat(activeLocale, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(unitValue),
+    })
+  if (bytes >= 1_099_511_627_776) return formatUnit(bytes / 1_099_511_627_776, 'tb')
+  if (bytes >= 1_073_741_824) return formatUnit(bytes / 1_073_741_824, 'gb')
+  if (bytes >= 1_048_576) return formatUnit(bytes / 1_048_576, 'mb')
+  if (bytes >= 1024) return formatUnit(bytes / 1024, 'kb')
+  return t('admin.overview.units.bytes', { value: formatNumber(bytes, activeLocale) })
 }
 
 function formatChartValue(value: number, kind: DashboardChart['valueKind']): string {
@@ -273,15 +294,23 @@ function sumPoints(points: AdminSeriesPoint[] | AdminDistributionPoint[]): numbe
 function periodBucketText(selectedPeriod: Period, bucketCount?: number): string {
   switch (selectedPeriod) {
     case 'year':
-      return '5 yearly buckets'
+      return t('admin.overview.periodBuckets.year', { count: 5 })
     case 'quarter':
-      return '4 quarterly buckets'
+      return t('admin.overview.periodBuckets.quarter', { count: 4 })
     case 'day':
-      return `${bucketCount ?? 0} daily buckets`
+      return t('admin.overview.periodBuckets.day', { count: bucketCount ?? 0 })
     case 'month':
     default:
-      return '12 monthly buckets'
+      return t('admin.overview.periodBuckets.month', { count: 12 })
   }
+}
+
+function periodLabel(selectedPeriod: Period): string {
+  return t(`admin.overview.periods.${selectedPeriod}`)
+}
+
+function chartModeLabel(mode: ChartMode): string {
+  return t(`admin.overview.chartModes.${mode}`)
 }
 
 function bucketSeries(
@@ -308,7 +337,7 @@ function bucketSeries(
       return quarter.quarter.toString()
     })
     return [1, 2, 3, 4].map((quarter) => ({
-      label: `Q${quarter}`,
+      label: t('admin.overview.chartLabels.quarter', { quarter }),
       value: values.get(quarter.toString()) ?? 0,
     }))
   }
@@ -334,7 +363,20 @@ function bucketSeries(
     if (!month || month.year !== referenceYear) return undefined
     return month.month.toString()
   })
-  return MONTH_LABELS.map((label, index) => ({
+  return [
+    t('admin.overview.months.jan'),
+    t('admin.overview.months.feb'),
+    t('admin.overview.months.mar'),
+    t('admin.overview.months.apr'),
+    t('admin.overview.months.may'),
+    t('admin.overview.months.jun'),
+    t('admin.overview.months.jul'),
+    t('admin.overview.months.aug'),
+    t('admin.overview.months.sep'),
+    t('admin.overview.months.oct'),
+    t('admin.overview.months.nov'),
+    t('admin.overview.months.dec'),
+  ].map((label, index) => ({
     label,
     value: values.get((index + 1).toString()) ?? 0,
   }))
@@ -699,26 +741,29 @@ function pieDataPoints(card: DashboardChart): AdminDistributionPoint[] {
     }
 
     const points = Array.from(grouped.entries()).map(([onlineCount, sampleCount]) => ({
-      label: `${formatNumber(onlineCount)} ${onlineCount === 1 ? 'user' : 'users'} online`,
+      label: t('admin.overview.charts.onlineUsers.onlineCount', {
+        count: onlineCount,
+        formattedCount: formatNumber(onlineCount),
+      }),
       value: sampleCount,
     }))
-    return points.length ? points : [{ label: 'No data', value: 1 }]
+    return points.length ? points : [{ label: t('admin.overview.charts.noData'), value: 1 }]
   }
 
   const piePoints = card.points.filter((point) => point.value > 0)
-  return piePoints.length ? piePoints : [{ label: 'No data', value: 1 }]
+  return piePoints.length ? piePoints : [{ label: t('admin.overview.charts.noData'), value: 1 }]
 }
 
 function onlinePieLegendLabel(name: string, minutes: number): string {
   const percent = Math.round((minutes / ONLINE_DISPLAY_BUCKETS) * 100)
-  return `${name} · ${minutes} min · ${percent}%`
+  return `${name} · ${t('admin.overview.charts.onlineUsers.minuteAbbreviation', { count: minutes })} · ${percent}%`
 }
 
 function chartRenderKey(card: DashboardChart): string {
   const onlineTail = onlineSamples.value[onlineSamples.value.length - 1]?.capturedAt ?? 0
   const realtimeKey =
     card.id === 'onlineUsers' ? `-${onlineSamples.value.length}-${onlineTail}` : ''
-  return `${card.id}-${chartModes[card.id]}-${period.value}${realtimeKey}`
+  return `${card.id}-${chartModes[card.id]}-${period.value}-${locale.value}${realtimeKey}`
 }
 
 function formatOnlineTooltip(
@@ -742,17 +787,17 @@ function formatOnlineTooltip(
     const minutes = data.minutes ?? Number(data.value ?? 0)
     const percent =
       data.percent ?? payload?.percent ?? Math.round((minutes / ONLINE_DISPLAY_BUCKETS) * 100)
-    return `${data.name ?? payload?.name ?? 'Online users'}<br/><strong>${minutes} min</strong> of the last 10 min&nbsp;&nbsp;<strong>${percent}%</strong>`
+    return `${data.name ?? payload?.name ?? t('admin.overview.charts.onlineUsers.title')}<br/><strong>${t('admin.overview.charts.onlineUsers.minuteAbbreviation', { count: minutes })}</strong> ${t('admin.overview.charts.onlineUsers.ofLastWindow', { minutes: ONLINE_DISPLAY_BUCKETS })}&nbsp;&nbsp;<strong>${percent}%</strong>`
   }
   const sample = typeof payload?.dataIndex === 'number' ? series[payload.dataIndex] : undefined
   const time = data?.[0] ?? sample?.time ?? Date.now()
   const value = data?.[2] ?? data?.[1] ?? sample?.value ?? 0
   const label = sample?.label ?? formatTime24(time)
-  return `${label}<br/>Online Users&nbsp;&nbsp;<strong>${formatNumber(value)}</strong>`
+  return `${label}<br/>${t('admin.overview.charts.onlineUsers.title')}&nbsp;&nbsp;<strong>${formatNumber(value)}</strong>`
 }
 
 function formatTime24(value: number): string {
-  return new Date(value).toLocaleTimeString([], {
+  return new Date(value).toLocaleTimeString(locale.value, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -761,7 +806,7 @@ function formatTime24(value: number): string {
 }
 
 function formatTimeShort24(value: number): string {
-  return new Date(value).toLocaleTimeString([], {
+  return new Date(value).toLocaleTimeString(locale.value, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -777,10 +822,13 @@ function niceAxisMax(value: number): number {
 }
 
 function trendLabel(points: AdminDistributionPoint[]): string {
-  if (points.length === 0) return 'Waiting for more samples'
+  if (points.length === 0) return t('admin.overview.trend.waitingForSamples')
   const total = sumPoints(points)
-  if (total === 0) return 'No new users in this view'
-  return `${formatNumber(total)} new users in this view`
+  if (total === 0) return t('admin.overview.trend.noNewUsers')
+  return t('admin.overview.trend.newUsersInView', {
+    count: total,
+    formattedCount: formatNumber(total),
+  })
 }
 
 function alertLabel(alert: AdminSecurityAlert): string {
@@ -796,65 +844,79 @@ function subjectKey(item: AdminStorageSubject): string {
   <div class="dashboard-view">
     <div class="page-title">
       <div>
-        <h2>Overview</h2>
-        <p>Platform health, live users, credit consumption, and system storage.</p>
+        <h2>{{ t('admin.overview.title') }}</h2>
+        <p>{{ t('admin.overview.subtitle') }}</p>
       </div>
       <div class="poll-status" aria-live="polite">
         <span class="status-dot" :class="{ active: !errorMsg }"></span>
-        {{ errorMsg ? 'Overview unavailable' : 'Polling every 30s' }}
+        {{
+          errorMsg
+            ? t('admin.overview.polling.unavailable')
+            : t('admin.overview.polling.everySeconds', { seconds: 30 })
+        }}
       </div>
     </div>
 
     <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
-    <div v-if="loading" class="notice">Loading admin overview...</div>
+    <div v-if="loading" class="notice">{{ t('admin.overview.loading') }}</div>
 
-    <section v-if="overview" class="summary-grid" aria-label="Admin summary metrics">
+    <section
+      v-if="overview"
+      class="summary-grid"
+      :aria-label="t('admin.overview.accessibility.summaryMetrics')"
+    >
       <article class="summary-card">
-        <span>Total users</span>
+        <span>{{ t('admin.overview.summary.totalUsers.title') }}</span>
         <strong>{{ formatNumber(overview.totalUsers) }}</strong>
         <small>{{ trendLabel(totalUserPoints) }}</small>
       </article>
       <article class="summary-card">
-        <span>Online users</span>
+        <span>{{ t('admin.overview.summary.onlineUsers.title') }}</span>
         <strong class="text-success">{{ formatNumber(overview.onlineUsers) }}</strong>
-        <small>Realtime polling sample</small>
+        <small>{{ t('admin.overview.summary.onlineUsers.subtitle') }}</small>
       </article>
       <article class="summary-card">
-        <span>Imported repositories</span>
+        <span>{{ t('admin.overview.summary.importedRepositories.title') }}</span>
         <strong>{{ formatNumber(overview.totalProjects) }}</strong>
-        <small>Projects imported into VibeGraph</small>
+        <small>{{ t('admin.overview.summary.importedRepositories.subtitle') }}</small>
       </article>
       <article class="summary-card">
-        <span>Security alerts</span>
+        <span>{{ t('admin.overview.summary.securityAlerts.title') }}</span>
         <strong>{{ formatNumber(securityAlerts.length || overview.blockedUsers) }}</strong>
-        <small>Blocked or suspicious accounts</small>
+        <small>{{ t('admin.overview.summary.securityAlerts.subtitle') }}</small>
       </article>
     </section>
 
-    <section v-if="overview" class="analytics-section" aria-label="Admin analytics charts">
+    <section
+      v-if="overview"
+      class="analytics-section"
+      :aria-label="t('admin.overview.accessibility.analyticsCharts')"
+    >
       <div class="section-heading">
         <div>
-          <h3>Platform Analytics</h3>
-          <p>
-            Total users, online users, credits, and storage each support line, bar, and pie views.
-          </p>
+          <h3>{{ t('admin.overview.analytics.title') }}</h3>
+          <p>{{ t('admin.overview.analytics.subtitle') }}</p>
         </div>
-        <div class="segmented" role="group" aria-label="Chart aggregation">
+        <div
+          class="segmented"
+          role="group"
+          :aria-label="t('admin.overview.accessibility.chartAggregation')"
+        >
           <button :class="{ active: period === 'day' }" type="button" @click="period = 'day'">
-            Day
+            {{ t('admin.overview.periods.day') }}
           </button>
           <button :class="{ active: period === 'month' }" type="button" @click="period = 'month'">
-            Month
+            {{ t('admin.overview.periods.month') }}
           </button>
           <button
             :class="{ active: period === 'quarter' }"
             type="button"
             @click="period = 'quarter'"
           >
-            Quarter
+            {{ t('admin.overview.periods.quarter') }}
           </button>
           <button :class="{ active: period === 'year' }" type="button" @click="period = 'year'">
-            Year
+            {{ t('admin.overview.periods.year') }}
           </button>
         </div>
       </div>
@@ -871,7 +933,11 @@ function subjectKey(item: AdminStorageSubject): string {
               <span class="chart-card__eyebrow">{{ card.eyebrow }}</span>
               <h4>{{ card.title }}</h4>
             </div>
-            <div class="chart-switch" :aria-label="`${card.title} chart type`" role="group">
+            <div
+              class="chart-switch"
+              :aria-label="t('admin.overview.accessibility.chartType', { chartTitle: card.title })"
+              role="group"
+            >
               <button
                 v-for="mode in ['line', 'bar', 'pie'] as ChartMode[]"
                 :key="mode"
@@ -879,7 +945,7 @@ function subjectKey(item: AdminStorageSubject): string {
                 :class="{ active: chartModes[card.id] === mode }"
                 @click="chartModes[card.id] = mode"
               >
-                {{ mode }}
+                {{ chartModeLabel(mode) }}
               </button>
             </div>
           </div>
@@ -904,14 +970,22 @@ function subjectKey(item: AdminStorageSubject): string {
       </div>
     </section>
 
-    <section v-if="overview" class="detail-grid" aria-label="Admin supporting details">
+    <section
+      v-if="overview"
+      class="detail-grid"
+      :aria-label="t('admin.overview.accessibility.supportingDetails')"
+    >
       <article class="panel">
         <div class="panel-header">
-          <h3>Top Storage Projects</h3>
-          <span>{{ topStorageProjects.length }} projects</span>
+          <h3>{{ t('admin.overview.details.topStorageProjects.title') }}</h3>
+          <span>{{
+            t('admin.overview.details.topStorageProjects.count', {
+              count: topStorageProjects.length,
+            })
+          }}</span>
         </div>
         <p v-if="topStorageProjects.length === 0" class="empty-state">
-          No repository storage usage recorded yet.
+          {{ t('admin.overview.details.topStorageProjects.empty') }}
         </p>
         <VChart
           v-else
@@ -924,11 +998,15 @@ function subjectKey(item: AdminStorageSubject): string {
 
       <article class="panel">
         <div class="panel-header">
-          <h3>Top Storage Users</h3>
-          <span>{{ topStorageUsers.length }} rows</span>
+          <h3>{{ t('admin.overview.details.topStorageUsers.title') }}</h3>
+          <span>{{
+            t('admin.overview.details.topStorageUsers.count', {
+              count: topStorageUsers.length,
+            })
+          }}</span>
         </div>
         <p v-if="topStorageUsers.length === 0" class="empty-state">
-          No user storage usage recorded yet.
+          {{ t('admin.overview.details.topStorageUsers.empty') }}
         </p>
         <div v-else class="compact-list">
           <div v-for="item in topStorageUsers" :key="subjectKey(item)" class="compact-row">
@@ -943,8 +1021,12 @@ function subjectKey(item: AdminStorageSubject): string {
 
       <article class="panel panel--wide" data-test="plan-distribution-panel">
         <div class="panel-header">
-          <h3>Plan Distribution</h3>
-          <span>{{ planDistribution.length }} plans</span>
+          <h3>{{ t('admin.overview.details.planDistribution.title') }}</h3>
+          <span>{{
+            t('admin.overview.details.planDistribution.count', {
+              count: planDistribution.length,
+            })
+          }}</span>
         </div>
         <VChart
           v-if="planDistribution.length"
@@ -953,26 +1035,38 @@ function subjectKey(item: AdminStorageSubject): string {
           :update-options="chartUpdateOptions"
           :autoresize="true"
         />
-        <p v-else class="empty-state">No plan distribution data yet.</p>
+        <p v-else class="empty-state">
+          {{ t('admin.overview.details.planDistribution.empty') }}
+        </p>
       </article>
 
       <article class="panel panel--wide" data-test="security-alerts-panel">
         <div class="panel-header">
-          <h3>Security / Abuse Alerts</h3>
-          <span>{{ securityAlerts.length || overview?.blockedUsers || 0 }} signals</span>
+          <h3>{{ t('admin.overview.details.securityAlerts.title') }}</h3>
+          <span>{{
+            t('admin.overview.details.securityAlerts.count', {
+              count: securityAlerts.length || overview?.blockedUsers || 0,
+            })
+          }}</span>
         </div>
         <div v-if="securityAlerts.length" class="alerts alerts--wide">
           <div v-for="alert in securityAlerts" :key="alert.id || alert.summary" class="alert-row">
             <span>{{ alertLabel(alert) }}</span>
             <strong>{{ alert.summary }}</strong>
             <small>{{
-              alert.createdAt ? new Date(alert.createdAt).toLocaleString() : 'No timestamp'
+              alert.createdAt
+                ? new Date(alert.createdAt).toLocaleString(locale)
+                : t('admin.overview.details.securityAlerts.noTimestamp')
             }}</small>
           </div>
         </div>
         <p v-else class="empty-state">
-          No active abuse alerts. Current overview reports
-          {{ formatNumber(overview?.blockedUsers) }} blocked users.
+          {{
+            t('admin.overview.details.securityAlerts.empty', {
+              count: overview?.blockedUsers ?? 0,
+              formattedCount: formatNumber(overview?.blockedUsers),
+            })
+          }}
         </p>
       </article>
     </section>

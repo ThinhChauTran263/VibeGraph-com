@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n({ useScope: 'global' })
 const props = defineProps<{
   used: number
   total: number
@@ -17,18 +19,18 @@ const percentage = computed(() => {
 <template>
   <div class="quota-meter">
     <div class="quota-info">
-      <span class="quota-used">{{ used }}{{ unit }} / {{ total }}{{ unit }} used</span>
-      <span class="quota-remaining">{{ remaining }}{{ unit }} remaining</span>
+      <span class="quota-used">{{ used }}{{ unit }} / {{ total }}{{ unit }} {{ t('user.quota.used') }}</span>
+      <span class="quota-remaining">{{ remaining }}{{ unit }} {{ t('user.quota.remaining') }}</span>
     </div>
     <div
       v-if="total > 0"
       class="progress-track"
       role="progressbar"
-      aria-label="Source storage quota"
+:aria-label="t('user.usage.sourceStorage')"
       aria-valuemin="0"
       :aria-valuemax="total"
       :aria-valuenow="Math.min(used, total)"
-      :aria-valuetext="`${used}${unit} of ${total}${unit} used; ${remaining}${unit} remaining`"
+      :aria-valuetext="t('user.quota.value', { used, total, unit })"
     >
       <div
         class="progress-fill"
@@ -36,7 +38,7 @@ const percentage = computed(() => {
         :style="{ width: `${percentage}%` }"
       ></div>
     </div>
-    <p v-else class="quota-unavailable" role="status">Quota unavailable</p>
+    <p v-else class="quota-unavailable" role="status">{{ t('user.quota.unavailable') }}</p>
   </div>
 </template>
 

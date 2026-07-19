@@ -8,7 +8,6 @@ import type {
   AdminPricingRuleRequest,
   AdminUserResponse,
   ApiKey,
-  ApiKeyCreated,
   AdminReport,
   ReportMessage,
   PagedResponse,
@@ -20,13 +19,20 @@ import type {
   AdminCreditOverview,
   AdminRequestEvent,
   AdminRequestAggregate,
+  AdminSuspiciousNetwork,
   AdminIpBlock,
   AdminIpBlockRequest,
   AdminAuditLog,
   AdminAuditRetention,
   AdminAuditLogQuery,
 } from '../types/api'
-import { adminApi } from '../lib/api'
+import { adminApi, api } from '../lib/api'
+
+export type SecurityLiveStatus = 'connected' | 'reconnecting' | 'polling' | 'paused'
+
+const SECURITY_EVENT_LIMIT = 100
+const SECURITY_AGGREGATE_DEBOUNCE_MS = 1500
+const AUDIT_POLLING_INTERVAL_MS = 10000
 
 export const useAdminStore = defineStore('admin', () => {
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -45,13 +51,15 @@ export const useAdminStore = defineStore('admin', () => {
   const announcements = ref<AdminAnnouncement[]>([])
   const securityEvents = ref<AdminSecurityEvent[]>([])
   const requestEvents = ref<AdminRequestEvent[]>([])
+  const securityLiveStatus = ref<SecurityLiveStatus>('paused')
   const topUsers = ref<AdminRequestAggregate[]>([])
-  const topIps = ref<AdminRequestAggregate[]>([])
+  const topIps = ref<AdminSuspiciousNetwork[]>([])
   const ipBlocks = ref<AdminIpBlock[]>([])
   const creditOverviews = ref<Record<string, AdminCreditOverview>>({})
   const auditLogs = ref<AdminAuditLog[]>([])
   const auditLogDetail = ref<AdminAuditLog | null>(null)
   const auditRetention = ref<AdminAuditRetention | null>(null)
+  const auditLiveStatus = ref<SecurityLiveStatus>('paused')
   const loading = ref(false)
   const error = ref<Error | null>(null)
   const securityLimits = {
@@ -74,6 +82,10 @@ export const useAdminStore = defineStore('admin', () => {
     pageNumber: 0,
     pageSize: 20,
   })
+  let securityEventSource: EventSource | null = null
+  let auditEventSource: EventSource | null = null
+  let securityAggregateRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  let auditPollTimer: ReturnType<typeof setInterval> | null = null
 
   // ─── Overview ─────────────────────────────────────────────────────────────────
 
@@ -216,12 +228,16 @@ export const useAdminStore = defineStore('admin', () => {
     return keys.map((k) => ({ ...k, disabled: k.disabledAt !== null }))
   }
 
-  async function createApiKeyForUser(userId: string, name: string): Promise<ApiKeyCreated> {
-    return adminApi.createApiKeyForUser(userId, name)
-  }
-
   async function disableApiKey(id: string): Promise<void> {
     await adminApi.disableApiKey(id)
+  }
+
+  async function lockApiKey(id: string): Promise<void> {
+    await adminApi.lockApiKey(id)
+  }
+
+  async function unlockApiKey(id: string): Promise<void> {
+    await adminApi.unlockApiKey(id)
   }
 
   // ─── Admin Reports ────────────────────────────────────────────────────────────
@@ -368,6 +384,94 @@ export const useAdminStore = defineStore('admin', () => {
     })
   }
 
+  async function refreshSecurityAggregates(): Promise<void> {
+    const results = await Promise.allSettled([
+      adminApi.listTopUsers(securityLimits.topMinutes, securityLimits.topLimit),
+      adminApi.listTopIps(securityLimits.topMinutes, securityLimits.topLimit),
+    ])
+    if (results[0]?.status === 'fulfilled') topUsers.value = results[0].value
+    if (results[1]?.status === 'fulfilled') topIps.value = results[1].value
+  }
+
+  function startSecurityStream(): void {
+    if (securityEventSource) return
+    if (typeof EventSource === 'undefined') {
+      securityLiveStatus.value = 'paused'
+      return
+    }
+    securityLiveStatus.value = 'reconnecting'
+    const source = new EventSource(`${api.baseUrl}/api/admin/security/stream`, {
+      withCredentials: true,
+    })
+    securityEventSource = source
+    source.onopen = () => {
+      if (securityEventSource === source) securityLiveStatus.value = 'connected'
+    }
+    source.onerror = () => {
+      if (securityEventSource !== source) return
+      securityLiveStatus.value =
+        source.readyState === EventSource.CLOSED ? 'paused' : 'reconnecting'
+    }
+    source.addEventListener('request-event', handleLiveRequestEvent)
+  }
+
+  function stopSecurityStream(): void {
+    securityEventSource?.close()
+    securityEventSource = null
+    if (securityAggregateRefreshTimer) clearTimeout(securityAggregateRefreshTimer)
+    securityAggregateRefreshTimer = null
+    securityLiveStatus.value = 'paused'
+  }
+
+  function handleLiveRequestEvent(event: Event): void {
+    const data = 'data' in event && typeof event.data === 'string' ? event.data : null
+    if (!data) return
+    try {
+      const parsed: unknown = JSON.parse(data)
+      if (!isAdminRequestEvent(parsed)) return
+      requestEvents.value = [
+        parsed,
+        ...requestEvents.value.filter((existing) => existing.id !== parsed.id),
+      ].slice(0, SECURITY_EVENT_LIMIT)
+      scheduleSecurityAggregateRefresh()
+    } catch {
+      // Ignore malformed stream frames while keeping the connection alive.
+    }
+  }
+
+  function scheduleSecurityAggregateRefresh(): void {
+    if (securityAggregateRefreshTimer) clearTimeout(securityAggregateRefreshTimer)
+    securityAggregateRefreshTimer = setTimeout(() => {
+      securityAggregateRefreshTimer = null
+      void refreshSecurityAggregates()
+    }, SECURITY_AGGREGATE_DEBOUNCE_MS)
+  }
+
+  function isAdminRequestEvent(value: unknown): value is AdminRequestEvent {
+    if (!isRecord(value)) return false
+    return (
+      typeof value.id === 'string' &&
+      isNullableString(value.userId) &&
+      isNullableString(value.userDisplayName) &&
+      isNullableString(value.userEmail) &&
+      isNullableString(value.apiKeyRef) &&
+      isNullableString(value.ipAddress) &&
+      typeof value.route === 'string' &&
+      typeof value.method === 'string' &&
+      typeof value.status === 'number' &&
+      typeof value.eventType === 'string' &&
+      typeof value.occurredAt === 'string'
+    )
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null
+  }
+
+  function isNullableString(value: unknown): value is string | null {
+    return value === null || typeof value === 'string'
+  }
+
   async function refreshSecurity(): Promise<void> {
     const [events, requestRows, usersByRate, ipsByRate, blocks] = await Promise.all([
       adminApi.listSecurityEvents(securityLimits.events),
@@ -393,7 +497,7 @@ export const useAdminStore = defineStore('admin', () => {
         adminApi.listTopIps(securityLimits.topMinutes, securityLimits.topLimit),
         adminApi.listIpBlocks(securityLimits.ipBlocks),
       ])
-      const labels = ['security events', 'request events', 'top users', 'top IPs', 'IP blocks']
+      const labels = ['security events', 'request events', 'top users', 'suspicious networks', 'IP blocks']
       if (results[0]?.status === 'fulfilled') securityEvents.value = results[0].value
       if (results[1]?.status === 'fulfilled') requestEvents.value = results[1].value
       if (results[2]?.status === 'fulfilled') topUsers.value = results[2].value
@@ -405,24 +509,40 @@ export const useAdminStore = defineStore('admin', () => {
     })
   }
 
-  async function createIpBlock(data: AdminIpBlockRequest): Promise<void> {
-    await withAdminState(async () => {
-      await adminApi.createIpBlock(data)
-      await refreshSecurity()
+  type IpBlockMutationResult = { refreshFailed: boolean }
+
+  async function refreshIpBlocksAfterMutation(fallback: AdminIpBlock[]): Promise<IpBlockMutationResult> {
+    try {
+      ipBlocks.value = await adminApi.listIpBlocks(securityLimits.ipBlocks)
+      return { refreshFailed: false }
+    } catch {
+      ipBlocks.value = fallback
+      return { refreshFailed: true }
+    }
+  }
+
+  async function createIpBlock(data: AdminIpBlockRequest): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
+      const created = await adminApi.createIpBlock(data)
+      return refreshIpBlocksAfterMutation([...ipBlocks.value, created])
     })
   }
 
-  async function updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<void> {
-    await withAdminState(async () => {
-      await adminApi.updateIpBlock(id, data)
-      await refreshSecurity()
+  async function updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
+      const updated = await adminApi.updateIpBlock(id, data)
+      return refreshIpBlocksAfterMutation(
+        ipBlocks.value.some((block) => block.id === id)
+          ? ipBlocks.value.map((block) => (block.id === id ? updated : block))
+          : [...ipBlocks.value, updated],
+      )
     })
   }
 
-  async function deleteIpBlock(id: string): Promise<void> {
-    await withAdminState(async () => {
+  async function deleteIpBlock(id: string): Promise<IpBlockMutationResult> {
+    return withAdminState(async () => {
       await adminApi.deleteIpBlock(id)
-      await refreshSecurity()
+      return refreshIpBlocksAfterMutation(ipBlocks.value.filter((block) => block.id !== id))
     })
   }
 
@@ -431,6 +551,108 @@ export const useAdminStore = defineStore('admin', () => {
     const result = await adminApi.listAuditLogs(auditQuery)
     auditLogs.value = result.items ?? result.content ?? []
     auditPagination.value = paginationMeta(result)
+  }
+
+  function startAuditStream(): void {
+    if (auditEventSource) return
+    if (typeof EventSource === 'undefined') {
+      startAuditPolling()
+      return
+    }
+    auditLiveStatus.value = 'reconnecting'
+    const source = new EventSource(`${api.baseUrl}/api/admin/audit-logs/stream`, {
+      withCredentials: true,
+    })
+    auditEventSource = source
+    source.onopen = () => {
+      if (auditEventSource !== source) return
+      stopAuditPolling()
+      auditLiveStatus.value = 'connected'
+    }
+    source.onerror = () => {
+      if (auditEventSource !== source) return
+      startAuditPolling()
+      if (source.readyState === EventSource.CLOSED) {
+        source.close()
+        if (auditEventSource === source) auditEventSource = null
+      }
+    }
+    source.addEventListener('audit-log', handleLiveAuditLog)
+  }
+
+  function stopAuditStream(): void {
+    auditEventSource?.close()
+    auditEventSource = null
+    stopAuditPolling()
+    auditLiveStatus.value = 'paused'
+  }
+
+  function startAuditPolling(): void {
+    auditLiveStatus.value = 'polling'
+    if (auditPollTimer) return
+    auditPollTimer = setInterval(() => {
+      void fetchAuditLogs(auditQuery).catch(() => {
+        if (!auditEventSource) auditLiveStatus.value = 'paused'
+      })
+    }, AUDIT_POLLING_INTERVAL_MS)
+  }
+
+  function stopAuditPolling(): void {
+    if (auditPollTimer) clearInterval(auditPollTimer)
+    auditPollTimer = null
+  }
+
+  function handleLiveAuditLog(event: Event): void {
+    const data = 'data' in event && typeof event.data === 'string' ? event.data : null
+    if (!data) return
+    try {
+      const parsed: unknown = JSON.parse(data)
+      if (!isAdminAuditLog(parsed) || !matchesAuditQuery(parsed)) return
+      const currentPage = auditPagination.value.pageNumber ?? auditPagination.value.page ?? auditQuery.page ?? 0
+      if (currentPage !== 0) return
+      const existing = auditLogs.value.some((log) => log.id === parsed.id)
+      const size = auditPagination.value.pageSize ?? auditPagination.value.size ?? auditQuery.size ?? 50
+      auditLogs.value = [parsed, ...auditLogs.value.filter((log) => log.id !== parsed.id)].slice(0, size)
+      if (!existing) updateAuditPaginationForNewRow(size)
+    } catch {
+      // Ignore malformed stream frames while keeping the connection alive.
+    }
+  }
+
+  function matchesAuditQuery(log: AdminAuditLog): boolean {
+    if (auditQuery.action && log.action !== auditQuery.action) return false
+    if (auditQuery.outcome && log.outcome !== auditQuery.outcome) return false
+    if (auditQuery.actorUserId && log.actorUserId !== auditQuery.actorUserId) return false
+    if (auditQuery.targetUserId && log.targetUserId !== auditQuery.targetUserId) return false
+    if (!log.createdAt) return !auditQuery.from && !auditQuery.to
+    const createdAt = Date.parse(log.createdAt)
+    if (auditQuery.from && createdAt < Date.parse(auditQuery.from)) return false
+    return !auditQuery.to || createdAt <= Date.parse(auditQuery.to)
+  }
+
+  function updateAuditPaginationForNewRow(pageSize: number): void {
+    const totalElements = auditPagination.value.totalElements + 1
+    auditPagination.value = {
+      ...auditPagination.value,
+      totalElements,
+      totalPages: Math.ceil(totalElements / pageSize),
+    }
+  }
+
+  function isAdminAuditLog(value: unknown): value is AdminAuditLog {
+    if (!isRecord(value)) return false
+    return (
+      typeof value.id === 'string' &&
+      typeof value.action === 'string' &&
+      isNullableString(value.actorUserId) &&
+      isNullableString(value.targetUserId) &&
+      isNullableString(value.targetType) &&
+      isNullableString(value.targetId) &&
+      typeof value.outcome === 'string' &&
+      isNullableString(value.ipAddress) &&
+      isNullableString(value.details) &&
+      isNullableString(value.createdAt)
+    )
   }
 
   async function refreshAudit(): Promise<void> {
@@ -489,6 +711,7 @@ export const useAdminStore = defineStore('admin', () => {
     announcements,
     securityEvents,
     requestEvents,
+    securityLiveStatus,
     topUsers,
     topIps,
     ipBlocks,
@@ -496,6 +719,7 @@ export const useAdminStore = defineStore('admin', () => {
     auditLogs,
     auditLogDetail,
     auditRetention,
+    auditLiveStatus,
     auditPagination,
     loading,
     error,
@@ -519,8 +743,9 @@ export const useAdminStore = defineStore('admin', () => {
     adjustCredits,
     updateApiKeyCreation,
     listApiKeysForUser,
-    createApiKeyForUser,
     disableApiKey,
+    lockApiKey,
+    unlockApiKey,
     fetchReports,
     fetchReportDetail,
     replyToReport,
@@ -538,12 +763,17 @@ export const useAdminStore = defineStore('admin', () => {
     fetchTopUsers,
     fetchTopIps,
     fetchIpBlocks,
+    refreshSecurityAggregates,
+    startSecurityStream,
+    stopSecurityStream,
     fetchSecurityData,
     refreshSecurity,
     createIpBlock,
     updateIpBlock,
     deleteIpBlock,
     fetchAuditLogs,
+    startAuditStream,
+    stopAuditStream,
     refreshAudit,
     fetchAuditLogDetail,
     fetchAuditRetention,

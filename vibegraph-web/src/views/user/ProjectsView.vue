@@ -1,32 +1,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import { projectApi, type Project } from '@/lib/api'
+import { useAccountStore } from '@/stores/account'
 import { useProjectStore } from '@/stores/project'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+import type { Project as AccountProject } from '@/types/api'
 
 const route = useRoute(),
   router = useRouter(),
-  projectStore = useProjectStore()
-const projects = ref<Project[]>([]),
-  errorMsg = ref(''),
+  projectStore = useProjectStore(),
+  accountStore = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
+const errorMsg = ref(''),
   showImport = ref(route.query.import === 'new'),
   deleteTarget = ref<Project | null>(null),
   deleting = ref(false)
-const local = useFeatureAvailability('import.local'),
+const cli = useFeatureAvailability('cli.push'),
   archive = useFeatureAvailability('import.archive'),
   github = useFeatureAvailability('import.github')
 const importDisabled = computed(
-  () => ![local.value, archive.value, github.value].some((feature) => feature.enabled),
+  () => ![cli.value, archive.value, github.value].some((feature) => feature.enabled),
 )
 const importReason = computed(() =>
   importDisabled.value
-    ? 'Repository import is unavailable because no import method is currently enabled.'
+    ? t('user.projects.importBlocked')
     : null,
 )
+const projects = computed(() => projectStore.projects)
 watch(
   () => route.query.import,
   (importQuery) => {
@@ -35,11 +40,20 @@ watch(
 )
 
 async function loadProjects() {
+  if (projectStore.projectsLoaded) {
+    syncAccountProjects(projectStore.projects)
+    return
+  }
+  await refreshProjects()
+}
+async function refreshProjects() {
   try {
-    projects.value = await projectApi.list()
+    projectStore.projects = await projectApi.list()
+    projectStore.projectsLoaded = true
+    syncAccountProjects(projectStore.projects)
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load repositories.'
+    errorMsg.value = e instanceof Error ? e.message : t('user.projects.loadFallback')
   }
 }
 function open(project: Project) {
@@ -49,28 +63,51 @@ function open(project: Project) {
 }
 function imported(project: Project) {
   showImport.value = false
+  projectStore.projects = [
+    project,
+    ...projectStore.projects.filter((item) => item.id !== project.id),
+  ]
+  projectStore.projectsLoaded = true
+  syncAccountProjects(projectStore.projects)
   open(project)
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return
+  const projectId = deleteTarget.value.id
   deleting.value = true
   try {
-    await projectApi.remove(deleteTarget.value.id)
-    projects.value = projects.value.filter((item) => item.id !== deleteTarget.value?.id)
+    await projectApi.remove(projectId)
+    projectStore.projects = projectStore.projects.filter((item) => item.id !== projectId)
+    syncAccountProjects(projectStore.projects)
     deleteTarget.value = null
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to delete repository.'
+    errorMsg.value = e instanceof Error ? e.message : t('user.projects.deleteFallback')
   } finally {
     deleting.value = false
   }
 }
 function relative(value?: string) {
-  if (!value) return 'Not analyzed yet'
+  if (!value) return t('user.projects.notAnalyzed')
   const delta = Date.now() - new Date(value).getTime(),
     days = Math.floor(delta / 86400000)
-  if (days > 0) return `${days}d ago`
+  if (days > 0) return t('user.projects.daysAgo', { count: days })
   const hours = Math.floor(delta / 3600000)
-  return hours > 0 ? `${hours}h ago` : 'Just now'
+  return hours > 0 ? t('user.projects.hoursAgo', { count: hours }) : t('user.projects.justNow')
+}
+function syncAccountProjects(nextProjects: Project[]) {
+  accountStore.setProjects(nextProjects.map(toAccountProject))
+}
+function toAccountProject(project: Project): AccountProject {
+  return {
+    id: project.id,
+    name: project.name,
+    sourceType: null,
+    sizeBytes: 0,
+    status: project.status ?? null,
+    createdAt: project.createdAt ?? null,
+    updatedAt: project.lastAnalyzedAt ?? project.createdAt ?? null,
+    lastAnalyzedAt: project.lastAnalyzedAt ?? null,
+  }
 }
 onMounted(() => {
   void loadProjects()
@@ -82,9 +119,9 @@ onMounted(() => {
   <section class="repositories" aria-labelledby="repositories-title">
     <header class="page-header">
       <div>
-        <span class="eyebrow">Workspace</span>
-        <h1 id="repositories-title">Repositories</h1>
-        <p>Imported Java projects, ready for graph exploration.</p>
+        <span class="eyebrow">{{ t('user.projects.workspace') }}</span>
+        <h1 id="repositories-title">{{ t('user.projects.title') }}</h1>
+        <p>{{ t('user.projects.description') }}</p>
       </div>
       <button
         data-test="new-repository"
@@ -95,13 +132,13 @@ onMounted(() => {
         @click="showImport = !showImport"
       >
         <AppIcon :name="showImport ? 'close' : 'plus'" />{{
-          showImport ? 'Close' : 'New Repository'
+          showImport ? t('user.projects.close') : t('user.projects.newRepository')
         }}
       </button>
     </header>
     <p v-if="importReason" id="import-disabled" class="disabled-note">{{ importReason }}</p>
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
-    <section v-if="projects.length" class="repo-grid" aria-label="Imported repositories">
+    <section v-if="projects.length" class="repo-grid" :aria-label="t('user.projects.importedRepositories')">
       <article v-for="project in projects" :key="project.id" class="repo-card">
         <div class="repo-card__top">
           <div class="repo-card__identity">
@@ -110,20 +147,20 @@ onMounted(() => {
           </div>
           <span class="status">
             <i :class="`is-${(project.status ?? 'ready').toLowerCase()}`"></i>
-            {{ project.status ?? 'Ready' }}
+            {{ project.status ?? t('user.projects.ready') }}
           </span>
         </div>
         <dl>
           <div>
-            <dt>Files</dt>
+            <dt>{{ t('user.projects.files') }}</dt>
             <dd>{{ project.totalFiles }}</dd>
           </div>
           <div>
-            <dt>Nodes</dt>
+            <dt>{{ t('user.projects.nodes') }}</dt>
             <dd>{{ project.totalNodes }}</dd>
           </div>
           <div class="repo-card__updated">
-            <dt>Updated</dt>
+            <dt>{{ t('user.projects.updated') }}</dt>
             <dd>{{ relative(project.lastAnalyzedAt || project.createdAt) }}</dd>
           </div>
         </dl>
@@ -134,12 +171,12 @@ onMounted(() => {
             :data-test="`open-project-${project.id}`"
             @click="open(project)"
           >
-            <AppIcon name="graph" :size="17" />Explore Graph
+            <AppIcon name="graph" :size="17" />{{ t('user.projects.exploreGraph') }}
           </button>
           <button
             class="icon-button danger"
             type="button"
-            :aria-label="`Delete ${project.name}`"
+            :aria-label="t('user.projects.deleteAria', { name: project.name })"
             @click="deleteTarget = project"
           >
             <AppIcon name="trash" :size="17" />
@@ -149,30 +186,49 @@ onMounted(() => {
     </section>
     <section v-else-if="!errorMsg" class="empty">
       <AppIcon name="repository" :size="30" />
-      <h2>No repositories yet</h2>
-      <p>Import your first Java project to build its graph.</p>
+      <h2>{{ t('user.projects.emptyTitle') }}</h2>
+      <p>{{ t('user.projects.emptyDescription') }}</p>
       <button type="button" :disabled="importDisabled" @click="showImport = true">
-        New Repository
+        {{ t('user.projects.newRepository') }}
       </button>
     </section>
-    <section v-if="showImport && !importDisabled" class="import-section">
-      <ImportProjectPanel
-        :disabled-methods="{
-          local: local.enabled ? null : local.reason,
-          archive: archive.enabled ? null : archive.reason,
-          github: github.enabled ? null : github.reason,
-        }"
-        @imported="imported"
-      />
-    </section>
+    <div
+      v-if="showImport && !importDisabled"
+      class="import-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="import-modal-title"
+      @click.self="showImport = false"
+      @keydown.esc="showImport = false"
+    >
+      <section class="import-modal__panel">
+        <h2 id="import-modal-title" class="sr-only">{{ t('user.projects.importDialogTitle') }}</h2>
+        <button
+          class="icon-button import-modal__close"
+          type="button"
+          :aria-label="t('user.projects.closeImportDialog')"
+          @click="showImport = false"
+        >
+          <AppIcon name="close" :size="18" />
+        </button>
+        <ImportProjectPanel
+          :disabled-methods="{
+            cli: cli.enabled ? null : cli.reason,
+            archive: archive.enabled ? null : archive.reason,
+            github: github.enabled ? null : github.reason,
+          }"
+          @imported="imported"
+        />
+      </section>
+    </div>
     <AdminConfirmDialog
       :open="Boolean(deleteTarget)"
-      title="Delete repository"
-      :message="`Delete ${deleteTarget?.name ?? 'this repository'}? This cannot be undone.`"
-      confirm-label="Delete repository"
+      :title="t('user.projects.deleteTitle')"
+      :message="t('user.projects.deleteMessage', { name: deleteTarget?.name ?? t('user.projects.title') })"
+      :confirm-label="t('user.projects.deleteConfirm')"
       tone="danger"
       :busy="deleting"
-      @cancel="deleteTarget = null"
+      @cancel="!deleting && (deleteTarget = null)"
       @confirm="confirmDelete"
     />
   </section>
@@ -212,6 +268,15 @@ h2 {
 p {
   color: var(--vg-text-muted);
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 button {
   font: inherit;
 }
@@ -247,9 +312,6 @@ button {
 }
 .error {
   color: var(--vg-danger);
-}
-.import-section {
-  max-width: 62rem;
 }
 .repo-grid {
   display: grid;
@@ -407,12 +469,51 @@ dd {
 .empty p {
   margin-bottom: var(--vg-space-2);
 }
+.import-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  overflow-y: auto;
+  padding: clamp(1rem, 4vh, 2rem) var(--vg-space-4);
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(10px);
+}
+.import-modal__panel {
+  position: relative;
+  width: min(62rem, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-lg);
+  background: color-mix(in srgb, var(--vg-bg) 92%, transparent);
+  box-shadow: var(--vg-shadow);
+}
+.import-modal__panel :deep(.import-panel) {
+  border-color: transparent;
+  border-radius: var(--vg-radius-lg);
+  box-shadow: none;
+}
+.import-modal__close {
+  position: absolute;
+  top: var(--vg-space-3);
+  right: var(--vg-space-3);
+  z-index: 2;
+  flex: 0 0 auto;
+  border-color: var(--vg-border);
+  background: var(--vg-surface);
+}
 @media (max-width: 640px) {
   .page-header {
     flex-direction: column;
   }
   .primary {
     align-self: stretch;
+  }
+  .import-modal {
+    padding: var(--vg-space-3);
   }
 }
 </style>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AdminUserResponse, ApiKey, ApiKeyCreated } from '@/types/api'
+import { useI18n } from 'vue-i18n'
+import type { AdminUserResponse, ApiKey } from '@/types/api'
 import { useAdminStore } from '@/stores/admin'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AdminReasonDialog from '@/components/admin/AdminReasonDialog.vue'
 
+const { locale, t } = useI18n({ useScope: 'global' })
 const props = defineProps<{
   isOpen: boolean
   user: AdminUserResponse | null
@@ -31,7 +33,9 @@ const isAdjustingCredits = ref(false)
 const actionError = ref('')
 const isActioning = ref(false)
 const reasonDialogMode = ref<'block' | 'deactivate' | null>(null)
-const confirmDialogMode = ref<'unblock' | 'disableApiKey' | null>(null)
+const confirmDialogMode = ref<'unblock' | 'disableApiKey' | 'lockApiKey' | 'unlockApiKey' | null>(
+  null,
+)
 const pendingApiKeyId = ref<string | null>(null)
 
 // ── Plan ─────────────────────────────────────────────────────────────────────
@@ -43,11 +47,13 @@ const planOptions = computed(() =>
 )
 
 const selectedPlanLabel = computed(
-  () => planOptions.value.find((plan) => plan.value === selectedPlan.value)?.label ?? selectedPlan.value,
+  () =>
+    planOptions.value.find((plan) => plan.value === selectedPlan.value)?.label ??
+    selectedPlan.value,
 )
 
 const creditOverview = computed(() =>
-  props.user ? adminStore.creditOverviews[props.user.id] ?? null : null,
+  props.user ? (adminStore.creditOverviews[props.user.id] ?? null) : null,
 )
 
 // ── API Key creation toggle ───────────────────────────────────────────────────
@@ -55,9 +61,6 @@ const isTogglingApiKeyCreation = ref(false)
 
 // ── User's API keys ───────────────────────────────────────────────────────────
 const userApiKeys = ref<ApiKey[]>([])
-const newKeyName = ref('')
-const isCreatingKey = ref(false)
-const createdKeySecret = ref<ApiKeyCreated | null>(null)
 const drawerBodyRef = ref<HTMLElement | null>(null)
 
 // Reset form when user changes
@@ -71,7 +74,6 @@ watch(
     if (isNewUser) {
       quotaError.value = ''
       actionError.value = ''
-      createdKeySecret.value = null
     }
 
     selectedPlan.value = u.planCode
@@ -98,7 +100,9 @@ watch(
     }
 
     requestAnimationFrame(() => {
-      drawerBodyRef.value?.scrollTo({ top: isNewUser ? 0 : previousScrollTop })
+      if (typeof drawerBodyRef.value?.scrollTo === 'function') {
+        drawerBodyRef.value.scrollTo({ top: isNewUser ? 0 : previousScrollTop })
+      }
     })
   },
   { immediate: false },
@@ -138,6 +142,60 @@ function userStatus(u: AdminUserResponse): string {
   return 'active'
 }
 
+function userStatusLabel(u: AdminUserResponse): string {
+  return t(`admin.userDetail.status.${userStatus(u)}`)
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return t('admin.userDetail.fallback.emptyValue')
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return t('admin.userDetail.fallback.emptyValue')
+  return new Intl.DateTimeFormat(locale.value, {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function isExpired(key: ApiKey): boolean {
+  if (!key.expiresAt) return false
+  const expiresAt = new Date(key.expiresAt).getTime()
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now()
+}
+
+function apiKeyStatusLabel(key: ApiKey): string {
+  if (key.deletedAt) return t('admin.userDetail.apiKeys.status.deleted')
+  if (key.locked) return t('admin.userDetail.apiKeys.status.locked')
+  if (key.disabled) return t('admin.userDetail.apiKeys.status.disabled')
+  if (isExpired(key)) return t('admin.userDetail.apiKeys.status.expired')
+  return t('admin.userDetail.apiKeys.status.active')
+}
+
+function apiKeyStatus(key: ApiKey): string {
+  if (key.deletedAt) return 'disabled'
+  if (key.locked) return 'blocked'
+  if (key.disabled) return 'disabled'
+  if (isExpired(key)) return 'pending'
+  return 'active'
+}
+
+function projectLabel(key: ApiKey): string {
+  return key.project?.name ?? t('admin.userDetail.apiKeys.noRepository')
+}
+
+function lockedMeta(key: ApiKey): string {
+  const parts = []
+  if (key.lockedBy) parts.push(t('admin.userDetail.apiKeys.lockedBy', { actor: key.lockedBy }))
+  if (key.lockedAt)
+    parts.push(t('admin.userDetail.apiKeys.lockedOn', { date: formatDate(key.lockedAt) }))
+  return parts.length
+    ? t('admin.userDetail.apiKeys.locked', { details: parts.join(' ') })
+    : t('admin.userDetail.apiKeys.lockedByAdministrator')
+}
+
 // ── Quota ─────────────────────────────────────────────────────────────────────
 
 const handleQuotaUpdate = async (target: 'storage' | 'credit' | 'both') => {
@@ -148,7 +206,7 @@ const handleQuotaUpdate = async (target: 'storage' | 'credit' | 'both') => {
       : null
   const usedMbVal = usedMb(props.user)
   if (overrideMb !== null && overrideMb < usedMbVal) {
-    quotaError.value = `Cannot set quota lower than currently used (${usedMbVal} MB)`
+    quotaError.value = t('admin.userDetail.errors.quotaBelowUsage', { usedMb: usedMbVal })
     return
   }
   quotaError.value = ''
@@ -162,7 +220,7 @@ const handleQuotaUpdate = async (target: 'storage' | 'credit' | 'both') => {
     await adminStore.fetchCreditOverview(props.user.id)
     emit('updated')
   } catch (e: unknown) {
-    quotaError.value = e instanceof Error ? e.message : 'Failed to update quota'
+    quotaError.value = e instanceof Error ? e.message : t('admin.userDetail.errors.updateQuota')
   } finally {
     isSavingQuota.value = false
   }
@@ -172,7 +230,7 @@ const handleCreditAdjustment = async () => {
   if (!props.user || creditAdjustment.value === '' || !creditReason.value.trim()) return
   const delta = Number(creditAdjustment.value)
   if (!Number.isInteger(delta) || delta === 0) {
-    quotaError.value = 'Credit adjustment must be a non-zero whole number.'
+    quotaError.value = t('admin.userDetail.errors.invalidCreditAdjustment')
     return
   }
   isAdjustingCredits.value = true
@@ -183,7 +241,7 @@ const handleCreditAdjustment = async () => {
     creditReason.value = ''
     emit('updated')
   } catch (e: unknown) {
-    quotaError.value = e instanceof Error ? e.message : 'Failed to adjust credits'
+    quotaError.value = e instanceof Error ? e.message : t('admin.userDetail.errors.adjustCredits')
   } finally {
     isAdjustingCredits.value = false
   }
@@ -200,7 +258,7 @@ const handlePlanUpdate = async () => {
     await adminStore.updatePlan(props.user.id, selectedPlan.value)
     emit('updated')
   } catch (e: unknown) {
-    actionError.value = e instanceof Error ? e.message : 'Failed to update plan'
+    actionError.value = e instanceof Error ? e.message : t('admin.userDetail.errors.updatePlan')
   } finally {
     isSavingPlan.value = false
   }
@@ -239,7 +297,10 @@ const submitReasonAction = async (payload: { safeReason: string; reason: string 
     reasonDialogMode.value = null
     emit('updated')
   } catch (e: unknown) {
-    actionError.value = e instanceof Error ? e.message : `Failed to ${mode} user`
+    actionError.value =
+      e instanceof Error
+        ? e.message
+        : t(`admin.userDetail.errors.${mode === 'block' ? 'blockUser' : 'deactivateUser'}`)
   } finally {
     isActioning.value = false
   }
@@ -260,13 +321,19 @@ const confirmSimpleAction = async () => {
       await adminStore.unblockUser(props.user.id)
       emit('updated')
     } else if (pendingApiKeyId.value) {
-      await adminStore.disableApiKey(pendingApiKeyId.value)
+      if (mode === 'disableApiKey') {
+        await adminStore.disableApiKey(pendingApiKeyId.value)
+      } else if (mode === 'lockApiKey') {
+        await adminStore.lockApiKey(pendingApiKeyId.value)
+      } else if (mode === 'unlockApiKey') {
+        await adminStore.unlockApiKey(pendingApiKeyId.value)
+      }
       userApiKeys.value = await adminStore.listApiKeysForUser(props.user.id)
     }
     confirmDialogMode.value = null
     pendingApiKeyId.value = null
   } catch (e: unknown) {
-    actionError.value = e instanceof Error ? e.message : 'Failed to apply action'
+    actionError.value = e instanceof Error ? e.message : t('admin.userDetail.errors.applyAction')
   } finally {
     isActioning.value = false
   }
@@ -288,54 +355,81 @@ const handleToggleApiKeyCreation = async () => {
     await adminStore.updateApiKeyCreation(props.user.id, newVal)
     emit('updated')
   } catch (e: unknown) {
-    actionError.value = e instanceof Error ? e.message : 'Failed to toggle API key creation'
+    actionError.value =
+      e instanceof Error ? e.message : t('admin.userDetail.errors.toggleApiKeyCreation')
   } finally {
     isTogglingApiKeyCreation.value = false
   }
 }
 
-// ── Admin create / disable API key ────────────────────────────────────────────
-
-const handleCreateApiKey = async () => {
-  if (!props.user || !newKeyName.value.trim()) return
-  isCreatingKey.value = true
-  actionError.value = ''
-  try {
-    const created = await adminStore.createApiKeyForUser(props.user.id, newKeyName.value)
-    createdKeySecret.value = created
-    newKeyName.value = ''
-    userApiKeys.value = await adminStore.listApiKeysForUser(props.user.id)
-  } catch (e: unknown) {
-    actionError.value = e instanceof Error ? e.message : 'Failed to create API key'
-  } finally {
-    isCreatingKey.value = false
-  }
-}
+// ── Admin disable API key ─────────────────────────────────────────────────────
 
 const handleDisableApiKey = async (keyId: string) => {
   pendingApiKeyId.value = keyId
   confirmDialogMode.value = 'disableApiKey'
 }
 
-const copySecret = async (secret: string) => {
-  try {
-    await navigator.clipboard.writeText(secret)
-  } catch {
-    actionError.value = 'Could not copy the secret. Select and copy it manually.'
-  }
+const handleLockApiKey = async (keyId: string) => {
+  pendingApiKeyId.value = keyId
+  confirmDialogMode.value = 'lockApiKey'
 }
+
+const handleUnlockApiKey = async (keyId: string) => {
+  pendingApiKeyId.value = keyId
+  confirmDialogMode.value = 'unlockApiKey'
+}
+
+const confirmDialogTitle = computed(() => {
+  if (confirmDialogMode.value === 'disableApiKey')
+    return t('admin.userDetail.dialogs.disableApiKey.title')
+  if (confirmDialogMode.value === 'lockApiKey')
+    return t('admin.userDetail.dialogs.lockApiKey.title')
+  if (confirmDialogMode.value === 'unlockApiKey')
+    return t('admin.userDetail.dialogs.unlockApiKey.title')
+  return t('admin.userDetail.dialogs.unblock.title')
+})
+
+const confirmDialogMessage = computed(() => {
+  if (confirmDialogMode.value === 'disableApiKey') {
+    return t('admin.userDetail.dialogs.disableApiKey.message')
+  }
+  if (confirmDialogMode.value === 'lockApiKey') {
+    return t('admin.userDetail.dialogs.lockApiKey.message')
+  }
+  if (confirmDialogMode.value === 'unlockApiKey') {
+    return t('admin.userDetail.dialogs.unlockApiKey.message')
+  }
+  return t('admin.userDetail.dialogs.unblock.message')
+})
+
+const confirmDialogLabel = computed(() => {
+  if (confirmDialogMode.value === 'disableApiKey')
+    return t('admin.userDetail.dialogs.disableApiKey.confirm')
+  if (confirmDialogMode.value === 'lockApiKey')
+    return t('admin.userDetail.dialogs.lockApiKey.confirm')
+  if (confirmDialogMode.value === 'unlockApiKey')
+    return t('admin.userDetail.dialogs.unlockApiKey.confirm')
+  return t('admin.userDetail.dialogs.unblock.confirm')
+})
 </script>
 
 <template>
-  <section v-if="isOpen && user" class="drawer-overlay" aria-label="Selected user detail">
+  <section
+    v-if="isOpen && user"
+    class="drawer-overlay"
+    :aria-label="t('admin.userDetail.aria.selectedUserDetail')"
+  >
     <div class="drawer">
-      <div class="drawer-header">
+      <div
+        class="drawer-header"
+        :data-admin-control-label="t('admin.userDetail.header.adminControl')"
+      >
         <div>
-          <span class="header-kicker">Admin user detail</span>
+          <span class="header-kicker">{{ t('admin.userDetail.header.kicker') }}</span>
           <h3>{{ user.displayName }}</h3>
           <p>{{ user.email }}</p>
           <div class="header-tags">
-            <StatusChip :status="userStatus(user)" :label="userStatus(user)" />
+            <StatusChip :status="userStatus(user)" :label="userStatusLabel(user)" />
             <span class="role-badge">{{ user.role }}</span>
             <span class="plan-badge">{{ user.planCode }}</span>
           </div>
@@ -343,10 +437,10 @@ const copySecret = async (secret: string) => {
         <button
           class="close-btn"
           type="button"
-          aria-label="Close user detail"
+          :aria-label="t('admin.userDetail.aria.closeUserDetail')"
           @click="emit('close')"
         >
-          Close
+          {{ t('admin.userDetail.actions.close') }}
         </button>
       </div>
 
@@ -354,31 +448,37 @@ const copySecret = async (secret: string) => {
         <!-- User Info -->
         <div class="section user-summary">
           <div class="summary-copy">
-            <h4>Account state</h4>
+            <h4>{{ t('admin.userDetail.summary.accountState') }}</h4>
           </div>
           <div class="summary-metrics">
             <div>
-              <span>Used</span>
+              <span>{{ t('admin.userDetail.summary.used') }}</span>
               <strong>{{ usedMb(user) }} MB</strong>
             </div>
             <div>
-              <span>Quota</span>
+              <span>{{ t('admin.userDetail.summary.quota') }}</span>
               <strong>{{ quotaMb(user) }} MB</strong>
             </div>
             <div>
-              <span>Storage</span>
+              <span>{{ t('admin.userDetail.summary.storage') }}</span>
               <strong>{{ storagePercent(user) }}%</strong>
             </div>
             <div class="summary-credit">
-              <span>Credits remaining</span>
-              <strong>{{ creditOverview?.creditBalance ?? '-' }}</strong>
+              <span>{{ t('admin.userDetail.summary.creditsRemaining') }}</span>
+              <strong>
+                {{ creditOverview?.creditBalance ?? t('admin.userDetail.fallback.emptyValue') }}
+              </strong>
             </div>
           </div>
           <div v-if="user.blockedReasonSafe" class="reason-note">
-            Blocked: {{ user.blockedReasonSafe }}
+            {{ t('admin.userDetail.summary.blockedReason', { reason: user.blockedReasonSafe }) }}
           </div>
           <div v-if="user.deactivationReasonSafe" class="reason-note">
-            Deactivated: {{ user.deactivationReasonSafe }}
+            {{
+              t('admin.userDetail.summary.deactivatedReason', {
+                reason: user.deactivationReasonSafe,
+              })
+            }}
           </div>
         </div>
 
@@ -386,7 +486,7 @@ const copySecret = async (secret: string) => {
 
         <!-- Actions -->
         <div class="section action-section">
-          <h4>Actions</h4>
+          <h4>{{ t('admin.userDetail.sections.actions') }}</h4>
           <div v-if="actionError" class="error-text">{{ actionError }}</div>
           <div class="action-buttons">
             <button
@@ -395,7 +495,7 @@ const copySecret = async (secret: string) => {
               @click="handleBlock"
               :disabled="isActioning"
             >
-              Block User
+              {{ t('admin.userDetail.actions.blockUser') }}
             </button>
             <button
               v-else
@@ -403,14 +503,14 @@ const copySecret = async (secret: string) => {
               @click="handleUnblock"
               :disabled="isActioning"
             >
-              Unblock User
+              {{ t('admin.userDetail.actions.unblockUser') }}
             </button>
             <button
               class="btn-danger"
               @click="handleDeactivate"
               :disabled="isActioning || user.deactivated"
             >
-              Deactivate Account
+              {{ t('admin.userDetail.actions.deactivateAccount') }}
             </button>
           </div>
         </div>
@@ -419,7 +519,7 @@ const copySecret = async (secret: string) => {
 
         <!-- Plan -->
         <div class="section plan-section">
-          <h4>Plan</h4>
+          <h4>{{ t('admin.userDetail.sections.plan') }}</h4>
           <div class="input-group">
             <div class="plan-select" @focusout="handlePlanFocusOut">
               <button
@@ -443,7 +543,7 @@ const copySecret = async (secret: string) => {
                 id="adminUserPlanList"
                 class="plan-select-menu"
                 role="listbox"
-                aria-label="Plan"
+                :aria-label="t('admin.userDetail.aria.plan')"
               >
                 <button
                   v-for="plan in planOptions"
@@ -460,13 +560,17 @@ const copySecret = async (secret: string) => {
                     v-if="selectedPlan === plan.value"
                     class="plan-select-check"
                     aria-hidden="true"
-                    >Active</span
+                    >{{ t('admin.userDetail.status.active') }}</span
                   >
                 </button>
               </div>
             </div>
             <button class="btn-primary" @click="handlePlanUpdate" :disabled="isSavingPlan">
-              {{ isSavingPlan ? 'Saving...' : 'Update Plan' }}
+              {{
+                isSavingPlan
+                  ? t('admin.userDetail.actions.saving')
+                  : t('admin.userDetail.actions.updatePlan')
+              }}
             </button>
           </div>
         </div>
@@ -478,28 +582,46 @@ const copySecret = async (secret: string) => {
             <div class="section storage-section">
               <div class="section-title-row">
                 <div>
-                  <h4>Storage Quota</h4>
-                  <p class="section-caption">Source storage usage and custom limit for this account.</p>
+                  <h4>{{ t('admin.userDetail.storage.title') }}</h4>
+                  <p class="section-caption">{{ t('admin.userDetail.storage.description') }}</p>
                 </div>
                 <span class="state-pill storage-pill">{{ storagePercent(user) }}%</span>
               </div>
 
               <div class="quota-card">
                 <p class="quota-summary">
-                  <span><strong>{{ usedMb(user) }} MB</strong> used</span>
-                  <span><strong>{{ quotaMb(user) }} MB</strong> quota</span>
+                  <span>
+                    <strong>{{ usedMb(user) }} MB</strong>
+                    {{ t('admin.userDetail.storage.used') }}
+                  </span>
+                  <span>
+                    <strong>{{ quotaMb(user) }} MB</strong>
+                    {{ t('admin.userDetail.storage.quota') }}
+                  </span>
                 </p>
-                <div class="quota-meter" aria-label="Storage quota usage">
+                <div class="quota-meter" :aria-label="t('admin.userDetail.aria.storageQuotaUsage')">
                   <div :style="{ width: `${storagePercent(user)}%` }"></div>
                 </div>
 
                 <form class="storage-override-form" @submit.prevent="handleQuotaUpdate('storage')">
                   <label for="quotaLimit">
-                    <span>Storage override (MB)</span>
-                    <input id="quotaLimit" v-model="storageOverrideMb" name="quotaLimit" type="number" class="form-input" min="0" placeholder="Use plan default" />
+                    <span>{{ t('admin.userDetail.storage.overrideLabel') }}</span>
+                    <input
+                      id="quotaLimit"
+                      v-model="storageOverrideMb"
+                      name="quotaLimit"
+                      type="number"
+                      class="form-input"
+                      min="0"
+                      :placeholder="t('admin.userDetail.placeholders.usePlanDefault')"
+                    />
                   </label>
                   <button type="submit" class="btn-outline-secondary" :disabled="isSavingQuota">
-                    {{ isSavingQuota ? 'Saving...' : 'Save storage limit' }}
+                    {{
+                      isSavingQuota
+                        ? t('admin.userDetail.actions.saving')
+                        : t('admin.userDetail.actions.saveStorageLimit')
+                    }}
                   </button>
                 </form>
                 <div v-if="quotaError" class="error-text">{{ quotaError }}</div>
@@ -509,21 +631,49 @@ const copySecret = async (secret: string) => {
             <div class="section api-toggle-section">
               <div class="section-title-row">
                 <div>
-                  <h4>API Key Creation</h4>
-                  <p class="section-caption">Manage whether this account can create additional API keys.</p>
+                  <h4>{{ t('admin.userDetail.apiKeyCreation.title') }}</h4>
+                  <p class="section-caption">
+                    {{ t('admin.userDetail.apiKeyCreation.description') }}
+                  </p>
                 </div>
                 <span class="state-pill" :class="{ disabled: user.apiKeyCreationDisabled }">
-                  {{ user.apiKeyCreationDisabled ? 'Paused' : 'Allowed' }}
+                  {{
+                    user.apiKeyCreationDisabled
+                      ? t('admin.userDetail.apiKeyCreation.paused')
+                      : t('admin.userDetail.apiKeyCreation.allowed')
+                  }}
                 </span>
               </div>
               <form class="api-key-policy-form" @submit.prevent="handleToggleApiKeyCreation">
                 <div class="api-key-policy-copy">
-                  <span>Current policy</span>
-                  <strong>{{ user.apiKeyCreationDisabled ? 'New key creation is paused' : 'New key creation is allowed' }}</strong>
-                  <small>{{ user.apiKeyCreationDisabled ? 'Existing keys remain visible but no new key can be issued.' : 'The user can issue a key subject to their plan limit.' }}</small>
+                  <span>{{ t('admin.userDetail.apiKeyCreation.currentPolicy') }}</span>
+                  <strong>
+                    {{
+                      user.apiKeyCreationDisabled
+                        ? t('admin.userDetail.apiKeyCreation.policyPaused')
+                        : t('admin.userDetail.apiKeyCreation.policyAllowed')
+                    }}
+                  </strong>
+                  <small>
+                    {{
+                      user.apiKeyCreationDisabled
+                        ? t('admin.userDetail.apiKeyCreation.pausedHelp')
+                        : t('admin.userDetail.apiKeyCreation.allowedHelp')
+                    }}
+                  </small>
                 </div>
-                <button type="submit" class="btn-outline-secondary" :disabled="isTogglingApiKeyCreation">
-                  {{ isTogglingApiKeyCreation ? 'Saving...' : user.apiKeyCreationDisabled ? 'Allow creation' : 'Pause creation' }}
+                <button
+                  type="submit"
+                  class="btn-outline-secondary"
+                  :disabled="isTogglingApiKeyCreation"
+                >
+                  {{
+                    isTogglingApiKeyCreation
+                      ? t('admin.userDetail.actions.saving')
+                      : user.apiKeyCreationDisabled
+                        ? t('admin.userDetail.actions.allowCreation')
+                        : t('admin.userDetail.actions.pauseCreation')
+                  }}
                 </button>
               </form>
             </div>
@@ -532,36 +682,111 @@ const copySecret = async (secret: string) => {
           <div class="section credit-section">
             <div class="section-title-row">
               <div>
-                <h4>Credits</h4>
-                <p class="section-caption">Period credit limit and one-time account adjustments.</p>
+                <h4>{{ t('admin.userDetail.credits.title') }}</h4>
+                <p class="section-caption">{{ t('admin.userDetail.credits.description') }}</p>
               </div>
               <span class="state-pill" :class="{ disabled: creditOverview?.creditBalance === 0 }">
-                {{ creditOverview?.creditBalance ?? '-' }} remaining
+                {{
+                  t('admin.userDetail.credits.remaining', {
+                    count:
+                      creditOverview?.creditBalance ?? t('admin.userDetail.fallback.emptyValue'),
+                  })
+                }}
               </span>
             </div>
 
             <div class="quota-card">
-              <div class="credit-overview" aria-label="User credit balance">
-                <div><span>Credit limit</span><strong>{{ creditOverview?.currentCreditsLimit ?? '-' }}</strong></div>
-                <div><span>Credits used</span><strong>{{ creditOverview?.creditsUsed ?? '-' }}</strong></div>
-                <div><span>Admin adjustment</span><strong>{{ creditOverview?.creditsAdjustment ?? '-' }}</strong></div>
-                <div class="credits-remaining"><span>Credits remaining</span><strong>{{ creditOverview?.creditBalance ?? '-' }}</strong></div>
+              <div
+                class="credit-overview"
+                :aria-label="t('admin.userDetail.aria.userCreditBalance')"
+              >
+                <div>
+                  <span>{{ t('admin.userDetail.credits.limit') }}</span>
+                  <strong>
+                    {{
+                      creditOverview?.currentCreditsLimit ??
+                      t('admin.userDetail.fallback.emptyValue')
+                    }}
+                  </strong>
+                </div>
+                <div>
+                  <span>{{ t('admin.userDetail.credits.used') }}</span>
+                  <strong>
+                    {{ creditOverview?.creditsUsed ?? t('admin.userDetail.fallback.emptyValue') }}
+                  </strong>
+                </div>
+                <div>
+                  <span>{{ t('admin.userDetail.credits.adminAdjustment') }}</span>
+                  <strong>
+                    {{
+                      creditOverview?.creditsAdjustment ?? t('admin.userDetail.fallback.emptyValue')
+                    }}
+                  </strong>
+                </div>
+                <div class="credits-remaining">
+                  <span>{{ t('admin.userDetail.credits.creditsRemaining') }}</span>
+                  <strong>
+                    {{ creditOverview?.creditBalance ?? t('admin.userDetail.fallback.emptyValue') }}
+                  </strong>
+                </div>
               </div>
 
               <form class="credit-limit-form" @submit.prevent="handleQuotaUpdate('credit')">
                 <label for="creditQuotaLimit">
-                  <span>Credit quota override</span>
-                  <input id="creditQuotaLimit" v-model="creditQuotaOverride" name="creditQuotaLimit" type="number" class="form-input" min="0" placeholder="Use plan default" />
+                  <span>{{ t('admin.userDetail.credits.quotaOverride') }}</span>
+                  <input
+                    id="creditQuotaLimit"
+                    v-model="creditQuotaOverride"
+                    name="creditQuotaLimit"
+                    type="number"
+                    class="form-input"
+                    min="0"
+                    :placeholder="t('admin.userDetail.placeholders.usePlanDefault')"
+                  />
                 </label>
                 <button type="submit" class="btn-outline-secondary" :disabled="isSavingQuota">
-                  {{ isSavingQuota ? 'Saving...' : 'Save credit limit' }}
+                  {{
+                    isSavingQuota
+                      ? t('admin.userDetail.actions.saving')
+                      : t('admin.userDetail.actions.saveCreditLimit')
+                  }}
                 </button>
               </form>
 
               <form class="credit-form" @submit.prevent="handleCreditAdjustment">
-                <label for="creditAdjustment"><span>Credit adjustment</span><input id="creditAdjustment" v-model="creditAdjustment" class="form-input" type="number" min="-1000000" max="1000000" placeholder="+100 or -25" required /></label>
-                <label for="creditReason"><span>Internal reason</span><input id="creditReason" v-model="creditReason" class="form-input" maxlength="500" placeholder="Support correction or goodwill credit" required /></label>
-                <button type="submit" class="btn-outline-secondary" :disabled="isAdjustingCredits || creditAdjustment === '' || !creditReason.trim()">{{ isAdjustingCredits ? 'Adjusting...' : 'Apply credit adjustment' }}</button>
+                <label for="creditAdjustment"
+                  ><span>{{ t('admin.userDetail.credits.adjustment') }}</span
+                  ><input
+                    id="creditAdjustment"
+                    v-model="creditAdjustment"
+                    class="form-input"
+                    type="number"
+                    min="-1000000"
+                    max="1000000"
+                    :placeholder="t('admin.userDetail.placeholders.creditAdjustment')"
+                    required
+                /></label>
+                <label for="creditReason"
+                  ><span>{{ t('admin.userDetail.credits.internalReason') }}</span
+                  ><input
+                    id="creditReason"
+                    v-model="creditReason"
+                    class="form-input"
+                    maxlength="500"
+                    :placeholder="t('admin.userDetail.placeholders.internalReason')"
+                    required
+                /></label>
+                <button
+                  type="submit"
+                  class="btn-outline-secondary"
+                  :disabled="isAdjustingCredits || creditAdjustment === '' || !creditReason.trim()"
+                >
+                  {{
+                    isAdjustingCredits
+                      ? t('admin.userDetail.actions.adjusting')
+                      : t('admin.userDetail.actions.applyCreditAdjustment')
+                  }}
+                </button>
               </form>
               <div v-if="quotaError" class="error-text">{{ quotaError }}</div>
             </div>
@@ -572,67 +797,98 @@ const copySecret = async (secret: string) => {
 
         <!-- User's API Keys -->
         <div class="section api-keys-section">
-          <h4>API Keys</h4>
-
-          <!-- Create key for user -->
-          <div class="input-group key-create-form">
-            <input
-              id="adminApiKeyName"
-              name="apiKeyName"
-              v-model="newKeyName"
-              type="text"
-              class="form-input"
-              placeholder="New key name…"
-              maxlength="120"
-            />
-            <button
-              class="btn-primary btn-sm"
-              @click="handleCreateApiKey"
-              :disabled="isCreatingKey || !newKeyName"
-            >
-              {{ isCreatingKey ? '...' : 'Create' }}
-            </button>
-          </div>
-
-          <!-- Secret revealed after creation -->
-          <div v-if="createdKeySecret" class="secret-alert">
-            <div class="secret-alert-title">Save this secret - it is shown only once.</div>
-            <div class="secret-box">
-              <code>{{ createdKeySecret.secretKey }}</code>
-              <button class="btn-copy" @click="copySecret(createdKeySecret.secretKey)">Copy</button>
+          <div class="section-title-row api-keys-title-row">
+            <div>
+              <h4>{{ t('admin.userDetail.apiKeys.title') }}</h4>
+              <p class="section-caption">
+                {{ t('admin.userDetail.apiKeys.description') }}
+              </p>
             </div>
           </div>
 
           <!-- Existing keys list -->
-          <div v-if="userApiKeys.length === 0" class="empty-state">No API keys.</div>
+          <div v-if="userApiKeys.length === 0" class="empty-state">
+            {{ t('admin.userDetail.apiKeys.empty') }}
+          </div>
           <div v-else class="table-shell">
             <table class="keys-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Prefix</th>
-                  <th>Status</th>
+                  <th>{{ t('admin.userDetail.apiKeys.table.name') }}</th>
+                  <th>{{ t('admin.userDetail.apiKeys.table.apiKey') }}</th>
+                  <th>{{ t('admin.userDetail.apiKeys.table.status') }}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="k in userApiKeys" :key="k.id">
-                  <td>{{ k.name }}</td>
-                  <td class="mono">{{ k.keyPrefix }}</td>
+                <tr v-for="k in userApiKeys" :key="k.id" class="key-row">
                   <td>
-                    <StatusChip
-                      :status="k.disabled ? 'disabled' : 'active'"
-                      :label="k.disabled ? 'Disabled' : 'Active'"
-                    />
+                    <strong class="key-name">{{ k.name }}</strong>
+                    <span class="key-meta">
+                      {{ t('admin.userDetail.apiKeys.repository', { name: projectLabel(k) }) }}
+                    </span>
+                    <span v-if="k.project?.sourceType || k.project?.status" class="key-meta">
+                      {{ k.project?.sourceType ?? t('admin.userDetail.apiKeys.sourceUnknown') }}
+                      /
+                      {{ k.project?.status ?? t('admin.userDetail.apiKeys.statusUnknown') }}
+                    </span>
                   </td>
                   <td>
-                    <button
-                      v-if="!k.disabled"
-                      class="btn-danger btn-sm"
-                      @click="handleDisableApiKey(k.id)"
-                    >
-                      Disable
-                    </button>
+                    <span class="mono key-value">{{ k.keyPrefix }}********</span>
+                    <span class="key-meta">
+                      {{ t('admin.userDetail.apiKeys.prefix', { prefix: k.keyPrefix }) }}
+                    </span>
+                    <span class="key-meta">{{ t('admin.userDetail.apiKeys.secretHelp') }}</span>
+                    <span class="key-meta">
+                      {{ t('admin.userDetail.apiKeys.created', { date: formatDate(k.createdAt) }) }}
+                    </span>
+                    <span class="key-meta">
+                      {{
+                        t('admin.userDetail.apiKeys.lastUsed', {
+                          date: formatDate(k.lastUsedAt),
+                        })
+                      }}
+                    </span>
+                    <span v-if="k.expiresAt" class="key-meta">
+                      {{ t('admin.userDetail.apiKeys.expires', { date: formatDate(k.expiresAt) }) }}
+                    </span>
+                  </td>
+                  <td>
+                    <StatusChip :status="apiKeyStatus(k)" :label="apiKeyStatusLabel(k)" />
+                    <span v-if="k.disabledReason" class="key-meta key-reason">
+                      {{ k.disabledReason }}
+                    </span>
+                    <span v-if="k.locked" class="key-meta key-reason">
+                      {{ lockedMeta(k) }}
+                    </span>
+                    <span v-if="k.disabledBy" class="key-meta">
+                      {{ t('admin.userDetail.apiKeys.disabledBy', { actor: k.disabledBy }) }}
+                    </span>
+                  </td>
+                  <td class="key-action-cell">
+                    <div class="key-actions">
+                      <button
+                        v-if="!k.disabled && !k.deletedAt"
+                        class="btn-danger btn-sm"
+                        @click="handleDisableApiKey(k.id)"
+                      >
+                        {{ t('admin.userDetail.actions.disable') }}
+                      </button>
+                      <button
+                        v-if="!k.locked && !k.deletedAt"
+                        class="btn-outline-secondary btn-sm"
+                        @click="handleLockApiKey(k.id)"
+                      >
+                        {{ t('admin.userDetail.actions.lock') }}
+                      </button>
+                      <button
+                        v-if="k.locked && !k.deletedAt"
+                        class="btn-outline-secondary btn-sm"
+                        @click="handleUnlockApiKey(k.id)"
+                      >
+                        {{ t('admin.userDetail.actions.unlock') }}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -644,13 +900,21 @@ const copySecret = async (secret: string) => {
 
     <AdminReasonDialog
       :open="Boolean(reasonDialogMode)"
-      :title="reasonDialogMode === 'deactivate' ? 'Deactivate user' : 'Block user'"
+      :title="
+        reasonDialogMode === 'deactivate'
+          ? t('admin.userDetail.dialogs.deactivate.title')
+          : t('admin.userDetail.dialogs.block.title')
+      "
       :description="
         reasonDialogMode === 'deactivate'
-          ? 'Deactivate this account. This disables sign-in and API access without immediately removing account data.'
-          : 'Block this account. Project analysis, imports, patches, and API keys will be paused.'
+          ? t('admin.userDetail.dialogs.deactivate.description')
+          : t('admin.userDetail.dialogs.block.description')
       "
-      :confirm-label="reasonDialogMode === 'deactivate' ? 'Deactivate' : 'Block user'"
+      :confirm-label="
+        reasonDialogMode === 'deactivate'
+          ? t('admin.userDetail.dialogs.deactivate.confirm')
+          : t('admin.userDetail.dialogs.block.confirm')
+      "
       :require-final-confirm="reasonDialogMode === 'deactivate'"
       :busy="isActioning"
       @cancel="reasonDialogMode = null"
@@ -659,19 +923,16 @@ const copySecret = async (secret: string) => {
 
     <AdminConfirmDialog
       :open="Boolean(confirmDialogMode)"
-      :title="confirmDialogMode === 'disableApiKey' ? 'Disable API key' : 'Unblock user'"
-      :message="
-        confirmDialogMode === 'disableApiKey'
-          ? 'This key will stop working immediately. Existing key secrets cannot be recovered.'
-          : 'Restore product access for this user?'
+      :title="confirmDialogTitle"
+      :message="confirmDialogMessage"
+      :confirm-label="confirmDialogLabel"
+      :tone="
+        confirmDialogMode === 'disableApiKey' || confirmDialogMode === 'lockApiKey'
+          ? 'danger'
+          : 'default'
       "
-      :confirm-label="confirmDialogMode === 'disableApiKey' ? 'Disable key' : 'Unblock'"
-      :tone="confirmDialogMode === 'disableApiKey' ? 'danger' : 'default'"
       :busy="isActioning"
-      @cancel="
-        confirmDialogMode = null,
-        pendingApiKeyId = null
-      "
+      @cancel="((confirmDialogMode = null), (pendingApiKeyId = null))"
       @confirm="confirmSimpleAction"
     />
   </section>
@@ -927,47 +1188,6 @@ hr {
   font-size: var(--vg-text-sm);
 }
 
-/* Secret alert */
-.secret-alert {
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: var(--vg-radius-sm);
-  padding: 0.75rem;
-  margin: 0.75rem 0;
-}
-.secret-alert-title {
-  color: var(--vg-green-bright);
-  font-weight: 600;
-  font-size: var(--vg-text-sm);
-  margin-bottom: 0.5rem;
-}
-.secret-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  background: var(--vg-bg-elev);
-  border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius-sm);
-  padding: 0.5rem;
-}
-.secret-box code {
-  font-family: monospace;
-  font-size: var(--vg-text-sm);
-  color: var(--vg-text);
-  word-break: break-all;
-}
-.btn-copy {
-  background: var(--vg-surface-3);
-  border: 1px solid var(--vg-border);
-  color: var(--vg-text);
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--vg-radius-sm);
-  cursor: pointer;
-  font-size: var(--vg-text-xs);
-  white-space: nowrap;
-}
-
 @media (max-width: 480px) {
   .drawer {
     width: 100%;
@@ -1007,7 +1227,7 @@ hr {
 }
 
 .drawer-header::before {
-  content: 'Admin control';
+  content: attr(data-admin-control-label);
   display: block;
   color: var(--vg-blue-bright);
   font-family: var(--vg-font-body);
@@ -1142,8 +1362,7 @@ hr {
 .btn-outline-danger,
 .btn-danger,
 .btn-outline-secondary,
-.btn-primary,
-.btn-copy {
+.btn-primary {
   min-height: 2.75rem;
   border-radius: var(--vg-radius-sm);
   font-weight: 800;
@@ -1177,8 +1396,7 @@ hr {
 .btn-outline-danger:hover:not(:disabled),
 .btn-danger:hover:not(:disabled),
 .btn-outline-secondary:hover:not(:disabled),
-.btn-primary:hover:not(:disabled),
-.btn-copy:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
@@ -1220,17 +1438,6 @@ hr {
   background: rgba(2, 6, 23, 0.28);
 }
 
-.key-create-form {
-  display: flex;
-  gap: var(--vg-space-3);
-  margin-bottom: var(--vg-space-3);
-}
-
-.secret-alert {
-  border-color: rgba(34, 197, 94, 0.32);
-  background: rgba(34, 197, 94, 0.1);
-}
-
 .table-shell {
   overflow-x: auto;
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -1245,6 +1452,7 @@ hr {
 .keys-table th,
 .keys-table td {
   padding: var(--vg-space-3);
+  vertical-align: top;
 }
 
 .keys-table th {
@@ -1258,6 +1466,51 @@ hr {
 
 .keys-table tr:last-child td {
   border-bottom: 0;
+}
+
+.key-name,
+.key-meta {
+  display: block;
+  min-width: 0;
+}
+
+.key-name {
+  margin-bottom: 0.35rem;
+  color: var(--vg-text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.key-value {
+  display: block;
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-sm);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.key-meta {
+  margin-top: 0.24rem;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.key-reason {
+  max-width: 18rem;
+  color: var(--vg-amber);
+}
+
+.key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vg-space-2);
+}
+
+.key-actions .btn-sm {
+  min-width: 5.25rem;
 }
 
 .empty-state {
@@ -1474,8 +1727,7 @@ hr {
   display: flex;
 }
 
-.plan-section .input-group,
-.key-create-form {
+.plan-section .input-group {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--detail-action-width);
   padding-inline: var(--vg-space-4);
@@ -1593,13 +1845,6 @@ hr {
   text-transform: uppercase;
 }
 
-.plan-section .btn-primary,
-.key-create-form .btn-primary {
-  width: var(--detail-action-width);
-  min-width: var(--detail-action-width);
-  min-height: 3.25rem;
-}
-
 .plan-section .btn-primary {
   width: var(--detail-action-width);
   min-width: var(--detail-action-width);
@@ -1607,8 +1852,7 @@ hr {
   padding-inline: var(--vg-space-3);
 }
 
-.plan-section .form-input,
-.key-create-form .form-input {
+.plan-section .form-input {
   min-height: 3.25rem;
 }
 
@@ -1630,10 +1874,6 @@ select.form-input {
   background-size:
     0.38rem 0.38rem,
     0.38rem 0.38rem;
-}
-
-.key-create-form {
-  margin-bottom: var(--vg-space-3);
 }
 
 .toggle-row .text-sm {
@@ -1833,6 +2073,10 @@ select.form-input {
   white-space: nowrap;
 }
 
+.keys-table .key-action-cell {
+  white-space: normal;
+}
+
 @media (max-width: 720px) {
   .drawer {
     width: 100%;
@@ -1874,7 +2118,6 @@ select.form-input {
 
   .action-buttons,
   .input-group,
-  .key-create-form,
   .toggle-row {
     grid-template-columns: 1fr;
     flex-direction: column;
@@ -2955,5 +3198,15 @@ select.form-input {
 
 .drawer-body #user-quota-controls .credit-section .section-title-row .state-pill {
   margin-right: 1rem;
+}
+
+.drawer-body #user-quota-controls .storage-override-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-limit-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .credit-form .btn-outline-secondary,
+.drawer-body #user-quota-controls .api-key-policy-form .btn-outline-secondary {
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 </style>

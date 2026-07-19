@@ -1,41 +1,43 @@
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n({ useScope: 'global' })
+</script>
+
 <template>
   <div class="tutorial-view">
     <header class="page-header">
-      <h2>Tutorial</h2>
-      <p>Follow the core VibeGraph workflow from import to impact analysis.</p>
+      <h2>{{ t('user.tutorial.title') }}</h2>
+      <p>{{ t('user.tutorial.description') }}</p>
     </header>
 
     <ol class="tutorial-steps">
       <li>
         <span>1</span>
         <div>
-          <h3>Import a repository</h3>
-          <p>
-            Open Repositories and import a Java project from a local folder, archive, or GitHub URL.
-          </p>
+          <h3>{{ t('user.tutorial.importTitle') }}</h3>
+          <p>{{ t('user.tutorial.importDescription') }}</p>
         </div>
       </li>
       <li>
         <span>2</span>
         <div>
-          <h3>Open the graph</h3>
-          <p>
-            Choose an analyzed repository to inspect packages, classes, methods, and relationships.
-          </p>
+          <h3>{{ t('user.tutorial.graphTitle') }}</h3>
+          <p>{{ t('user.tutorial.graphDescription') }}</p>
         </div>
       </li>
       <li>
         <span>3</span>
         <div>
-          <h3>Run impact analysis</h3>
-          <p>Select a symbol and analyze upstream dependents before changing code.</p>
+          <h3>{{ t('user.tutorial.impactTitle') }}</h3>
+          <p>{{ t('user.tutorial.impactDescription') }}</p>
         </div>
       </li>
       <li>
         <span>4</span>
         <div>
-          <h3>Use reports when stuck</h3>
-          <p>Send a report thread with project or quota issues so support can follow up.</p>
+          <h3>{{ t('user.tutorial.reportsTitle') }}</h3>
+          <p>{{ t('user.tutorial.reportsDescription') }}</p>
         </div>
       </li>
     </ol>

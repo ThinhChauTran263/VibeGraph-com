@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import GitHubImportForm from '../GitHubImportForm.vue'
 import type { Project } from '@/lib/api'
+import i18n from '@/language'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -30,6 +31,10 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
   }
 }
 
+function mountForm() {
+  return mount(GitHubImportForm, { global: { plugins: [i18n] } })
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((res) => {
@@ -44,7 +49,7 @@ beforeEach(() => {
 
 describe('GitHubImportForm', () => {
   it('keeps submit disabled until a URL is entered', () => {
-    const wrapper = mount(GitHubImportForm)
+    const wrapper = mountForm()
 
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
   })
@@ -52,7 +57,7 @@ describe('GitHubImportForm', () => {
   it('submits a GitHub URL and emits the imported project', async () => {
     const project = fakeProject({ id: 'gh-2', name: 'spring-petclinic', status: 'ANALYZED' })
     importGithubMock.mockResolvedValueOnce(project)
-    const wrapper = mount(GitHubImportForm)
+    const wrapper = mountForm()
 
     await wrapper
       .get('input[type="url"]')
@@ -71,7 +76,7 @@ describe('GitHubImportForm', () => {
   })
 
   it('shows validation errors without calling the API', async () => {
-    const wrapper = mount(GitHubImportForm)
+    const wrapper = mountForm()
 
     await wrapper.get('input[type="url"]').setValue('https://example.com/owner/repo')
     await wrapper.get('form').trigger('submit.prevent')
@@ -84,7 +89,7 @@ describe('GitHubImportForm', () => {
   it('disables controls and shows importing state while the request is pending', async () => {
     const pending = deferred<Project>()
     importGithubMock.mockReturnValueOnce(pending.promise)
-    const wrapper = mount(GitHubImportForm)
+    const wrapper = mountForm()
 
     await wrapper.get('input[type="url"]').setValue('https://github.com/owner/repo')
     await wrapper.get('form').trigger('submit.prevent')
@@ -93,15 +98,15 @@ describe('GitHubImportForm', () => {
     expect(wrapper.get('input[type="url"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[type="button"]').attributes('disabled')).toBeDefined()
-    // Button now mirrors progress: "Importing… N%" (ellipsis + percent).
-    expect(wrapper.text()).toContain('Importing…')
+    // Button mirrors progress as "Importing..." plus the current percent.
+    expect(wrapper.text()).toContain('Importing')
 
     pending.resolve(fakeProject())
     await flushPromises()
   })
 
   it('reset clears the current URL and status message', async () => {
-    const wrapper = mount(GitHubImportForm)
+    const wrapper = mountForm()
 
     await wrapper.get('input[type="url"]').setValue('https://example.com/owner/repo')
     await wrapper.get('form').trigger('submit.prevent')

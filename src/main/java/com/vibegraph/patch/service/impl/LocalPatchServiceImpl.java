@@ -14,6 +14,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
@@ -29,6 +30,7 @@ import com.vibegraph.patch.dto.request.PatchRequest.PatchFileChange;
 import com.vibegraph.patch.dto.response.PatchResult;
 import com.vibegraph.patch.exception.PatchRejectedException;
 import com.vibegraph.patch.exception.PatchRejectedException.Reason;
+import com.vibegraph.patch.service.PatchAnalysisScheduler;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -48,11 +50,9 @@ import lombok.extern.slf4j.Slf4j;
  * disk.
  *
  * <p>
- * No graph mutation is performed here: there is no safe per-file incremental
- * parser, so the
- * result flags {@code requiresAnalyze=true} and re-analysis is left to an
- * explicit
- * {@code POST /api/projects/{id}/analyze}.
+ * No graph mutation is performed inline here: there is no safe per-file incremental parser,
+ * so a successful write schedules background re-analysis and the result flags
+ * {@code requiresAnalyze=true}.
  */
 @Service
 @RequiredArgsConstructor
@@ -72,6 +72,9 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
     private final FeatureGateService featureGateService;
     private final CurrentUser currentUser;
     private final AtomicPatchApplier atomicPatchApplier;
+
+    @Autowired(required = false)
+    private PatchAnalysisScheduler patchAnalysisScheduler;
 
     /**
      * Directory segments that must never be written to or deleted through a patch.
@@ -186,14 +189,12 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
 
         AtomicPatchApplier.Session patchSession =
                 atomicPatchApplier.apply(root, writes, existingDeletions);
-        boolean transactionSynchronizationRegistered = registerTransactionCompletion(patchSession);
+        boolean requiresAnalyze = changedOrDeleted(writes.size(), existingDeletions.size());
         try {
             if (netDeltaBytes != 0) {
                 projectUsageService.recordPatchDelta(projectId, userId, netDeltaBytes);
             }
-            if (!transactionSynchronizationRegistered) {
-                patchSession.commit();
-            }
+            completePatchSession(patchSession, projectId, requiresAnalyze);
         } catch (RuntimeException ex) {
             patchSession.rollback();
             throw ex;
@@ -201,7 +202,6 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
 
         int changed = writes.size();
         int deleted = existingDeletions.size();
-        boolean requiresAnalyze = changed > 0 || deleted > 0;
         log.info("Local patch for project {}: {} changed, {} deleted (requiresAnalyze={}, delta={}B, credits={})",
                 projectId, changed, deleted, requiresAnalyze, netDeltaBytes, requiredCredits);
         return new PatchResult(projectId, changed, deleted, List.of(), requiresAnalyze);
@@ -392,20 +392,40 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         return fileName.substring(dot + 1);
     }
 
-    private boolean registerTransactionCompletion(AtomicPatchApplier.Session patchSession) {
+    private boolean changedOrDeleted(int changed, int deleted) {
+        return changed > 0 || deleted > 0;
+    }
+
+    private void completePatchSession(
+            AtomicPatchApplier.Session patchSession,
+            String projectId,
+            boolean requiresAnalyze) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            return false;
+            patchSession.commit();
+            scheduleAnalysis(projectId, requiresAnalyze);
+            return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCompletion(int status) {
                 if (status == TransactionSynchronization.STATUS_COMMITTED) {
                     patchSession.commit();
+                    scheduleAnalysis(projectId, requiresAnalyze);
                 } else {
                     patchSession.rollback();
                 }
             }
         });
-        return true;
+    }
+
+    private void scheduleAnalysis(String projectId, boolean requiresAnalyze) {
+        if (!requiresAnalyze || patchAnalysisScheduler == null) {
+            return;
+        }
+        try {
+            patchAnalysisScheduler.schedule(projectId);
+        } catch (RuntimeException ex) {
+            log.warn("Could not schedule analysis for CLI patch {}: {}", projectId, ex.getMessage());
+        }
     }
 }

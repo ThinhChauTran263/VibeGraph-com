@@ -28,6 +28,8 @@ vi.mock('../../lib/api', async (importOriginal) => {
       listApiKeys: vi.fn(),
       createApiKey: vi.fn(),
       disableApiKey: vi.fn(),
+      enableApiKey: vi.fn(),
+      deleteApiKey: vi.fn(),
       listReports: vi.fn(),
       createReport: vi.fn(),
       getReportDetail: vi.fn(),
@@ -73,7 +75,9 @@ describe('Account Store', () => {
     expect(store.usage).toBeNull()
     expect(store.creditLedger).toEqual([])
     expect(store.projects).toEqual([])
+    expect(store.projectsLoaded).toBe(false)
     expect(store.apiKeys).toEqual([])
+    expect(store.apiKeysLoaded).toBe(false)
     expect(store.reports).toEqual([])
     expect(store.notifications).toEqual([])
     expect(store.notificationDetail).toBeNull()
@@ -90,6 +94,9 @@ describe('Account Store', () => {
       role: 'USER',
       accountStatus: 'BLOCKED',
       safeReason: 'Access is temporarily restricted.',
+      features: {
+        'import.local': { enabled: false, reason: 'Access is temporarily restricted.' },
+      },
     }
     mockAccountApi.getSessionState.mockResolvedValueOnce(state)
 
@@ -99,6 +106,63 @@ describe('Account Store', () => {
     expect(store.accountRestricted).toBe(true)
     expect(store.restrictionReason).toBe(state.safeReason)
     expect(store.sessionState).toEqual(state)
+    expect(store.getFeatureCapability('import.local')).toEqual(state.features['import.local'])
+    expect(store.getFeatureCapability('import.github').enabled).toBe(false)
+  })
+
+  it('clears previously enabled capabilities when session refresh fails', async () => {
+    mockAccountApi.getSessionState
+      .mockResolvedValueOnce({
+        id: 'usr-1',
+        email: 'user@example.com',
+        displayName: 'User',
+        role: 'USER',
+        accountStatus: 'ACTIVE',
+        safeReason: null,
+        features: {
+          'import.github': { enabled: true, reason: null },
+        },
+      })
+      .mockRejectedValueOnce(new Error('Session unavailable'))
+
+    const store = useAccountStore()
+    await store.fetchSessionState()
+    expect(store.getFeatureCapability('import.github').enabled).toBe(true)
+
+    await expect(store.fetchSessionState()).rejects.toThrow('Session unavailable')
+    expect(store.getFeatureCapability('import.github').enabled).toBe(false)
+  })
+
+  it('does not restore stale capabilities after a newer session refresh fails', async () => {
+    let resolveOlder!: (state: AccountSessionState) => void
+    let rejectLatest!: (reason: Error) => void
+    const older = new Promise<AccountSessionState>((resolve) => {
+      resolveOlder = resolve
+    })
+    const latest = new Promise<AccountSessionState>((_, reject) => {
+      rejectLatest = reject
+    })
+    mockAccountApi.getSessionState.mockReturnValueOnce(older).mockReturnValueOnce(latest)
+
+    const store = useAccountStore()
+    const olderRequest = store.fetchSessionState()
+    const latestRequest = store.fetchSessionState()
+    rejectLatest(new Error('Session unavailable'))
+    await expect(latestRequest).rejects.toThrow('Session unavailable')
+    resolveOlder({
+      id: 'usr-1',
+      email: 'user@example.com',
+      displayName: 'User',
+      role: 'USER',
+      accountStatus: 'ACTIVE',
+      safeReason: null,
+      features: {
+        'import.github': { enabled: true, reason: null },
+      },
+    })
+    await olderRequest
+
+    expect(store.getFeatureCapability('import.github').enabled).toBe(false)
   })
 
   it('fetches notifications and refreshes canonical data after marking read', async () => {
@@ -216,6 +280,60 @@ describe('Account Store', () => {
     expect(store.creditLedger[0]?.operationCode).toBe('CLI_PUSH')
   })
 
+  it('fetchProjects loads every repository page for API-key binding', async () => {
+    mockAccountApi.getProjects
+      .mockResolvedValueOnce({
+        content: [{ id: 'project-1', name: 'One', sourceType: 'GITHUB', sizeBytes: 1, status: 'READY', createdAt: null, updatedAt: null, lastAnalyzedAt: null }],
+        totalElements: 2,
+        totalPages: 2,
+        pageNumber: 0,
+        pageSize: 100,
+      })
+      .mockResolvedValueOnce({
+        content: [{ id: 'project-2', name: 'Two', sourceType: 'LOCAL', sizeBytes: 1, status: 'READY', createdAt: null, updatedAt: null, lastAnalyzedAt: null }],
+        totalElements: 2,
+        totalPages: 2,
+        pageNumber: 1,
+        pageSize: 100,
+      })
+
+    const store = useAccountStore()
+    await store.fetchProjects()
+
+    expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(1, 0, 100)
+    expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(2, 1, 100)
+    expect(store.projects.map((project) => project.id)).toEqual(['project-1', 'project-2'])
+    expect(store.projectsLoaded).toBe(true)
+  })
+
+  it('reuses the loaded repository cache unless a refresh is forced', async () => {
+    mockAccountApi.getProjects.mockResolvedValue({
+      content: [
+        {
+          id: 'project-1',
+          name: 'One',
+          sourceType: 'GITHUB',
+          sizeBytes: 1,
+          status: 'READY',
+          createdAt: null,
+          updatedAt: null,
+          lastAnalyzedAt: null,
+        },
+      ],
+      totalElements: 1,
+      totalPages: 1,
+      pageNumber: 0,
+      pageSize: 100,
+    })
+
+    const store = useAccountStore()
+    await store.fetchProjects()
+    await store.fetchProjects()
+    await store.fetchProjects({ force: true })
+
+    expect(mockAccountApi.getProjects).toHaveBeenCalledTimes(2)
+  })
+
   it('changePassword forwards old, new, and confirmation passwords to the API', async () => {
     mockAccountApi.changePassword.mockResolvedValueOnce(undefined)
 
@@ -235,15 +353,25 @@ describe('Account Store', () => {
       keyPrefix: 'vg-abc12',
       name: 'My Key',
       secretKey: 'vg-supersecretvalue',
+      project: {
+        id: 'project-1',
+        name: 'VibeGraph',
+        sourceType: 'GITHUB',
+        status: 'READY',
+      },
       createdAt: new Date().toISOString(),
       expiresAt: null,
     }
     mockAccountApi.createApiKey.mockResolvedValueOnce(created)
 
     const store = useAccountStore()
-    const result = await store.createApiKey('My Key')
+    const result = await store.createApiKey('My Key', 'project-1')
 
     // Must return the full create response with secret
+    expect(mockAccountApi.createApiKey).toHaveBeenCalledWith({
+      name: 'My Key',
+      projectId: 'project-1',
+    })
     expect(result.secretKey).toBe('vg-supersecretvalue')
     // Key should be in the list
     expect(store.apiKeys.length).toBe(1)
@@ -251,6 +379,7 @@ describe('Account Store', () => {
     // List entry must NOT expose secretKey
     expect((store.apiKeys[0] as ApiKey & { secretKey?: string }).secretKey).toBeUndefined()
     expect(store.apiKeys[0]?.disabled).toBe(false)
+    expect(store.apiKeys[0]?.project?.id).toBe('project-1')
   })
 
   it('disableApiKey calls API and marks key disabled', async () => {
@@ -259,6 +388,12 @@ describe('Account Store', () => {
       keyPrefix: 'vg-abc12',
       name: 'To Disable',
       secretKey: 'secret',
+      project: {
+        id: 'project-1',
+        name: 'VibeGraph',
+        sourceType: 'GITHUB',
+        status: 'READY',
+      },
       createdAt: new Date().toISOString(),
       expiresAt: null,
     }
@@ -266,10 +401,60 @@ describe('Account Store', () => {
     mockAccountApi.disableApiKey.mockResolvedValueOnce(undefined)
 
     const store = useAccountStore()
-    await store.createApiKey('To Disable')
+    await store.createApiKey('To Disable', 'project-1')
     await store.disableApiKey('key-1')
 
     expect(store.apiKeys[0]?.disabled).toBe(true)
+    expect(store.apiKeys[0]?.disabledBy).toBe('USER')
+  })
+
+  it('enableApiKey calls API and marks a user-disabled key active', async () => {
+    const key: ApiKey = {
+      id: 'key-1',
+      keyPrefix: 'vg-abc12',
+      name: 'To Enable',
+      project: {
+        id: 'project-1',
+        name: 'VibeGraph',
+        sourceType: 'GITHUB',
+        status: 'READY',
+      },
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+      expiresAt: null,
+      disabledAt: new Date().toISOString(),
+      disabledBy: 'USER',
+      disabledReason: null,
+      lockedAt: null,
+      lockedBy: null,
+      locked: false,
+      deletedAt: null,
+      canDelete: true,
+      disabled: true,
+    }
+    mockAccountApi.listApiKeys.mockResolvedValueOnce([key])
+    mockAccountApi.enableApiKey.mockResolvedValueOnce(undefined)
+
+    const store = useAccountStore()
+    await store.fetchApiKeys()
+    await store.enableApiKey('key-1')
+
+    expect(mockAccountApi.enableApiKey).toHaveBeenCalledWith('key-1')
+    expect(store.apiKeys[0]?.disabled).toBe(false)
+    expect(store.apiKeys[0]?.disabledAt).toBeNull()
+    expect(store.apiKeys[0]?.disabledBy).toBeNull()
+    expect(store.apiKeysLoaded).toBe(true)
+  })
+
+  it('reuses the loaded API key cache until forced', async () => {
+    mockAccountApi.listApiKeys.mockResolvedValue([])
+
+    const store = useAccountStore()
+    await store.fetchApiKeys()
+    await store.fetchApiKeys()
+    await store.fetchApiKeys({ force: true })
+
+    expect(mockAccountApi.listApiKeys).toHaveBeenCalledTimes(2)
   })
 
   it('fetchReports populates reports list', async () => {

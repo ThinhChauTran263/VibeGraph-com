@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import SubscriptionView from '../SubscriptionView.vue'
+import { useAccountStore } from '@/stores/account'
+import i18n from '@/language'
+
+function mountEmptySubscription(usageError?: Error) {
+  const pinia = createTestingPinia({ createSpy: vi.fn, initialState: { account: {} } })
+  const store = useAccountStore(pinia)
+  if (usageError) vi.mocked(store.fetchUsage).mockRejectedValueOnce(usageError)
+  return { wrapper: mount(SubscriptionView, { global: { plugins: [pinia, i18n] } }), store }
+}
 
 describe('SubscriptionView', () => {
   it('renders the real current plan without a hardcoded user plan catalog', async () => {
@@ -25,6 +34,7 @@ describe('SubscriptionView', () => {
               },
             },
           }),
+          i18n,
         ],
       },
     })
@@ -32,7 +42,7 @@ describe('SubscriptionView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Current plan')
     expect(wrapper.text()).toContain('Pro')
-    expect(wrapper.text()).toContain('PRO')
+    expect(wrapper.text()).not.toContain('PRO')
     expect(wrapper.text()).toContain('500 MB')
     expect(wrapper.text()).toContain('375 MB')
     expect(wrapper.text()).toContain('800 credits')
@@ -43,13 +53,21 @@ describe('SubscriptionView', () => {
   })
 
   it('shows an honest unavailable state while account usage is missing', async () => {
-    const wrapper = mount(SubscriptionView, {
-      global: {
-        plugins: [createTestingPinia({ createSpy: vi.fn, initialState: { account: {} } })],
-      },
-    })
+    const { wrapper } = mountEmptySubscription()
 
-    expect(wrapper.text()).toContain('Unavailable')
+    expect(wrapper.text()).toContain('Loading subscription data...')
     expect(wrapper.text()).not.toContain('NaN')
+  })
+
+  it('shows a retry action when account usage fails to load', async () => {
+    const { wrapper, store } = mountEmptySubscription(new Error('Subscription unavailable'))
+
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Subscription unavailable')
+    vi.mocked(store.fetchUsage).mockResolvedValueOnce(undefined)
+    await wrapper.get('[data-test="retry-subscription"]').trigger('click')
+    await flushPromises()
+    expect(store.fetchUsage).toHaveBeenCalledTimes(2)
   })
 })

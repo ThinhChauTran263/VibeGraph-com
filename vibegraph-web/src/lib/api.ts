@@ -152,6 +152,12 @@ export interface ProjectStatusEvent {
   timestamp: string
 }
 
+export interface CliRepositorySetup {
+  project: Project
+  apiKey: ApiKeyCreated
+  commands: string[]
+}
+
 /**
  * Shared 401 handler for all fetch-based API calls.
  * Clears stored auth session and redirects to /login (unless already there).
@@ -359,6 +365,12 @@ export const importApi = {
     return api.post<Project>('/api/projects/import-github', { url })
   },
 
+  createCliRepository(name?: string): Promise<CliRepositorySetup> {
+    return api.post<CliRepositorySetup>('/api/projects/cli-setup', {
+      name: name?.trim() || undefined,
+    })
+  },
+
   /**
    * Import an existing directory on the backend host in place (no upload). The backend
    * analyzes it and starts a file watcher so later edits stream realtime graph updates.
@@ -437,14 +449,6 @@ export const graphApi = {
     if (endLine != null) params.set('endLine', String(endLine))
     return api.get<SourceContent>(`/api/projects/${encodeURIComponent(projectId)}/source?${params}`)
   },
-}
-
-export interface DiagramResponse {
-  diagramType: string
-  mermaidSyntax: string
-  plantUmlSyntax?: string | null
-  /** Distinct packages containing classifiers; used to drive the class-diagram package filter. */
-  availablePackages?: string[]
 }
 
 /** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */
@@ -528,18 +532,6 @@ export const diagramApi = {
       `/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase?${query}`,
     )
   },
-  classDiagram: (projectId: string, pkg?: string) => {
-    const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
-    return api.get<DiagramResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`,
-    )
-  },
-  sequence: (projectId: string, entry: string) => {
-    const query = new URLSearchParams({ entry })
-    return api.get<DiagramResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`,
-    )
-  },
 }
 
 // ─── Auth API ──────────────────────────────────────────────────────────────────
@@ -598,10 +590,12 @@ import type {
   AdminCreditOverview,
   AdminRequestEvent,
   AdminRequestAggregate,
+  AdminSuspiciousNetwork,
   AdminIpBlock,
   AdminIpBlockRequest,
   AdminAuditLog,
   AdminAuditRetention,
+  ApiKeyCreateRequest,
 } from '@/types/api'
 
 /**
@@ -633,11 +627,17 @@ export const accountApi = {
   listApiKeys(): Promise<ApiKey[]> {
     return api.get<ApiKey[]>('/api/account/api-keys')
   },
-  createApiKey(name: string): Promise<ApiKeyCreated> {
-    return api.post<ApiKeyCreated>('/api/account/api-keys', { name })
+  createApiKey(request: ApiKeyCreateRequest): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>('/api/account/api-keys', request)
   },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  enableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/enable`, undefined)
+  },
+  deleteApiKey(id: string): Promise<void> {
+    return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
   },
   listReports(): Promise<Report[]> {
     return api.get<Report[]>('/api/account/reports')
@@ -792,11 +792,14 @@ export const adminApi = {
   listApiKeysForUser(userId: string): Promise<ApiKey[]> {
     return api.get<ApiKey[]>(`/api/admin/api-keys?userId=${encodeURIComponent(userId)}`)
   },
-  createApiKeyForUser(userId: string, name: string): Promise<ApiKeyCreated> {
-    return api.post<ApiKeyCreated>('/api/admin/api-keys', { userId, name })
-  },
   disableApiKey(id: string): Promise<void> {
     return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  lockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/lock`, undefined)
+  },
+  unlockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/unlock`, undefined)
   },
   listReports(
     params: { status?: string; q?: string; page?: number; size?: number } = {},
@@ -869,9 +872,9 @@ export const adminApi = {
       `/api/admin/security/top-users?minutes=${minutes}&limit=${limit}`,
     )
   },
-  listTopIps(minutes = 60, limit = 20): Promise<AdminRequestAggregate[]> {
-    return api.get<AdminRequestAggregate[]>(
-      `/api/admin/security/top-ips?minutes=${minutes}&limit=${limit}`,
+  listTopIps(minutes = 60, limit = 20): Promise<AdminSuspiciousNetwork[]> {
+    return api.get<AdminSuspiciousNetwork[]>(
+      `/api/admin/security/suspicious-networks?minutes=${minutes}&limit=${limit}`,
     )
   },
   listIpBlocks(limit = 100): Promise<AdminIpBlock[]> {

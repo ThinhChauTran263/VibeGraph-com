@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import mermaid from 'mermaid'
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
-import { useDiagrams, type DiagramKind } from '@/composables/useDiagrams'
+import { useDiagrams } from '@/composables/useDiagrams'
 import type { UmlUseCaseResponse, UmlUseCaseView } from '@/lib/api'
 import { renderUmlUseCaseSvg, type UmlUseCaseModel } from '@/lib/umlUseCaseSvg'
 
@@ -14,8 +13,6 @@ const MIN_ZOOM = 0.2
 const MAX_ZOOM = 8
 const WHEEL_ZOOM_FACTOR = 1.12
 
-const activeKind = ref<DiagramKind>('uml')
-const packageFilter = ref('')
 // -1 = the full diagram; >=0 selects a per-actor / per-domain projection from `umlViews`.
 const selectedViewIndex = ref(-1)
 const renderedSvg = ref('')
@@ -26,54 +23,27 @@ const isPanning = ref(false)
 const mainCanvas = ref<HTMLElement | null>(null)
 const fullscreenCanvas = ref<HTMLElement | null>(null)
 const fullscreenDialog = ref<HTMLElement | null>(null)
-const {
-  status,
-  diagram,
-  errorMessage,
-  isLoading,
-  isStale,
-  loadUmlUseCaseDiagram,
-  loadClassDiagram,
-  reset,
-} = useDiagrams()
+const { status, diagram, errorMessage, isLoading, isStale, loadUmlUseCaseDiagram, reset } =
+  useDiagrams()
 let renderSeq = 0
-
-const tabs: Array<{ kind: DiagramKind; label: string }> = [
-  { kind: 'uml', label: 'As-Built Use Case' },
-  { kind: 'class', label: 'Class' },
-]
 
 const mermaidSource = computed(() => diagram.value?.mermaidSyntax?.trim() ?? '')
 const hasDiagramContent = computed(
   () => status.value === 'success' && mermaidSource.value.length > 0,
 )
-
-// Packages that actually contain classifiers in this project. Drives the click-to-filter
-// chips so the user never has to guess an exact package name.
-const availablePackages = computed<string[]>(() => {
-  const current = diagram.value
-  if (current?.kind !== 'class') return []
-  return Array.isArray(current.availablePackages) ? current.availablePackages : []
-})
-// The class diagram came back with no classes for the current filter (vs. a genuinely
-// empty project). Used to show a helpful hint instead of a blank canvas.
-const classDiagramEmpty = computed(
-  () =>
-    activeKind.value === 'class' &&
-    status.value === 'success' &&
-    mermaidSource.value.includes('No classes detected'),
-)
-const packagePlaceholder = computed(() => availablePackages.value[0] ?? 'com.example.service')
 const zoomPercent = computed(() => `${Math.round(diagramZoom.value * 100)}%`)
 const diagramStageStyle = computed(() => ({
   transform: `scale(${Number((diagramZoom.value * BASE_RENDER_SCALE).toFixed(2))})`,
 }))
 
-// Inference warnings (e.g. role guessed from HTTP method) — UML only.
 const warnings = computed<string[]>(() => {
   const current = diagram.value
-  if (current?.kind !== 'uml') return []
+  if (!current) return []
   return 'warnings' in current && Array.isArray(current.warnings) ? current.warnings : []
+})
+const notesSummary = computed(() => {
+  const count = warnings.value.length
+  return count === 1 ? '1 warning' : `${count} warnings`
 })
 
 // True when the model was derived from the class layer (service/controller/entity methods) because
@@ -89,7 +59,6 @@ const derivedFromClassLayer = computed<boolean>(() =>
 // (mutable-typed) shape via a single safe cast and derive everything from there.
 const umlResponse = computed<UmlUseCaseResponse | null>(() => {
   const current = diagram.value
-  if (current?.kind !== 'uml') return null
   return current as unknown as UmlUseCaseResponse
 })
 
@@ -115,39 +84,17 @@ const currentUmlModel = computed<UmlUseCaseModel | null>(() => {
   }
 })
 
-// htmlLabels:false makes Mermaid emit native SVG <text> instead of <foreignObject> HTML labels.
-// foreignObject taints a <canvas> when rasterized, which would break the PNG export below — plain
-// SVG text rasterizes cleanly. securityLevel 'strict' is kept for sanitization.
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: 'strict',
-  htmlLabels: false,
-  flowchart: { htmlLabels: false },
-  class: { htmlLabels: false },
-})
-
 async function refresh(force = false): Promise<void> {
   clearRenderedDiagram()
-  if (activeKind.value === 'uml') {
-    await loadUmlUseCaseDiagram(props.projectId, 'detailed', { force })
-  } else {
-    await loadClassDiagram(props.projectId, packageFilter.value, { force })
-  }
+  await loadUmlUseCaseDiagram(props.projectId, 'detailed', { force })
   // Re-render explicitly after a refresh. The `mermaidSource` watch only fires when the source
   // STRING changes, so refreshing the same tab (identical diagram) would otherwise leave the
   // viewer blank — clearRenderedDiagram() emptied the SVG and the watch never re-ran. Rendering
   // here guarantees a repaint whether or not the source changed.
   await nextTick()
-  // The UML Use Case tab draws a real OMG UML 2.5.1 diagram (stick actors, ellipses, system
-  // boundary, dashed include/extend, hollow-triangle generalization) from the JSON model. The
-  // Class tab keeps using Mermaid.
-  if (activeKind.value === 'uml' && diagram.value?.kind === 'uml') {
-    // A fresh load always starts on the full diagram; views are an explicit user choice.
-    selectedViewIndex.value = -1
-    renderCurrentUml()
-  } else {
-    await renderMermaid(mermaidSource.value)
-  }
+  // A fresh load always starts on the full diagram; views are an explicit user choice.
+  selectedViewIndex.value = -1
+  renderCurrentUml()
 }
 
 /** Render the currently-selected UML model (full diagram or a per-actor/per-domain projection). */
@@ -172,44 +119,10 @@ function renderUmlSvg(model: UmlUseCaseModel): void {
   }
 }
 
-async function renderMermaid(source: string): Promise<void> {
-  const seq = ++renderSeq
-  if (!source) {
-    renderedSvg.value = ''
-    return
-  }
-
-  try {
-    const id = `diagram-${activeKind.value}-${seq}`
-    const { svg } = await mermaid.render(id, source)
-    if (seq !== renderSeq) return
-    renderedSvg.value = svg
-    renderError.value = null
-  } catch (err) {
-    if (seq !== renderSeq) return
-    renderedSvg.value = ''
-    renderError.value =
-      err instanceof Error && err.message ? err.message : 'Failed to render Mermaid diagram.'
-  }
-}
-
 function clearRenderedDiagram(): void {
   renderSeq++
   renderedSvg.value = ''
   renderError.value = null
-}
-
-/** Set the package filter from a chip (or clear it) and reload the class diagram. */
-function applyPackage(pkg: string): void {
-  packageFilter.value = pkg
-  void refresh(true)
-}
-
-function selectTab(kind: DiagramKind): void {
-  if (activeKind.value === kind) return
-  activeKind.value = kind
-  resetZoom()
-  void refresh()
 }
 
 function clampZoom(value: number): number {
@@ -379,7 +292,7 @@ async function downloadPng(): Promise<void> {
 
     const anchor = document.createElement('a')
     anchor.href = canvas.toDataURL('image/png')
-    anchor.download = `${activeKind.value}-diagram.png`
+    anchor.download = 'uml-diagram.png'
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -413,7 +326,7 @@ watch(
 // Re-render when the user switches between the full diagram and a per-actor/per-domain view.
 // Pure client-side: no fetch, just redraw the projection already present in the loaded response.
 watch(selectedViewIndex, () => {
-  if (activeKind.value === 'uml' && diagram.value?.kind === 'uml' && status.value === 'success') {
+  if (status.value === 'success') {
     resetZoom()
     renderCurrentUml()
   }
@@ -435,147 +348,73 @@ onActivated(() => {
   <section class="diagram-panel" aria-labelledby="diagram-panel-heading">
     <header class="diagram-panel__header">
       <div>
-        <p class="diagram-panel__eyebrow">Mermaid diagrams</p>
-        <h2 id="diagram-panel-heading">Architecture diagrams</h2>
+        <p class="diagram-panel__eyebrow">UML use case</p>
+        <h2 id="diagram-panel-heading">As-Built Use Case</h2>
       </div>
-      <button
-        class="diagram-panel__refresh"
-        data-test="diagram-refresh"
-        type="button"
-        :disabled="isLoading"
-        @click="refresh(true)"
-      >
-        {{ isLoading ? 'Loading…' : 'Refresh' }}
-      </button>
+      <div class="diagram-panel__header-actions">
+        <div
+          v-if="umlViews.length > 0"
+          class="diagram-panel__views"
+          data-test="diagram-view-select-wrap"
+        >
+          <label class="diagram-panel__views-label" for="diagram-view-select">View</label>
+          <select
+            id="diagram-view-select"
+            v-model.number="selectedViewIndex"
+            class="diagram-panel__views-select"
+            data-test="diagram-view-select"
+            :disabled="isLoading"
+          >
+            <option :value="-1">Full diagram</option>
+            <option v-for="(view, index) in umlViews" :key="index" :value="index">
+              {{ view.viewType === 'actor' ? 'Actor' : 'Domain' }}: {{ view.title }}
+            </option>
+          </select>
+        </div>
+        <button
+          class="diagram-panel__refresh"
+          data-test="diagram-refresh"
+          type="button"
+          :disabled="isLoading"
+          @click="refresh(true)"
+        >
+          {{ isLoading ? 'Loading…' : 'Refresh' }}
+        </button>
+      </div>
     </header>
 
-    <div class="diagram-panel__tabs" role="tablist" aria-label="Diagram type">
-      <button
-        v-for="tab in tabs"
-        :key="tab.kind"
-        class="diagram-panel__tab"
-        :class="{ 'diagram-panel__tab--active': activeKind === tab.kind }"
-        :data-test="`diagram-tab-${tab.kind}`"
-        type="button"
-        role="tab"
-        :aria-selected="activeKind === tab.kind"
-        @click="selectTab(tab.kind)"
+    <details class="diagram-panel__notes" data-test="diagram-notes">
+      <summary class="diagram-panel__notes-summary">
+        <span>Diagram notes</span>
+        <span v-if="warnings.length > 0" class="diagram-panel__notes-count">
+          {{ notesSummary }}
+        </span>
+      </summary>
+      <p class="diagram-panel__caption" data-test="diagram-asbuilt-caption">
+        <strong>As-Built Use Case View</strong> —
+        <template v-if="derivedFromClassLayer">
+          reverse-engineered from the service/controller class layer and their public methods (no
+          HTTP endpoints were found), using OMG UML 2.5 use-case notation. It reflects the system's
+          implemented capabilities for design-vs-code verification, not a hand-authored
+          business-intent model.
+        </template>
+        <template v-else>
+          reverse-engineered from the source (controllers + Spring Security), using OMG UML 2.5
+          use-case notation. It reflects the system's implemented capabilities for design-vs-code
+          verification, not a hand-authored business-intent model.
+        </template>
+      </p>
+      <ul
+        v-if="warnings.length > 0"
+        class="diagram-panel__warnings"
+        data-test="diagram-warnings"
+        aria-label="Inference warnings"
       >
-        {{ tab.label }}
-      </button>
-    </div>
-
-    <p
-      v-if="activeKind === 'uml'"
-      class="diagram-panel__caption"
-      data-test="diagram-asbuilt-caption"
-    >
-      <strong>As-Built Use Case View</strong> —
-      <template v-if="derivedFromClassLayer">
-        reverse-engineered from the service/controller class layer and their public methods (no HTTP
-        endpoints were found), using OMG UML 2.5 use-case notation. It reflects the system's
-        implemented capabilities for design-vs-code verification, not a hand-authored
-        business-intent model.
-      </template>
-      <template v-else>
-        reverse-engineered from the source (controllers + Spring Security), using OMG UML 2.5
-        use-case notation. It reflects the system's implemented capabilities for design-vs-code
-        verification, not a hand-authored business-intent model.
-      </template>
-    </p>
-
-    <div
-      v-if="activeKind === 'uml' && umlViews.length > 0"
-      class="diagram-panel__views"
-      data-test="diagram-view-select-wrap"
-    >
-      <label class="diagram-panel__views-label" for="diagram-view-select">View</label>
-      <select
-        id="diagram-view-select"
-        v-model.number="selectedViewIndex"
-        class="diagram-panel__views-select"
-        data-test="diagram-view-select"
-        :disabled="isLoading"
-      >
-        <option :value="-1">Full diagram</option>
-        <option v-for="(view, index) in umlViews" :key="index" :value="index">
-          {{ view.viewType === 'actor' ? 'Actor' : 'Domain' }}: {{ view.title }}
-        </option>
-      </select>
-    </div>
-
-    <form
-      v-if="activeKind === 'class'"
-      class="diagram-panel__filters"
-      @submit.prevent="refresh(true)"
-    >
-      <label class="diagram-panel__filter-label" for="diagram-package-filter">
-        Package filter
-      </label>
-      <input
-        id="diagram-package-filter"
-        v-model="packageFilter"
-        class="diagram-panel__package-input"
-        type="text"
-        list="diagram-package-options"
-        :placeholder="packagePlaceholder"
-        :disabled="isLoading"
-      />
-      <datalist id="diagram-package-options">
-        <option v-for="pkg in availablePackages" :key="pkg" :value="pkg" />
-      </datalist>
-      <button class="diagram-panel__filter-submit" type="submit" :disabled="isLoading">
-        Apply
-      </button>
-    </form>
-
-    <div
-      v-if="activeKind === 'class' && availablePackages.length > 0"
-      class="diagram-panel__package-chips"
-      data-test="diagram-package-chips"
-      aria-label="Available packages"
-    >
-      <button
-        type="button"
-        class="diagram-panel__package-chip"
-        :class="{ 'diagram-panel__package-chip--active': packageFilter.trim() === '' }"
-        :disabled="isLoading"
-        @click="applyPackage('')"
-      >
-        All
-      </button>
-      <button
-        v-for="pkg in availablePackages"
-        :key="pkg"
-        type="button"
-        class="diagram-panel__package-chip"
-        :class="{ 'diagram-panel__package-chip--active': packageFilter.trim() === pkg }"
-        :disabled="isLoading"
-        @click="applyPackage(pkg)"
-      >
-        {{ pkg }}
-      </button>
-    </div>
-
-    <p
-      v-if="classDiagramEmpty"
-      class="diagram-panel__filter-empty"
-      data-test="diagram-filter-empty"
-      role="status"
-    >
-      No classes match "{{ packageFilter.trim() }}". Pick a package above or clear the filter.
-    </p>
-
-    <ul
-      v-if="activeKind === 'uml' && warnings.length > 0"
-      class="diagram-panel__warnings"
-      data-test="diagram-warnings"
-      aria-label="Inference warnings"
-    >
-      <li v-for="(warning, index) in warnings" :key="index" class="diagram-panel__warning">
-        {{ warning }}
-      </li>
-    </ul>
+        <li v-for="(warning, index) in warnings" :key="index" class="diagram-panel__warning">
+          {{ warning }}
+        </li>
+      </ul>
+    </details>
 
     <div v-if="isLoading" class="diagram-panel__loading" role="status">
       <div class="diagram-panel__spinner" aria-hidden="true"></div>
@@ -686,7 +525,7 @@ onActivated(() => {
         <header class="diagram-panel__fullscreen-header">
           <div>
             <p class="diagram-panel__eyebrow">Diagram viewer</p>
-            <h2>{{ tabs.find((tab) => tab.kind === activeKind)?.label }}</h2>
+            <h2>As-Built Use Case</h2>
           </div>
           <div class="diagram-panel__fullscreen-actions">
             <button
@@ -754,10 +593,10 @@ onActivated(() => {
   min-height: 20rem;
   height: 100%;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   border: 1px solid rgba(59, 130, 246, 0.24);
-  border-radius: 1rem;
-  padding: 1rem;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
   background: rgba(15, 23, 42, 0.94);
   color: #e5e7eb;
   box-shadow: 0 18px 52px rgba(15, 23, 42, 0.32);
@@ -765,9 +604,17 @@ onActivated(() => {
 
 .diagram-panel__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.diagram-panel__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .diagram-panel__header h2,
@@ -777,19 +624,18 @@ onActivated(() => {
 
 .diagram-panel__eyebrow {
   color: #93c5fd;
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .diagram-panel__header h2 {
-  margin-top: 0.25rem;
-  font-size: 1.125rem;
+  margin-top: 0.125rem;
+  font-size: 1rem;
+  line-height: 1.2;
 }
 
-.diagram-panel__refresh,
-.diagram-panel__filter-submit,
-.diagram-panel__tab {
+.diagram-panel__refresh {
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 0.625rem;
   background: rgba(30, 41, 59, 0.86);
@@ -798,105 +644,18 @@ onActivated(() => {
   font-weight: 600;
 }
 
-.diagram-panel__refresh,
-.diagram-panel__filter-submit {
+.diagram-panel__refresh {
   min-height: 2.25rem;
   padding: 0 0.75rem;
 }
 
-.diagram-panel__refresh:hover:not(:disabled),
-.diagram-panel__filter-submit:hover:not(:disabled),
-.diagram-panel__tab:hover {
+.diagram-panel__refresh:hover:not(:disabled) {
   border-color: rgba(147, 197, 253, 0.7);
 }
 
-.diagram-panel__refresh:disabled,
-.diagram-panel__filter-submit:disabled {
+.diagram-panel__refresh:disabled {
   opacity: 0.6;
   cursor: progress;
-}
-
-.diagram-panel__tabs {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.diagram-panel__package-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.diagram-panel__package-chip {
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 999px;
-  background: rgba(30, 41, 59, 0.7);
-  color: #cbd5e1;
-  padding: 0.2rem 0.7rem;
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.diagram-panel__package-chip:hover:not(:disabled) {
-  border-color: rgba(147, 197, 253, 0.7);
-  color: #f3f4f6;
-}
-
-.diagram-panel__package-chip--active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-}
-
-.diagram-panel__package-chip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.diagram-panel__filter-empty {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #fbbf24;
-}
-
-.diagram-panel__tab {
-  padding: 0.5rem 0.75rem;
-}
-
-.diagram-panel__tab--active {
-  border-color: rgba(96, 165, 250, 0.9);
-  background: rgba(37, 99, 235, 0.34);
-  color: #bfdbfe;
-}
-
-.diagram-panel__filters {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-
-.diagram-panel__filter-label {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.25rem;
-  color: #9ca3af;
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.diagram-panel__package-input {
-  min-height: 2.25rem;
-  border: 1px solid #374151;
-  border-radius: 0.625rem;
-  background: rgba(15, 23, 42, 0.78);
-  color: #e5e7eb;
-  padding: 0 0.75rem;
 }
 
 .diagram-panel__status,
@@ -957,10 +716,10 @@ onActivated(() => {
 .diagram-panel__viewer {
   position: relative;
   display: flex;
-  min-height: 20rem;
+  min-height: 26rem;
   flex: 1;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .diagram-panel__viewer-toolbar {
@@ -993,7 +752,7 @@ onActivated(() => {
 }
 
 .diagram-panel__canvas {
-  min-height: 22rem;
+  min-height: 28rem;
   flex: 1;
   overflow: auto;
   border: 1px solid rgba(51, 65, 85, 0.85);
@@ -1027,7 +786,7 @@ onActivated(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
 .diagram-panel__views-label {
@@ -1038,7 +797,7 @@ onActivated(() => {
 
 .diagram-panel__views-select {
   flex: 0 1 auto;
-  max-width: 22rem;
+  max-width: 18rem;
   padding: 0.45rem 0.6rem;
   font: inherit;
   font-size: 0.8125rem;
@@ -1068,14 +827,66 @@ onActivated(() => {
 }
 
 .diagram-panel__caption {
-  margin: 0 0 0.75rem;
-  padding: 0.6rem 0.85rem;
+  margin: 0.625rem 0 0;
+  padding: 0.55rem 0.7rem;
   font-size: 0.8125rem;
   line-height: 1.45;
   color: #9fb0c7;
   background: rgba(7, 11, 22, 0.5);
   border-left: 3px solid var(--vg-blue-bright, #60a5fa);
   border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.diagram-panel__notes {
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 0.625rem;
+  background: rgba(7, 11, 22, 0.36);
+}
+
+.diagram-panel__notes-summary {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.diagram-panel__notes-summary::-webkit-details-marker {
+  display: none;
+}
+
+.diagram-panel__notes-summary::before {
+  content: '>';
+  color: #93c5fd;
+  font-size: 0.75rem;
+  transition: transform 150ms ease;
+}
+
+.diagram-panel__notes[open] .diagram-panel__notes-summary::before {
+  transform: rotate(90deg);
+}
+
+.diagram-panel__notes-summary span:first-child {
+  margin-right: auto;
+}
+
+.diagram-panel__notes-count {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 999px;
+  color: #fde68a;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.diagram-panel__notes:focus-within {
+  border-color: rgba(96, 165, 250, 0.65);
 }
 
 .diagram-panel__caption strong {
@@ -1086,8 +897,10 @@ onActivated(() => {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
-  margin: 0;
-  padding: 0.75rem 0.75rem 0.75rem 1.75rem;
+  max-height: 5.75rem;
+  margin: 0.625rem;
+  overflow: auto;
+  padding: 0.625rem 0.75rem 0.625rem 1.5rem;
   border: 1px solid rgba(234, 179, 8, 0.4);
   border-radius: 0.75rem;
   background: rgba(120, 53, 15, 0.24);

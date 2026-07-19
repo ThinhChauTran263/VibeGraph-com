@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import { featureAvailabilityContract, refreshFeatureAvailability } from '@/lib/featureAvailability'
 import type { AdminFeatureFlag, AdminFeatureFlagRequest } from '@/types/api'
 
 const adminStore = useAdminStore()
+const { t } = useI18n({ useScope: 'global' })
 const loading = ref(true)
 const errorMsg = ref('')
+const capabilityError = ref('')
+const runtimeContractConnected = computed(() => featureAvailabilityContract.value === true)
 
 const form = ref<AdminFeatureFlagRequest>({
   key: '',
@@ -17,90 +22,110 @@ const form = ref<AdminFeatureFlagRequest>({
 
 type TemplateFlag = AdminFeatureFlagRequest & {
   group: string
-  note: string
+  groupLabelKey: string
+  displayNameKey: string
+  noteKey: string
 }
 
 const templates: TemplateFlag[] = [
   {
     group: 'Import methods',
+    groupLabelKey: 'importMethods',
     key: 'import.local',
     scope: 'GLOBAL',
     displayName: 'Local import',
+    displayNameKey: 'localImport',
     enabled: true,
     description: 'Allow importing projects from server-local paths.',
-    note: 'Use when /projects import has issues.',
+    noteKey: 'localImport',
   },
   {
     group: 'Import methods',
+    groupLabelKey: 'importMethods',
     key: 'import.archive',
     scope: 'GLOBAL',
     displayName: 'Archive import',
+    displayNameKey: 'archiveImport',
     enabled: true,
     description: 'Allow ZIP/TAR archive uploads.',
-    note: 'Disable if archive parsing or storage is degraded.',
+    noteKey: 'archiveImport',
   },
   {
     group: 'Import methods',
+    groupLabelKey: 'importMethods',
     key: 'import.github',
     scope: 'GLOBAL',
     displayName: 'GitHub import',
+    displayNameKey: 'githubImport',
     enabled: true,
     description: 'Allow imports from GitHub repositories.',
-    note: 'Disable without impacting local/archive import.',
+    noteKey: 'githubImport',
   },
   {
-    group: 'CLI and API',
+    group: 'CLI push',
+    groupLabelKey: 'cliPush',
     key: 'cli.push',
     scope: 'GLOBAL',
     displayName: 'CLI push',
+    displayNameKey: 'cliPush',
     enabled: true,
     description: 'Allow vibegraph-cli patch pushes.',
-    note: 'Useful when patch writes or credit preflight need maintenance.',
+    noteKey: 'cliPush',
   },
   {
-    group: 'Analysis and generation',
+    group: 'Project analysis',
+    groupLabelKey: 'projectAnalysis',
     key: 'project.analyze',
     scope: 'GLOBAL',
     displayName: 'Project analyze',
+    displayNameKey: 'projectAnalyze',
     enabled: true,
     description: 'Allow users to analyze imported projects.',
-    note: 'Disable during analyzer incidents without blocking repository browsing.',
+    noteKey: 'projectAnalyze',
   },
   {
-    group: 'Analysis and generation',
+    group: 'Gen use case',
+    groupLabelKey: 'useCaseGeneration',
     key: 'usecase.generate',
     scope: 'GLOBAL',
     displayName: 'Use case generation',
+    displayNameKey: 'useCaseGeneration',
     enabled: true,
     description: 'Allow generated use-case views.',
-    note: 'Disable generation without disabling graph exploration.',
+    noteKey: 'useCaseGeneration',
   },
   {
-    group: 'CLI and API',
+    group: 'API key creation',
+    groupLabelKey: 'apiKeyCreation',
     key: 'api_keys.create.global',
     scope: 'GLOBAL',
     displayName: 'New API keys',
+    displayNameKey: 'newApiKeys',
     enabled: true,
     description: 'Allow users to create API keys globally.',
-    note: 'User-level disable still overrides this.',
+    noteKey: 'newApiKeys',
   },
   {
-    group: 'Platform access',
+    group: 'Registration',
+    groupLabelKey: 'registration',
     key: 'registration',
     scope: 'GLOBAL',
     displayName: 'Registration',
+    displayNameKey: 'registration',
     enabled: true,
     description: 'Allow new account registration.',
-    note: 'Turn off during abuse spikes or private beta.',
+    noteKey: 'registration',
   },
   {
-    group: 'MCP tool controls',
+    group: 'MCP global and child tools',
+    groupLabelKey: 'mcpTools',
     key: 'mcp.enabled',
     scope: 'GLOBAL',
     displayName: 'All MCP tools',
+    displayNameKey: 'allMcpTools',
     enabled: true,
     description: 'Allow MCP tool execution.',
-    note: 'Master switch for MCP incidents.',
+    noteKey: 'allMcpTools',
   },
   ...[
     'get_project_architecture',
@@ -119,13 +144,17 @@ const templates: TemplateFlag[] = [
     'explain_failure_path',
     'get_project_conventions',
   ].map((toolName) => ({
-    group: 'MCP tool controls',
+    group: 'MCP global and child tools',
+    groupLabelKey: 'mcpTools',
     key: `mcp.tool.${toolName}`,
     scope: 'MCP_TOOL' as const,
-    displayName: toolName.replace(/_/g, ' ').replace(/(^|\s)\S/g, (letter: string) => letter.toUpperCase()),
+    displayName: toolName
+      .replace(/_/g, ' ')
+      .replace(/(^|\s)\S/g, (letter: string) => letter.toUpperCase()),
+    displayNameKey: '',
     enabled: true,
     description: `Allow ${toolName.replace(/_/g, ' ')} MCP calls.`,
-    note: 'Child control; the MCP global switch overrides this state.',
+    noteKey: 'mcpChildTool',
   })),
 ]
 
@@ -137,7 +166,9 @@ function readCollapsedGroups(): Record<string, boolean> {
     const parsed: unknown = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '{}')
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+      Object.entries(parsed).filter(
+        (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+      ),
     )
   } catch {
     localStorage.removeItem(COLLAPSE_KEY)
@@ -156,20 +187,35 @@ const groupColumns = computed(() => [
 ])
 const extraFlags = computed(() =>
   adminStore.featureFlags.filter(
-    (flag) => flag.key !== 'auth.registration' && !templates.some((template) => template.key === flag.key),
+    (flag) =>
+      flag.key !== 'auth.registration' && !templates.some((template) => template.key === flag.key),
   ),
 )
 
 onMounted(loadFlags)
 
 async function loadFlags(): Promise<void> {
+  const [flagsResult, capabilityResult] = await Promise.allSettled([
+    adminStore.fetchFeatureFlags(),
+    refreshFeatureAvailability(),
+  ])
+  errorMsg.value =
+    flagsResult.status === 'rejected'
+      ? flagsResult.reason instanceof Error
+        ? flagsResult.reason.message
+        : t('admin.system.errors.load')
+      : ''
+  capabilityError.value =
+    capabilityResult.status === 'rejected' ? t('admin.system.errors.runtimeVerification') : ''
+  loading.value = false
+}
+
+async function refreshRuntimeCapabilityState(): Promise<void> {
   try {
-    await adminStore.fetchFeatureFlags()
-    errorMsg.value = ''
-  } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load feature flags.'
-  } finally {
-    loading.value = false
+    await refreshFeatureAvailability()
+    capabilityError.value = ''
+  } catch {
+    capabilityError.value = t('admin.system.errors.runtimeVerification')
   }
 }
 
@@ -180,10 +226,11 @@ async function submitFlag(): Promise<void> {
       key: form.value.key.trim(),
       displayName: form.value.displayName.trim(),
     })
+    await refreshRuntimeCapabilityState()
     form.value = { key: '', scope: 'GLOBAL', displayName: '', enabled: true, description: '' }
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to save feature flag.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.system.errors.save')
   }
 }
 
@@ -192,9 +239,10 @@ async function toggleFlag(flagKey: string, checked: boolean): Promise<void> {
   if (!flag) return
   try {
     await adminStore.setFeatureFlagEnabled(flag, checked)
+    await refreshRuntimeCapabilityState()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to update feature flag.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.system.errors.updateFlag')
   }
 }
 
@@ -208,10 +256,20 @@ async function toggleTemplate(template: TemplateFlag, checked: boolean): Promise
       enabled: checked,
       description: existing?.description ?? template.description,
     })
+    await refreshRuntimeCapabilityState()
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to update system control.'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.system.errors.updateControl')
   }
+}
+
+function groupId(group: string): string {
+  return `system-group-${group.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+}
+
+function groupLabel(group: string): string {
+  const groupLabelKey = templates.find((template) => template.group === group)?.groupLabelKey
+  return groupLabelKey ? t(`admin.system.groups.${groupLabelKey}`) : group
 }
 
 function currentFlag(template: TemplateFlag): AdminFeatureFlag | null {
@@ -220,7 +278,7 @@ function currentFlag(template: TemplateFlag): AdminFeatureFlag | null {
 
 function mcpGlobalEnabled(): boolean {
   const global = templates.find((item) => item.key === 'mcp.enabled')
-  return global ? currentFlag(global)?.enabled ?? global.enabled : true
+  return global ? (currentFlag(global)?.enabled ?? global.enabled) : true
 }
 
 function currentEnabled(template: TemplateFlag): boolean {
@@ -233,63 +291,77 @@ function currentEnabled(template: TemplateFlag): boolean {
   <div class="admin-page">
     <div class="page-title">
       <div>
-        <h2>System</h2>
-        <p>
-          Operational switches for imports, CLI, MCP tools, registration, and global API key
-          creation.
-        </p>
+        <h2>{{ t('admin.system.title') }}</h2>
+        <p>{{ t('admin.system.description') }}</p>
       </div>
-      <span class="api-state" :class="{ unavailable: errorMsg }">{{
-        errorMsg ? 'API error' : 'API connected'
-      }}</span>
+      <span
+        class="api-state"
+        :class="{ unavailable: errorMsg, connected: runtimeContractConnected }"
+        >{{
+          errorMsg
+            ? t('admin.system.apiState.error')
+            : runtimeContractConnected
+              ? t('admin.system.apiState.connected')
+              : t('admin.system.apiState.configurationOnly')
+        }}</span
+      >
     </div>
 
-    <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
-    <div v-if="loading" class="notice">Loading feature flags...</div>
+    <div v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</div>
+    <div v-if="loading" class="notice" role="status">{{ t('admin.system.loading') }}</div>
+    <div v-else-if="!runtimeContractConnected" class="notice warning" role="status">
+      <strong>{{ t('admin.system.runtime.configurationOnlyTitle') }}</strong>
+      <p>{{ t('admin.system.runtime.configurationOnlyDescription') }}</p>
+      <small v-if="capabilityError">{{ capabilityError }}</small>
+    </div>
+    <div v-else class="notice success" role="status">
+      <strong>{{ t('admin.system.runtime.connectedTitle') }}</strong>
+      <p>{{ t('admin.system.runtime.connectedDescription') }}</p>
+    </div>
 
     <section class="panel">
       <div class="panel-heading">
-        <h3>Create or update system control</h3>
-        <p>Use this for new feature gates that are not listed in the default groups below.</p>
+        <h3>{{ t('admin.system.form.title') }}</h3>
+        <p>{{ t('admin.system.form.description') }}</p>
       </div>
       <form class="flag-form" @submit.prevent="submitFlag">
         <label class="field">
-          <span>Key</span>
+          <span>{{ t('admin.system.form.key') }}</span>
           <input
             id="system-flag-key"
             v-model="form.key"
             name="systemFlagKey"
             required
             pattern="[a-z0-9_.:-]{2,120}"
-            placeholder="cli.push"
+            :placeholder="t('admin.system.form.keyPlaceholder')"
           />
         </label>
         <label class="field">
-          <span>Scope</span>
+          <span>{{ t('admin.system.form.scope') }}</span>
           <select id="system-flag-scope" v-model="form.scope" name="systemFlagScope">
-            <option value="GLOBAL">Global</option>
-            <option value="MCP_TOOL">MCP tool</option>
+            <option value="GLOBAL">{{ t('admin.system.scopes.global') }}</option>
+            <option value="MCP_TOOL">{{ t('admin.system.scopes.mcpTool') }}</option>
           </select>
         </label>
         <label class="field">
-          <span>Display name</span>
+          <span>{{ t('admin.system.form.displayName') }}</span>
           <input
             id="system-flag-display-name"
             v-model="form.displayName"
             name="systemFlagDisplayName"
             required
             maxlength="160"
-            placeholder="CLI push"
+            :placeholder="t('admin.system.form.displayNamePlaceholder')"
           />
         </label>
         <label class="field">
-          <span>Description</span>
+          <span>{{ t('admin.system.form.flagDescription') }}</span>
           <input
             id="system-flag-description"
             v-model="form.description"
             name="systemFlagDescription"
             maxlength="500"
-            placeholder="Optional operator note"
+            :placeholder="t('admin.system.form.descriptionPlaceholder')"
           />
         </label>
         <label class="mini-switch" :class="{ active: form.enabled }" for="system-flag-enabled">
@@ -300,54 +372,73 @@ function currentEnabled(template: TemplateFlag): boolean {
             type="checkbox"
           />
           <span class="toggle-track" aria-hidden="true"><span></span></span>
-          <strong>{{ form.enabled ? 'Enabled' : 'Disabled' }}</strong>
+          <strong>{{
+            form.enabled ? t('admin.system.states.enabled') : t('admin.system.states.disabled')
+          }}</strong>
         </label>
-        <button type="submit">Save flag</button>
+        <button type="submit">{{ t('admin.system.actions.saveFlag') }}</button>
       </form>
     </section>
 
     <section class="system-grid">
       <div v-for="(column, columnIndex) in groupColumns" :key="columnIndex" class="system-column">
-      <article v-for="group in column" :key="group" class="panel control-panel">
-        <button
-          class="group-toggle"
-          type="button"
-          :aria-expanded="!collapsedGroups[group]"
-          @click="toggleGroup(group)"
-        >
-          <h3>{{ group }}</h3>
-          <span aria-hidden="true">{{ collapsedGroups[group] ? '›' : '⌄' }}</span>
-        </button>
-        <div v-if="!collapsedGroups[group]" class="toggle-list">
-          <label
-            v-for="template in templates.filter((item) => item.group === group)"
-            :key="template.key"
-            class="toggle-row"
-            :class="{ disabled: !currentEnabled(template) }"
+        <article v-for="group in column" :key="group" class="panel control-panel">
+          <button
+            class="group-toggle"
+            type="button"
+            :aria-expanded="!collapsedGroups[group]"
+            :aria-controls="groupId(group)"
+            @click="toggleGroup(group)"
           >
-            <span class="control-copy">
-              <strong>{{ currentFlag(template)?.displayName ?? template.displayName }}</strong>
-              <small>{{ template.key }}</small>
-              <em>{{ currentFlag(template)?.description ?? template.note }}</em>
-            </span>
-            <span class="switch-wrap">
-              <input
-                type="checkbox"
-                :checked="currentFlag(template)?.enabled ?? template.enabled"
-                :disabled="template.scope === 'MCP_TOOL' && !mcpGlobalEnabled()"
-                :aria-label="`Toggle ${template.displayName}`"
-                @change="toggleTemplate(template, ($event.target as HTMLInputElement).checked)"
-              />
-              <span class="switch" aria-hidden="true"><span></span></span>
-            </span>
-          </label>
-        </div>
-      </article>
+            <h3>{{ groupLabel(group) }}</h3>
+            <span aria-hidden="true">{{ collapsedGroups[group] ? '›' : '⌄' }}</span>
+          </button>
+          <div v-if="!collapsedGroups[group]" :id="groupId(group)" class="toggle-list">
+            <label
+              v-for="template in templates.filter((item) => item.group === group)"
+              :key="template.key"
+              class="toggle-row"
+              :class="{ disabled: !currentEnabled(template) }"
+            >
+              <span class="control-copy">
+                <strong>{{
+                  currentFlag(template)?.displayName ??
+                  (template.displayNameKey
+                    ? t(`admin.system.controls.${template.displayNameKey}.name`)
+                    : template.displayName)
+                }}</strong>
+                <small>{{ template.key }}</small>
+                <em>{{
+                  currentFlag(template)?.description ??
+                  t(`admin.system.controls.${template.noteKey}.note`)
+                }}</em>
+              </span>
+              <span class="switch-wrap">
+                <input
+                  type="checkbox"
+                  :checked="currentFlag(template)?.enabled ?? template.enabled"
+                  :disabled="template.scope === 'MCP_TOOL' && !mcpGlobalEnabled()"
+                  :aria-label="
+                    t('admin.system.actions.toggle', {
+                      name:
+                        currentFlag(template)?.displayName ??
+                        (template.displayNameKey
+                          ? t(`admin.system.controls.${template.displayNameKey}.name`)
+                          : template.displayName),
+                    })
+                  "
+                  @change="toggleTemplate(template, ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="switch" aria-hidden="true"><span></span></span>
+              </span>
+            </label>
+          </div>
+        </article>
       </div>
     </section>
 
     <section v-if="extraFlags.length" class="panel">
-      <h3>Other configured controls</h3>
+      <h3>{{ t('admin.system.otherControls.title') }}</h3>
       <div class="toggle-list">
         <label
           v-for="flag in extraFlags"
@@ -358,13 +449,13 @@ function currentEnabled(template: TemplateFlag): boolean {
           <span class="control-copy">
             <strong>{{ flag.displayName }}</strong>
             <small>{{ flag.key }} / {{ flag.scope }}</small>
-            <em>{{ flag.description || 'No description provided.' }}</em>
+            <em>{{ flag.description || t('admin.system.otherControls.noDescription') }}</em>
           </span>
           <span class="switch-wrap">
             <input
               type="checkbox"
               :checked="flag.enabled"
-              :aria-label="`Toggle ${flag.displayName}`"
+              :aria-label="t('admin.system.actions.toggle', { name: flag.displayName })"
               @change="toggleFlag(flag.key, ($event.target as HTMLInputElement).checked)"
             />
             <span class="switch" aria-hidden="true"><span></span></span>
@@ -421,6 +512,10 @@ button {
 }
 
 .api-state {
+  color: #d97706;
+}
+
+.api-state.connected {
   color: var(--vg-green-bright);
 }
 
@@ -435,6 +530,34 @@ button {
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   padding: var(--vg-space-4);
+}
+
+.notice p {
+  margin: var(--vg-space-1) 0 0;
+  color: var(--vg-text-muted);
+}
+
+.notice.warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.notice.warning strong {
+  color: var(--vg-text);
+}
+
+.notice.warning small {
+  display: block;
+  margin-top: var(--vg-space-2);
+  color: #d97706;
+}
+
+.notice.success {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.notice.success strong {
+  color: var(--vg-green-bright);
 }
 
 .system-grid {
@@ -605,14 +728,22 @@ button {
 
 .group-toggle {
   width: 100%;
+  min-height: 2.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0;
+  padding: var(--vg-space-2) 0;
   border: 0;
   background: transparent;
   color: var(--vg-text);
   cursor: pointer;
+}
+
+.group-toggle:focus-visible,
+.switch-wrap:focus-within,
+.mini-switch:focus-within {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 3px;
 }
 
 .group-toggle span {

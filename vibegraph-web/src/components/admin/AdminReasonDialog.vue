@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n({ useScope: 'global' })
 
 const props = withDefaults(
   defineProps<{
@@ -11,7 +14,6 @@ const props = withDefaults(
     requireFinalConfirm?: boolean
   }>(),
   {
-    confirmLabel: 'Apply',
     busy: false,
     requireFinalConfirm: false,
   },
@@ -56,44 +58,44 @@ function submit(): void {
           <p>{{ description }}</p>
 
           <label class="field" for="safe-reason">
-            <span>User-visible reason</span>
+            <span>{{ t('admin.dialogs.userVisibleReason') }}</span>
             <textarea
               id="safe-reason"
               v-model="safeReason"
               required
               maxlength="240"
               rows="3"
-              placeholder="Explain the account restriction in safe user-facing language."
+              :placeholder="t('admin.dialogs.userVisibleReasonPlaceholder')"
             ></textarea>
           </label>
 
           <label class="field" for="internal-reason">
-            <span>Internal reason</span>
+            <span>{{ t('admin.dialogs.internalReason') }}</span>
             <textarea
               id="internal-reason"
               v-model="reason"
               maxlength="500"
               rows="3"
-              placeholder="Optional admin-only detail. Defaults to the user-visible reason."
+              :placeholder="t('admin.dialogs.internalReasonPlaceholder')"
             ></textarea>
           </label>
 
           <label v-if="requireFinalConfirm" class="check-row">
             <input v-model="checked" type="checkbox" />
-            <span>I understand this disables sign-in and API access.</span>
+            <span>{{ t('admin.dialogs.understandAccessDisabled') }}</span>
           </label>
         </div>
 
         <div class="dialog__actions">
           <button type="button" class="btn secondary" :disabled="busy" @click="emit('cancel')">
-            Cancel
+            {{ t('admin.dialogs.cancel') }}
           </button>
           <button
             type="submit"
             class="btn danger"
             :disabled="busy || !safeReason.trim() || (requireFinalConfirm && !checked)"
           >
-            {{ busy ? 'Working...' : confirmLabel }}
+            {{ busy ? t('admin.dialogs.working') : confirmLabel || t('admin.dialogs.apply') }}
           </button>
         </div>
       </form>

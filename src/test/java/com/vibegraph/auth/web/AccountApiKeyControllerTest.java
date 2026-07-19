@@ -6,9 +6,18 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.dto.ApiKeyCreateRequest;
@@ -16,19 +25,11 @@ import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;
 import com.vibegraph.auth.service.ApiKeyService;
 import com.vibegraph.common.exception.AccountBlockedException;
+import com.vibegraph.common.exception.ApiKeyAdminLockedException;
 import com.vibegraph.common.exception.ApiKeyPlanLimitReachedException;
 import com.vibegraph.common.exception.ApiKeysDisabledException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DisplayName("AccountApiKeyController")
 class AccountApiKeyControllerTest {
@@ -53,6 +54,8 @@ class AccountApiKeyControllerTest {
                 "vbg_test1234",
                 "Test Key",
                 "vbg_abcdefgh12345678901234567890ab",
+                new com.vibegraph.auth.dto.ProjectBindingResponse(
+                        "project-1", "Project One", "LOCAL", "ANALYZED"),
                 Instant.now(),
                 null);
         when(apiKeyService.createForCurrentUser(any(ApiKeyCreateRequest.class)))
@@ -60,14 +63,27 @@ class AccountApiKeyControllerTest {
 
         mockMvc.perform(post("/api/account/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Test Key\"}"))
+                        .content("{\"name\":\"Test Key\",\"projectId\":\"project-1\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.secretKey").value("vbg_abcdefgh12345678901234567890ab"))
                 .andExpect(jsonPath("$.data.keyPrefix").value("vbg_test1234"))
-                .andExpect(jsonPath("$.data.name").value("Test Key"));
+                .andExpect(jsonPath("$.data.name").value("Test Key"))
+                .andExpect(jsonPath("$.data.project.id").value("project-1"))
+                .andExpect(jsonPath("$.data.project.name").value("Project One"));
 
         verify(apiKeyService).createForCurrentUser(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/account/api-keys rejects missing projectId")
+    void create_missingProjectId_returnsValidationError() throws Exception {
+        mockMvc.perform(post("/api/account/api-keys")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Test Key\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -75,7 +91,7 @@ class AccountApiKeyControllerTest {
     void create_blankName_returnsValidationError() throws Exception {
         mockMvc.perform(post("/api/account/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"   \"}"))
+                        .content("{\"name\":\"   \",\"projectId\":\"project-1\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
@@ -89,7 +105,7 @@ class AccountApiKeyControllerTest {
 
         mockMvc.perform(post("/api/account/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Test Key\"}"))
+                        .content("{\"name\":\"Test Key\",\"projectId\":\"project-1\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("ACCOUNT_BLOCKED"));
@@ -103,7 +119,7 @@ class AccountApiKeyControllerTest {
 
         mockMvc.perform(post("/api/account/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Test Key\"}"))
+                        .content("{\"name\":\"Test Key\",\"projectId\":\"project-1\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("API_KEYS_DISABLED"));
@@ -117,7 +133,7 @@ class AccountApiKeyControllerTest {
 
         mockMvc.perform(post("/api/account/api-keys")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Test Key\"}"))
+                        .content("{\"name\":\"Test Key\",\"projectId\":\"project-1\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("API_KEY_PLAN_LIMIT_REACHED"));
@@ -168,6 +184,31 @@ class AccountApiKeyControllerTest {
     }
 
     @Test
+    @DisplayName("PATCH /api/account/api-keys/{id}/enable enables owned user-disabled key")
+    void enable_ownedUserDisabledKey_succeeds() throws Exception {
+        UUID keyId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/account/api-keys/" + keyId + "/enable"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(apiKeyService).enableForCurrentUser(keyId);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/account/api-keys/{id}/enable returns 403 for admin locked key")
+    void enable_adminLockedKey_returnsForbidden() throws Exception {
+        UUID keyId = UUID.randomUUID();
+        Mockito.doThrow(new ApiKeyAdminLockedException("Administrator-locked API keys cannot be changed"))
+                .when(apiKeyService).enableForCurrentUser(keyId);
+
+        mockMvc.perform(patch("/api/account/api-keys/" + keyId + "/enable"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("API_KEY_ADMIN_LOCKED"));
+    }
+
+    @Test
     @DisplayName("PATCH /api/account/api-keys/{id}/disable returns 403 for non-owned key")
     void disable_nonOwnedKey_returnsForbidden() throws Exception {
         UUID keyId = UUID.randomUUID();
@@ -178,5 +219,29 @@ class AccountApiKeyControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/account/api-keys/{id} deletes owned key")
+    void delete_ownedKey_succeeds() throws Exception {
+        UUID keyId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/account/api-keys/" + keyId))
+                .andExpect(status().isNoContent());
+
+        verify(apiKeyService).deleteForCurrentUser(keyId);
+    }
+
+    @Test
+    @DisplayName("DELETE /api/account/api-keys/{id} returns 403 for admin locked key")
+    void delete_adminLockedKey_returnsForbidden() throws Exception {
+        UUID keyId = UUID.randomUUID();
+        Mockito.doThrow(new ApiKeyAdminLockedException("Administrator-locked API keys cannot be deleted"))
+                .when(apiKeyService).deleteForCurrentUser(keyId);
+
+        mockMvc.perform(delete("/api/account/api-keys/" + keyId))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("API_KEY_ADMIN_LOCKED"));
     }
 }

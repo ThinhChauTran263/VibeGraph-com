@@ -10,9 +10,8 @@ import lombok.NoArgsConstructor;
 /**
  * Rich intermediate model for a business-level UML Use Case diagram.
  *
- * <p>Distinct from the raw endpoint "API Map" ({@link UseCaseResponse}): this model holds
- * inferred business actors and verb-phrased use cases, plus both a Mermaid fallback rendering
- * and a standard PlantUML source for proper UML export/rendering.
+ * <p>This model holds inferred business actors and verb-phrased use cases, plus both a
+ * Mermaid fallback rendering and a standard PlantUML source for proper UML export/rendering.
  */
 @Data
 @Builder
@@ -23,7 +22,7 @@ public class UmlUseCaseResponse {
     /** Always {@code "usecase"} for this diagram family. */
     private String diagramType;
 
-    /** Rendering style: {@code "uml"} for the business diagram, {@code "api-map"} for the endpoint map. */
+    /** Rendering style: {@code "uml"} for the business diagram. */
     private String style;
 
     /** Layout mode: {@code "flat"} or {@code "grouped"}. */

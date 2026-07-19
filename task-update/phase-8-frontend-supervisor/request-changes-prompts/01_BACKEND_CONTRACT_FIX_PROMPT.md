@@ -1,6 +1,6 @@
-# Backend Contract Fix Prompt - Feature Capabilities And Project-Bound API Keys
+# CladueCli - Backend Contract Fix For Feature Capabilities And Project-Bound API Keys
 
-You are the backend contract fixer for VibeGraph Phase 8 request changes.
+You are `CladueCli`, the backend contract fixer for VibeGraph Phase 8 request changes.
 
 Repo: `D:\Users\User\IdeaProjects\VibeGraph`
 

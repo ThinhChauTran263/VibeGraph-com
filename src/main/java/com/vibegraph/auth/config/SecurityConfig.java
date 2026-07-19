@@ -6,14 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vibegraph.abuse.AbuseProperties;
-import com.vibegraph.abuse.ClientAddressResolver;
-import com.vibegraph.abuse.IpBlockFilter;
-import com.vibegraph.abuse.IpBlockService;
-import com.vibegraph.abuse.RateLimitFilter;
-import com.vibegraph.abuse.RequestEventService;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
@@ -28,6 +20,13 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ClientAddressResolver;
+import com.vibegraph.abuse.IpBlockFilter;
+import com.vibegraph.abuse.IpBlockService;
+import com.vibegraph.abuse.RateLimitFilter;
+import com.vibegraph.abuse.RequestEventService;
 import com.vibegraph.auth.web.ApiKeyAuthFilter;
 import com.vibegraph.auth.web.JwtAuthFilter;
 import com.vibegraph.auth.web.RestAccessDeniedHandler;
@@ -108,6 +107,8 @@ public class SecurityConfig {
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/mcp/**").permitAll();
+                    } else {
+                        auth.requestMatchers("/mcp/**").hasAuthority("API_KEY");
                     }
                     auth.anyRequest().authenticated();
                 })

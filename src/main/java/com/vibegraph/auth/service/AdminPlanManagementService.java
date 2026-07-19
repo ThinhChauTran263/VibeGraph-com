@@ -19,6 +19,7 @@ public class AdminPlanManagementService {
 
     private final PlanRepository planRepository;
     private final UserAccountSettingsRepository settingsRepository;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<AdminPlanResponse> list() {
@@ -32,7 +33,11 @@ public class AdminPlanManagementService {
         if (planRepository.existsByCode(request.code())) {
             throw new IllegalArgumentException("Plan code already exists");
         }
-        return AdminPlanResponse.from(planRepository.save(toPlan(Plan.builder().build(), request)));
+        AdminPlanResponse response = AdminPlanResponse.from(
+                planRepository.save(toPlan(Plan.builder().build(), request)));
+        auditService.recordCurrentUser(
+                "PLAN_CREATE", null, "PLAN", response.code(), planDetails(response, request));
+        return response;
     }
 
     @Transactional
@@ -42,7 +47,10 @@ public class AdminPlanManagementService {
         }
         Plan plan = planRepository.findByCode(code)
                 .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + code));
-        return AdminPlanResponse.from(planRepository.save(toPlan(plan, request)));
+        AdminPlanResponse response = AdminPlanResponse.from(planRepository.save(toPlan(plan, request)));
+        auditService.recordCurrentUser(
+                "PLAN_UPDATE", null, "PLAN", code, planDetails(response, request));
+        return response;
     }
 
     @Transactional
@@ -52,9 +60,25 @@ public class AdminPlanManagementService {
         if (settingsRepository.countByPlan_Code(code) > 0) {
             plan.setActive(false);
             planRepository.save(plan);
+            auditService.recordCurrentUser("PLAN_DEACTIVATE", null, "PLAN", code,
+                    java.util.Map.of("operation", "DEACTIVATE", "active", false));
             return;
         }
         planRepository.delete(plan);
+        auditService.recordCurrentUser("PLAN_DELETE", null, "PLAN", code,
+                java.util.Map.of("operation", "DELETE"));
+    }
+
+    private java.util.Map<String, Object> planDetails(
+            AdminPlanResponse response, AdminPlanUpsertRequest request) {
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("storageLimitMb", response.storageLimitMb());
+        details.put("apiKeyLimit", response.apiKeyLimit());
+        details.put("monthlyCreditLimit", response.monthlyCreditLimit());
+        details.put("contactSalesRequired", response.contactSalesRequired());
+        details.put("active", request.active());
+        details.put("sortOrder", request.sortOrder());
+        return details;
     }
 
     private Plan toPlan(Plan plan, AdminPlanUpsertRequest request) {

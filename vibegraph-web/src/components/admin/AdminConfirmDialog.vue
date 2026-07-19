@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n({ useScope: 'global' })
 
 const props = withDefaults(
   defineProps<{
@@ -12,8 +15,6 @@ const props = withDefaults(
     busy?: boolean
   }>(),
   {
-    confirmLabel: 'Confirm',
-    cancelLabel: 'Cancel',
     tone: 'default',
     busy: false,
   },
@@ -72,7 +73,12 @@ onBeforeUnmount(() => previousFocus?.focus())
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" role="presentation" @click.self="emit('cancel')">
+    <div
+      v-if="open"
+      class="dialog-backdrop"
+      role="presentation"
+      @click.self="!busy && emit('cancel')"
+    >
       <section
         ref="dialog"
         class="dialog"
@@ -95,7 +101,7 @@ onBeforeUnmount(() => previousFocus?.focus())
             :disabled="busy"
             @click="emit('cancel')"
           >
-            {{ cancelLabel }}
+            {{ cancelLabel || t('admin.dialogs.cancel') }}
           </button>
           <button
             type="button"
@@ -104,7 +110,7 @@ onBeforeUnmount(() => previousFocus?.focus())
             :disabled="busy"
             @click="emit('confirm')"
           >
-            {{ busy ? 'Working...' : confirmLabel }}
+            {{ busy ? t('admin.dialogs.working') : confirmLabel || t('admin.dialogs.confirm') }}
           </button>
         </div>
       </section>

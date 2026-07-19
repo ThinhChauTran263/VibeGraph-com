@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
@@ -27,6 +28,15 @@ const SHELL_COMMANDS = [
   { command: "exit", description: "Exit the VibeGraph shell" },
   { command: "quit", description: "Exit the VibeGraph shell" },
   { command: "doctor", description: "Check backend health" },
+  { command: "login ", description: "Save a project-bound API key" },
+  { command: "login --key ", description: "Save a project-bound API key" },
+  { command: "key add ", description: "Store a project-bound API key" },
+  { command: "key set ", description: "Store a project-bound API key" },
+  { command: "key status", description: "Show masked API-key status" },
+  { command: "key clear", description: "Clear the stored API key" },
+  { command: "auth set-key ", description: "Store a project-bound API key" },
+  { command: "auth status", description: "Show masked API-key status" },
+  { command: "auth clear", description: "Clear the stored API key" },
   { command: "me", description: "Show the current authenticated user" },
   { command: "logout", description: "Clear local auth state" },
   { command: "config show", description: "Show API URL and auth state" },
@@ -39,8 +49,10 @@ const SHELL_COMMANDS = [
   { command: "projects analyze ", description: "Analyze a project graph" },
   { command: "projects delete ", description: "Delete a project" },
   { command: "projects push ", description: "Push local file changes" },
+  { command: "push --root ", description: "Push using the API-key project binding" },
   { command: "projects status ", description: "Show project status" },
   { command: "watch ", description: "Watch a local project and push changes" },
+  { command: "watch --root ", description: "Watch using the API-key project binding" },
   { command: "ignore init", description: "Create a .vibegraphignore file" },
   { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
 ];
@@ -91,7 +103,10 @@ async function main() {
 }
 
 async function dispatchCommand(args) {
-  const [command = "help", ...rest] = args;
+  let [command = "help", ...rest] = args;
+  if (command.startsWith("/")) {
+    command = command.slice(1);
+  }
 
   switch (command) {
     case "help":
@@ -101,6 +116,12 @@ async function dispatchCommand(args) {
       return;
     case "config":
       await handleConfig(rest);
+      return;
+    case "auth":
+      await handleAuth(rest);
+      return;
+    case "key":
+      await handleAuth(rest);
       return;
     case "register":
       await handleRegister(rest);
@@ -117,6 +138,9 @@ async function dispatchCommand(args) {
       return;
     case "projects":
       await handleProjects(rest);
+      return;
+    case "push":
+      await handlePush(rest);
       return;
     case "watch":
       await handleWatch(rest);
@@ -151,8 +175,16 @@ function printShellHelp() {
 
 function renderHelpBody() {
   return `Usage:
+  vibegraph login <apiKey>
+  vibegraph login --key <apiKey>
+  vibegraph key add <apiKey>
+  vibegraph key status
+  vibegraph key clear
   vibegraph config show
   vibegraph config set-url <url>
+  vibegraph auth set-key <apiKey>
+  vibegraph auth status
+  vibegraph auth clear
   vibegraph register --email <email> --password <password> --name <displayName>
   vibegraph login --email <email> --password <password>
   vibegraph logout
@@ -169,7 +201,9 @@ Projects:
   vibegraph projects status <projectId>
 
 Watch:
+  vibegraph push [--root <localPath>] [--dry-run]
   vibegraph watch <projectId> --root <localPath>
+  vibegraph watch [--root <localPath>]
 
 Ignore:
   vibegraph ignore init [--root <path>]`;
@@ -189,18 +223,55 @@ async function startInteractiveShell() {
   });
 
   let processing = false;
-  const refreshSuggestions = () => {
+  let visibleSuggestions = [];
+  let selectedSuggestionIndex = -1;
+  let keypressVersion = 0;
+  const refreshSuggestions = (character, key = {}) => {
     if (!processing) {
-      renderLiveSuggestions(readline.line || "");
+      keypressVersion += 1;
+      if (key.name === "up" || key.name === "down") {
+        const suggestions = selectedSuggestionIndex >= 0
+          ? visibleSuggestions
+          : getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
+        if (!suggestions.length) {
+          return;
+        }
+        const direction = key.name;
+        key.name = undefined;
+        visibleSuggestions = suggestions;
+        selectedSuggestionIndex = getNextSuggestionIndex(
+          selectedSuggestionIndex,
+          direction,
+          suggestions.length,
+        );
+        const slashPrefix = (readline.line || "").trimStart().startsWith("/") ? "/" : "";
+        const selectedLine = `${slashPrefix}${suggestions[selectedSuggestionIndex].command}`;
+        readline.write(null, { ctrl: true, name: "u" });
+        readline.write(selectedLine);
+        renderLiveSuggestions(readline.line || "", selectedSuggestionIndex, visibleSuggestions);
+        return;
+      }
+      const refreshVersion = keypressVersion;
+      setImmediate(() => {
+        if (processing || refreshVersion !== keypressVersion) {
+          return;
+        }
+        selectedSuggestionIndex = -1;
+        visibleSuggestions = getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
+        renderLiveSuggestions(readline.line || "", -1, visibleSuggestions);
+      });
     }
   };
 
   emitKeypressEvents(process.stdin, readline);
-  process.stdin.on("keypress", refreshSuggestions);
+  process.stdin.prependListener("keypress", refreshSuggestions);
 
   return new Promise((resolve) => {
     readline.on("line", async (input) => {
       processing = true;
+      keypressVersion += 1;
+      selectedSuggestionIndex = -1;
+      visibleSuggestions = [];
       clearLiveSuggestions();
       const line = input.trim();
       if (!line) {
@@ -270,7 +341,11 @@ function isShellHelpCommand(command) {
 function completeShellLine(line) {
   const leadingWhitespace = line.slice(0, line.length - line.trimStart().length);
   const suggestions = getShellSuggestions(line);
-  return [suggestions.map(({ command }) => `${leadingWhitespace}${command}`), line];
+  const completionPrefix = line.trimStart().startsWith("/") ? "/" : "";
+  return [
+    suggestions.map(({ command }) => `${leadingWhitespace}${completionPrefix}${command}`),
+    line,
+  ];
 }
 
 function getShellSuggestions(line, limit = 8) {
@@ -278,33 +353,60 @@ function getShellSuggestions(line, limit = 8) {
   if (!normalized) {
     return [];
   }
-  const candidates = normalized.startsWith("/")
-    ? SHELL_COMMANDS.filter(({ command }) => command.startsWith("/"))
+  const slashPalette = normalized.startsWith("/");
+  const query = slashPalette ? normalized.slice(1) : normalized;
+  const candidates = slashPalette
+    ? SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"))
     : SHELL_COMMANDS;
+  const suggestionLimit = slashPalette && !query ? Number.POSITIVE_INFINITY : limit;
   return candidates
-    .filter(({ command }) => command.toLowerCase().startsWith(normalized))
-    .slice(0, limit);
+    .filter(({ command }) => command.toLowerCase().startsWith(query))
+    .slice(0, suggestionLimit);
 }
 
-function renderShellSuggestionPanel(line) {
-  const suggestions = getShellSuggestions(line, 6);
-  if (!suggestions.length) {
+function getNextSuggestionIndex(currentIndex, direction, suggestionCount) {
+  if (suggestionCount <= 0) {
+    return -1;
+  }
+  if (direction === "up") {
+    return currentIndex <= 0 ? suggestionCount - 1 : currentIndex - 1;
+  }
+  return currentIndex < 0 || currentIndex >= suggestionCount - 1 ? 0 : currentIndex + 1;
+}
+
+function getSuggestionWindow(suggestions, selectedIndex = -1, windowSize = 6) {
+  if (suggestions.length <= windowSize) {
+    return suggestions;
+  }
+  const start = selectedIndex < windowSize
+    ? 0
+    : Math.min(selectedIndex - windowSize + 1, suggestions.length - windowSize);
+  return suggestions.slice(start, start + windowSize);
+}
+
+function renderShellSuggestionPanel(line, selectedIndex = -1, providedSuggestions = null) {
+  const allSuggestions = providedSuggestions || getShellSuggestions(line, Number.POSITIVE_INFINITY);
+  const suggestions = getSuggestionWindow(allSuggestions, selectedIndex);
+  if (!allSuggestions.length) {
     return "";
   }
+  const windowStart = allSuggestions.indexOf(suggestions[0]);
   const width = Math.max(...suggestions.map(({ command }) => command.length));
   return suggestions
-    .map(({ command, description }) => {
+    .map(({ command, description }, index) => {
+      const marker = windowStart + index === selectedIndex ? "> " : "  ";
       const padded = command.padEnd(width + 2, " ");
-      return `${colorize(padded, "brightCyan")}${colorize(description, "dim")}`;
+      const commandColor = index === selectedIndex ? "green" : "brightCyan";
+      return `${colorize(`${marker}${padded}`, commandColor)}${colorize(description, "dim")}`;
     })
     .join("\n");
 }
 
-function renderLiveSuggestions(line) {
+function renderLiveSuggestions(line, selectedIndex = -1, suggestions = null) {
   if (!process.stdout.isTTY) {
     return;
   }
-  const panel = renderShellSuggestionPanel(line);
+  const panel = renderShellSuggestionPanel(line, selectedIndex, suggestions);
   process.stdout.write("\x1b[s\n\x1b[J");
   if (panel) {
     process.stdout.write(`${panel}\n`);
@@ -373,8 +475,15 @@ export {
   isShellExitCommand,
   isShellHelpCommand,
   completeShellLine,
+  getNextSuggestionIndex,
+  getSuggestionWindow,
   getShellSuggestions,
+  apiRequest,
+  handleDoctor,
+  maskApiKey,
+  parsePushCommandArgs,
   parseShellArgs,
+  parseWatchCommandArgs,
   renderShellSuggestionPanel,
   renderInteractiveHeader,
 };
@@ -421,9 +530,13 @@ async function handleConfig(args) {
   const config = await loadConfig();
 
   if (subcommand === "show") {
+    const apiKey = configuredApiKey(config);
     console.log(JSON.stringify({
       apiUrl: apiUrl(config),
       authenticated: Boolean(config.token),
+      apiKey: maskApiKey(apiKey),
+      apiKeyConfigured: Boolean(apiKey),
+      apiKeySource: process.env.VIBEGRAPH_API_KEY ? "env" : (config.apiKey ? "config" : null),
       user: config.user || null,
       configFile: CONFIG_FILE
     }, null, 2));
@@ -450,6 +563,48 @@ async function handleConfig(args) {
   throw new CliError(`Unknown config command: ${subcommand}`, 2);
 }
 
+async function handleAuth(args) {
+  const subcommand = args.shift() || "status";
+  const config = await loadConfig();
+
+  if (subcommand === "set-key") {
+    const apiKey = args.shift();
+    if (!apiKey || apiKey.startsWith("--")) {
+      throw new CliError("Usage: vibegraph login --key <apiKey> or vibegraph key set <apiKey>", 2);
+    }
+    await saveApiKey(config, apiKey);
+    return;
+  }
+
+  if (subcommand === "set" || subcommand === "add") {
+    const apiKey = args.shift();
+    if (!apiKey || apiKey.startsWith("--")) {
+      throw new CliError("Usage: vibegraph key add <apiKey>", 2);
+    }
+    await saveApiKey(config, apiKey);
+    return;
+  }
+
+  if (subcommand === "clear") {
+    await saveConfig({ ...config, apiKey: undefined });
+    console.log("Stored API key cleared.");
+    return;
+  }
+
+  if (subcommand === "status") {
+    const apiKey = configuredApiKey(config);
+    console.log(JSON.stringify({
+      apiKey: maskApiKey(apiKey),
+      configured: Boolean(apiKey),
+      source: process.env.VIBEGRAPH_API_KEY ? "env" : (config.apiKey ? "config" : null),
+      legacyTokenConfigured: Boolean(config.token),
+    }, null, 2));
+    return;
+  }
+
+  throw new CliError(`Unknown auth command: ${subcommand}`, 2);
+}
+
 async function handleRegister(args) {
   const options = parseOptions(args);
   const email = requiredOption(options, "email");
@@ -468,7 +623,17 @@ async function handleRegister(args) {
 }
 
 async function handleLogin(args) {
+  if (args.length === 1 && !args[0].startsWith("--")) {
+    const config = await loadConfig();
+    await saveApiKey(config, args[0]);
+    return;
+  }
   const options = parseOptions(args);
+  if (options.key || options["api-key"]) {
+    const config = await loadConfig();
+    await saveApiKey(config, requiredAnyOption(options, ["key", "api-key"]));
+    return;
+  }
   const email = requiredOption(options, "email");
   const password = requiredOption(options, "password");
 
@@ -478,6 +643,13 @@ async function handleLogin(args) {
   });
   await persistAuth(response);
   console.log(`Logged in as ${response.user.email}`);
+}
+
+async function saveApiKey(config, apiKey) {
+  validateApiKey(apiKey);
+  await saveConfig({ ...config, apiKey });
+  console.log(`API key saved: ${maskApiKey(apiKey)}`);
+  console.log("Run: vibegraph doctor");
 }
 
 async function handleMe() {
@@ -559,19 +731,11 @@ async function handleProjects(args) {
   }
 
   if (subcommand === "push") {
-    const projectId = args.shift();
-    if (!projectId) {
+    const parsed = parsePushCommandArgs(args);
+    if (!parsed.projectId) {
       throw new CliError("Usage: vibegraph projects push <projectId> --root <path> [--dry-run]", 2);
     }
-    const options = parseOptions(args);
-    if (!options.root) {
-      throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
-    }
-    const { executePush } = await libImport("push.js");
-    await executePush(projectId, {
-      root: options.root,
-      dryRun: Boolean(options["dry-run"]),
-    }, apiRequest);
+    await executePushCommand(parsed);
     return;
   }
 
@@ -597,16 +761,54 @@ async function handleProjects(args) {
 }
 
 async function handleWatch(args) {
-  const projectId = args.shift();
-  if (!projectId) {
-    throw new CliError("Usage: vibegraph watch <projectId> --root <path>", 2);
-  }
-  const options = parseOptions(args);
-  if (!options.root) {
-    throw new CliError("Missing --root <path>. Specify the local project directory.", 2);
-  }
+  const parsed = parseWatchCommandArgs(args);
+  await assertPatchAuth(parsed.projectId);
   const { executeWatch } = await libImport("watch.js");
-  await executeWatch(projectId, { root: options.root }, apiRequest);
+  await executeWatch(parsed.projectId, {
+    root: parsed.root,
+    snapshotId: await snapshotIdentity(parsed.projectId),
+  }, apiRequest);
+}
+
+async function handlePush(args) {
+  const parsed = parsePushCommandArgs(args);
+  await executePushCommand(parsed);
+}
+
+async function executePushCommand(parsed) {
+  await assertPatchAuth(parsed.projectId);
+  const { executePush } = await libImport("push.js");
+  await executePush(parsed.projectId, {
+    root: parsed.root,
+    dryRun: parsed.dryRun,
+    snapshotId: await snapshotIdentity(parsed.projectId),
+  }, apiRequest);
+}
+
+async function assertPatchAuth(projectId) {
+  const config = await loadConfig();
+  const apiKey = configuredApiKey(config);
+  if (!projectId && !apiKey) {
+    throw new CliError(
+      "Root-only push/watch requires a project-bound API key. Run: vibegraph auth set-key <apiKey>",
+      2,
+    );
+  }
+  if (!apiKey && !config.token) {
+    throw new CliError(
+      "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+      2,
+    );
+  }
+  if (!apiKey && projectId) {
+    console.warn("Warning: no API key configured; using the legacy Bearer token. Run: vibegraph auth set-key <apiKey>");
+  }
+}
+
+async function snapshotIdentity(projectId) {
+  if (projectId) return projectId;
+  const config = await loadConfig();
+  return `key-${createHash("sha256").update(configuredApiKey(config)).digest("hex").slice(0, 16)}`;
 }
 
 async function handleIgnore(args) {
@@ -643,11 +845,30 @@ async function handleDoctor() {
     throw new CliError(`Backend health failed: HTTP ${response.status}`, 1);
   }
   const health = await response.json();
+  const apiKey = configuredApiKey(config);
+  let apiKeyStatus = "not configured";
+  if (apiKey) {
+    try {
+      await apiRequest("/api/projects/current/patch", {
+        method: "POST",
+        auth: "api-key-only",
+        body: { files: [], deletions: [], dryRun: true },
+      });
+      apiKeyStatus = "active";
+    } catch (error) {
+      apiKeyStatus = classifyApiKeyError(error);
+    }
+  }
   console.log(JSON.stringify({
     apiUrl: apiUrl(config),
     health: health.status,
-    authenticated: Boolean(config.token)
+    authenticated: Boolean(config.token),
+    apiKey: maskApiKey(apiKey),
+    apiKeyStatus,
   }, null, 2));
+  if (apiKey && apiKeyStatus !== "active") {
+    throw new CliError("API key authentication failed. Run: vibegraph auth status or set a replacement key.", 3);
+  }
 }
 
 async function apiRequest(endpoint, options = {}) {
@@ -658,10 +879,19 @@ async function apiRequest(endpoint, options = {}) {
   };
 
   if (options.auth) {
-    if (!config.token) {
-      throw new CliError("Not logged in. Run: vibegraph login --email <email> --password <password>", 2);
+    const apiKey = configuredApiKey(config);
+    const apiKeyOnly = options.auth === "api-key-only";
+    const apiKeyFirst = options.auth === "api-key-first";
+    if (apiKey && (apiKeyOnly || apiKeyFirst || !config.token)) {
+      headers["X-API-Key"] = apiKey;
+    } else if (config.token && !apiKeyOnly) {
+      headers.Authorization = `Bearer ${config.token}`;
+    } else {
+      throw new CliError(
+        "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+        2,
+      );
     }
-    headers.Authorization = `Bearer ${config.token}`;
   }
 
   const response = await fetch(`${apiUrl(config)}${endpoint}`, {
@@ -680,9 +910,7 @@ async function apiRequest(endpoint, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const message = typeof payload === "object"
-      ? payload.message || payload.error || JSON.stringify(payload)
-      : payload;
+    const message = formatApiError(payload);
     throw new CliError(`HTTP ${response.status}: ${message}`, response.status === 401 ? 3 : 1);
   }
 
@@ -719,10 +947,57 @@ async function saveConfig(config) {
   await mkdir(CONFIG_DIR, { recursive: true });
   const cleaned = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined));
   await writeFile(CONFIG_FILE, `${JSON.stringify(cleaned, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_FILE, 0o600);
 }
 
 function apiUrl(config) {
   return trimTrailingSlash(process.env.VIBEGRAPH_API_URL || config.apiUrl || DEFAULT_API_URL);
+}
+
+function configuredApiKey(config) {
+  const value = process.env.VIBEGRAPH_API_KEY || config.apiKey;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function validateApiKey(apiKey) {
+  if (!apiKey.startsWith("vbg_") || apiKey.length < 12 || /\s/.test(apiKey)) {
+    throw new CliError("Invalid API key format. Expected a vbg_... key.", 2);
+  }
+}
+
+function maskApiKey(apiKey) {
+  if (!apiKey) return null;
+  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+  return `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+}
+
+function classifyApiKeyError(error) {
+  const message = error?.message || "request failed";
+  if (message.includes("HTTP 401")) return "invalid";
+  if (message.includes("HTTP 403")) return "disabled-or-locked";
+  return "unavailable";
+}
+
+function formatApiError(payload) {
+  if (!payload || typeof payload !== "object") {
+    return String(payload || "request failed");
+  }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message;
+  }
+  const error = payload.error;
+  if (error && typeof error === "object") {
+    const code = typeof error.code === "string" ? error.code.trim() : "";
+    const message = typeof error.message === "string" ? error.message.trim() : "";
+    if (code && message) return `${code}: ${message}`;
+    if (message) return message;
+    if (code) return code;
+    return JSON.stringify(error);
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  return JSON.stringify(payload);
 }
 
 function trimTrailingSlash(value) {
@@ -754,6 +1029,37 @@ function requiredOption(options, name) {
     throw new CliError(`Missing --${name} <value>`, 2);
   }
   return value;
+}
+
+function requiredAnyOption(options, names) {
+  for (const name of names) {
+    const value = options[name];
+    if (value && value !== true) {
+      return value;
+    }
+  }
+  throw new CliError(`Missing one of: ${names.map((name) => `--${name} <value>`).join(", ")}`, 2);
+}
+
+function parsePushCommandArgs(args) {
+  const remaining = [...args];
+  const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
+  const options = parseOptions(remaining);
+  return {
+    projectId,
+    root: options.root && options.root !== true ? options.root : ".",
+    dryRun: Boolean(options["dry-run"]),
+  };
+}
+
+function parseWatchCommandArgs(args) {
+  const remaining = [...args];
+  const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
+  const options = parseOptions(remaining);
+  return {
+    projectId,
+    root: options.root && options.root !== true ? options.root : ".",
+  };
 }
 
 function printProject(project) {

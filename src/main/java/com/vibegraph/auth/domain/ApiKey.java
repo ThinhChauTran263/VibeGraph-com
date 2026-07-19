@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -18,8 +20,8 @@ import lombok.Setter;
 /**
  * CLI / MCP API key (table {@code api_keys}). Only the key HASH is stored, never the raw key.
  *
- * <p>The table and entity exist from Phase 1 so the schema is frozen; issue/rotate/revoke
- * behavior is Phase 3. No endpoints reference this entity yet.
+ * <p>Only non-deleted keys participate in authentication and project uniqueness. A key
+ * disabled by an administrator is locked and cannot be deleted by its owner.
  */
 @Entity
 @Table(name = "api_keys")
@@ -37,6 +39,9 @@ public class ApiKey {
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
+
+    @Column(name = "project_id", length = 64)
+    private String projectId;
 
     @Column(name = "key_hash", nullable = false)
     private String keyHash;
@@ -58,4 +63,17 @@ public class ApiKey {
 
     @Column(name = "disabled_at")
     private Instant disabledAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "disabled_by", length = 16)
+    private ApiKeyDisabledBy disabledBy;
+
+    @Column(name = "disabled_reason", length = 255)
+    private String disabledReason;
+
+    @Column(name = "locked_by", length = 255)
+    private String lockedBy;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

@@ -104,6 +104,30 @@ describe('importApi.importGithub', () => {
   })
 })
 
+describe('importApi.createCliRepository', () => {
+  it('POSTs to /api/projects/cli-setup with an optional name payload', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({
+      project: { id: 'cli-1', name: 'CLI Repo', status: 'CREATED' },
+      apiKey: { id: 'key-1', secretKey: 'vbg_secret' },
+      commands: ['vibegraph login vbg_secret', 'vibegraph push', 'vibegraph watch'],
+    }))
+
+    await importApi.createCliRepository('  CLI Repo  ')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const call = fetchMock.mock.calls[0]!
+    const url = call[0]
+    const init = call[1]!
+    expect(String(url)).toMatch(/\/api\/projects\/cli-setup$/)
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-VibeGraph-Client': 'web',
+    })
+    expect(init.body).toBe(JSON.stringify({ name: 'CLI Repo' }))
+  })
+})
+
 describe('importApi.uploadArchiveAsync', () => {
   it('POSTs to /api/projects/import-archive?async=true', async () => {
     fetchMock.mockResolvedValueOnce(okJson({ id: 'p2', status: 'ANALYZING', progress: 0 }))

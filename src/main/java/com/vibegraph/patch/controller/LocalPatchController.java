@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.web.ApiKeyRequestContext;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.exception.UnauthorizedException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.patch.dto.request.PatchRequest;
 import com.vibegraph.patch.dto.response.PatchResult;
@@ -26,10 +29,10 @@ import lombok.RequiredArgsConstructor;
  * runs.
  *
  * <p>
- * {@code POST /api/projects/{projectId}/patch}
+ * {@code POST /api/projects/{projectId}/patch} or {@code POST /api/projects/current/patch}
  *
  * <p>
- * Security: like every project-scoped endpoint this requires a valid JWT
+ * Security: project-scoped requests require a valid JWT or API key
  * (enforced by the
  * security filter chain → 401 when absent) and asserts ownership before any
  * filesystem access
@@ -39,22 +42,33 @@ import lombok.RequiredArgsConstructor;
  * {@link LocalPatchService}.
  */
 @RestController
-@RequestMapping("/api/projects/{projectId}/patch")
+@RequestMapping("/api/projects")
 @RequiredArgsConstructor
 public class LocalPatchController {
-
     private final LocalPatchService localPatchService;
     private final ProjectOwnershipGuard ownershipGuard;
     private final AccountSettingsService accountSettingsService;
     private final CurrentUser currentUser;
+    private final ApiKeyRequestContextAccessor apiKeyContextAccessor;
 
-    @PostMapping
+    @PostMapping("/{projectId}/patch")
     public ResponseEntity<ApiResponse<PatchResult>> patch(
             @PathVariable String projectId,
             @RequestBody PatchRequest request) {
-        // Ownership first: no filesystem work happens for an unauthenticated (401) or
-        // non-owner (403) caller.
+        apiKeyContextAccessor.assertProjectMatches(projectId);
+        return applyPatch(projectId, request);
+    }
 
+    @PostMapping("/current/patch")
+    public ResponseEntity<ApiResponse<PatchResult>> patchCurrent(@RequestBody PatchRequest request) {
+        String projectId = apiKeyContextAccessor.current()
+                .map(ApiKeyRequestContext::projectId)
+                .filter(id -> !id.isBlank())
+                .orElseThrow(() -> new UnauthorizedException("Project-bound API key required"));
+        return applyPatch(projectId, request);
+    }
+
+    private ResponseEntity<ApiResponse<PatchResult>> applyPatch(String projectId, PatchRequest request) {
         ownershipGuard.assertOwner(projectId);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);

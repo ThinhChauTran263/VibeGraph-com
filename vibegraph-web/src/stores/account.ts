@@ -10,6 +10,7 @@ import type {
   Report,
   ReportMessage,
   AccountSessionState,
+  FeatureCapability,
   UserNotification,
 } from '../types/api'
 import { accountApi } from '../lib/api'
@@ -28,7 +29,9 @@ export const useAccountStore = defineStore('account', () => {
   const usage = ref<UserUsage | null>(null)
   const creditLedger = ref<CreditLedgerEntry[]>([])
   const projects = ref<Project[]>([])
+  const projectsLoaded = ref(false)
   const apiKeys = ref<ApiKey[]>([])
+  const apiKeysLoaded = ref(false)
   const reports = ref<Report[]>([])
   const sessionState = ref<AccountSessionState | null>(null)
   const notifications = ref<UserNotification[]>([])
@@ -36,12 +39,23 @@ export const useAccountStore = defineStore('account', () => {
   const loading = ref(false)
   const error = ref<Error | null>(null)
   let notificationLimit = 50
+  let sessionStateRequestId = 0
+  let projectsRequest: Promise<void> | null = null
+  let apiKeysRequest: Promise<void> | null = null
   const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read))
   const accountRestricted = computed(() => {
     const status = sessionState.value?.accountStatus?.toUpperCase()
     return status === 'BLOCKED' || status === 'DEACTIVATED'
   })
   const restrictionReason = computed(() => sessionState.value?.safeReason ?? null)
+  function getFeatureCapability(key: string): FeatureCapability {
+    return (
+      sessionState.value?.features?.[key] ?? {
+        enabled: false,
+        reason: 'This feature is unavailable until account capabilities can be verified.',
+      }
+    )
+  }
 
   /** Derived: current plan name from usage (empty string until loaded) */
   const planName = computed(() => usage.value?.planName ?? '')
@@ -58,20 +72,29 @@ export const useAccountStore = defineStore('account', () => {
   }
 
   async function fetchSessionState(): Promise<AccountSessionState> {
-    const data = await accountApi.getSessionState()
-    sessionState.value = data
-    if (profile.value) {
-      profile.value = {
-        ...profile.value,
-        displayName: data.displayName,
-        email: data.email,
-        role: data.role,
-        accountStatus: data.accountStatus,
-        safeReason: data.safeReason ?? undefined,
-        status: normalizeStatus(data.accountStatus),
+    const requestId = ++sessionStateRequestId
+    try {
+      const data = await accountApi.getSessionState()
+      if (requestId !== sessionStateRequestId) return data
+      sessionState.value = { ...data, features: data.features ?? {} }
+      if (profile.value) {
+        profile.value = {
+          ...profile.value,
+          displayName: data.displayName,
+          email: data.email,
+          role: data.role,
+          accountStatus: data.accountStatus,
+          safeReason: data.safeReason ?? undefined,
+          status: normalizeStatus(data.accountStatus),
+        }
       }
+      return sessionState.value
+    } catch (cause) {
+      if (requestId === sessionStateRequestId && sessionState.value) {
+        sessionState.value = { ...sessionState.value, features: {} }
+      }
+      throw cause
     }
-    return data
   }
 
   async function updateDisplayName(newName: string): Promise<void> {
@@ -184,44 +207,90 @@ export const useAccountStore = defineStore('account', () => {
 
   // ─── Projects ───────────────────────────────────────────────────────────────
 
-  async function fetchProjects(): Promise<void> {
-    const page = await accountApi.getProjects(0, 100)
-    const projectItems = page.items ?? page.content ?? []
-    projects.value = projectItems.map((p) => ({
-      ...p,
-      // backwards-compat alias
-      lastAnalyzedAt: p.updatedAt,
-    }))
+  async function fetchProjects(options: { force?: boolean } = {}): Promise<void> {
+    if (projectsLoaded.value && !options.force) return
+    if (projectsRequest) return projectsRequest
+
+    const pageSize = 100
+    projectsRequest = (async () => {
+      const firstPage = await accountApi.getProjects(0, pageSize)
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(firstPage.totalPages - 1, 0) }, (_, index) =>
+          accountApi.getProjects(index + 1, pageSize),
+        ),
+      )
+      const projectItems = [firstPage, ...remainingPages].flatMap(
+        (page) => page.items ?? page.content ?? [],
+      )
+      setProjects(
+        projectItems.map((project) => ({
+          ...project,
+          lastAnalyzedAt: project.updatedAt,
+        })),
+      )
+    })()
+
+    try {
+      await projectsRequest
+    } finally {
+      projectsRequest = null
+    }
+  }
+
+  function setProjects(nextProjects: Project[]): void {
+    projects.value = nextProjects
+    projectsLoaded.value = true
   }
 
   // ─── API Keys ────────────────────────────────────────────────────────────────
 
-  async function fetchApiKeys(): Promise<void> {
-    const keys = await accountApi.listApiKeys()
-    apiKeys.value = keys.map((k) => ({
-      ...k,
-      disabled: k.disabledAt !== null,
-    }))
+  async function fetchApiKeys(options: { force?: boolean } = {}): Promise<void> {
+    if (apiKeysLoaded.value && !options.force) return
+    if (apiKeysRequest) return apiKeysRequest
+
+    apiKeysRequest = (async () => {
+      const keys = await accountApi.listApiKeys()
+      apiKeys.value = keys.map((k) => ({
+        ...k,
+        disabled: k.disabledAt !== null,
+      }))
+      apiKeysLoaded.value = true
+    })()
+
+    try {
+      await apiKeysRequest
+    } finally {
+      apiKeysRequest = null
+    }
   }
 
   /**
    * Creates an API key and prepends it to the list.
    * Returns the full create response — caller must display the `secretKey` immediately.
    */
-  async function createApiKey(name: string): Promise<ApiKeyCreated> {
-    const created = await accountApi.createApiKey(name)
+  async function createApiKey(name: string, projectId: string): Promise<ApiKeyCreated> {
+    const created = await accountApi.createApiKey({ name, projectId })
     // Add a display entry to the list (without secret — already gone)
     const listEntry: ApiKey = {
       id: created.id,
       keyPrefix: created.keyPrefix,
       name: created.name,
+      project: created.project,
       createdAt: created.createdAt,
       lastUsedAt: null,
       expiresAt: created.expiresAt,
       disabledAt: null,
+      disabledBy: null,
+      disabledReason: null,
+      lockedAt: null,
+      lockedBy: null,
+      locked: false,
+      deletedAt: null,
+      canDelete: true,
       disabled: false,
     }
     apiKeys.value = [listEntry, ...apiKeys.value]
+    apiKeysLoaded.value = true
     return created
   }
 
@@ -229,8 +298,36 @@ export const useAccountStore = defineStore('account', () => {
     await accountApi.disableApiKey(id)
     const disabledAt = new Date().toISOString()
     apiKeys.value = apiKeys.value.map((key) =>
-      key.id === id ? { ...key, disabledAt, disabled: true } : key,
+      key.id === id
+        ? { ...key, disabledAt, disabledBy: 'USER', disabledReason: null, disabled: true }
+        : key,
     )
+    apiKeysLoaded.value = true
+  }
+
+  async function enableApiKey(id: string): Promise<void> {
+    await accountApi.enableApiKey(id)
+    apiKeys.value = apiKeys.value.map((key) =>
+      key.id === id
+        ? {
+            ...key,
+            disabledAt: null,
+            disabledBy: null,
+            disabledReason: null,
+            lockedAt: null,
+            lockedBy: null,
+            locked: false,
+            disabled: false,
+          }
+        : key,
+    )
+    apiKeysLoaded.value = true
+  }
+
+  async function deleteApiKey(id: string): Promise<void> {
+    await accountApi.deleteApiKey(id)
+    apiKeys.value = apiKeys.value.filter((key) => key.id !== id)
+    apiKeysLoaded.value = true
   }
 
   // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -302,10 +399,13 @@ export const useAccountStore = defineStore('account', () => {
     error,
     accountRestricted,
     restrictionReason,
+    getFeatureCapability,
     usage,
     creditLedger,
     projects,
+    projectsLoaded,
     apiKeys,
+    apiKeysLoaded,
     reports,
     planName,
     fetchProfile,
@@ -321,9 +421,12 @@ export const useAccountStore = defineStore('account', () => {
     fetchUsage,
     fetchCreditLedger,
     fetchProjects,
+    setProjects,
     fetchApiKeys,
     createApiKey,
     disableApiKey,
+    enableApiKey,
+    deleteApiKey,
     fetchReports,
     createReport,
     fetchReportDetail,

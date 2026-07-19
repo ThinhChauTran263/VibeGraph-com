@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../LoginView.vue'
 import { useAuthStore } from '@/stores/auth'
+import i18n, { setLocale } from '@/language'
 
 async function mountLogin(path = '/login') {
   const router = createRouter({
@@ -19,13 +20,14 @@ async function mountLogin(path = '/login') {
   await router.push(path)
   await router.isReady()
   const pinia = createTestingPinia({ createSpy: vi.fn })
-  const wrapper = mount(LoginView, { global: { plugins: [router, pinia] } })
+  const wrapper = mount(LoginView, { global: { plugins: [router, pinia, i18n] } })
   return { wrapper, router, pinia }
 }
 
 describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setLocale('en-US')
   })
 
   it('shows the VibeGraph logo and name in the top-left header', async () => {

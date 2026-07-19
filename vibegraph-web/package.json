@@ -24,12 +24,12 @@
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",
     "highlight.js": "^11.11.1",
-    "mermaid": "^11.15.0",
     "pinia": "^3.0.4",
     "sigma": "^3.0.3",
     "sockjs-client": "^1.6.1",
     "vue": "^3.5.32",
     "vue-echarts": "^8.0.1",
+    "vue-i18n": "^11.4.6",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {

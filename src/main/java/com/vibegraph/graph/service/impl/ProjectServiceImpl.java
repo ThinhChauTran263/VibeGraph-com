@@ -89,7 +89,27 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse createProjectFromWorkspace(String name, Path workspaceSource) {
         Path source = validateWorkspacePath(workspaceSource);
         String id = UUID.randomUUID().toString().substring(0, 8);
-        ProjectResponse project = ProjectResponse.builder()
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        log.info("Created archive-workspace project {} at {}", id, source);
+        return project;
+    }
+
+    @Override
+    public ProjectResponse createEmptyWorkspaceProject(String name, Path workspaceSource) {
+        Path source = validateWorkspacePath(workspaceSource);
+        String id = UUID.randomUUID().toString().substring(0, 8);
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        if (graphRepository != null) {
+            graphRepository.upsertProject(id, project.getName(), project.getRootPath());
+        }
+        log.info("Created CLI workspace project {} at {}", id, source);
+        return project;
+    }
+
+    private ProjectResponse workspaceProject(String id, String name, Path source) {
+        return ProjectResponse.builder()
                 .id(id)
                 .name(name != null && !name.isBlank() ? name : id)
                 .rootPath(source.toString())
@@ -97,9 +117,6 @@ public class ProjectServiceImpl implements ProjectService {
                 .status(ProjectStatus.CREATED.name())
                 .progress(0)
                 .build();
-        projects.put(id, project);
-        log.info("Created archive-workspace project {} at {}", id, source);
-        return project;
     }
 
     /**
@@ -143,13 +160,7 @@ public class ProjectServiceImpl implements ProjectService {
                             || !isPersistedRootAllowed(metadata.path())) {
                         continue;
                     }
-                    merged.put(metadata.id(), ProjectResponse.builder()
-                            .id(metadata.id())
-                            .name(metadata.name() != null ? metadata.name() : metadata.id())
-                            .rootPath(metadata.path())
-                            .status(ProjectStatus.ANALYZED.name())
-                            .progress(100)
-                            .build());
+                    merged.put(metadata.id(), projectFromMetadata(metadata, metadata.id()));
                 }
             } catch (RuntimeException ex) {
                 log.warn("Could not load persisted projects for listing: {}", ex.getMessage());
@@ -197,10 +208,25 @@ public class ProjectServiceImpl implements ProjectService {
             throw new IllegalArgumentException("Persisted project root is outside the allowed workspace");
         }
         log.info("Recovered project {} from persisted graph metadata", id);
+        return projectFromMetadata(metadata, id);
+    }
+
+    private ProjectResponse projectFromMetadata(ProjectMetadata metadata, String fallbackId) {
+        String id = metadata.id() != null ? metadata.id() : fallbackId;
+        Instant recoveredAt = Instant.now();
+        Instant createdAt = metadata.createdAt() != null
+                ? metadata.createdAt()
+                : (metadata.lastAnalyzedAt() != null ? metadata.lastAnalyzedAt() : recoveredAt);
+        Instant lastAnalyzedAt = metadata.lastAnalyzedAt() != null ? metadata.lastAnalyzedAt() : createdAt;
         return ProjectResponse.builder()
-                .id(metadata.id() != null ? metadata.id() : id)
+                .id(id)
                 .name(metadata.name() != null ? metadata.name() : id)
                 .rootPath(metadata.path())
+                .createdAt(createdAt)
+                .lastAnalyzedAt(lastAnalyzedAt)
+                .totalFiles(metadata.totalFiles())
+                .totalNodes(metadata.totalNodes())
+                .totalEdges(metadata.totalEdges())
                 .status(ProjectStatus.ANALYZED.name())
                 .progress(100)
                 .build();

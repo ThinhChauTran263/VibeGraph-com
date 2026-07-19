@@ -1,7 +1,5 @@
 package com.vibegraph.auth.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,7 +8,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,7 +16,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.AuditLog;
 import com.vibegraph.auth.domain.AuditRetentionSetting;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.repository.AuditLogRepository;
@@ -33,7 +29,7 @@ class AuditServiceTest {
 
     @Mock private AuditLogRepository auditLogRepository;
     @Mock private AuditRetentionSettingRepository retentionRepository;
-    @Mock private AuditRedactor redactor;
+    @Mock private AuditLogWriter auditLogWriter;
     @Mock private CurrentUser currentUser;
 
     private AuditService service;
@@ -43,29 +39,59 @@ class AuditServiceTest {
         service = new AuditService(
                 auditLogRepository,
                 retentionRepository,
-                redactor,
+                auditLogWriter,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 currentUser);
     }
 
     @Test
-    @DisplayName("record persists only redacted details")
-    void record_usesRedactedDetails() {
-        when(redactor.redact(any())).thenReturn("{\"password\":\"[REDACTED]\"}");
-        when(auditLogRepository.save(any(AuditLog.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    @DisplayName("record delegates to the independent audit writer")
+    void record_delegatesToWriter() {
+        Map<String, String> details = Map.of("password", "secret");
 
-        service.record(
-                "FAILED_LOGIN",
-                null,
-                null,
-                "USER",
-                "unknown@test.local",
-                "FAILURE",
-                Map.of("password", "secret"));
+        service.record("FAILED_LOGIN", null, null, "USER", "unknown@test.local", "FAILURE", details);
 
-        verify(auditLogRepository).save(org.mockito.ArgumentMatchers.argThat(log ->
-                log.getAction().equals("FAILED_LOGIN")
-                        && log.getDetails().equals("{\"password\":\"[REDACTED]\"}")));
+        verify(auditLogWriter).write(
+                "FAILED_LOGIN", null, null, "USER", "unknown@test.local", "FAILURE", null, details);
+    }
+
+    @Test
+    @DisplayName("unauthenticated actions keep a null actor")
+    void recordCurrentUser_unauthenticated_writesAnonymousAudit() {
+        when(currentUser.id()).thenThrow(new com.vibegraph.common.exception.UnauthorizedException("missing"));
+
+        service.recordCurrentUser("LOGOUT", null, "SESSION", null, Map.of());
+
+        verify(auditLogWriter).write("LOGOUT", null, null, "SESSION", null, "SUCCESS", null, Map.of());
+    }
+
+    @Test
+    @DisplayName("unexpected actor lookup failures are not hidden as anonymous audits")
+    void recordCurrentUser_actorLookupFailure_propagates() {
+        when(currentUser.id()).thenThrow(new IllegalStateException("principal store unavailable"));
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> service.recordCurrentUser("USER_BLOCK", null, "USER", "target", Map.of()));
+    }
+
+    @Test
+    @DisplayName("retention updates are audited through the independent writer")
+    void updateRetention_validValue_auditsChange() {
+        java.util.UUID adminId = java.util.UUID.randomUUID();
+        AuditRetentionSetting setting = AuditRetentionSetting.builder()
+                .id(AuditRetentionSetting.SINGLETON_ID)
+                .retentionDays(90)
+                .build();
+        when(retentionRepository.findById(AuditRetentionSetting.SINGLETON_ID))
+                .thenReturn(Optional.of(setting));
+        when(retentionRepository.save(setting)).thenReturn(setting);
+        when(currentUser.id()).thenReturn(adminId);
+
+        service.updateRetention(180);
+
+        verify(auditLogWriter).write(
+                "AUDIT_RETENTION_UPDATE", adminId, null, "AUDIT_RETENTION", null,
+                "SUCCESS", null, Map.of("retentionDays", 180));
     }
 
     @Test

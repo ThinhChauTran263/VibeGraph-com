@@ -1,6 +1,6 @@
-# CladueCli - FE Contract Reverify After Backend Contract Fix
+# Droid - FE Contract Reverify After Backend Contract Fix
 
-You are `CladueCli`, re-verifying FE API/types/stores after Phase 8 backend contract fixes.
+You are `Droid`, re-verifying FE API/types/stores after Phase 8 backend contract fixes.
 
 Repo: `D:\Users\User\IdeaProjects\VibeGraph`
 
@@ -22,6 +22,10 @@ Scope:
 - `vibegraph-web/src/stores/admin.ts`
 - focused tests
 
+Dependency:
+- Start only after `CladueCli` has written `task-update/phase-8-frontend-supervisor/BACKEND_CONTRACT_FIX_HANDOFF.md`, unless you are only doing read-only preparation.
+- If the backend contract handoff is missing, do not fake the contract. Write a short blocked note and stop before implementation.
+
 Work:
 - Consume the new backend feature capabilities contract.
 - Make feature availability fail closed when capability data is absent or loading fails.
@@ -38,7 +42,7 @@ Run:
 - `git diff --check`
 
 Handoff:
-Write `task-update/phase-8-frontend-supervisor/CladueCli_REQUEST_CHANGES_HANDOFF.md` with:
+Write `task-update/phase-8-frontend-supervisor/Droid_REQUEST_CHANGES_HANDOFF.md` with:
 - files changed
 - API/types/store changes
 - tests exact result

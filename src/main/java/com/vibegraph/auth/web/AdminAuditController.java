@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,11 +14,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.vibegraph.auth.dto.AdminPageResponse;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
 import com.vibegraph.auth.dto.AuditRetentionUpdateRequest;
+import com.vibegraph.auth.service.AuditLogEventStream;
 import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.dto.response.ApiResponse;
 
@@ -31,6 +34,12 @@ import lombok.RequiredArgsConstructor;
 public class AdminAuditController {
 
     private final AuditService auditService;
+    private final AuditLogEventStream auditLogEventStream;
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream() {
+        return auditLogEventStream.subscribe();
+    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<AdminPageResponse<AuditLogResponse>>> list(

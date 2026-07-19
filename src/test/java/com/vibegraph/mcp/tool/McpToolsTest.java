@@ -20,6 +20,7 @@ import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.config.McpServerConfig;
 import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -81,6 +82,7 @@ class McpToolsTest {
                 Mockito.mock(ProjectOwnershipGuard.class),
                 Mockito.mock(FeatureGateService.class),
                 Mockito.mock(AccountAccessGuard.class),
+                Mockito.mock(ApiKeyRequestContextAccessor.class),
                 new ObjectMapper());
     }
 

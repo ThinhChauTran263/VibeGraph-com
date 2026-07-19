@@ -1,4 +1,4 @@
-import { onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import {
   useWebSocket,
   type TopicSubscription,
@@ -20,13 +20,14 @@ export function useReportRealtime(
   const autoConnect = options.autoConnect !== false
   const lastError = ref<string | null>(null)
 
-  let subscription: TopicSubscription | null = null
+  const subscription = shallowRef<TopicSubscription | null>(null)
+  const active = computed(() => subscription.value?.active.value ?? false)
   let currentReportId: string | null = null
 
   function teardownSubscription(): void {
-    if (subscription) {
-      subscription.unsubscribe()
-      subscription = null
+    if (subscription.value) {
+      subscription.value.unsubscribe()
+      subscription.value = null
     }
   }
 
@@ -37,7 +38,7 @@ export function useReportRealtime(
 
   function subscribeToReport(id: string): void {
     currentReportId = id
-    subscription = ws.subscribe<ReportRealtimeEvent>(`/topic/reports/${id}`, handleEvent)
+    subscription.value = ws.subscribe<ReportRealtimeEvent>(`/topic/reports/${id}`, handleEvent)
     if (autoConnect) {
       void ws.connect().catch((err: unknown) => {
         lastError.value = err instanceof Error ? err.message : 'WebSocket connection failed.'
@@ -67,6 +68,7 @@ export function useReportRealtime(
 
   return {
     status: ws.status,
+    active,
     error: ws.error,
     lastError,
     stop,

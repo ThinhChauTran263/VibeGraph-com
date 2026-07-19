@@ -252,6 +252,9 @@ public class AdminService {
                 .plan(plan)
                 .build();
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("USER_CREATE", savedUser.getId(), "USER", savedUser.getId().toString(),
+                details("email", savedUser.getEmail(), "role", savedUser.getRole().name(),
+                        "planCode", request.planCode()));
 
         return toAdminUserResponse(savedUser);
     }
@@ -263,7 +266,7 @@ public class AdminService {
         settings.block(request.reason(), request.safeReason());
         settingsRepository.save(settings);
         auditService.recordCurrentUser("USER_BLOCK", userId, "USER", userId.toString(),
-                details("reason", request.reason(), "safeReason", request.safeReason()));
+                details("safeReason", request.safeReason()));
         return toAdminUserResponse(getUserOrThrow(userId));
     }
 
@@ -288,7 +291,7 @@ public class AdminService {
         user.setDeactivationReasonSafe(request.safeReason());
         userRepository.save(user);
         auditService.recordCurrentUser("USER_DEACTIVATE", userId, "USER", userId.toString(),
-                details("reason", request.reason(), "safeReason", request.safeReason()));
+                details("safeReason", request.safeReason()));
         return toAdminUserResponse(user);
     }
 
@@ -298,6 +301,7 @@ public class AdminService {
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
         Plan plan = planRepository.findByCode(request.planCode())
                 .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + request.planCode()));
+        String previousPlanCode = settings.getPlan() == null ? null : settings.getPlan().getCode();
         settings.setPlan(plan);
 
         // Adjust standard quota to match the new plan limit (if not overridden)
@@ -310,7 +314,8 @@ public class AdminService {
 
         settingsRepository.save(settings);
         auditService.recordCurrentUser("PLAN_UPDATE", userId, "USER", userId.toString(),
-                java.util.Map.of("planCode", request.planCode()));
+                details("previousPlanCode", previousPlanCode, "planCode", request.planCode(),
+                        "storageQuotaBytes", user.getQuotaBytes()));
         return toAdminUserResponse(user);
     }
 
@@ -379,7 +384,7 @@ public class AdminService {
         getUserOrThrow(userId);
         creditBalanceService.applyAdminAdjustment(userId, request.creditsDelta(), request.reason());
         auditService.recordCurrentUser("CREDIT_UPDATE", userId, "USER", userId.toString(),
-                java.util.Map.of("creditsDelta", request.creditsDelta(), "reason", request.reason()));
+                java.util.Map.of("creditsDelta", request.creditsDelta(), "reasonProvided", true));
     }
 
     @Transactional(readOnly = true)
@@ -405,8 +410,11 @@ public class AdminService {
     public AdminUserResponse updateApiKeyCreationDisabled(UUID userId, boolean disabled) {
         UserAccountSettings settings = settingsRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
+        boolean previousDisabled = settings.isApiKeyCreationDisabled();
         settings.setApiKeyCreationDisabled(disabled);
         settingsRepository.save(settings);
+        auditService.recordCurrentUser("API_KEY_CREATION_TOGGLE", userId, "USER", userId.toString(),
+                java.util.Map.of("disabled", disabled, "previousDisabled", previousDisabled));
         return toAdminUserResponse(getUserOrThrow(userId));
     }
 

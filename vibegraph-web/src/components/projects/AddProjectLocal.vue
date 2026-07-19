@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
 import { useLocalImport } from '@/composables/useLocalImport'
 import DirectoryBrowserModal from '@/components/projects/DirectoryBrowserModal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 
+const { t } = useI18n({ useScope: 'global' })
 const emit = defineEmits<{
   imported: [project: Project]
 }>()
@@ -21,11 +23,11 @@ const { status, errorMessage, progress, isImporting, importLocal, reset } = useL
 const canSubmit = computed(() => path.value.trim().length > 0 && !isImporting.value)
 const progressPct = computed(() => Math.round(progress.value))
 const progressLabel = computed(() =>
-  progressPct.value >= 98 ? 'Finalizing graph…' : `Analyzing folder… ${progressPct.value}%`,
+  progressPct.value >= 98 ? t('user.import.finalizing') : `${t('user.import.analyzingFolder')} ${progressPct.value}%`,
 )
 // Button caption mirrors progress so the percentage is visible on the button too.
 const submitLabel = computed(() =>
-  progressPct.value >= 98 ? 'Finalizing…' : `Importing… ${progressPct.value}%`,
+  progressPct.value >= 98 ? t('user.import.finalizing') : `${t('user.import.importing')} ${progressPct.value}%`,
 )
 
 function onBrowseSelect(selected: string): void {
@@ -70,17 +72,14 @@ function clearForm(): void {
         </svg>
       </span>
       <div class="local-import__heading-group">
-        <h2 id="local-import-heading">Add project from a local folder</h2>
-        <p class="local-import__hint">
-          Analyze a folder that already exists on the machine running VibeGraph. The graph then
-          updates in realtime as you edit those files — no zip needed.
-        </p>
+        <h2 id="local-import-heading">{{ t('user.import.localTitle') }}</h2>
+        <p class="local-import__hint">{{ t('user.import.localHint') }}</p>
       </div>
     </header>
 
     <form class="local-import__form" @submit.prevent="onSubmit">
       <label class="local-import__field">
-        <span class="local-import__label">Project folder path</span>
+        <span class="local-import__label">{{ t('user.import.folderPath') }}</span>
         <div class="local-import__path-row">
           <input
             v-model="path"
@@ -99,13 +98,13 @@ function clearForm(): void {
             :disabled="isImporting"
             @click="browserOpen = true"
           >
-            Browse…
+            {{ t('user.import.browse') }}
           </button>
         </div>
       </label>
 
       <label class="local-import__field">
-        <span class="local-import__label">Display name (optional)</span>
+        <span class="local-import__label">{{ t('user.import.displayNameOptional') }}</span>
         <input
           v-model="name"
           class="local-import__text-input"
@@ -127,7 +126,7 @@ function clearForm(): void {
             <Spinner size="sm" aria-hidden="true" />
             <span>{{ submitLabel }}</span>
           </span>
-          <span v-else>Import folder</span>
+          <span v-else>{{ t('user.import.importFolder') }}</span>
         </button>
         <button
           type="button"
@@ -135,7 +134,7 @@ function clearForm(): void {
           :disabled="isImporting"
           @click="clearForm"
         >
-          Reset
+          {{ t('user.import.reset') }}
         </button>
       </div>
 

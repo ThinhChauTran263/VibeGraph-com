@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest'
+﻿import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import QuotaMeter from '../QuotaMeter.vue'
+import i18n from '@/language'
 
 describe('QuotaMeter', () => {
   it('renders correctly with given used and total limits', () => {
     const wrapper = mount(QuotaMeter, {
+      global: { plugins: [i18n] },
       props: {
         used: 100,
         total: 500,
@@ -18,6 +20,7 @@ describe('QuotaMeter', () => {
 
   it('handles zero remaining correctly', () => {
     const wrapper = mount(QuotaMeter, {
+      global: { plugins: [i18n] },
       props: {
         used: 500,
         total: 500,
@@ -31,6 +34,7 @@ describe('QuotaMeter', () => {
 
   it('uses status semantics when a determinate quota is unavailable', () => {
     const wrapper = mount(QuotaMeter, {
+      global: { plugins: [i18n] },
       props: {
         used: 0,
         total: 0,

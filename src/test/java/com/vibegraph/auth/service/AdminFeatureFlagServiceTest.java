@@ -86,5 +86,8 @@ class AdminFeatureFlagServiceTest {
         service.create(request);
 
         verify(featureFlagRepository).save(any(FeatureFlag.class));
+        verify(auditService).recordCurrentUser(
+                "FEATURE_FLAG_CHANGE", null, "FEATURE_FLAG", request.key(),
+                java.util.Map.of("enabled", false, "scope", "MCP_TOOL"));
     }
 }

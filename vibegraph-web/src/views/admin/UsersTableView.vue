@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminUserResponse } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
@@ -7,6 +8,7 @@ import UserDetailDrawer from './UserDetailDrawer.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AdminReasonDialog from '@/components/admin/AdminReasonDialog.vue'
 
+const { t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
 
 // Detail panel
@@ -27,10 +29,18 @@ const createForm = ref({
   planCode: 'FREE',
   temporaryPassword: '',
 })
-const createRoleOptions = [
-  { value: 'USER', label: 'User', description: 'Workspace, reports, API keys' },
-  { value: 'ADMIN', label: 'Admin', description: 'Admin console access' },
-] as const
+const createRoleOptions = computed(() => [
+  {
+    value: 'USER',
+    label: t('admin.users.create.roles.user.label'),
+    description: t('admin.users.create.roles.user.description'),
+  },
+  {
+    value: 'ADMIN',
+    label: t('admin.users.create.roles.admin.label'),
+    description: t('admin.users.create.roles.admin.description'),
+  },
+])
 const supportedUserPlans = new Set(['FREE', 'PRO', 'PRO_PLUS', 'MAX', 'ENTERPRISE'])
 const createPlanOptions = computed(() =>
   adminStore.plans
@@ -38,7 +48,10 @@ const createPlanOptions = computed(() =>
     .map((plan) => ({
       value: plan.code,
       label: plan.name,
-      description: `${plan.storageLimitMb ?? Math.round((plan.storageLimitBytes ?? 0) / (1024 * 1024))} MB + ${plan.monthlyCreditLimit} credits`,
+      description: t('admin.users.create.planDescription', {
+        storageMb: plan.storageLimitMb ?? Math.round((plan.storageLimitBytes ?? 0) / (1024 * 1024)),
+        credits: plan.monthlyCreditLimit,
+      }),
     })),
 )
 const isCreating = ref(false)
@@ -47,8 +60,12 @@ const tableActionError = ref('')
 const reasonDialogUser = ref<AdminUserResponse | null>(null)
 const unblockDialogUser = ref<AdminUserResponse | null>(null)
 const isUserActioning = ref(false)
-const currentPage = computed(() => adminStore.usersPagination.pageNumber ?? adminStore.usersPagination.page ?? 0)
-const currentPageSize = computed(() => adminStore.usersPagination.pageSize ?? adminStore.usersPagination.size ?? 20)
+const currentPage = computed(
+  () => adminStore.usersPagination.pageNumber ?? adminStore.usersPagination.page ?? 0,
+)
+const currentPageSize = computed(
+  () => adminStore.usersPagination.pageSize ?? adminStore.usersPagination.size ?? 20,
+)
 
 onMounted(async () => {
   await Promise.all([adminStore.fetchUsers(), adminStore.fetchPlans()])
@@ -108,7 +125,7 @@ const submitBlockReason = async (payload: { safeReason: string; reason: string }
     await adminStore.blockUser(reasonDialogUser.value.id, payload.reason, payload.safeReason)
     reasonDialogUser.value = null
   } catch (e: unknown) {
-    tableActionError.value = e instanceof Error ? e.message : 'Failed to block user'
+    tableActionError.value = e instanceof Error ? e.message : t('admin.users.errors.blockUser')
   } finally {
     isUserActioning.value = false
   }
@@ -126,7 +143,7 @@ const confirmUnblock = async () => {
     await adminStore.unblockUser(unblockDialogUser.value.id)
     unblockDialogUser.value = null
   } catch (e: unknown) {
-    tableActionError.value = e instanceof Error ? e.message : 'Failed to unblock user'
+    tableActionError.value = e instanceof Error ? e.message : t('admin.users.errors.unblockUser')
   } finally {
     isUserActioning.value = false
   }
@@ -146,7 +163,7 @@ const submitCreateUser = async () => {
       temporaryPassword: '',
     }
   } catch (e: unknown) {
-    createError.value = e instanceof Error ? e.message : 'Failed to create user'
+    createError.value = e instanceof Error ? e.message : t('admin.users.errors.createUser')
   } finally {
     isCreating.value = false
   }
@@ -158,6 +175,10 @@ function userStatus(u: AdminUserResponse): string {
   if (u.deactivated) return 'deactivated'
   return 'active'
 }
+
+function userStatusLabel(u: AdminUserResponse): string {
+  return t(`admin.users.status.${userStatus(u)}`)
+}
 </script>
 
 <template>
@@ -165,11 +186,15 @@ function userStatus(u: AdminUserResponse): string {
     <div class="header">
       <div class="header-top">
         <div>
-          <h2>Users Management</h2>
-          <p class="subtitle">Manage user accounts, roles, and status</p>
+          <h2>{{ t('admin.users.title') }}</h2>
+          <p class="subtitle">{{ t('admin.users.description') }}</p>
         </div>
-        <button class="btn-create" aria-label="Create User" @click="showCreateModal = true">
-          + Create
+        <button
+          class="btn-create"
+          :aria-label="t('admin.users.aria.createUser')"
+          @click="showCreateModal = true"
+        >
+          + {{ t('admin.users.actions.create') }}
         </button>
       </div>
 
@@ -180,8 +205,8 @@ function userStatus(u: AdminUserResponse): string {
           v-model="searchQuery"
           type="text"
           class="filter-input"
-          aria-label="Search users"
-          placeholder="Search by email or name…"
+          :aria-label="t('admin.users.aria.searchUsers')"
+          :placeholder="t('admin.users.filters.searchPlaceholder')"
           @keyup.enter="applyFilters"
         />
         <select
@@ -189,28 +214,30 @@ function userStatus(u: AdminUserResponse): string {
           name="statusFilter"
           v-model="statusFilter"
           class="filter-select"
-          aria-label="Filter users by status"
+          :aria-label="t('admin.users.aria.filterByStatus')"
           @change="applyFilters"
         >
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="blocked">Blocked</option>
-          <option value="deactivated">Deactivated</option>
+          <option value="">{{ t('admin.users.filters.allStatuses') }}</option>
+          <option value="active">{{ t('admin.users.status.active') }}</option>
+          <option value="blocked">{{ t('admin.users.status.blocked') }}</option>
+          <option value="deactivated">{{ t('admin.users.status.deactivated') }}</option>
         </select>
         <select
           id="adminUserPlanFilter"
           name="planFilter"
           v-model="planFilter"
           class="filter-select"
-          aria-label="Filter users by plan"
+          :aria-label="t('admin.users.aria.filterByPlan')"
           @change="applyFilters"
         >
-          <option value="">All Plans</option>
+          <option value="">{{ t('admin.users.filters.allPlans') }}</option>
           <option v-for="plan in createPlanOptions" :key="plan.value" :value="plan.value">
             {{ plan.label }}
           </option>
         </select>
-        <button class="btn-filter" @click="applyFilters">Search</button>
+        <button class="btn-filter" @click="applyFilters">
+          {{ t('admin.users.actions.search') }}
+        </button>
       </div>
       <div v-if="tableActionError" class="inline-error">{{ tableActionError }}</div>
     </div>
@@ -220,35 +247,51 @@ function userStatus(u: AdminUserResponse): string {
         <table class="users-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Plan</th>
-              <th>Status</th>
-              <th>Reason</th>
-              <th>Actions</th>
+              <th>{{ t('admin.users.table.name') }}</th>
+              <th>{{ t('admin.users.table.email') }}</th>
+              <th>{{ t('admin.users.table.role') }}</th>
+              <th>{{ t('admin.users.table.plan') }}</th>
+              <th>{{ t('admin.users.table.status') }}</th>
+              <th>{{ t('admin.users.table.reason') }}</th>
+              <th>{{ t('admin.users.table.actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="user in adminStore.users" :key="user.id">
-              <td class="font-medium" data-label="Name">{{ user.displayName }}</td>
-              <td data-label="Email">{{ user.email }}</td>
-              <td class="capitalize" data-label="Role">{{ user.role }}</td>
-              <td class="text-muted" data-label="Plan">{{ user.planCode }}</td>
-              <td data-label="Status">
-                <StatusChip :status="userStatus(user)" :label="userStatus(user)" />
+              <td class="font-medium" :data-label="t('admin.users.table.name')">
+                {{ user.displayName }}
               </td>
-              <td class="text-muted" data-label="Reason">
-                {{ user.blockedReasonSafe ?? user.deactivationReasonSafe ?? '-' }}
+              <td :data-label="t('admin.users.table.email')">{{ user.email }}</td>
+              <td class="capitalize" :data-label="t('admin.users.table.role')">
+                {{ user.role }}
               </td>
-              <td class="actions-cell" data-label="Actions">
+              <td class="text-muted" :data-label="t('admin.users.table.plan')">
+                {{ user.planCode }}
+              </td>
+              <td :data-label="t('admin.users.table.status')">
+                <StatusChip :status="userStatus(user)" :label="userStatusLabel(user)" />
+              </td>
+              <td class="text-muted" :data-label="t('admin.users.table.reason')">
+                {{
+                  user.blockedReasonSafe ??
+                  user.deactivationReasonSafe ??
+                  t('admin.users.fallback.emptyValue')
+                }}
+              </td>
+              <td class="actions-cell" :data-label="t('admin.users.table.actions')">
                 <div class="row-actions">
-                  <button class="btn-detail btn-sm" :aria-expanded="selectedUser?.id === user.id && detailOpen" @click="openDetail(user)">Detail</button>
+                  <button
+                    class="btn-detail btn-sm"
+                    :aria-expanded="selectedUser?.id === user.id && detailOpen"
+                    @click="openDetail(user)"
+                  >
+                    {{ t('admin.users.actions.detail') }}
+                  </button>
                   <button v-if="!user.blocked" class="btn-danger btn-sm" @click="handleBlock(user)">
-                    Block
+                    {{ t('admin.users.actions.block') }}
                   </button>
                   <button v-else class="btn-secondary btn-sm" @click="handleUnblock(user)">
-                    Unblock
+                    {{ t('admin.users.actions.unblock') }}
                   </button>
                 </div>
               </td>
@@ -257,11 +300,55 @@ function userStatus(u: AdminUserResponse): string {
         </table>
       </div>
       <div class="table-footer" v-if="adminStore.usersPagination.totalElements > 0">
-        <span>{{ adminStore.users.length }} / {{ adminStore.usersPagination.totalElements }} users</span>
+        <span>
+          {{
+            t('admin.users.pagination.showing', {
+              visible: adminStore.users.length,
+              total: adminStore.usersPagination.totalElements,
+            })
+          }}
+        </span>
         <div class="pagination-actions">
-          <button type="button" class="btn-secondary btn-sm" :disabled="currentPage <= 0" @click="adminStore.fetchUsers({ search: searchQuery || undefined, status: statusFilter || undefined, plan: planFilter || undefined, page: currentPage - 1, size: currentPageSize })">Previous</button>
-          <span>Page {{ currentPage + 1 }} / {{ Math.max(adminStore.usersPagination.totalPages, 1) }}</span>
-          <button type="button" class="btn-secondary btn-sm" :disabled="currentPage + 1 >= adminStore.usersPagination.totalPages" @click="adminStore.fetchUsers({ search: searchQuery || undefined, status: statusFilter || undefined, plan: planFilter || undefined, page: currentPage + 1, size: currentPageSize })">Next</button>
+          <button
+            type="button"
+            class="btn-secondary btn-sm"
+            :disabled="currentPage <= 0"
+            @click="
+              adminStore.fetchUsers({
+                search: searchQuery || undefined,
+                status: statusFilter || undefined,
+                plan: planFilter || undefined,
+                page: currentPage - 1,
+                size: currentPageSize,
+              })
+            "
+          >
+            {{ t('admin.users.actions.previous') }}
+          </button>
+          <span>
+            {{
+              t('admin.users.pagination.page', {
+                current: currentPage + 1,
+                total: Math.max(adminStore.usersPagination.totalPages, 1),
+              })
+            }}
+          </span>
+          <button
+            type="button"
+            class="btn-secondary btn-sm"
+            :disabled="currentPage + 1 >= adminStore.usersPagination.totalPages"
+            @click="
+              adminStore.fetchUsers({
+                search: searchQuery || undefined,
+                status: statusFilter || undefined,
+                plan: planFilter || undefined,
+                page: currentPage + 1,
+                size: currentPageSize,
+              })
+            "
+          >
+            {{ t('admin.users.actions.next') }}
+          </button>
         </div>
       </div>
 
@@ -275,9 +362,13 @@ function userStatus(u: AdminUserResponse): string {
 
     <AdminReasonDialog
       :open="Boolean(reasonDialogUser)"
-      title="Block user"
-      :description="`Block ${reasonDialogUser?.email ?? 'this user'} and pause project, patch, analyze, and API key actions.`"
-      confirm-label="Block user"
+      :title="t('admin.users.dialogs.block.title')"
+      :description="
+        t('admin.users.dialogs.block.description', {
+          email: reasonDialogUser?.email ?? t('admin.users.fallback.thisUser'),
+        })
+      "
+      :confirm-label="t('admin.users.dialogs.block.confirm')"
       :busy="isUserActioning"
       @cancel="reasonDialogUser = null"
       @submit="submitBlockReason"
@@ -285,9 +376,13 @@ function userStatus(u: AdminUserResponse): string {
 
     <AdminConfirmDialog
       :open="Boolean(unblockDialogUser)"
-      title="Unblock user"
-      :message="`Restore access for ${unblockDialogUser?.email ?? 'this user'}?`"
-      confirm-label="Unblock"
+      :title="t('admin.users.dialogs.unblock.title')"
+      :message="
+        t('admin.users.dialogs.unblock.message', {
+          email: unblockDialogUser?.email ?? t('admin.users.fallback.thisUser'),
+        })
+      "
+      :confirm-label="t('admin.users.dialogs.unblock.confirm')"
       :busy="isUserActioning"
       @cancel="unblockDialogUser = null"
       @confirm="confirmUnblock"
@@ -303,13 +398,13 @@ function userStatus(u: AdminUserResponse): string {
       >
         <div class="modal-header">
           <div>
-            <p class="modal-kicker">Admin action</p>
-            <h3 id="createUserTitle">Create user</h3>
-            <p class="modal-subtitle">Create a manual account with a temporary password.</p>
+            <p class="modal-kicker">{{ t('admin.users.create.kicker') }}</p>
+            <h3 id="createUserTitle">{{ t('admin.users.create.title') }}</h3>
+            <p class="modal-subtitle">{{ t('admin.users.create.description') }}</p>
           </div>
           <button
             class="close-btn"
-            aria-label="Close create user modal"
+            :aria-label="t('admin.users.aria.closeCreateModal')"
             @click="showCreateModal = false"
           >
             &times;
@@ -318,7 +413,7 @@ function userStatus(u: AdminUserResponse): string {
         <form @submit.prevent="submitCreateUser" class="modal-form">
           <div class="create-grid">
             <div class="form-group">
-              <label for="createUserEmail">Email</label>
+              <label for="createUserEmail">{{ t('admin.users.create.email') }}</label>
               <input
                 id="createUserEmail"
                 v-model="createForm.email"
@@ -326,13 +421,15 @@ function userStatus(u: AdminUserResponse): string {
                 class="form-input"
                 name="email"
                 autocomplete="email"
-                placeholder="user@company.com"
+                :placeholder="t('admin.users.create.emailPlaceholder')"
                 required
                 maxlength="254"
               />
             </div>
             <div class="form-group">
-              <label for="createUserDisplayName">Display name</label>
+              <label for="createUserDisplayName">
+                {{ t('admin.users.create.displayName') }}
+              </label>
               <input
                 id="createUserDisplayName"
                 v-model="createForm.displayName"
@@ -340,7 +437,7 @@ function userStatus(u: AdminUserResponse): string {
                 class="form-input"
                 name="displayName"
                 autocomplete="name"
-                placeholder="Jane Nguyen"
+                :placeholder="t('admin.users.create.displayNamePlaceholder')"
                 required
                 maxlength="120"
               />
@@ -348,8 +445,12 @@ function userStatus(u: AdminUserResponse): string {
           </div>
 
           <fieldset class="form-group option-fieldset">
-            <legend>Role</legend>
-            <div class="role-options" role="group" aria-label="Create user role">
+            <legend>{{ t('admin.users.create.role') }}</legend>
+            <div
+              class="role-options"
+              role="group"
+              :aria-label="t('admin.users.aria.createUserRole')"
+            >
               <button
                 v-for="role in createRoleOptions"
                 :key="role.value"
@@ -366,8 +467,12 @@ function userStatus(u: AdminUserResponse): string {
           </fieldset>
 
           <fieldset class="form-group option-fieldset">
-            <legend>Plan</legend>
-            <div class="plan-options" role="group" aria-label="Create user plan">
+            <legend>{{ t('admin.users.create.plan') }}</legend>
+            <div
+              class="plan-options"
+              role="group"
+              :aria-label="t('admin.users.aria.createUserPlan')"
+            >
               <button
                 v-for="plan in createPlanOptions"
                 :key="plan.value"
@@ -384,7 +489,9 @@ function userStatus(u: AdminUserResponse): string {
           </fieldset>
 
           <div class="form-group">
-            <label for="createUserPassword">Temporary password</label>
+            <label for="createUserPassword">
+              {{ t('admin.users.create.temporaryPassword') }}
+            </label>
             <input
               id="createUserPassword"
               v-model="createForm.temporaryPassword"
@@ -392,7 +499,7 @@ function userStatus(u: AdminUserResponse): string {
               class="form-input"
               name="temporaryPassword"
               autocomplete="new-password"
-              placeholder="Minimum 8 characters"
+              :placeholder="t('admin.users.create.temporaryPasswordPlaceholder')"
               required
               minlength="8"
               maxlength="100"
@@ -401,10 +508,10 @@ function userStatus(u: AdminUserResponse): string {
           <div v-if="createError" class="error-text" role="alert">{{ createError }}</div>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" @click="showCreateModal = false">
-              Cancel
+              {{ t('admin.users.actions.cancel') }}
             </button>
             <button type="submit" class="btn-primary" :disabled="isCreating">
-              {{ isCreating ? 'Creating...' : 'Create' }}
+              {{ isCreating ? t('admin.users.actions.creating') : t('admin.users.actions.create') }}
             </button>
           </div>
         </form>

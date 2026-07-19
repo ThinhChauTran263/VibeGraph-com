@@ -1,25 +1,34 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ProfileView from '../ProfileView.vue'
 import { useAccountStore } from '@/stores/account'
+import i18n from '@/language'
 
-function mountView() {
+interface MountViewOptions {
+  withProfile?: boolean
+  profileError?: Error
+}
+
+function mountView(options: MountViewOptions = {}) {
+  const profile = options.withProfile === false
+    ? null
+    : {
+        id: 'user-1',
+        email: 'test@example.com',
+        displayName: 'John Doe',
+        role: 'USER',
+        status: 'active',
+      }
   const pinia = createTestingPinia({
     createSpy: vi.fn,
-    initialState: {
-      account: {
-        profile: {
-          id: 'user-1',
-          email: 'test@example.com',
-          displayName: 'John Doe',
-          role: 'USER',
-          status: 'active',
-        },
-      },
-    },
+    initialState: { account: { profile } },
   })
-  return { wrapper: mount(ProfileView, { global: { plugins: [pinia] } }), pinia }
+  const store = useAccountStore(pinia)
+  if (options.profileError) {
+    vi.mocked(store.fetchProfile).mockRejectedValueOnce(options.profileError)
+  }
+  return { wrapper: mount(ProfileView, { global: { plugins: [pinia, i18n] } }), pinia }
 }
 
 describe('ProfileView', () => {
@@ -112,5 +121,21 @@ describe('ProfileView', () => {
     expect((wrapper.get('#current-password').element as HTMLInputElement).value).toBe('')
     expect((wrapper.get('#new-password').element as HTMLInputElement).value).toBe('')
     expect((wrapper.get('#confirm-new-password').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('shows a retry action when the profile request fails', async () => {
+    const { wrapper, pinia } = mountView({
+      withProfile: false,
+      profileError: new Error('Profile unavailable'),
+    })
+    const store = useAccountStore(pinia)
+
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Profile unavailable')
+    vi.mocked(store.fetchProfile).mockResolvedValueOnce(undefined)
+    await wrapper.get('[data-test="retry-profile"]').trigger('click')
+    await flushPromises()
+    expect(store.fetchProfile).toHaveBeenCalledTimes(2)
   })
 })

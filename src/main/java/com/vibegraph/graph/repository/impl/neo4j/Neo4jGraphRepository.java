@@ -1,5 +1,6 @@
 package com.vibegraph.graph.repository.impl.neo4j;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -47,7 +48,8 @@ public class Neo4jGraphRepository implements GraphRepository {
             // same stable-id scheme as every other node.
             session.run(
                     "MERGE (p:Project {id: $projectId}) " +
-                    "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId",
+                    "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
+                    "p.createdAt = coalesce(p.createdAt, datetime()), p.lastAnalyzedAt = datetime()",
                     Map.of("projectId", projectId, "name", name, "path", path)
             );
         }
@@ -57,16 +59,12 @@ public class Neo4jGraphRepository implements GraphRepository {
     public ProjectMetadata findProject(String projectId) {
         try (Session session = neo4jDriver.session()) {
             var result = session.run(
-                    "MATCH (p:Project {id: $projectId}) RETURN p.id AS id, p.name AS name, p.path AS path",
+                    projectMetadataCypher("MATCH (p:Project {id: $projectId})"),
                     Map.of("projectId", projectId));
             if (!result.hasNext()) {
                 return null;
             }
-            var record = result.next();
-            return new ProjectMetadata(
-                    record.get("id").isNull() ? null : record.get("id").asString(),
-                    record.get("name").isNull() ? null : record.get("name").asString(),
-                    record.get("path").isNull() ? null : record.get("path").asString());
+            return mapProjectMetadata(result.next());
         }
     }
 
@@ -74,19 +72,55 @@ public class Neo4jGraphRepository implements GraphRepository {
     public List<ProjectMetadata> findAllProjects() {
         try (Session session = neo4jDriver.session()) {
             var result = session.run(
-                    "MATCH (p:Project) RETURN p.id AS id, p.name AS name, p.path AS path");
+                    projectMetadataCypher("MATCH (p:Project)") + " ORDER BY name, id");
             List<ProjectMetadata> projects = new ArrayList<>();
             while (result.hasNext()) {
-                var record = result.next();
-                if (record.get("id").isNull()) {
+                ProjectMetadata metadata = mapProjectMetadata(result.next());
+                if (metadata.id() == null) {
                     continue;
                 }
-                projects.add(new ProjectMetadata(
-                        record.get("id").asString(),
-                        record.get("name").isNull() ? null : record.get("name").asString(),
-                        record.get("path").isNull() ? null : record.get("path").asString()));
+                projects.add(metadata);
             }
             return projects;
+        }
+    }
+
+    private String projectMetadataCypher(String matchProject) {
+        return matchProject + " " +
+                "OPTIONAL MATCH (n {projectId: p.id}) " +
+                "WHERE n IS NULL OR NOT n:Project " +
+                "WITH p, count(n) AS totalNodes, " +
+                "count(DISTINCT CASE WHEN n.filePath IS NULL OR n.filePath = '' THEN null ELSE n.filePath END) AS totalFiles " +
+                "OPTIONAL MATCH (a {projectId: p.id})-[r]->(b {projectId: p.id}) " +
+                "RETURN p.id AS id, p.name AS name, p.path AS path, " +
+                "p.createdAt AS createdAt, p.lastAnalyzedAt AS lastAnalyzedAt, " +
+                "totalFiles, totalNodes, count(r) AS totalEdges";
+    }
+
+    private ProjectMetadata mapProjectMetadata(Record record) {
+        return new ProjectMetadata(
+                record.get("id").isNull() ? null : record.get("id").asString(),
+                record.get("name").isNull() ? null : record.get("name").asString(),
+                record.get("path").isNull() ? null : record.get("path").asString(),
+                instantOrNull(record.get("createdAt")),
+                instantOrNull(record.get("lastAnalyzedAt")),
+                record.get("totalFiles").isNull() ? 0 : record.get("totalFiles").asInt(),
+                record.get("totalNodes").isNull() ? 0 : record.get("totalNodes").asInt(),
+                record.get("totalEdges").isNull() ? 0 : record.get("totalEdges").asInt());
+    }
+
+    private Instant instantOrNull(Value value) {
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        try {
+            return value.asZonedDateTime().toInstant();
+        } catch (RuntimeException ignored) {
+            try {
+                return Instant.parse(value.asString());
+            } catch (RuntimeException ignoredAgain) {
+                return null;
+            }
         }
     }
 

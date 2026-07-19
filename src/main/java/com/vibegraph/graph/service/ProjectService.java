@@ -25,6 +25,16 @@ public interface ProjectService {
      */
     ProjectResponse createProjectFromWorkspace(String name, Path workspaceSource);
 
+    /**
+     * Register an empty, server-owned workspace for CLI push. Unlike archive/GitHub import,
+     * this persists the Project metadata immediately so MCP/source tools can recover the
+     * workspace after a backend restart before the first analysis has run.
+     *
+     * @param name            display name (blank -> a generated id is used)
+     * @param workspaceSource empty source directory under the archive workspace root
+     */
+    ProjectResponse createEmptyWorkspaceProject(String name, Path workspaceSource);
+
     List<ProjectResponse> listProjects();
 
     ProjectResponse getProject(String id);

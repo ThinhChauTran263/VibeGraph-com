@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
 import type { Report, ReportMessage, FeedbackCategory, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
@@ -7,8 +8,10 @@ import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
 
 const accountStore = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const selectedReport = ref<Report | null>(null)
+let reportSelectionVersion = 0
 const newCategory = ref<FeedbackCategory>('BUG')
 const newTitle = ref('')
 const newMessage = ref('')
@@ -20,19 +23,19 @@ const closeDialogOpen = ref(false)
 const errorMsg = ref('')
 const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
-const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
-  { value: 'BUG', label: 'Bug Report' },
-  { value: 'PROJECT', label: 'Project Issue' },
-  { value: 'QUOTA', label: 'Quota / Billing' },
-  { value: 'FEATURE', label: 'Feature Request' },
-  { value: 'OTHER', label: 'Other' },
-]
+const categories = computed<{ value: FeedbackCategory; label: string }[]>(() => [
+  { value: 'BUG', label: t('user.reports.bug') },
+  { value: 'PROJECT', label: t('user.reports.project') },
+  { value: 'QUOTA', label: t('user.reports.quota') },
+  { value: 'FEATURE', label: t('user.reports.feature') },
+  { value: 'OTHER', label: t('user.reports.other') },
+])
 
 onMounted(async () => {
   try {
     await accountStore.fetchReports()
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load reports'
+    errorMsg.value = e instanceof Error ? e.message : t('user.reports.loadFallback')
   }
 })
 
@@ -42,11 +45,14 @@ const reportRealtime = useReportRealtime(selectedReportId, {
   },
 })
 const reportRealtimeStatus = reportRealtime.status
+const reportRealtimeActive = reportRealtime.active
 const reportRealtimeLabel = computed(() => {
-  if (reportRealtimeStatus.value === 'connected') return 'Live'
-  if (reportRealtimeStatus.value === 'error') return 'Realtime unavailable'
-  if (reportRealtimeStatus.value === 'connecting') return 'Syncing'
-  return 'Offline'
+  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) return t('user.reports.live')
+  if (reportRealtimeStatus.value === 'error') return t('user.reports.realtimeUnavailable')
+  if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
+    return t('user.reports.syncing')
+  }
+  return t('user.reports.offline')
 })
 
 const submitReport = async () => {
@@ -59,40 +65,44 @@ const submitReport = async () => {
     newMessage.value = ''
     newCategory.value = 'BUG'
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to submit report'
+    errorMsg.value = e instanceof Error ? e.message : t('user.reports.submitFallback')
   } finally {
     isSubmitting.value = false
   }
 }
 
 const selectReport = async (report: Report) => {
+  const selectionVersion = ++reportSelectionVersion
   try {
     const full = await accountStore.fetchReportDetail(report.id)
-    selectedReport.value = full
+    if (selectionVersion === reportSelectionVersion) selectedReport.value = full
   } catch {
-    selectedReport.value = report
+    if (selectionVersion === reportSelectionVersion) selectedReport.value = report
   }
 }
 
 const backToList = async () => {
+  reportSelectionVersion += 1
   selectedReport.value = null
   await accountStore.fetchReports()
 }
 
 const sendReply = async () => {
-  if (!replyMessage.value.trim() || !selectedReport.value) return
+  const report = selectedReport.value
+  const body = replyMessage.value.trim()
+  if (!body || !report) return
+  const reportId = report.id
   isSending.value = true
   try {
-    const msg: ReportMessage = await accountStore.addMessage(
-      selectedReport.value.id,
-      replyMessage.value,
-    )
-    if (!selectedReport.value.messages.some((item) => item.id === msg.id)) {
-      selectedReport.value.messages.push(msg)
+    const msg: ReportMessage = await accountStore.addMessage(reportId, body)
+    if (selectedReport.value?.id === reportId) {
+      if (!selectedReport.value.messages.some((item) => item.id === msg.id)) {
+        selectedReport.value.messages.push(msg)
+      }
+      replyMessage.value = ''
     }
-    replyMessage.value = ''
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to send reply'
+    errorMsg.value = e instanceof Error ? e.message : t('user.reports.replyFallback')
   } finally {
     isSending.value = false
   }
@@ -111,7 +121,7 @@ const confirmCloseReport = async () => {
     selectedReport.value = { ...selectedReport.value, ...closed }
     closeDialogOpen.value = false
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to close report'
+    errorMsg.value = e instanceof Error ? e.message : t('user.reports.closeFallback')
   } finally {
     isClosing.value = false
   }
@@ -146,13 +156,13 @@ const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
 const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   ...message,
   isAdmin: message.senderRole === 'ADMIN',
-  senderName: message.senderRole === 'ADMIN' ? 'Support Team' : 'You',
+  senderName: message.senderRole === 'ADMIN' ? t('user.reports.supportTeam') : t('user.reports.you'),
 })
 
 const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) return 'Just now'
+  if (!value) return t('user.reports.justNow')
   const timestamp = Date.parse(value)
-  return Number.isNaN(timestamp) ? 'Just now' : new Date(timestamp).toLocaleString()
+  return Number.isNaN(timestamp) ? t('user.reports.justNow') : new Date(timestamp).toLocaleString()
 }
 </script>
 
@@ -160,23 +170,23 @@ const formatDateTime = (value: string | null | undefined): string => {
   <div class="reports-view">
     <div v-if="!selectedReport" class="list-container">
       <div class="header">
-        <h2>My Reports</h2>
-        <p class="subtitle">Submit feedback or report an issue</p>
+        <h2>{{ t('user.reports.title') }}</h2>
+        <p class="subtitle">{{ t('user.reports.subtitle') }}</p>
       </div>
 
       <div class="card create-report">
-        <h3>Submit Report</h3>
+        <h3>{{ t('user.reports.submitTitle') }}</h3>
         <form @submit.prevent="submitReport" class="form-grid">
           <div class="form-group">
-            <label for="report-category">Category</label>
+            <label for="report-category">{{ t('user.reports.category') }}</label>
             <select id="report-category" v-model="newCategory" class="form-input" required>
-              <option v-for="cat in CATEGORIES" :key="cat.value" :value="cat.value">
+              <option v-for="cat in categories" :key="cat.value" :value="cat.value">
                 {{ cat.label }}
               </option>
             </select>
           </div>
           <div class="form-group">
-            <label for="report-subject">Subject</label>
+            <label for="report-subject">{{ t('user.reports.subject') }}</label>
             <input
               id="report-subject"
               v-model="newTitle"
@@ -187,7 +197,7 @@ const formatDateTime = (value: string | null | undefined): string => {
             />
           </div>
           <div class="form-group">
-            <label for="report-message">Message</label>
+            <label for="report-message">{{ t('user.reports.message') }}</label>
             <textarea
               id="report-message"
               v-model="newMessage"
@@ -203,23 +213,23 @@ const formatDateTime = (value: string | null | undefined): string => {
             class="btn-primary"
             :disabled="isSubmitting || !newTitle || !newMessage"
           >
-            {{ isSubmitting ? 'Submitting...' : 'Submit' }}
+            {{ isSubmitting ? t('user.reports.submitting') : t('user.reports.submit') }}
           </button>
         </form>
       </div>
 
       <div class="card reports-list">
-        <h3>Previous Reports</h3>
-        <div v-if="accountStore.reports.length === 0" class="empty-state">No reports found.</div>
+        <h3>{{ t('user.reports.previous') }}</h3>
+        <div v-if="accountStore.reports.length === 0" class="empty-state">{{ t('user.reports.empty') }}</div>
         <div v-else class="table-responsive">
           <table class="table">
             <thead>
               <tr>
-                <th>Subject</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Last Updated</th>
-                <th>Action</th>
+                <th>{{ t('user.reports.subject') }}</th>
+                <th>{{ t('user.reports.category') }}</th>
+                <th>{{ t('user.reports.status') }}</th>
+                <th>{{ t('user.reports.lastUpdated') }}</th>
+                <th>{{ t('user.reports.action') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -230,7 +240,7 @@ const formatDateTime = (value: string | null | undefined): string => {
                 <td class="text-muted">
                   {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
-                <td><button class="btn-secondary btn-sm" @click="selectReport(r)">View</button></td>
+                <td><button class="btn-secondary btn-sm" @click="selectReport(r)">{{ t('user.reports.view') }}</button></td>
               </tr>
             </tbody>
           </table>
@@ -256,7 +266,7 @@ const formatDateTime = (value: string | null | undefined): string => {
             <path d="M15 18l-6-6 6-6" />
             <path d="M9 12h10" />
           </svg>
-          <span>Back to reports</span>
+          <span>{{ t('user.reports.back') }}</span>
         </button>
         <div class="detail-header__title">
           <h2>{{ selectedReport.title }}</h2>
@@ -283,7 +293,7 @@ const formatDateTime = (value: string | null | undefined): string => {
             <header class="message-meta">
               <div>
                 <strong>{{ msg.senderName }}</strong>
-                <span class="message-role">{{ msg.isAdmin ? 'VibeGraph support' : 'You' }}</span>
+                <span class="message-role">{{ msg.isAdmin ? t('user.reports.support') : t('user.reports.you') }}</span>
               </div>
               <time :datetime="msg.createdAt || undefined">{{ formatDateTime(msg.createdAt) }}</time>
             </header>
@@ -294,42 +304,42 @@ const formatDateTime = (value: string | null | undefined): string => {
 
       <div v-if="selectedReport.status === 'OPEN'" class="reply-box">
         <div class="reply-box__heading">
-          <strong>Reply</strong>
-          <span>Continue this support conversation</span>
+          <strong>{{ t('user.reports.reply') }}</strong>
+          <span>{{ t('user.reports.continue') }}</span>
         </div>
         <form @submit.prevent="sendReply" class="reply-form">
-          <label class="sr-only" for="report-reply">Reply</label>
+          <label class="sr-only" for="report-reply">{{ t('user.reports.reply') }}</label>
           <textarea
             id="report-reply"
             v-model="replyMessage"
             class="form-input reply-input"
-            placeholder="Type a reply..."
+            :placeholder="t('user.reports.replyPlaceholder')"
             rows="2"
             maxlength="5000"
             required
           ></textarea>
           <div v-if="errorMsg" class="error-text">{{ errorMsg }}</div>
           <button type="submit" class="btn-primary" :disabled="isSending || !replyMessage">
-            {{ isSending ? 'Sending...' : 'Send' }}
+            {{ isSending ? t('user.reports.sending') : t('user.reports.send') }}
           </button>
           <button type="button" class="btn-danger" :disabled="isClosing" @click="closeReport">
-            Close report
+            {{ t('user.reports.close') }}
           </button>
         </form>
       </div>
       <div v-else class="closed-notice">
-        This report is closed.
+        {{ t('user.reports.closed') }}
         <small v-if="selectedReport.deletesAfter">
-          Scheduled for deletion after {{ new Date(selectedReport.deletesAfter).toLocaleDateString() }}.
+          {{ t('user.reports.scheduledDeletion', { date: new Date(selectedReport.deletesAfter).toLocaleDateString() }) }}
         </small>
       </div>
     </div>
 
     <AdminConfirmDialog
       :open="closeDialogOpen"
-      title="Close report"
-      message="Close this report thread? You can still view the conversation until the retention date."
-      confirm-label="Close report"
+      :title="t('user.reports.close')"
+      :message="t('user.reports.closeMessage')"
+      :confirm-label="t('user.reports.close')"
       :busy="isClosing"
       @cancel="closeDialogOpen = false"
       @confirm="confirmCloseReport"

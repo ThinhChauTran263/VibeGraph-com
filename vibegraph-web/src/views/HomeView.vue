@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAccountStore } from '@/stores/account'
 import AppIcon from '@/components/ui/AppIcon.vue'
+import { displayPlanName } from '@/lib/planDisplay'
 
 const router = useRouter()
 const account = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
 const name = computed(
-  () => account.profile?.displayName || account.profile?.email?.split('@')[0] || 'there',
+  () => account.profile?.displayName || account.profile?.email?.split('@')[0] || t('user.layout.account'),
 )
 const remainingCredits = computed(() => {
   const usage = account.usage as (typeof account.usage & { creditsRemaining?: number }) | null
@@ -16,46 +19,59 @@ const remainingCredits = computed(() => {
   const used = usage?.creditsUsed
   return typeof limit === 'number' && typeof used === 'number'
     ? Math.max(limit - used, 0).toLocaleString()
-    : 'Unavailable'
+    : t('user.overview.unavailable')
 })
+const planLabel = computed(() =>
+  displayPlanName(
+    t,
+    account.usage?.planCode,
+    account.usage?.planName,
+    t('user.overview.unavailable'),
+  ),
+)
 
 onMounted(() => {
-  void Promise.allSettled([account.fetchProfile(), account.fetchProjects(), account.fetchUsage()])
+  const tasks: Promise<unknown>[] = []
+  if (!account.profile) tasks.push(account.fetchProfile())
+  if (!account.projectsLoaded) tasks.push(account.fetchProjects())
+  if (!account.usage) tasks.push(account.fetchUsage())
+  void Promise.allSettled(tasks)
 })
 </script>
 
 <template>
   <section class="overview" aria-labelledby="overview-title">
     <header class="overview__header">
-      <span class="eyebrow">Overview</span>
-      <h1 id="overview-title">Welcome back, {{ name }}</h1>
-      <p>A focused summary of your VibeGraph workspace.</p>
+      <span class="eyebrow">{{ t('user.overview.eyebrow') }}</span>
+      <h1 id="overview-title">{{ t('user.overview.welcome', { name }) }}</h1>
+      <p>{{ t('user.overview.description') }}</p>
     </header>
 
-    <section class="summary" aria-label="Workspace summary">
+    <section class="summary" :aria-label="t('user.overview.summaryLabel')">
       <article>
-        <AppIcon name="repository" :size="24" /><span>Repositories</span
+        <AppIcon name="repository" :size="24" /><span>{{ t('user.overview.repositories') }}</span
         ><strong>{{ account.projects.length }}</strong
-        ><small>Imported projects</small>
+        ><small>{{ t('user.overview.importedProjects') }}</small>
       </article>
       <article>
-        <AppIcon name="usage" :size="24" /><span>Credits</span
+        <AppIcon name="usage" :size="24" /><span>{{ t('user.overview.credits') }}</span
         ><strong>{{ remainingCredits }}</strong
-        ><small v-if="typeof account.usage?.creditsUsed === 'number'"
-          >{{ account.usage.creditsUsed.toLocaleString() }} used this month</small
-        ><small v-else>Usage details unavailable</small>
+        ><small v-if="typeof account.usage?.creditsUsed === 'number'">{{
+          t('user.overview.usedThisMonth', { count: account.usage.creditsUsed.toLocaleString() })
+        }}</small
+        ><small v-else>{{ t('user.overview.usageUnavailable') }}</small>
       </article>
       <article>
-        <AppIcon name="subscription" :size="24" /><span>Plan</span
-        ><strong>{{ account.usage?.planName || account.usage?.planCode || 'Unavailable' }}</strong
-        ><small>Your current workspace plan</small>
+        <AppIcon name="subscription" :size="24" /><span>{{ t('user.overview.plan') }}</span
+        ><strong>{{ planLabel }}</strong
+        ><small>{{ t('user.overview.currentPlan') }}</small>
       </article>
     </section>
 
     <section class="quick" aria-labelledby="quick-heading">
       <div>
-        <span class="eyebrow">Next step</span>
-        <h2 id="quick-heading">Quick actions</h2>
+        <span class="eyebrow">{{ t('user.overview.nextStep') }}</span>
+        <h2 id="quick-heading">{{ t('user.overview.quickActions') }}</h2>
       </div>
       <div class="quick__actions">
         <button
@@ -66,15 +82,15 @@ onMounted(() => {
           <span class="quick__icon" aria-hidden="true"
             ><AppIcon name="repository" :size="22"
           /></span>
-          <span>New repository</span>
+          <span>{{ t('user.overview.newRepository') }}</span>
         </button>
         <button data-test="quick-api-keys" type="button" @click="router.push({ name: 'api-keys' })">
           <span class="quick__icon" aria-hidden="true"><AppIcon name="key" :size="22" /></span>
-          <span>Create API key</span>
+          <span>{{ t('user.overview.createApiKey') }}</span>
         </button>
         <button data-test="quick-reports" type="button" @click="router.push({ name: 'reports' })">
           <span class="quick__icon" aria-hidden="true"><AppIcon name="reports" :size="22" /></span>
-          <span>Open reports</span>
+          <span>{{ t('user.overview.openReports') }}</span>
         </button>
       </div>
     </section>

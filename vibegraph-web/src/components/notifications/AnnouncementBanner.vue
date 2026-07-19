@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
 
 const router = useRouter()
+const { t } = useI18n({ useScope: 'global' })
 const notification = ref<UserNotification | null>(null)
 const busy = ref(false)
 const errorMsg = ref('')
@@ -12,6 +14,8 @@ const errorMsg = ref('')
 onMounted(loadActiveNotification)
 
 async function loadActiveNotification(): Promise<void> {
+  busy.value = true
+  errorMsg.value = ''
   try {
     const items = await accountApi.listNotifications(20)
     notification.value =
@@ -19,7 +23,9 @@ async function loadActiveNotification(): Promise<void> {
         .filter((item) => !item.read && !item.dismissedAt)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null
   } catch {
-    errorMsg.value = 'Announcements are temporarily unavailable.'
+    errorMsg.value = t('user.notifications.announcementUnavailable')
+  } finally {
+    busy.value = false
   }
 }
 
@@ -31,7 +37,7 @@ async function close(): Promise<void> {
     await accountApi.dismissNotification(notification.value.id)
     notification.value = null
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not dismiss this notice.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.dismissFallback')
   } finally {
     busy.value = false
   }
@@ -48,7 +54,7 @@ async function read(): Promise<void> {
     await router.push({ name: 'notifications', query: { id } })
     notification.value = null
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Could not open this notice.'
+    errorMsg.value = error instanceof Error ? error.message : t('user.notifications.readFallback')
   } finally {
     busy.value = false
   }
@@ -57,7 +63,24 @@ async function read(): Promise<void> {
 
 <template>
   <aside
-    v-if="notification"
+    v-if="errorMsg && !notification"
+    class="banner banner-error"
+    role="alert"
+    aria-live="assertive"
+  >
+    <div class="copy">
+      <span>{{ t('nav.announcements') }}</span>
+      <strong>{{ t('user.notifications.unavailableTitle') }}</strong>
+      <p>{{ errorMsg }}</p>
+    </div>
+    <div class="actions">
+      <button type="button" :disabled="busy" @click="loadActiveNotification">
+        {{ busy ? t('user.notifications.loading') : t('common.retry') }}
+      </button>
+    </div>
+  </aside>
+  <aside
+    v-else-if="notification"
     class="banner"
     :class="`severity-${notification.severity.toLowerCase()}`"
     aria-live="polite"
@@ -69,14 +92,14 @@ async function read(): Promise<void> {
       <small v-if="errorMsg" role="alert">{{ errorMsg }}</small>
     </div>
     <div class="actions">
-      <button type="button" :disabled="busy" @click="read">Read</button>
+      <button type="button" :disabled="busy" @click="read">{{ t('common.view') }}</button>
       <button
         v-if="notification.dismissible"
         type="button"
         :disabled="busy"
         @click="close"
       >
-        Close
+        {{ t('common.close') }}
       </button>
     </div>
   </aside>
@@ -105,6 +128,11 @@ async function read(): Promise<void> {
   border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
   border-left-color: var(--vg-danger);
   background: color-mix(in srgb, var(--vg-danger) 10%, var(--vg-surface));
+}
+.banner-error {
+  border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
+  border-left-color: var(--vg-danger);
+  background: color-mix(in srgb, var(--vg-danger) 9%, var(--vg-surface));
 }
 .copy {
   min-width: 0;

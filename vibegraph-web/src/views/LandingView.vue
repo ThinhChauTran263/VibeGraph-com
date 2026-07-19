@@ -5,8 +5,10 @@
  * Optimized with premium interaction, guided auto-cursor tour, problem/solution sections,
  * quick start guides, dynamic world map, and symmetric bento grid cards.
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import LogoTile from '@/components/ui/LogoTile.vue'
 
 // IDE / AI-agent logos
@@ -44,76 +46,77 @@ const stack: LogoItem[] = [
 ]
 
 const scrolled = ref(false)
+const { t } = useI18n({ useScope: 'global' })
 
 function onScroll(): void {
   scrolled.value = window.scrollY > 12
 }
 
 // Stats
-const stats = [
-  { value: '4K+', label: 'symbols mapped per project' },
-  { value: '10K+', label: 'relationships traced' },
-  { value: '300+', label: 'execution flows surfaced' },
-  { value: 'Realtime', label: 'graph updates as you code' },
-]
+const stats = computed(() => [
+  { value: '4K+', label: t('landing.stats.symbols') },
+  { value: '10K+', label: t('landing.stats.relationships') },
+  { value: '300+', label: t('landing.stats.flows') },
+  { value: t('landing.stats.realtimeValue'), label: t('landing.stats.realtimeLabel') },
+])
 
 // Features
-const features = [
+const features = computed(() => [
   {
-    tag: 'Graph',
-    title: 'Code as a living graph',
-    body: 'Classes, methods, fields and routes rendered as an explorable force-directed graph. Pan, zoom and focus to follow any call chain.',
+    tag: t('landing.features.cards.graph.tag'),
+    title: t('landing.features.cards.graph.title'),
+    body: t('landing.features.cards.graph.body'),
     accent: 'blue',
     span: 'wide',
   },
   {
-    tag: 'Impact',
-    title: 'Blast-radius analysis',
-    body: 'Pick any node and see exactly what breaks if you change it — direct callers, affected flows and risk level, before you touch a line.',
+    tag: t('landing.features.cards.impact.tag'),
+    title: t('landing.features.cards.impact.title'),
+    body: t('landing.features.cards.impact.body'),
     accent: 'green',
     span: 'tall',
   },
   {
-    tag: 'Realtime',
-    title: 'Updates as you vibe',
-    body: 'Point VibeGraph at a local folder and the graph re-draws itself the moment you save. No re-import, no zip.',
+    tag: t('landing.features.cards.realtime.tag'),
+    title: t('landing.features.cards.realtime.title'),
+    body: t('landing.features.cards.realtime.body'),
     accent: 'cyan',
     span: 'normal',
   },
   {
-    tag: 'Diagrams',
-    title: 'Architecture diagrams',
-    body: 'Reverse-engineered UML use-case and class diagrams generated straight from the source — design-vs-code verification, not hand-drawn fiction.',
+    tag: t('landing.features.cards.diagrams.tag'),
+    title: t('landing.features.cards.diagrams.title'),
+    body: t('landing.features.cards.diagrams.body'),
     accent: 'violet',
     span: 'normal',
   },
   {
-    tag: 'Import',
-    title: 'Folder, archive or GitHub',
-    body: 'Analyze a local path, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds.',
+    tag: t('landing.features.cards.import.tag'),
+    title: t('landing.features.cards.import.title'),
+    body: t('landing.features.cards.import.body'),
     accent: 'amber',
     span: 'wide', // will span full 3 columns thanks to css grid updates
   },
-]
+])
 
 // Steps for "How it works"
-const steps = [
+const steps = computed(() => [
   {
     n: '01',
-    title: 'Import your project',
-    body: 'Local folder, archive, or a public GitHub repo. VibeGraph parses the source and builds the index.',
+    title: t('landing.how.steps.import.title'),
+    body: t('landing.how.steps.import.body'),
   },
   {
     n: '02',
-    title: 'Explore the graph',
-    body: 'Navigate structure visually, search any symbol, and trace execution flows across the whole codebase.',
+    title: t('landing.how.steps.explore.title'),
+    body: t('landing.how.steps.explore.body'),
   },
   {
     n: '03',
-    title: 'Analyze impact',
-    body: 'Before refactoring, run blast-radius analysis to see what your change touches — and ship with confidence.',
+    title: t('landing.how.steps.analyze.title'),
+    body: t('landing.how.steps.analyze.body'),
   },
-]
+])
 
 // --- Interactive Graph State ---
 interface GraphNode {
@@ -266,9 +269,9 @@ function triggerImpact(nodeId: string) {
 }
 
 function impactLevel(count: number): string {
-  if (count >= 5) return 'CRITICAL RISK'
-  if (count >= 3) return 'HIGH RISK'
-  return 'LOW / SAFE'
+  if (count >= 5) return t('landing.graph.risk.critical')
+  if (count >= 3) return t('landing.graph.risk.high')
+  return t('landing.graph.risk.low')
 }
 
 function impactClass(count: number): string {
@@ -365,7 +368,7 @@ let stepInterval: ReturnType<typeof setInterval> | null = null
 
 function startStepTimer() {
   stepInterval = setInterval(() => {
-    activeStep.value = (activeStep.value + 1) % steps.length
+    activeStep.value = (activeStep.value + 1) % steps.value.length
   }, 7000)
 }
 
@@ -389,11 +392,11 @@ function onMouseMoveBento(e: MouseEvent, index: number) {
 }
 
 // --- User Guide Tabs Data ---
-const guideTabs = [
-  { step: '01', title: 'Run VibeGraph' },
-  { step: '02', title: 'Import a project' },
-  { step: '03', title: 'Connect your AI agent' },
-]
+const guideTabs = computed(() => [
+  { step: '01', title: t('landing.guide.tabs.run') },
+  { step: '02', title: t('landing.guide.tabs.import') },
+  { step: '03', title: t('landing.guide.tabs.agent') },
+])
 const activeGuideTab = ref(0)
 
 // --- Autonomous Cursor Guided Tour ---
@@ -527,7 +530,7 @@ onBeforeUnmount(() => {
         />
       </svg>
       <div v-if="virtualCursor.clicking" class="click-ripple"></div>
-      <span class="virtual-cursor-tag">Guided Tour Demo</span>
+      <span class="virtual-cursor-tag">{{ t('landing.tour.label') }}</span>
     </div>
 
     <!-- ── Nav ── -->
@@ -535,15 +538,18 @@ onBeforeUnmount(() => {
       <div class="lp-nav__inner">
         <BrandMark :size="30" />
         <nav class="lp-nav__links" aria-label="Primary">
-          <a href="#goals">Goals</a>
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#guide">Guide</a>
+          <a href="#goals">{{ t('landing.nav.goals') }}</a>
+          <a href="#features">{{ t('landing.nav.features') }}</a>
+          <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
+          <a href="#guide">{{ t('landing.nav.guide') }}</a>
         </nav>
-        <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
-          Open Dashboard
-          <span class="btn__arrow" aria-hidden="true">→</span>
-        </RouterLink>
+        <div class="lp-nav__actions">
+          <LanguageSelector />
+          <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
+            {{ t('landing.actions.openDashboard') }}
+            <span class="btn__arrow" aria-hidden="true">→</span>
+          </RouterLink>
+        </div>
       </div>
     </header>
 
@@ -553,23 +559,19 @@ onBeforeUnmount(() => {
         <div class="hero__copy">
           <span class="pill">
             <span class="pill__dot" aria-hidden="true"></span>
-            Source-code intelligence for Java
+            {{ t('landing.hero.pill') }}
           </span>
           <h1 class="hero__title">
-            See your code as a
-            <span class="hero__title-grad">living graph</span>
+            {{ t('landing.hero.titleLead') }}
+            <span class="hero__title-grad">{{ t('landing.hero.titleHighlight') }}</span>
           </h1>
-          <p class="hero__lede">
-            VibeGraph turns a Java codebase into an explorable map of structure, dependencies and
-            execution flows — then keeps it in sync as you vibe code. Understand impact before you
-            change a thing.
-          </p>
+          <p class="hero__lede">{{ t('landing.hero.description') }}</p>
           <div class="hero__cta">
             <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-              Open Dashboard
+              {{ t('landing.actions.openDashboard') }}
               <span class="btn__arrow" aria-hidden="true">→</span>
             </RouterLink>
-            <a class="btn btn--ghost btn--lg" href="#how">See how it works</a>
+            <a class="btn btn--ghost btn--lg" href="#how">{{ t('landing.actions.seeHow') }}</a>
           </div>
           <ul class="hero__stats">
             <li v-for="s in stats" :key="s.label">
@@ -586,7 +588,7 @@ onBeforeUnmount(() => {
           <div class="interactive-graph-card">
             <div class="graph-header">
               <span class="graph-status-dot"></span>
-              <span class="graph-header-text">Interactive Blast-Radius Sandbox</span>
+              <span class="graph-header-text">{{ t('landing.graph.header') }}</span>
             </div>
 
             <svg class="graphmotif" viewBox="0 0 420 420" fill="none">
@@ -679,28 +681,28 @@ onBeforeUnmount(() => {
               <div class="telemetry-inner">
                 <div v-if="selectedNode" class="telemetry-grid">
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Target Symbol</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.targetSymbol') }}</span>
                     <span class="telemetry-data text-accent">{{ selectedNode.label }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Symbol Type</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.symbolType') }}</span>
                     <span class="telemetry-data text-capitalize">{{ selectedNode.type }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Blast Radius</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.blastRadius') }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
-                      {{ activeImpactNodes.length }} affected
+                      {{ t('landing.graph.telemetry.affected', { count: activeImpactNodes.length }) }}
                     </span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Risk Level</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.riskLevel') }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
                       {{ impactLevel(activeImpactNodes.length) }}
                     </span>
                   </div>
                 </div>
                 <div v-else class="telemetry-placeholder">
-                  Click any graph node to simulate real-time impact analysis
+                  {{ t('landing.graph.telemetry.placeholder') }}
                 </div>
               </div>
             </div>
@@ -712,36 +714,33 @@ onBeforeUnmount(() => {
       <section id="goals" class="section section--goals">
         <div class="goals-grid">
           <div class="goals-col">
-            <span class="section__eyebrow">The Challenge</span>
-            <h2 class="section__title">The messy middle of codebase comprehension</h2>
+            <span class="section__eyebrow">{{ t('landing.challenge.eyebrow') }}</span>
+            <h2 class="section__title">{{ t('landing.challenge.title') }}</h2>
             <div class="problem-card">
               <div class="problem-item">
                 <span class="problem-num">01</span>
                 <div>
-                  <strong>Cognitive Overload</strong>
+                  <strong>{{ t('landing.challenge.items.overload.title') }}</strong>
                   <p>
-                    Searching through raw files and text is slow, confusing, and fails to reveal
-                    actual execution context.
+                    {{ t('landing.challenge.items.overload.body') }}
                   </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">02</span>
                 <div>
-                  <strong>Fear of Refactoring</strong>
+                  <strong>{{ t('landing.challenge.items.refactor.title') }}</strong>
                   <p>
-                    Editing a method or route could break multiple upstream dependencies or tests
-                    without warning.
+                    {{ t('landing.challenge.items.refactor.body') }}
                   </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">03</span>
                 <div>
-                  <strong>AI Agent Blindspots</strong>
+                  <strong>{{ t('landing.challenge.items.agent.title') }}</strong>
                   <p>
-                    Coding agents lack full call-graph awareness, which leads to broken edits and
-                    regression issues.
+                    {{ t('landing.challenge.items.agent.body') }}
                   </p>
                 </div>
               </div>
@@ -749,36 +748,33 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="goals-col">
-            <span class="section__eyebrow">Our Solution</span>
-            <h2 class="section__title">High-fidelity graph intelligence</h2>
+            <span class="section__eyebrow">{{ t('landing.solution.eyebrow') }}</span>
+            <h2 class="section__title">{{ t('landing.solution.title') }}</h2>
             <div class="solution-card">
               <div class="solution-item">
                 <span class="solution-icon">✨</span>
                 <div>
-                  <strong>Interactive Code Maps</strong>
+                  <strong>{{ t('landing.solution.items.maps.title') }}</strong>
                   <p>
-                    We render your Java codebase as an explorable network, showing classes, methods,
-                    and routes visually.
+                    {{ t('landing.solution.items.maps.body') }}
                   </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">⚡</span>
                 <div>
-                  <strong>Instant Blast-Radius Reports</strong>
+                  <strong>{{ t('landing.solution.items.impact.title') }}</strong>
                   <p>
-                    Query exact callers, trace execution flows, and assess impact in milliseconds
-                    before editing code.
+                    {{ t('landing.solution.items.impact.body') }}
                   </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">🔌</span>
                 <div>
-                  <strong>Model Context Protocol (MCP)</strong>
+                  <strong>{{ t('landing.solution.items.mcp.title') }}</strong>
                   <p>
-                    Expose structure directly to LLMs, so coding agents query context, predict
-                    blast-radii, and edit safely.
+                    {{ t('landing.solution.items.mcp.body') }}
                   </p>
                 </div>
               </div>
@@ -790,12 +786,9 @@ onBeforeUnmount(() => {
       <!-- ── Features (Bento Grid aligned symmetrically) ── -->
       <section id="features" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">What it does</span>
-          <h2 class="section__title">Everything you need to read a codebase fast</h2>
-          <p class="section__sub">
-            Built for the messy middle of real projects — where the architecture lives in everyone's
-            head and nowhere else.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.features.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.features.title') }}</h2>
+          <p class="section__sub">{{ t('landing.features.description') }}</p>
         </header>
 
         <div class="bento">
@@ -843,8 +836,8 @@ onBeforeUnmount(() => {
       <!-- ── How it works ── -->
       <section id="how" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">How it works</span>
-          <h2 class="section__title">From repo to insight in three steps</h2>
+          <span class="section__eyebrow">{{ t('landing.how.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.how.title') }}</h2>
         </header>
 
         <div class="stepper-layout">
@@ -873,7 +866,7 @@ onBeforeUnmount(() => {
                 <span class="device-dot"></span>
                 <span class="device-dot"></span>
                 <span class="device-dot"></span>
-                <span class="device-title">VibeGraph Client</span>
+                <span class="device-title">{{ t('landing.how.mock.client') }}</span>
               </div>
               <div class="device-body">
                 <!-- Step 1: Import Mock -->
@@ -892,13 +885,13 @@ onBeforeUnmount(() => {
                         <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
                     </div>
-                    <h4>Drop your codebase folder</h4>
-                    <p>Or paste a GitHub repository endpoint</p>
+                    <h4>{{ t('landing.how.mock.dropFolder') }}</h4>
+                    <p>{{ t('landing.how.mock.pasteGithub') }}</p>
                     <div class="mock-url-bar">
                       <span class="mock-url-prefix">https://github.com/</span>
                       <span class="mock-url-text">ThinhChauTran263/VibeGraph</span>
                     </div>
-                    <button class="btn btn--primary btn--sm">Analyze Repository</button>
+                    <button class="btn btn--primary btn--sm">{{ t('landing.how.mock.analyze') }}</button>
                   </div>
                 </div>
 
@@ -906,7 +899,7 @@ onBeforeUnmount(() => {
                 <div v-if="activeStep === 1" class="mock-screen mock-screen--explore">
                   <div class="explore-grid">
                     <aside class="mock-sidebar">
-                      <div class="sidebar-title">📁 Project Structure</div>
+                      <div class="sidebar-title">{{ t('landing.how.mock.projectStructure') }}</div>
                       <div class="sidebar-item sidebar-item--active">📁 src/main/java</div>
                       <div class="sidebar-item">📁 controller</div>
                       <div class="sidebar-item">📁 service</div>
@@ -943,7 +936,7 @@ onBeforeUnmount(() => {
                         <circle cx="140" cy="60" r="8" fill="var(--vg-violet)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip">Interactive pan & zoom active</span>
+                      <span class="mini-canvas-tip">{{ t('landing.how.mock.panZoom') }}</span>
                     </div>
                   </div>
                 </div>
@@ -954,8 +947,8 @@ onBeforeUnmount(() => {
                     <div class="alert-banner">
                       <span class="alert-dot alert-dot--danger"></span>
                       <div>
-                        <strong>Blast Radius Triggered</strong>
-                        <p>12 downstream callers affected in ProjectController</p>
+                        <strong>{{ t('landing.how.mock.blastTriggered') }}</strong>
+                        <p>{{ t('landing.how.mock.downstreamAffected') }}</p>
                       </div>
                     </div>
                     <div class="mock-canvas">
@@ -991,7 +984,7 @@ onBeforeUnmount(() => {
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
                       <span class="mini-canvas-tip mini-canvas-tip--danger"
-                        >Upstream risk: HIGH</span
+                        >{{ t('landing.how.mock.upstreamRiskHigh') }}</span
                       >
                     </div>
                   </div>
@@ -1005,15 +998,13 @@ onBeforeUnmount(() => {
       <!-- ── Guide Section: Quick Start Guide ── -->
       <section id="guide" class="section section--guide">
         <header class="section__head">
-          <span class="section__eyebrow">Quick Start & Installation</span>
-          <h2 class="section__title">Install & Vibe Code in 2 Minutes</h2>
-          <p class="section__sub">
-            How to install, run analysis, and integrate VibeGraph with your developer workflow.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.guide.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.guide.title') }}</h2>
+          <p class="section__sub">{{ t('landing.guide.description') }}</p>
         </header>
 
         <div class="guide-box">
-          <div class="guide-tabs" role="tablist" aria-label="Setup guide tabs">
+          <div class="guide-tabs" role="tablist" :aria-label="t('landing.guide.tabsAria')">
             <button
               v-for="(g, index) in guideTabs"
               :key="g.title"
@@ -1030,14 +1021,11 @@ onBeforeUnmount(() => {
 
           <div class="guide-content">
             <div v-if="activeGuideTab === 0" class="guide-pane">
-              <h4>Step 1: Start VibeGraph locally</h4>
-              <p>
-                VibeGraph is a Spring Boot backend (Java 21) with a Vue web client, backed by a
-                Neo4j graph database. Start Neo4j, run the backend, then the web client.
-              </p>
+              <h4>{{ t('landing.guide.step1.title') }}</h4>
+              <p>{{ t('landing.guide.step1.body') }}</p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
-                  <span>Terminal (bash)</span>
+                  <span>{{ t('landing.guide.step1.terminal') }}</span>
                 </div>
                 <pre><code># 1. Start Neo4j (graph database)
 docker compose up -d neo4j
@@ -1049,49 +1037,47 @@ docker compose up -d neo4j
 cd vibegraph-web && npm install && npm run dev</code></pre>
               </div>
               <p class="text-sm text-dim">
-                Set <code>NEO4J_URI</code>, <code>NEO4J_USERNAME</code> and
-                <code>NEO4J_PASSWORD</code> in <code>.env</code> — or bring the whole stack up at
-                once with <code>docker compose up -d</code>.
+                {{ t('landing.guide.step1.envLead') }} <code>NEO4J_URI</code>,
+                <code>NEO4J_USERNAME</code> {{ t('landing.guide.step1.envAnd') }}
+                <code>NEO4J_PASSWORD</code> {{ t('landing.guide.step1.envTail') }}
               </p>
             </div>
 
             <div v-if="activeGuideTab === 1" class="guide-pane">
-              <h4>Step 2: Import your project</h4>
+              <h4>{{ t('landing.guide.step2.title') }}</h4>
               <p>
-                Open the dashboard at <code>http://localhost:5173</code> and import a Java project
-                straight from the UI — no analyzer CLI required. Pick one of three methods:
+                {{ t('landing.guide.step2.bodyLead') }} <code>http://localhost:5173</code>
+                {{ t('landing.guide.step2.bodyTail') }}
               </p>
               <ul class="guide-list">
                 <li>
-                  📁 <strong>Local folder</strong>: point VibeGraph at a folder on the same machine;
-                  the graph re-draws in realtime as you edit (file watcher).
+                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong>:
+                  {{ t('landing.guide.step2.localBody') }}
                 </li>
                 <li>
-                  🗜️ <strong>Archive</strong>: upload a <code>.zip</code>, <code>.tar</code> or
-                  <code>.tar.gz</code> of the project.
+                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong>:
+                  {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
+                  <code>.tar</code> {{ t('landing.guide.step2.archiveBodyOr') }}
+                  <code>.tar.gz</code> {{ t('landing.guide.step2.archiveBodyTail') }}
                 </li>
                 <li>
-                  🔗 <strong>GitHub</strong>: paste a public HTTPS repo URL and VibeGraph clones,
-                  indexes and maps it.
+                  🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}
                 </li>
               </ul>
               <p class="text-sm text-dim">
-                The backend parses the source, stores the call graph in Neo4j, and the Vue client
-                renders it with Sigma.js — search any symbol, double-click a node to focus, or
-                select one to see its blast radius.
+                {{ t('landing.guide.step2.note') }}
               </p>
             </div>
 
             <div v-if="activeGuideTab === 2" class="guide-pane">
-              <h4>Step 3: Connect your AI agent over MCP</h4>
+              <h4>{{ t('landing.guide.step3.title') }}</h4>
               <p>
-                VibeGraph runs a Model Context Protocol server (Spring AI) over
-                <strong>Streamable HTTP</strong>, so agents like Claude, Cursor and Kiro can query
-                the graph and run impact analysis. Point your agent at the endpoint:
+                {{ t('landing.guide.step3.bodyLead') }}
+                <strong>Streamable HTTP</strong>{{ t('landing.guide.step3.bodyTail') }}
               </p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
-                  <span>AI client config (mcp.json)</span>
+                  <span>{{ t('landing.guide.step3.configTitle') }}</span>
                 </div>
                 <pre><code>{
   "mcpServers": {
@@ -1102,9 +1088,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }</code></pre>
               </div>
               <p class="text-sm text-dim">
-                The server exposes 15 tools — impact analysis, class &amp; method context,
-                references, related tests, endpoint trace, project conventions and more. The exact
-                config key may differ per client (some use <code>"type": "streamable-http"</code>).
+                {{ t('landing.guide.step3.noteLead') }}
+                <code>"type": "streamable-http"</code>{{ t('landing.guide.step3.noteTail') }}
               </p>
             </div>
           </div>
@@ -1114,31 +1099,27 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── Section: Under the hood (the engine) ── -->
       <section id="engine" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">The Engine</span>
-          <h2 class="section__title">How VibeGraph reads your code</h2>
-          <p class="section__sub">
-            A self-hosted AST-and-graph engine — VibeGraph parses your Java source and serves the
-            result to both the web UI and your AI agent.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.engine.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.engine.title') }}</h2>
+          <p class="section__sub">{{ t('landing.engine.description') }}</p>
         </header>
         <div class="nexus-card">
           <p>
-            VibeGraph parses your Java source into abstract syntax trees, resolves call and usage
-            relationships, and stores the whole graph in <strong>Neo4j</strong> — all on your own
-            machine. Source never leaves the host.
+            {{ t('landing.engine.bodyLead') }} <strong>Neo4j</strong>
+            {{ t('landing.engine.bodyTail') }}
           </p>
           <ul class="guide-list">
             <li>
-              🔒 <strong>Local &amp; private</strong>: parsing and the Neo4j graph stay on your
-              infrastructure; no code is sent to the cloud.
+              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong>:
+              {{ t('landing.engine.items.private.body') }}
             </li>
             <li>
-              ⚡ <strong>Incremental</strong>: a file watcher re-parses only what changed, so local
-              projects update in near real-time.
+              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong>:
+              {{ t('landing.engine.items.incremental.body') }}
             </li>
             <li>
-              🤖 <strong>MCP-native</strong>: the same graph is exposed to AI agents through a
-              Spring AI MCP server (Streamable HTTP) for impact-safe edits.
+              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong>:
+              {{ t('landing.engine.items.mcp.body') }}
             </li>
           </ul>
         </div>
@@ -1147,12 +1128,9 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── AI agents / MCP ── -->
       <section id="agents" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">Works with your AI agent</span>
-          <h2 class="section__title">Code intelligence, one MCP call away</h2>
-          <p class="section__sub">
-            VibeGraph exposes its graph through the Model Context Protocol, so your AI coding agent
-            can query structure, trace flows and run impact analysis right inside your editor.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.agents.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.agents.title') }}</h2>
+          <p class="section__sub">{{ t('landing.agents.description') }}</p>
         </header>
 
         <!-- Terminal Playground Container -->
@@ -1189,7 +1167,7 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
               <span class="dot-win dot-win--red"></span>
               <span class="dot-win dot-win--yellow"></span>
               <span class="dot-win dot-win--green"></span>
-              <span class="terminal-screen-title">MCP Client Session</span>
+              <span class="terminal-screen-title">{{ t('landing.agents.terminalTitle') }}</span>
             </div>
 
             <div class="terminal-screen-body">
@@ -1208,13 +1186,13 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 
               <div v-if="terminalTyping" class="terminal-loading">
                 <span class="loading-spinner"></span>
-                Running analysis...
+                {{ t('landing.agents.running') }}
               </div>
             </div>
           </div>
         </div>
 
-        <ul class="logo-wall" aria-label="Supported AI coding agents">
+        <ul class="logo-wall" :aria-label="t('landing.agents.logoAria')">
           <li v-for="a in agents" :key="a.label">
             <LogoTile :src="a.src" :label="a.label" :boost="a.boost" />
           </li>
@@ -1224,10 +1202,10 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── Stack ── -->
       <section id="stack" class="section section--stack">
         <header class="section__head">
-          <span class="section__eyebrow">Built with</span>
-          <h2 class="section__title">A modern, no-nonsense stack</h2>
+          <span class="section__eyebrow">{{ t('landing.stack.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.stack.title') }}</h2>
         </header>
-        <ul class="logo-wall" aria-label="Technology stack">
+        <ul class="logo-wall" :aria-label="t('landing.stack.logoAria')">
           <li v-for="tech in stack" :key="tech.label">
             <LogoTile :src="tech.src" :label="tech.label" :tone="tech.tone" />
           </li>
@@ -1237,12 +1215,10 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── CTA band ── -->
       <section class="cta">
         <div class="cta__inner">
-          <h2 class="cta__title">Ready to map your codebase?</h2>
-          <p class="cta__sub">
-            Open the dashboard and import your first project — it takes seconds.
-          </p>
+          <h2 class="cta__title">{{ t('landing.cta.title') }}</h2>
+          <p class="cta__sub">{{ t('landing.cta.description') }}</p>
           <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-            Open Dashboard
+            {{ t('landing.actions.openDashboard') }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -1253,26 +1229,26 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <div class="footer-top">
         <div class="footer-brand">
           <BrandMark :size="24" />
-          <span class="lp-footer__note">Source-code intelligence for the vibe-coding era.</span>
+          <span class="lp-footer__note">{{ t('landing.footer.note') }}</span>
         </div>
         <div class="footer-links">
           <div class="footer-col">
-            <h4>Product</h4>
-            <a href="#features">Features</a>
-            <a href="#how">How it works</a>
-            <a href="#guide">Installation</a>
+            <h4>{{ t('landing.footer.product') }}</h4>
+            <a href="#features">{{ t('landing.nav.features') }}</a>
+            <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
+            <a href="#guide">{{ t('landing.footer.installation') }}</a>
           </div>
           <div class="footer-col">
-            <h4>Resources</h4>
+            <h4>{{ t('landing.footer.resources') }}</h4>
             <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank"
-              >GitHub Repo</a
+              >{{ t('landing.footer.githubRepo') }}</a
             >
-            <a href="#engine">How the engine works</a>
+            <a href="#engine">{{ t('landing.footer.engine') }}</a>
           </div>
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 VibeGraph. All rights reserved.</span>
+        <span>{{ t('landing.footer.copyright') }}</span>
       </div>
     </footer>
   </div>
@@ -2959,6 +2935,12 @@ main,
   .guide-tab--active {
     border-bottom-color: var(--vg-blue-bright);
   }
+}
+
+.lp-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
 }
 
 @media (max-width: 600px) {

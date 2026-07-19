@@ -1,28 +1,43 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const SIDEBAR_KEY = 'vg_admin_sidebar_collapsed'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n({ useScope: 'global' })
 const isCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) === 'true')
 const isMobileOpen = ref(false)
 
-const navItems = [
-  { label: 'Overview', to: '/admin', icon: 'overview' },
-  { label: 'Users', to: '/admin/users', icon: 'users' },
-  { label: 'Feedback / Reports', to: '/admin/reports', icon: 'reports' },
-  { label: 'Plans & Credits', to: '/admin/plans-credits', icon: 'wallet' },
-  { label: 'Security', to: '/admin/security', icon: 'shield' },
-  { label: 'Audit', to: '/admin/audit', icon: 'audit' },
-  { label: 'System', to: '/admin/system', icon: 'system' },
-  { label: 'Announcements', to: '/admin/announcements', icon: 'announcement' },
-  { label: 'Settings', to: '/admin/settings', icon: 'settings' },
-] as const
+const navItems = computed(() => [
+  { label: t('admin.layout.nav.overview'), to: '/admin', icon: 'overview' },
+  { label: t('admin.layout.nav.users'), to: '/admin/users', icon: 'users' },
+  {
+    label: t('admin.layout.nav.feedbackReports'),
+    to: '/admin/reports',
+    icon: 'reports',
+  },
+  {
+    label: t('admin.layout.nav.plansCredits'),
+    to: '/admin/plans-credits',
+    icon: 'wallet',
+  },
+  { label: t('admin.layout.nav.security'), to: '/admin/security', icon: 'shield' },
+  { label: t('admin.layout.nav.audit'), to: '/admin/audit', icon: 'audit' },
+  { label: t('admin.layout.nav.system'), to: '/admin/system', icon: 'system' },
+  {
+    label: t('admin.layout.nav.announcements'),
+    to: '/admin/announcements',
+    icon: 'announcement',
+  },
+  { label: t('admin.layout.nav.settings'), to: '/admin/settings', icon: 'settings' },
+])
 
 const sidebarClass = computed(() => ({
   'is-collapsed': isCollapsed.value,
@@ -49,21 +64,33 @@ function signOut(): void {
     <button
       class="mobile-menu"
       type="button"
-      aria-label="Open admin navigation"
+      :aria-label="t('admin.layout.openNavigation')"
       @click="isMobileOpen = true"
     >
       <AppIcon name="menu" :size="22" />
     </button>
 
-    <aside class="admin-sidebar" :class="sidebarClass" aria-label="Admin navigation">
+    <aside
+      class="admin-sidebar"
+      :class="sidebarClass"
+      :aria-label="t('admin.layout.navigationLabel')"
+    >
       <div class="sidebar-brand">
-        <RouterLink class="brand-link" to="/admin" aria-label="VibeGraph admin overview">
+        <RouterLink
+          class="brand-link"
+          to="/admin"
+          :aria-label="t('admin.layout.overviewLinkLabel')"
+        >
           <BrandMark :size="30" :show-wordmark="!isCollapsed" />
         </RouterLink>
         <button
           class="sidebar-toggle"
           type="button"
-          :aria-label="isCollapsed ? 'Expand admin sidebar' : 'Collapse admin sidebar'"
+          :aria-label="
+            isCollapsed
+              ? t('admin.layout.expandSidebar')
+              : t('admin.layout.collapseSidebar')
+          "
           @click="toggleSidebar"
           :aria-expanded="!isCollapsed"
         >
@@ -91,18 +118,23 @@ function signOut(): void {
       </nav>
 
       <div class="sidebar-footer">
-        <div class="admin-account" :title="auth.userEmail || 'Admin account'">
+        <div class="admin-account" :title="auth.userEmail || t('admin.layout.adminAccount')">
           <span class="nav-icon account-icon" aria-hidden="true"
             ><AppIcon name="account" :size="19"
           /></span>
           <span class="account-copy">
-            <strong>{{ auth.userDisplayName || 'Admin' }}</strong>
-            <small>{{ auth.userEmail || 'Signed in' }}</small>
+            <strong>{{ auth.userDisplayName || t('admin.layout.adminRole') }}</strong>
+            <small>{{ auth.userEmail || t('admin.layout.signedIn') }}</small>
           </span>
         </div>
-        <button class="sign-out" type="button" aria-label="Sign Out" @click="signOut">
+        <button
+          class="sign-out"
+          type="button"
+          :aria-label="t('admin.layout.signOut')"
+          @click="signOut"
+        >
           <span class="nav-icon" aria-hidden="true"><AppIcon name="logout" :size="19" /></span>
-          <span class="nav-label">Sign Out</span>
+          <span class="nav-label">{{ t('admin.layout.signOut') }}</span>
         </button>
       </div>
     </aside>
@@ -111,16 +143,17 @@ function signOut(): void {
       v-if="isMobileOpen"
       class="mobile-scrim"
       type="button"
-      aria-label="Close admin navigation"
+      :aria-label="t('admin.layout.closeNavigation')"
       @click="closeMobileNav"
     ></button>
 
     <main class="main-content">
       <header class="admin-header">
         <div class="admin-header__inner">
-          <p class="eyebrow">Admin Console</p>
+          <p class="eyebrow">{{ t('admin.layout.console') }}</p>
           <span class="admin-header__divider" aria-hidden="true"></span>
-          <h1>Operations</h1>
+          <h1>{{ t('admin.layout.operations') }}</h1>
+          <LanguageSelector class="admin-language" />
         </div>
       </header>
       <div class="content">
@@ -353,6 +386,10 @@ function signOut(): void {
   letter-spacing: 0.08em;
 }
 
+.admin-language {
+  margin-left: auto;
+}
+
 .admin-header__divider {
   width: 1px;
   height: 22px;
@@ -447,7 +484,8 @@ function signOut(): void {
   .admin-header__inner {
     min-height: 64px;
     padding-left: 64px;
-    padding-right: var(--vg-space-4);
+    padding-right: var(--vg-space-3);
+    min-width: 0;
   }
 
   .sidebar-collapsed .admin-header__inner {
@@ -460,6 +498,24 @@ function signOut(): void {
 
   .content {
     padding: var(--vg-space-4);
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-header__inner {
+    gap: var(--vg-space-2);
+  }
+
+  .admin-header__divider,
+  .admin-header h1 {
+    display: none;
+  }
+
+  .eyebrow {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

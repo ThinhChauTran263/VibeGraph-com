@@ -7,25 +7,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.http.MediaType;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.vibegraph.auth.dto.AdminApiKeyCreateRequest;
-import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;
 import com.vibegraph.auth.service.ApiKeyService;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DisplayName("AdminApiKeyController")
 class AdminApiKeyControllerTest {
@@ -40,57 +34,6 @@ class AdminApiKeyControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
-    }
-
-    @Test
-    @DisplayName("POST /api/admin/api-keys creates key for specified user")
-    void create_asAdmin_succeeds() throws Exception {
-        UUID targetUserId = UUID.randomUUID();
-        ApiKeyCreateResponse response = new ApiKeyCreateResponse(
-                UUID.randomUUID(),
-                "vbg_test1234",
-                "Admin Created Key",
-                "vbg_abcdefgh12345678901234567890ab",
-                Instant.now(),
-                null);
-        when(apiKeyService.createForUser(any(AdminApiKeyCreateRequest.class)))
-                .thenReturn(response);
-
-        mockMvc.perform(post("/api/admin/api-keys")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + targetUserId + "\",\"name\":\"Admin Created Key\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.secretKey").value("vbg_abcdefgh12345678901234567890ab"))
-                .andExpect(jsonPath("$.data.name").value("Admin Created Key"));
-
-        verify(apiKeyService).createForUser(any());
-    }
-
-    @Test
-    @DisplayName("POST /api/admin/api-keys requires userId")
-    void create_missingUserId_returnsValidationError() throws Exception {
-        mockMvc.perform(post("/api/admin/api-keys")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Test Key\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
-    }
-
-    @Test
-    @DisplayName("POST /api/admin/api-keys returns 403 when non-admin")
-    void create_asNonAdmin_returnsForbidden() throws Exception {
-        UUID targetUserId = UUID.randomUUID();
-        when(apiKeyService.createForUser(any(AdminApiKeyCreateRequest.class)))
-                .thenThrow(new ForbiddenException("Access denied"));
-
-        mockMvc.perform(post("/api/admin/api-keys")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + targetUserId + "\",\"name\":\"Test Key\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
     }
 
     @Test
@@ -139,6 +82,30 @@ class AdminApiKeyControllerTest {
                 .andExpect(jsonPath("$.success").value(true));
 
         verify(apiKeyService).disableForAnyUser(keyId);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/admin/api-keys/{id}/lock locks a key")
+    void lock_asAdmin_succeeds() throws Exception {
+        UUID keyId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/admin/api-keys/" + keyId + "/lock"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(apiKeyService).disableForAnyUser(keyId);
+    }
+
+    @Test
+    @DisplayName("PATCH /api/admin/api-keys/{id}/unlock resolves an administrator lock")
+    void unlock_asAdmin_succeeds() throws Exception {
+        UUID keyId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/admin/api-keys/" + keyId + "/unlock"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(apiKeyService).unlockForAnyUser(keyId);
     }
 
     @Test

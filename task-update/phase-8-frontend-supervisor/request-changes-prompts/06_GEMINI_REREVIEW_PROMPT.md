@@ -7,6 +7,7 @@ Repo: `D:\Users\User\IdeaProjects\VibeGraph`
 Read first:
 - `AGENTS.md`
 - `task-update/phase-8-frontend-supervisor/FE-6_FINAL_REVIEW.md`
+- `task-update/phase-8-frontend-supervisor/REQUEST_CHANGES_DISPATCH.md`
 - all `*_REQUEST_CHANGES_HANDOFF.md` files
 - `task-update/phase-8-frontend-supervisor/request-changes-prompts/00_AGENT_AUTONOMY_AND_OVERLAP_PROTOCOL.md`
 

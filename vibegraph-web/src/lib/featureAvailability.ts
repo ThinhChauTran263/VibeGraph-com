@@ -1,5 +1,6 @@
 import { computed, readonly, ref } from 'vue'
-import { ApiError, api } from '@/lib/api'
+import { api } from '@/lib/api'
+import type { FeatureCapability } from '@/types/api'
 
 export type FeatureKey =
   | 'import.local'
@@ -18,17 +19,11 @@ export interface FeatureAvailability {
 }
 
 interface SessionCapabilitiesResponse {
-  features?: Partial<Record<FeatureKey, boolean | { enabled: boolean; reason?: string | null }>>
+  features?: Partial<Record<FeatureKey, boolean | FeatureCapability>>
 }
 
 const features = ref<Partial<Record<FeatureKey, FeatureAvailability>>>({})
 const contractAvailable = ref<boolean | null>(null)
-const compatibilityFeatures = new Set<FeatureKey>([
-  'import.local',
-  'import.archive',
-  'import.github',
-])
-
 function unavailable(key: FeatureKey): FeatureAvailability {
   return {
     key,
@@ -38,19 +33,20 @@ function unavailable(key: FeatureKey): FeatureAvailability {
 }
 
 function withoutContract(key: FeatureKey): FeatureAvailability {
-  if (compatibilityFeatures.has(key)) {
-    return {
-      key,
-      enabled: true,
-      reason: 'Available in compatibility mode while the capability contract is unavailable.',
-    }
+  return {
+    key,
+    enabled: false,
+    reason: 'This control is blocked until the account capability contract is available.',
   }
-  return unavailable(key)
 }
 
+let refreshRequestId = 0
+
 export async function refreshFeatureAvailability(): Promise<void> {
+  const requestId = ++refreshRequestId
   try {
     const response = await api.get<SessionCapabilitiesResponse>('/api/account/session-state')
+    if (requestId !== refreshRequestId) return
     if (!response.features) {
       features.value = {}
       contractAvailable.value = false
@@ -71,14 +67,13 @@ export async function refreshFeatureAvailability(): Promise<void> {
           reason: value.reason ?? (value.enabled ? null : 'Disabled by an administrator.'),
         }
     }
+    if (requestId !== refreshRequestId) return
     features.value = next
     contractAvailable.value = true
   } catch (error) {
-    if (error instanceof ApiError && [404, 405, 501].includes(error.status)) {
-      features.value = {}
-      contractAvailable.value = false
-      return
-    }
+    if (requestId !== refreshRequestId) return
+    features.value = {}
+    contractAvailable.value = false
     throw error
   }
 }

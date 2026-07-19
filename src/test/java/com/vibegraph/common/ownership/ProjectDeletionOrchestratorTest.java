@@ -14,7 +14,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
+import com.vibegraph.common.exception.ApiKeyAdminLockedException;
 import com.vibegraph.common.exception.PartialDeletionException;
 import com.vibegraph.graph.service.ProjectService;
 
@@ -27,6 +29,7 @@ class ProjectDeletionOrchestratorTest {
 
     private ProjectService projectService;
     private ProjectOwnershipRepository ownershipRepository;
+    private ApiKeyRepository apiKeyRepository;
     private CurrentUser currentUser;
     private ProjectDeletionOrchestrator orchestrator;
 
@@ -34,8 +37,10 @@ class ProjectDeletionOrchestratorTest {
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
         ownershipRepository = Mockito.mock(ProjectOwnershipRepository.class);
+        apiKeyRepository = Mockito.mock(ApiKeyRepository.class);
         currentUser = Mockito.mock(CurrentUser.class);
-        orchestrator = new ProjectDeletionOrchestrator(projectService, ownershipRepository, currentUser);
+        orchestrator = new ProjectDeletionOrchestrator(
+                projectService, ownershipRepository, apiKeyRepository, currentUser);
     }
 
     @Test
@@ -46,6 +51,20 @@ class ProjectDeletionOrchestratorTest {
         InOrder inOrder = Mockito.inOrder(projectService, ownershipRepository);
         inOrder.verify(projectService).deleteProject("p1");
         inOrder.verify(ownershipRepository).deleteById("p1");
+    }
+
+    @Test
+    @DisplayName("administrator-locked key blocks deletion before any project plane is changed")
+    void adminLockedKeyPreservesBothPlanes() {
+        when(apiKeyRepository.lockLiveKeysForProject("p1"))
+                .thenReturn(java.util.List.of(UUID.randomUUID()));
+        when(apiKeyRepository.existsAdminLockedKeyForProject("p1")).thenReturn(true);
+
+        assertThatThrownBy(() -> orchestrator.delete("p1"))
+                .isInstanceOf(ApiKeyAdminLockedException.class);
+
+        verify(projectService, never()).deleteProject("p1");
+        verify(ownershipRepository, never()).deleteById("p1");
     }
 
     @Test

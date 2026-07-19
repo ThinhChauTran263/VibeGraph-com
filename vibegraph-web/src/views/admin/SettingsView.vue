@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+const { t } = useI18n({ useScope: 'global' })
 const account = useAccountStore(),
   displayName = ref(''),
   oldPassword = ref(''),
@@ -13,23 +15,25 @@ onMounted(async () => {
     await account.fetchProfile()
     displayName.value = account.profile?.displayName ?? ''
   } catch (e) {
-    message.value = e instanceof Error ? e.message : 'Profile could not be loaded.'
+    message.value =
+      e instanceof Error ? e.message : t('admin.settings.messages.profileLoadFailed')
   }
 })
 async function saveProfile() {
   busy.value = true
   try {
     await account.updateDisplayName(displayName.value.trim())
-    message.value = 'Admin profile updated.'
+    message.value = t('admin.settings.messages.profileUpdated')
   } catch (e) {
-    message.value = e instanceof Error ? e.message : 'Profile update failed.'
+    message.value =
+      e instanceof Error ? e.message : t('admin.settings.messages.profileUpdateFailed')
   } finally {
     busy.value = false
   }
 }
 async function changePassword() {
   if (newPassword.value !== confirmPassword.value) {
-    message.value = 'New password and confirmation do not match.'
+    message.value = t('admin.settings.messages.passwordMismatch')
     return
   }
   busy.value = true
@@ -38,67 +42,72 @@ async function changePassword() {
     oldPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
-    message.value = 'Password changed.'
+    message.value = t('admin.settings.messages.passwordChanged')
   } catch (e) {
-    message.value = e instanceof Error ? e.message : 'Password change failed.'
+    message.value =
+      e instanceof Error ? e.message : t('admin.settings.messages.passwordChangeFailed')
   } finally {
     busy.value = false
   }
 }
 </script>
 <template>
-  <main class="settings">
+  <section class="settings">
     <header>
-      <span>Administration</span>
-      <h1>Settings</h1>
-      <p>Manage your admin identity and account security.</p>
+      <span>{{ t('admin.settings.eyebrow') }}</span>
+      <h1>{{ t('admin.settings.title') }}</h1>
+      <p>{{ t('admin.settings.description') }}</p>
     </header>
     <p v-if="message" class="notice" role="status">{{ message }}</p>
     <div class="grid">
       <section>
-        <h2>Admin profile</h2>
+        <h2>{{ t('admin.settings.profile.title') }}</h2>
         <form @submit.prevent="saveProfile">
-          <label for="admin-email">Email</label
+          <label for="admin-email">{{ t('admin.settings.profile.email') }}</label
           ><input id="admin-email" :value="account.profile?.email ?? ''" disabled /><label
             for="admin-name"
-            >Display name</label
+            >{{ t('admin.settings.profile.displayName') }}</label
           ><input id="admin-name" v-model="displayName" required /><button
             type="submit"
             :disabled="busy || !displayName.trim()"
           >
-            Save profile
+            {{ t('admin.settings.profile.save') }}
           </button>
         </form>
       </section>
       <section>
-        <h2>Change password</h2>
+        <h2>{{ t('admin.settings.password.title') }}</h2>
         <form @submit.prevent="changePassword">
-          <label for="admin-old-password">Current password</label
+          <label for="admin-old-password">{{ t('admin.settings.password.current') }}</label
           ><input
             id="admin-old-password"
             v-model="oldPassword"
             type="password"
             autocomplete="current-password"
             required
-          /><label for="admin-new-password">New password</label
+          /><label for="admin-new-password">{{ t('admin.settings.password.new') }}</label
           ><input
             id="admin-new-password"
             v-model="newPassword"
             type="password"
             autocomplete="new-password"
             required
-          /><label for="admin-confirm-password">Confirm new password</label
+          /><label for="admin-confirm-password">{{
+            t('admin.settings.password.confirm')
+          }}</label
           ><input
             id="admin-confirm-password"
             v-model="confirmPassword"
             type="password"
             autocomplete="new-password"
             required
-          /><button type="submit" :disabled="busy">Change password</button>
+          /><button type="submit" :disabled="busy">
+            {{ t('admin.settings.password.submit') }}
+          </button>
         </form>
       </section>
     </div>
-  </main>
+  </section>
 </template>
 <style scoped>
 .settings {

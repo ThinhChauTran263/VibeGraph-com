@@ -50,14 +50,7 @@ test("DEFAULT_DENY blocks private keys and SSH key files at project root", async
   }
 });
 
-// Finding for Agent 4.6 (CLI owner): the CLI's DEFAULT_DENY glob "*.pem"/"*.key"
-// only matches at the project root because globToRegex treats "*" as [^/]* and
-// there is no "**/" prefix. A private key nested in a subdirectory (e.g.
-// "secrets/prod.pem") is NOT skipped by the CLI, and would be uploaded.
-// Backend defense-in-depth still rejects it via BLOCKED_EXTENSIONS, so this is
-// not a data-exfiltration blocker, but the CLI should never send secret files
-// in the first place.
-test("TODO(4.6): CLI DEFAULT_DENY should also block nested private keys", async () => {
+test("DEFAULT_DENY blocks nested private keys", async () => {
   const dir = await makeTempDir();
   try {
     const rules = await loadIgnoreRules(dir);

@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 import QuotaMeter from '@/components/ui/QuotaMeter.vue'
+import { displayPlanName } from '@/lib/planDisplay'
 
 const accountStore = useAccountStore()
+const { t, te, locale } = useI18n({ useScope: 'global' })
+const isUsageLoading = ref(!accountStore.usage)
+const isLedgerLoading = ref(false)
+const usageError = ref('')
+const ledgerError = ref('')
 
 interface UsageDisplay {
   usedMb?: number
@@ -16,43 +24,81 @@ interface UsageDisplay {
   creditsRemaining?: number
 }
 
-const usage = computed(() => accountStore.usage as (typeof accountStore.usage & UsageDisplay) | null)
+const usage = computed(
+  () => accountStore.usage as (typeof accountStore.usage & UsageDisplay) | null,
+)
 const usedMb = computed(() => usage.value?.usedMb ?? usage.value?.sourceStorageUsed ?? 0)
 const limitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
-const remainingMb = computed(() =>
-  usage.value?.remainingMb ?? Math.max(limitMb.value - usedMb.value, 0),
+const remainingMb = computed(
+  () => usage.value?.remainingMb ?? Math.max(limitMb.value - usedMb.value, 0),
 )
 const creditBalanceLabel = computed(() => {
   if (typeof usage.value?.creditsRemaining === 'number') {
-    return `${usage.value.creditsRemaining} credits`
+    return `${usage.value.creditsRemaining} ${t('user.usage.credits')}`
   }
   if (
     typeof usage.value?.creditsUsed !== 'number' ||
     typeof usage.value?.creditsLimit !== 'number'
   ) {
-    return 'Unavailable'
+    return t('user.subscription.unavailableValue')
   }
-  return `${Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)} credits`
+  return `${Math.max(usage.value.creditsLimit - usage.value.creditsUsed, 0)} ${t('user.usage.credits')}`
 })
+const planLabel = computed(() =>
+  displayPlanName(
+    t,
+    usage.value?.planCode,
+    usage.value?.planName,
+    t('user.subscription.unavailableValue'),
+  ),
+)
 
-onMounted(async () => {
-  await Promise.all([
-    accountStore.usage ? Promise.resolve() : accountStore.fetchUsage(),
-    accountStore.fetchCreditLedger(10),
-  ])
+async function loadUsage(): Promise<void> {
+  if (accountStore.usage) {
+    isUsageLoading.value = false
+    usageError.value = ''
+    return
+  }
+
+  isUsageLoading.value = true
+  usageError.value = ''
+  try {
+    await accountStore.fetchUsage()
+  } catch (error) {
+    if (!accountStore.usage) {
+      usageError.value = error instanceof Error ? error.message : t('user.usage.loadFallback')
+    }
+  } finally {
+    isUsageLoading.value = false
+  }
+}
+
+async function loadLedger(): Promise<void> {
+  isLedgerLoading.value = true
+  ledgerError.value = ''
+  try {
+    await accountStore.fetchCreditLedger(10)
+  } catch (error) {
+    ledgerError.value = error instanceof Error ? error.message : t('user.usage.ledgerFallback')
+  } finally {
+    isLedgerLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadUsage()
+  void loadLedger()
 })
 
 function formatOperation(operationCode: string): string {
+  const key = `user.usage.operations.${operationCode}`
+  if (te(key)) return t(key)
   return operationCode
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
 }
 
 function formatDate(value: string | null): string {
   if (!value) return '-'
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale.value, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -64,43 +110,77 @@ function formatDate(value: string | null): string {
 <template>
   <div class="usage-view">
     <header class="page-header">
-      <h1>Usage</h1>
-      <p>Current plan, source storage quota, and credit availability from account APIs.</p>
+      <h1>{{ t('user.usage.title') }}</h1>
+      <p>{{ t('user.usage.description') }}</p>
     </header>
 
-    <div v-if="usage" class="usage-grid">
+    <ErrorAlert
+      v-if="usageError"
+      role="alert"
+      :title="t('user.usage.unavailable')"
+      :message="usageError"
+    >
+      <button
+        data-test="retry-usage"
+        type="button"
+        class="retry-button"
+        :disabled="isUsageLoading"
+        @click="loadUsage"
+      >
+        {{ t('user.usage.retry') }}
+      </button>
+    </ErrorAlert>
+    <div v-if="isUsageLoading" class="loading">{{ t('user.usage.loading') }}</div>
+    <div v-else-if="usage" class="usage-grid">
       <section class="usage-card">
-        <span class="usage-card__label">Current plan</span>
-        <strong>{{ usage.planName }}</strong>
-        <span class="usage-card__meta">{{ usage.planCode }}</span>
+        <span class="usage-card__label">{{ t('user.usage.currentPlan') }}</span>
+        <strong>{{ planLabel }}</strong>
+        <span class="usage-card__meta">{{ t('user.usage.activePlan') }}</span>
       </section>
 
       <section class="usage-card">
-        <span class="usage-card__label">Credit balance</span>
+        <span class="usage-card__label">{{ t('user.usage.creditBalance') }}</span>
         <strong>{{ creditBalanceLabel }}</strong>
         <span class="usage-card__meta">
-          {{ usage.creditsUsed ?? 0 }} /
-          {{ usage.creditsLimit ?? 0 }} credits used this cycle
+          {{
+            t('user.usage.usedCycle', {
+              used: usage.creditsUsed ?? 0,
+              limit: usage.creditsLimit ?? 0,
+            })
+          }}
         </span>
       </section>
 
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
-          <h3>Source storage quota</h3>
-          <span>{{ remainingMb }} MB remaining</span>
+          <h3>{{ t('user.usage.sourceStorage') }}</h3>
+          <span>{{ t('user.usage.remaining', { count: remainingMb }) }}</span>
         </div>
-        <QuotaMeter
-          :used="usedMb"
-          :total="limitMb"
-          unit="MB"
-        />
+        <QuotaMeter :used="usedMb" :total="limitMb" unit="MB" />
       </section>
 
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
-          <h3>Recent credit ledger</h3>
+          <h3>{{ t('user.usage.ledger') }}</h3>
         </div>
-        <div v-if="accountStore.creditLedger.length" class="ledger-list">
+        <ErrorAlert
+          v-if="ledgerError"
+          role="alert"
+          :title="t('user.usage.activityUnavailable')"
+          :message="ledgerError"
+        >
+          <button
+            data-test="retry-ledger"
+            type="button"
+            class="retry-button"
+            :disabled="isLedgerLoading"
+            @click="loadLedger"
+          >
+            {{ t('user.usage.retryLedger') }}
+          </button>
+        </ErrorAlert>
+        <div v-else-if="isLedgerLoading" class="loading">{{ t('user.usage.loadingActivity') }}</div>
+        <div v-else-if="accountStore.creditLedger.length" class="ledger-list">
           <article v-for="entry in accountStore.creditLedger" :key="entry.id" class="ledger-row">
             <div>
               <strong>{{ formatOperation(entry.operationCode) }}</strong>
@@ -116,16 +196,16 @@ function formatDate(value: string | null): string {
                   entry.creditsDelta < 0 ? 'credit-delta--debit' : 'credit-delta--credit',
                 ]"
               >
-                {{ entry.creditsDelta > 0 ? '+' : '' }}{{ entry.creditsDelta }} credits
+                {{ entry.creditsDelta > 0 ? '+' : '' }}{{ entry.creditsDelta }}
+                {{ t('user.usage.credits') }}
               </span>
               <time>{{ formatDate(entry.createdAt) }}</time>
             </div>
           </article>
         </div>
-        <div v-else class="empty-state">No credit activity yet.</div>
+        <div v-else class="empty-state">{{ t('user.usage.emptyActivity') }}</div>
       </section>
     </div>
-    <div v-else class="loading">Loading usage data...</div>
   </div>
 </template>
 
@@ -267,6 +347,18 @@ function formatDate(value: string | null): string {
 
 .loading {
   color: var(--vg-text-dim);
+}
+
+.retry-button {
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--vg-danger);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-danger);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 700px) {

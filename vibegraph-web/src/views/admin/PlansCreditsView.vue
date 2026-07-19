@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type {
   AdminPlan,
@@ -9,6 +10,7 @@ import type {
 } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 
+const { locale, t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
 const loading = ref(true)
 const saving = ref(false)
@@ -67,7 +69,7 @@ async function loadCatalogs(): Promise<void> {
     await Promise.all([adminStore.fetchPlans(), adminStore.fetchPricingRules()])
     errorMsg.value = ''
   } catch (e: unknown) {
-    errorMsg.value = e instanceof Error ? e.message : 'Failed to load plans and pricing rules'
+    errorMsg.value = e instanceof Error ? e.message : t('admin.plansCredits.errors.loadCatalogs')
   } finally {
     loading.value = false
   }
@@ -84,7 +86,7 @@ async function submitPlan(): Promise<void> {
       editingPlanCode.value ?? undefined,
     )
     resetPlanForm()
-  }, 'Failed to save plan.')
+  }, t('admin.plansCredits.errors.savePlan'))
 }
 
 async function submitRule(): Promise<void> {
@@ -98,28 +100,28 @@ async function submitRule(): Promise<void> {
       editingRuleCode.value ?? undefined,
     )
     resetRuleForm()
-  }, 'Failed to save pricing rule.')
+  }, t('admin.plansCredits.errors.saveRule'))
 }
 
 async function removePlan(code: string): Promise<void> {
   pendingConfirm.value = {
-    title: 'Deactivate plan',
-    message: `Disable or delete plan ${code}? Existing users may keep their current assignment until backend policy changes it.`,
-    confirmLabel: 'Deactivate',
+    title: t('admin.plansCredits.confirm.deactivatePlan.title'),
+    message: t('admin.plansCredits.confirm.deactivatePlan.message', { code }),
+    confirmLabel: t('admin.plansCredits.actions.deactivate'),
     tone: 'danger',
     action: () => adminStore.deletePlan(code),
-    fallback: 'Failed to delete plan.',
+    fallback: t('admin.plansCredits.errors.deletePlan'),
   }
 }
 
 async function removeRule(operationCode: string): Promise<void> {
   pendingConfirm.value = {
-    title: 'Disable pricing rule',
-    message: `Disable ${operationCode}? Credit calculations using this operation will stop using this rule.`,
-    confirmLabel: 'Disable',
+    title: t('admin.plansCredits.confirm.disableRule.title'),
+    message: t('admin.plansCredits.confirm.disableRule.message', { operationCode }),
+    confirmLabel: t('admin.plansCredits.actions.disable'),
     tone: 'danger',
     action: () => adminStore.deletePricingRule(operationCode),
-    fallback: 'Failed to delete pricing rule.',
+    fallback: t('admin.plansCredits.errors.deleteRule'),
   }
 }
 
@@ -168,7 +170,7 @@ function resetRuleForm(): void {
 
 function formatStorageMb(plan: AdminPlan): string {
   const storageMb = plan.storageLimitMb ?? Math.round((plan.storageLimitBytes ?? 0) / (1024 * 1024))
-  return `${storageMb.toLocaleString()} MB`
+  return `${storageMb.toLocaleString(locale.value)} MB`
 }
 </script>
 
@@ -176,29 +178,31 @@ function formatStorageMb(plan: AdminPlan): string {
   <div class="admin-page">
     <div class="page-title">
       <div>
-        <h2>Plans & Credits</h2>
-        <p>Manage plan catalog and credit pricing rules through admin CRUD APIs.</p>
+        <h2>{{ t('admin.plansCredits.title') }}</h2>
+        <p>{{ t('admin.plansCredits.description') }}</p>
       </div>
-      <span v-if="errorMsg" class="api-state unavailable">API error</span>
+      <span v-if="errorMsg" class="api-state unavailable">{{
+        t('admin.plansCredits.apiError')
+      }}</span>
     </div>
 
-    <div v-if="loading" class="notice">Loading plans and pricing rules...</div>
+    <div v-if="loading" class="notice">{{ t('admin.plansCredits.loading') }}</div>
     <div v-if="errorMsg" class="notice error">{{ errorMsg }}</div>
 
     <section class="catalog-grid">
       <article class="panel">
         <div class="panel-header">
           <div>
-            <h3>Plans</h3>
-            <p>Storage is managed in MB from the form through the admin API.</p>
+            <h3>{{ t('admin.plansCredits.plans.title') }}</h3>
+            <p>{{ t('admin.plansCredits.plans.help') }}</p>
           </div>
           <button class="ghost-button" type="button" :disabled="saving" @click="resetPlanForm">
-            Reset form
+            {{ t('admin.plansCredits.actions.resetForm') }}
           </button>
         </div>
         <form class="plan-editor" @submit.prevent="submitPlan">
           <label class="field" for="plan-code">
-            <span>Code</span>
+            <span>{{ t('admin.plansCredits.fields.code') }}</span>
             <input
               id="plan-code"
               v-model="planForm.code"
@@ -210,18 +214,18 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field" for="plan-name">
-            <span>Name</span>
+            <span>{{ t('admin.plansCredits.fields.name') }}</span>
             <input
               id="plan-name"
               v-model="planForm.name"
               name="planName"
               required
               maxlength="120"
-              placeholder="Plan name"
+              :placeholder="t('admin.plansCredits.placeholders.planName')"
             />
           </label>
           <label class="field" for="plan-storage-limit">
-            <span>Storage (MB)</span>
+            <span>{{ t('admin.plansCredits.fields.storageMb') }}</span>
             <input
               id="plan-storage-limit"
               v-model.number="planStorageMb"
@@ -233,7 +237,7 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field" for="plan-api-key-limit">
-            <span>API keys</span>
+            <span>{{ t('admin.plansCredits.fields.apiKeys') }}</span>
             <input
               id="plan-api-key-limit"
               v-model.number="planForm.apiKeyLimit"
@@ -246,7 +250,7 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field" for="plan-monthly-credit-limit">
-            <span>Monthly credits</span>
+            <span>{{ t('admin.plansCredits.fields.monthlyCredits') }}</span>
             <input
               id="plan-monthly-credit-limit"
               v-model.number="planForm.monthlyCreditLimit"
@@ -270,43 +274,65 @@ function formatStorageMb(plan: AdminPlan): string {
               type="checkbox"
             />
             <span class="toggle-track" aria-hidden="true"><span></span></span>
-            <strong>Contact sales</strong>
+            <strong>{{ t('admin.plansCredits.status.contactSales') }}</strong>
           </label>
           <button class="submit-button" type="submit" :disabled="saving">
-            {{ editingPlanCode ? 'Update plan' : 'Create plan' }}
+            {{
+              editingPlanCode
+                ? t('admin.plansCredits.actions.updatePlan')
+                : t('admin.plansCredits.actions.createPlan')
+            }}
           </button>
         </form>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Storage</th>
-                <th>API keys</th>
-                <th>Credits / month</th>
-                <th>Sales</th>
-                <th>Actions</th>
+                <th>{{ t('admin.plansCredits.columns.code') }}</th>
+                <th>{{ t('admin.plansCredits.columns.name') }}</th>
+                <th>{{ t('admin.plansCredits.columns.storage') }}</th>
+                <th>{{ t('admin.plansCredits.columns.apiKeys') }}</th>
+                <th>{{ t('admin.plansCredits.columns.creditsPerMonth') }}</th>
+                <th>{{ t('admin.plansCredits.columns.sales') }}</th>
+                <th>{{ t('admin.plansCredits.columns.actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="plans.length === 0">
-                <td colspan="7" class="empty-cell">No plans returned by the API.</td>
+                <td colspan="7" class="empty-cell">
+                  {{ t('admin.plansCredits.empty.plans') }}
+                </td>
               </tr>
               <tr v-for="plan in plans" :key="plan.code">
-                <td class="strong" data-label="Code">{{ plan.code }}</td>
-                <td data-label="Name">{{ plan.name }}</td>
-                <td data-label="Storage">{{ formatStorageMb(plan) }}</td>
-                <td data-label="API keys">{{ plan.apiKeyLimit }}</td>
-                <td data-label="Credits / month">{{ plan.monthlyCreditLimit }}</td>
-                <td data-label="Sales">
+                <td class="strong" :data-label="t('admin.plansCredits.columns.code')">
+                  {{ plan.code }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.name')">{{ plan.name }}</td>
+                <td :data-label="t('admin.plansCredits.columns.storage')">
+                  {{ formatStorageMb(plan) }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.apiKeys')">
+                  {{ plan.apiKeyLimit }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.creditsPerMonth')">
+                  {{ plan.monthlyCreditLimit }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.sales')">
                   <span class="status-pill" :class="{ warning: plan.contactSalesRequired }">
-                    {{ plan.contactSalesRequired ? 'Contact sales' : 'Self-service' }}
+                    {{
+                      plan.contactSalesRequired
+                        ? t('admin.plansCredits.status.contactSales')
+                        : t('admin.plansCredits.status.selfService')
+                    }}
                   </span>
                 </td>
-                <td class="actions" data-label="Actions">
-                  <button type="button" @click="editPlan(plan)">Edit</button>
-                  <button type="button" @click="removePlan(plan.code)">Delete</button>
+                <td class="actions" :data-label="t('admin.plansCredits.columns.actions')">
+                  <button type="button" @click="editPlan(plan)">
+                    {{ t('admin.plansCredits.actions.edit') }}
+                  </button>
+                  <button type="button" @click="removePlan(plan.code)">
+                    {{ t('admin.plansCredits.actions.delete') }}
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -317,16 +343,16 @@ function formatStorageMb(plan: AdminPlan): string {
       <article class="panel">
         <div class="panel-header">
           <div>
-            <h3>Credit Pricing Rules</h3>
-            <p>Formula: base + per file + per MB + per 1k nodes, then rounded by backend policy.</p>
+            <h3>{{ t('admin.plansCredits.rules.title') }}</h3>
+            <p>{{ t('admin.plansCredits.rules.help') }}</p>
           </div>
           <button v-if="editingRuleCode" class="ghost-button" type="button" @click="resetRuleForm">
-            New rule
+            {{ t('admin.plansCredits.actions.newRule') }}
           </button>
         </div>
         <form class="rule-editor" @submit.prevent="submitRule">
           <label class="field operation-field" for="pricing-operation-code">
-            <span>Operation code</span>
+            <span>{{ t('admin.plansCredits.fields.operationCode') }}</span>
             <input
               id="pricing-operation-code"
               v-model="ruleForm.operationCode"
@@ -338,18 +364,18 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field display-field" for="pricing-display-name">
-            <span>Display name</span>
+            <span>{{ t('admin.plansCredits.fields.displayName') }}</span>
             <input
               id="pricing-display-name"
               v-model="ruleForm.displayName"
               name="pricingDisplayName"
               required
               maxlength="120"
-              placeholder="MCP tool call"
+              :placeholder="t('admin.plansCredits.placeholders.displayName')"
             />
           </label>
           <label class="field per-mb-field" for="pricing-per-mb-credits">
-            <span>Per MB</span>
+            <span>{{ t('admin.plansCredits.fields.perMb') }}</span>
             <input
               id="pricing-per-mb-credits"
               v-model.number="ruleForm.perMbCredits"
@@ -367,13 +393,17 @@ function formatStorageMb(plan: AdminPlan): string {
             :disabled="saving"
             @click="resetRuleForm"
           >
-            Reset
+            {{ t('admin.plansCredits.actions.reset') }}
           </button>
           <button class="submit-button rule-submit-button" type="submit" :disabled="saving">
-            {{ editingRuleCode ? 'Update rule' : 'Create rule' }}
+            {{
+              editingRuleCode
+                ? t('admin.plansCredits.actions.updateRule')
+                : t('admin.plansCredits.actions.createRule')
+            }}
           </button>
           <label class="field per-1k-field" for="pricing-per-1k-nodes-credits">
-            <span>Per 1k nodes</span>
+            <span>{{ t('admin.plansCredits.fields.per1kNodes') }}</span>
             <input
               id="pricing-per-1k-nodes-credits"
               v-model.number="ruleForm.per1kNodesCredits"
@@ -386,7 +416,7 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field minimum-field" for="pricing-minimum-credits">
-            <span>Minimum</span>
+            <span>{{ t('admin.plansCredits.fields.minimum') }}</span>
             <input
               id="pricing-minimum-credits"
               v-model.number="ruleForm.minimumCredits"
@@ -399,7 +429,7 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field base-field" for="pricing-base-credits">
-            <span>Base</span>
+            <span>{{ t('admin.plansCredits.fields.base') }}</span>
             <input
               id="pricing-base-credits"
               v-model.number="ruleForm.baseCredits"
@@ -412,7 +442,7 @@ function formatStorageMb(plan: AdminPlan): string {
             />
           </label>
           <label class="field per-file-field" for="pricing-per-file-credits">
-            <span>Per file</span>
+            <span>{{ t('admin.plansCredits.fields.perFile') }}</span>
             <input
               id="pricing-per-file-credits"
               v-model.number="ruleForm.perFileCredits"
@@ -436,45 +466,67 @@ function formatStorageMb(plan: AdminPlan): string {
               type="checkbox"
             />
             <span class="toggle-track" aria-hidden="true"><span></span></span>
-            <strong>{{ ruleForm.active ? 'Active' : 'Paused' }}</strong>
+            <strong>{{
+              ruleForm.active
+                ? t('admin.plansCredits.status.active')
+                : t('admin.plansCredits.status.paused')
+            }}</strong>
           </label>
         </form>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Operation</th>
-                <th>Base</th>
-                <th>Per file</th>
-                <th>Per MB</th>
-                <th>Per 1k nodes</th>
-                <th>Minimum</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>{{ t('admin.plansCredits.columns.operation') }}</th>
+                <th>{{ t('admin.plansCredits.columns.base') }}</th>
+                <th>{{ t('admin.plansCredits.columns.perFile') }}</th>
+                <th>{{ t('admin.plansCredits.columns.perMb') }}</th>
+                <th>{{ t('admin.plansCredits.columns.per1kNodes') }}</th>
+                <th>{{ t('admin.plansCredits.columns.minimum') }}</th>
+                <th>{{ t('admin.plansCredits.columns.status') }}</th>
+                <th>{{ t('admin.plansCredits.columns.actions') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="pricingRules.length === 0">
-                <td colspan="8" class="empty-cell">No pricing rules returned by the API.</td>
+                <td colspan="8" class="empty-cell">
+                  {{ t('admin.plansCredits.empty.rules') }}
+                </td>
               </tr>
               <tr v-for="rule in pricingRules" :key="rule.operationCode">
-                <td data-label="Operation">
+                <td :data-label="t('admin.plansCredits.columns.operation')">
                   <span class="strong">{{ rule.operationCode }}</span
                   ><small>{{ rule.displayName }}</small>
                 </td>
-                <td data-label="Base">{{ rule.baseCredits }}</td>
-                <td data-label="Per file">{{ rule.perFileCredits }}</td>
-                <td data-label="Per MB">{{ rule.perMbCredits }}</td>
-                <td data-label="Per 1k nodes">{{ rule.per1kNodesCredits }}</td>
-                <td data-label="Minimum">{{ rule.minimumCredits }}</td>
-                <td data-label="Status">
+                <td :data-label="t('admin.plansCredits.columns.base')">
+                  {{ rule.baseCredits }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.perFile')">
+                  {{ rule.perFileCredits }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.perMb')">
+                  {{ rule.perMbCredits }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.per1kNodes')">
+                  {{ rule.per1kNodesCredits }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.minimum')">
+                  {{ rule.minimumCredits }}
+                </td>
+                <td :data-label="t('admin.plansCredits.columns.status')">
                   <span class="status-pill" :class="{ off: !rule.active }">{{
-                    rule.active ? 'Active' : 'Disabled'
+                    rule.active
+                      ? t('admin.plansCredits.status.active')
+                      : t('admin.plansCredits.status.disabled')
                   }}</span>
                 </td>
-                <td class="actions" data-label="Actions">
-                  <button type="button" @click="editRule(rule)">Edit</button>
-                  <button type="button" @click="removeRule(rule.operationCode)">Disable</button>
+                <td class="actions" :data-label="t('admin.plansCredits.columns.actions')">
+                  <button type="button" @click="editRule(rule)">
+                    {{ t('admin.plansCredits.actions.edit') }}
+                  </button>
+                  <button type="button" @click="removeRule(rule.operationCode)">
+                    {{ t('admin.plansCredits.actions.disable') }}
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -487,7 +539,7 @@ function formatStorageMb(plan: AdminPlan): string {
       :open="Boolean(pendingConfirm)"
       :title="pendingConfirm?.title ?? ''"
       :message="pendingConfirm?.message ?? ''"
-      :confirm-label="pendingConfirm?.confirmLabel ?? 'Confirm'"
+      :confirm-label="pendingConfirm?.confirmLabel ?? t('admin.plansCredits.actions.confirm')"
       :tone="pendingConfirm?.tone ?? 'default'"
       :busy="saving"
       @cancel="pendingConfirm = null"
@@ -566,10 +618,9 @@ h3 {
   align-items: end;
 }
 .plan-editor {
-  grid-template-columns: minmax(7rem, 0.72fr) minmax(12rem, 1.25fr) repeat(
-      3,
-      minmax(8rem, 0.82fr)
-    ) 11.25rem 8rem;
+  grid-template-columns:
+    minmax(7rem, 0.72fr) minmax(12rem, 1.25fr) repeat(3, minmax(8rem, 0.82fr))
+    11.25rem 8rem;
 }
 .rule-editor {
   grid-template-columns: repeat(16, minmax(0, 1fr));

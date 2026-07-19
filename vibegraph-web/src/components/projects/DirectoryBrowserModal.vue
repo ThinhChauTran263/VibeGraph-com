@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { browseApi, type DirectoryListing } from '@/lib/api'
 import Spinner from '@/components/ui/Spinner.vue'
 
+const { t } = useI18n({ useScope: 'global' })
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   select: [path: string]
@@ -43,7 +45,7 @@ async function load(path?: string): Promise<boolean> {
     return true
   } catch (err) {
     errorMessage.value =
-      err instanceof Error && err.message ? err.message : 'Failed to list directory.'
+      err instanceof Error && err.message ? err.message : t('user.import.directoryFallback')
     return false
   } finally {
     isLoading.value = false
@@ -124,22 +126,22 @@ function resetDefault(): void {
     class="dir-modal"
     role="dialog"
     aria-modal="true"
-    aria-label="Choose a project folder"
+    :aria-label="t('user.import.chooseFolder')"
     data-test="dir-browser"
     @keydown.esc="emit('close')"
   >
     <div class="dir-modal__scrim" @click="emit('close')"></div>
     <div class="dir-modal__panel">
       <header class="dir-modal__header">
-        <h2 class="dir-modal__title">Choose a project folder</h2>
-        <button class="dir-modal__icon-btn" type="button" aria-label="Close" @click="emit('close')">
+        <h2 class="dir-modal__title">{{ t('user.import.chooseFolder') }}</h2>
+        <button class="dir-modal__icon-btn" type="button" :aria-label="t('common.close')" @click="emit('close')">
           ✕
         </button>
       </header>
 
       <div class="dir-modal__path-bar">
         <button class="dir-modal__up" type="button" :disabled="!canGoUp || isLoading" @click="goUp">
-          ↑ Up
+          ↑ {{ t('user.import.up') }}
         </button>
         <input
           v-model="pathInput"
@@ -147,8 +149,8 @@ function resetDefault(): void {
           type="text"
           spellcheck="false"
           autocomplete="off"
-          placeholder="This PC — paste a path and press Enter"
-          :aria-label="'Current folder path'"
+          :placeholder="t('user.import.pathPlaceholder')"
+          :aria-label="t('user.import.currentPath')"
           @keydown.enter.prevent="goToInput"
         />
         <button
@@ -158,7 +160,7 @@ function resetDefault(): void {
           :disabled="isLoading"
           @click="goToInput"
         >
-          Go
+          {{ t('user.import.go') }}
         </button>
       </div>
 
@@ -166,10 +168,10 @@ function resetDefault(): void {
 
       <div class="dir-modal__list" data-test="dir-list">
         <div v-if="isLoading" class="dir-modal__loading">
-          <Spinner size="sm" /><span>Loading…</span>
+          <Spinner size="sm" /><span>{{ t('user.import.loading') }}</span>
         </div>
         <p v-else-if="listing && listing.entries.length === 0" class="dir-modal__empty">
-          No sub-folders here.
+          {{ t('user.import.noSubfolders') }}
         </p>
         <ul v-else class="dir-modal__entries">
           <li v-for="entry in listing?.entries ?? []" :key="entry.path">
@@ -189,10 +191,10 @@ function resetDefault(): void {
             type="button"
             data-test="dir-set-default"
             :disabled="!canSelect || isAtDefault"
-            :title="defaultPath ? `Current default: ${defaultPath}` : 'No default set'"
+            :title="defaultPath ? t('user.import.currentDefault', { path: defaultPath }) : t('user.import.noDefault')"
             @click="setDefault"
           >
-            {{ isAtDefault ? '★ Default folder' : 'Set as default' }}
+            {{ isAtDefault ? `★ ${t('user.import.defaultFolder')}` : t('user.import.setDefault') }}
           </button>
           <button
             class="dir-modal__btn dir-modal__btn--ghost"
@@ -201,12 +203,12 @@ function resetDefault(): void {
             :disabled="!defaultPath || isLoading"
             @click="resetDefault"
           >
-            Reset
+            {{ t('user.import.reset') }}
           </button>
         </div>
         <div class="dir-modal__footer-right">
           <button class="dir-modal__btn dir-modal__btn--ghost" type="button" @click="emit('close')">
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             class="dir-modal__btn dir-modal__btn--primary"
@@ -215,7 +217,7 @@ function resetDefault(): void {
             :disabled="!canSelect"
             @click="selectCurrent"
           >
-            Use this folder
+            {{ t('user.import.useFolder') }}
           </button>
         </div>
       </footer>
