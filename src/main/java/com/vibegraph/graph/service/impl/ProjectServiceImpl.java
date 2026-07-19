@@ -89,7 +89,27 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse createProjectFromWorkspace(String name, Path workspaceSource) {
         Path source = validateWorkspacePath(workspaceSource);
         String id = UUID.randomUUID().toString().substring(0, 8);
-        ProjectResponse project = ProjectResponse.builder()
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        log.info("Created archive-workspace project {} at {}", id, source);
+        return project;
+    }
+
+    @Override
+    public ProjectResponse createEmptyWorkspaceProject(String name, Path workspaceSource) {
+        Path source = validateWorkspacePath(workspaceSource);
+        String id = UUID.randomUUID().toString().substring(0, 8);
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        if (graphRepository != null) {
+            graphRepository.upsertProject(id, project.getName(), project.getRootPath());
+        }
+        log.info("Created CLI workspace project {} at {}", id, source);
+        return project;
+    }
+
+    private ProjectResponse workspaceProject(String id, String name, Path source) {
+        return ProjectResponse.builder()
                 .id(id)
                 .name(name != null && !name.isBlank() ? name : id)
                 .rootPath(source.toString())
@@ -97,9 +117,6 @@ public class ProjectServiceImpl implements ProjectService {
                 .status(ProjectStatus.CREATED.name())
                 .progress(0)
                 .build();
-        projects.put(id, project);
-        log.info("Created archive-workspace project {} at {}", id, source);
-        return project;
     }
 
     /**

@@ -20,11 +20,11 @@ const errorMsg = ref(''),
   showImport = ref(route.query.import === 'new'),
   deleteTarget = ref<Project | null>(null),
   deleting = ref(false)
-const local = useFeatureAvailability('import.local'),
+const cli = useFeatureAvailability('cli.push'),
   archive = useFeatureAvailability('import.archive'),
   github = useFeatureAvailability('import.github')
 const importDisabled = computed(
-  () => ![local.value, archive.value, github.value].some((feature) => feature.enabled),
+  () => ![cli.value, archive.value, github.value].some((feature) => feature.enabled),
 )
 const importReason = computed(() =>
   importDisabled.value
@@ -213,7 +213,7 @@ onMounted(() => {
         </button>
         <ImportProjectPanel
           :disabled-methods="{
-            local: local.enabled ? null : local.reason,
+            cli: cli.enabled ? null : cli.reason,
             archive: archive.enabled ? null : archive.reason,
             github: github.enabled ? null : github.reason,
           }"

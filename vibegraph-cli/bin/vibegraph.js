@@ -28,6 +28,12 @@ const SHELL_COMMANDS = [
   { command: "exit", description: "Exit the VibeGraph shell" },
   { command: "quit", description: "Exit the VibeGraph shell" },
   { command: "doctor", description: "Check backend health" },
+  { command: "login ", description: "Save a project-bound API key" },
+  { command: "login --key ", description: "Save a project-bound API key" },
+  { command: "key add ", description: "Store a project-bound API key" },
+  { command: "key set ", description: "Store a project-bound API key" },
+  { command: "key status", description: "Show masked API-key status" },
+  { command: "key clear", description: "Clear the stored API key" },
   { command: "auth set-key ", description: "Store a project-bound API key" },
   { command: "auth status", description: "Show masked API-key status" },
   { command: "auth clear", description: "Clear the stored API key" },
@@ -97,7 +103,10 @@ async function main() {
 }
 
 async function dispatchCommand(args) {
-  const [command = "help", ...rest] = args;
+  let [command = "help", ...rest] = args;
+  if (command.startsWith("/")) {
+    command = command.slice(1);
+  }
 
   switch (command) {
     case "help":
@@ -109,6 +118,9 @@ async function dispatchCommand(args) {
       await handleConfig(rest);
       return;
     case "auth":
+      await handleAuth(rest);
+      return;
+    case "key":
       await handleAuth(rest);
       return;
     case "register":
@@ -163,6 +175,11 @@ function printShellHelp() {
 
 function renderHelpBody() {
   return `Usage:
+  vibegraph login <apiKey>
+  vibegraph login --key <apiKey>
+  vibegraph key add <apiKey>
+  vibegraph key status
+  vibegraph key clear
   vibegraph config show
   vibegraph config set-url <url>
   vibegraph auth set-key <apiKey>
@@ -184,9 +201,9 @@ Projects:
   vibegraph projects status <projectId>
 
 Watch:
-  vibegraph push --root <localPath> [--dry-run]
+  vibegraph push [--root <localPath>] [--dry-run]
   vibegraph watch <projectId> --root <localPath>
-  vibegraph watch --root <localPath>
+  vibegraph watch [--root <localPath>]
 
 Ignore:
   vibegraph ignore init [--root <path>]`;
@@ -206,18 +223,55 @@ async function startInteractiveShell() {
   });
 
   let processing = false;
-  const refreshSuggestions = () => {
+  let visibleSuggestions = [];
+  let selectedSuggestionIndex = -1;
+  let keypressVersion = 0;
+  const refreshSuggestions = (character, key = {}) => {
     if (!processing) {
-      renderLiveSuggestions(readline.line || "");
+      keypressVersion += 1;
+      if (key.name === "up" || key.name === "down") {
+        const suggestions = selectedSuggestionIndex >= 0
+          ? visibleSuggestions
+          : getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
+        if (!suggestions.length) {
+          return;
+        }
+        const direction = key.name;
+        key.name = undefined;
+        visibleSuggestions = suggestions;
+        selectedSuggestionIndex = getNextSuggestionIndex(
+          selectedSuggestionIndex,
+          direction,
+          suggestions.length,
+        );
+        const slashPrefix = (readline.line || "").trimStart().startsWith("/") ? "/" : "";
+        const selectedLine = `${slashPrefix}${suggestions[selectedSuggestionIndex].command}`;
+        readline.write(null, { ctrl: true, name: "u" });
+        readline.write(selectedLine);
+        renderLiveSuggestions(readline.line || "", selectedSuggestionIndex, visibleSuggestions);
+        return;
+      }
+      const refreshVersion = keypressVersion;
+      setImmediate(() => {
+        if (processing || refreshVersion !== keypressVersion) {
+          return;
+        }
+        selectedSuggestionIndex = -1;
+        visibleSuggestions = getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
+        renderLiveSuggestions(readline.line || "", -1, visibleSuggestions);
+      });
     }
   };
 
   emitKeypressEvents(process.stdin, readline);
-  process.stdin.on("keypress", refreshSuggestions);
+  process.stdin.prependListener("keypress", refreshSuggestions);
 
   return new Promise((resolve) => {
     readline.on("line", async (input) => {
       processing = true;
+      keypressVersion += 1;
+      selectedSuggestionIndex = -1;
+      visibleSuggestions = [];
       clearLiveSuggestions();
       const line = input.trim();
       if (!line) {
@@ -287,7 +341,11 @@ function isShellHelpCommand(command) {
 function completeShellLine(line) {
   const leadingWhitespace = line.slice(0, line.length - line.trimStart().length);
   const suggestions = getShellSuggestions(line);
-  return [suggestions.map(({ command }) => `${leadingWhitespace}${command}`), line];
+  const completionPrefix = line.trimStart().startsWith("/") ? "/" : "";
+  return [
+    suggestions.map(({ command }) => `${leadingWhitespace}${completionPrefix}${command}`),
+    line,
+  ];
 }
 
 function getShellSuggestions(line, limit = 8) {
@@ -295,33 +353,60 @@ function getShellSuggestions(line, limit = 8) {
   if (!normalized) {
     return [];
   }
-  const candidates = normalized.startsWith("/")
-    ? SHELL_COMMANDS.filter(({ command }) => command.startsWith("/"))
+  const slashPalette = normalized.startsWith("/");
+  const query = slashPalette ? normalized.slice(1) : normalized;
+  const candidates = slashPalette
+    ? SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"))
     : SHELL_COMMANDS;
+  const suggestionLimit = slashPalette && !query ? Number.POSITIVE_INFINITY : limit;
   return candidates
-    .filter(({ command }) => command.toLowerCase().startsWith(normalized))
-    .slice(0, limit);
+    .filter(({ command }) => command.toLowerCase().startsWith(query))
+    .slice(0, suggestionLimit);
 }
 
-function renderShellSuggestionPanel(line) {
-  const suggestions = getShellSuggestions(line, 6);
-  if (!suggestions.length) {
+function getNextSuggestionIndex(currentIndex, direction, suggestionCount) {
+  if (suggestionCount <= 0) {
+    return -1;
+  }
+  if (direction === "up") {
+    return currentIndex <= 0 ? suggestionCount - 1 : currentIndex - 1;
+  }
+  return currentIndex < 0 || currentIndex >= suggestionCount - 1 ? 0 : currentIndex + 1;
+}
+
+function getSuggestionWindow(suggestions, selectedIndex = -1, windowSize = 6) {
+  if (suggestions.length <= windowSize) {
+    return suggestions;
+  }
+  const start = selectedIndex < windowSize
+    ? 0
+    : Math.min(selectedIndex - windowSize + 1, suggestions.length - windowSize);
+  return suggestions.slice(start, start + windowSize);
+}
+
+function renderShellSuggestionPanel(line, selectedIndex = -1, providedSuggestions = null) {
+  const allSuggestions = providedSuggestions || getShellSuggestions(line, Number.POSITIVE_INFINITY);
+  const suggestions = getSuggestionWindow(allSuggestions, selectedIndex);
+  if (!allSuggestions.length) {
     return "";
   }
+  const windowStart = allSuggestions.indexOf(suggestions[0]);
   const width = Math.max(...suggestions.map(({ command }) => command.length));
   return suggestions
-    .map(({ command, description }) => {
+    .map(({ command, description }, index) => {
+      const marker = windowStart + index === selectedIndex ? "> " : "  ";
       const padded = command.padEnd(width + 2, " ");
-      return `${colorize(padded, "brightCyan")}${colorize(description, "dim")}`;
+      const commandColor = index === selectedIndex ? "green" : "brightCyan";
+      return `${colorize(`${marker}${padded}`, commandColor)}${colorize(description, "dim")}`;
     })
     .join("\n");
 }
 
-function renderLiveSuggestions(line) {
+function renderLiveSuggestions(line, selectedIndex = -1, suggestions = null) {
   if (!process.stdout.isTTY) {
     return;
   }
-  const panel = renderShellSuggestionPanel(line);
+  const panel = renderShellSuggestionPanel(line, selectedIndex, suggestions);
   process.stdout.write("\x1b[s\n\x1b[J");
   if (panel) {
     process.stdout.write(`${panel}\n`);
@@ -390,6 +475,8 @@ export {
   isShellExitCommand,
   isShellHelpCommand,
   completeShellLine,
+  getNextSuggestionIndex,
+  getSuggestionWindow,
   getShellSuggestions,
   apiRequest,
   handleDoctor,
@@ -483,11 +570,18 @@ async function handleAuth(args) {
   if (subcommand === "set-key") {
     const apiKey = args.shift();
     if (!apiKey || apiKey.startsWith("--")) {
-      throw new CliError("Usage: vibegraph auth set-key <apiKey>", 2);
+      throw new CliError("Usage: vibegraph login --key <apiKey> or vibegraph key set <apiKey>", 2);
     }
-    validateApiKey(apiKey);
-    await saveConfig({ ...config, apiKey });
-    console.log(`API key saved: ${maskApiKey(apiKey)}`);
+    await saveApiKey(config, apiKey);
+    return;
+  }
+
+  if (subcommand === "set" || subcommand === "add") {
+    const apiKey = args.shift();
+    if (!apiKey || apiKey.startsWith("--")) {
+      throw new CliError("Usage: vibegraph key add <apiKey>", 2);
+    }
+    await saveApiKey(config, apiKey);
     return;
   }
 
@@ -529,7 +623,17 @@ async function handleRegister(args) {
 }
 
 async function handleLogin(args) {
+  if (args.length === 1 && !args[0].startsWith("--")) {
+    const config = await loadConfig();
+    await saveApiKey(config, args[0]);
+    return;
+  }
   const options = parseOptions(args);
+  if (options.key || options["api-key"]) {
+    const config = await loadConfig();
+    await saveApiKey(config, requiredAnyOption(options, ["key", "api-key"]));
+    return;
+  }
   const email = requiredOption(options, "email");
   const password = requiredOption(options, "password");
 
@@ -539,6 +643,13 @@ async function handleLogin(args) {
   });
   await persistAuth(response);
   console.log(`Logged in as ${response.user.email}`);
+}
+
+async function saveApiKey(config, apiKey) {
+  validateApiKey(apiKey);
+  await saveConfig({ ...config, apiKey });
+  console.log(`API key saved: ${maskApiKey(apiKey)}`);
+  console.log("Run: vibegraph doctor");
 }
 
 async function handleMe() {
@@ -799,9 +910,7 @@ async function apiRequest(endpoint, options = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const message = typeof payload === "object"
-      ? payload.message || payload.error || JSON.stringify(payload)
-      : payload;
+    const message = formatApiError(payload);
     throw new CliError(`HTTP ${response.status}: ${message}`, response.status === 401 ? 3 : 1);
   }
 
@@ -869,6 +978,28 @@ function classifyApiKeyError(error) {
   return "unavailable";
 }
 
+function formatApiError(payload) {
+  if (!payload || typeof payload !== "object") {
+    return String(payload || "request failed");
+  }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message;
+  }
+  const error = payload.error;
+  if (error && typeof error === "object") {
+    const code = typeof error.code === "string" ? error.code.trim() : "";
+    const message = typeof error.message === "string" ? error.message.trim() : "";
+    if (code && message) return `${code}: ${message}`;
+    if (message) return message;
+    if (code) return code;
+    return JSON.stringify(error);
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  return JSON.stringify(payload);
+}
+
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
 }
@@ -900,13 +1031,23 @@ function requiredOption(options, name) {
   return value;
 }
 
+function requiredAnyOption(options, names) {
+  for (const name of names) {
+    const value = options[name];
+    if (value && value !== true) {
+      return value;
+    }
+  }
+  throw new CliError(`Missing one of: ${names.map((name) => `--${name} <value>`).join(", ")}`, 2);
+}
+
 function parsePushCommandArgs(args) {
   const remaining = [...args];
   const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
   const options = parseOptions(remaining);
   return {
     projectId,
-    root: requiredOption(options, "root"),
+    root: options.root && options.root !== true ? options.root : ".",
     dryRun: Boolean(options["dry-run"]),
   };
 }
@@ -917,7 +1058,7 @@ function parseWatchCommandArgs(args) {
   const options = parseOptions(remaining);
   return {
     projectId,
-    root: requiredOption(options, "root"),
+    root: options.root && options.root !== true ? options.root : ".",
   };
 }
 

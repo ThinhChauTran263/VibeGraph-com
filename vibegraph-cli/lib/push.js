@@ -26,7 +26,7 @@ export async function executePush(projectId, options, apiRequest) {
   const scan = await scanDirectory(rootDir, ignoreRules);
 
   if (scan.truncated) {
-    console.error(`Warning: Max files limit reached. Some files may be omitted.`);
+    throw new Error(truncatedScanMessage());
   }
 
   // Build current state map
@@ -118,6 +118,10 @@ function printSkippedSummary(skipped) {
   for (const [reason, count] of Object.entries(groups)) {
     console.log(`  Skipped ${count} file(s): ${reason}`);
   }
+}
+
+function truncatedScanMessage() {
+  return "Scan stopped after VIBEGRAPH_MAX_FILES. No patch was sent because a partial scan could delete files incorrectly. Increase VIBEGRAPH_MAX_FILES or narrow --root.";
 }
 
 /**

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { accountApi, adminApi, ApiError, api } from '../api'
+import { accountApi, adminApi, ApiError, api, diagramApi } from '../api'
 
 function success(data: unknown): Response {
   return {
@@ -162,6 +162,12 @@ describe('Phase 7 admin security and audit API contract', () => {
     expect(auditUrl.searchParams.get('page')).toBe('2')
     expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')
     expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ retentionDays: 180 }))
+  })
+})
+
+describe('diagram API contract', () => {
+  it('only exposes the supported use-case diagram endpoint', () => {
+    expect(Object.keys(diagramApi).sort()).toEqual(['umlUseCase'])
   })
 })
 

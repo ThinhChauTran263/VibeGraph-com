@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.repository.PlanRepository;
+import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.ProjectUsageRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.auth.service.AccountSettingsService;
@@ -75,8 +76,9 @@ class QuotaReservationConcurrencyTest {
         @Bean
         ProjectUsageService projectUsageService(
                 ProjectUsageRepository usageRepository,
-                UserAccountSettingsRepository settingsRepository) {
-            return new ProjectUsageService(usageRepository, settingsRepository);
+                UserAccountSettingsRepository settingsRepository,
+                ProjectOwnershipRepository ownershipRepository) {
+            return new ProjectUsageService(usageRepository, settingsRepository, ownershipRepository);
         }
     }
 

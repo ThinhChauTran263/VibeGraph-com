@@ -103,12 +103,12 @@ describe('ApiKeysView', () => {
     expect(wrapper.text()).not.toContain('secretKey')
   })
 
-  it('uses cached keys and repositories when returning to the page', async () => {
+  it('refreshes keys while reusing cached repositories when returning to the page', async () => {
     const { wrapper, pinia } = mountView(undefined, true)
     const store = useAccountStore(pinia)
     await flushPromises()
 
-    expect(store.fetchApiKeys).not.toHaveBeenCalled()
+    expect(store.fetchApiKeys).toHaveBeenCalledWith({ force: true })
     expect(store.fetchProjects).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Production CLI')
     expect(wrapper.text()).toContain('Repository: VibeGraph Web')

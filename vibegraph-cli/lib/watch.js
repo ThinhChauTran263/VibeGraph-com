@@ -30,6 +30,7 @@ export async function executeWatch(projectId, options, apiRequest) {
 
   // Do initial scan to establish baseline
   const initialScan = await scanDirectory(rootDir, ignoreRules);
+  assertCompleteScan(initialScan);
   const initialState = buildFileStateMap(initialScan.files);
   await saveSnapshot(snapshotId, initialState);
   console.log(`Baseline: ${initialScan.files.length} files tracked.\n`);
@@ -43,6 +44,7 @@ export async function executeWatch(projectId, options, apiRequest) {
 
     try {
       const scan = await scanDirectory(rootDir, ignoreRules);
+      assertCompleteScan(scan);
       const currentState = buildFileStateMap(scan.files);
       const previousSnapshot = await loadSnapshot(snapshotId);
       const { changed, deleted } = diffSnapshot(currentState, previousSnapshot);
@@ -150,5 +152,12 @@ function isWatchNetworkError(msg) {
     msg.includes("ECONNRESET") ||
     msg.includes("ETIMEDOUT") ||
     msg.includes("EAI_AGAIN")
+  );
+}
+
+function assertCompleteScan(scan) {
+  if (!scan.truncated) return;
+  throw new Error(
+    "Scan stopped after VIBEGRAPH_MAX_FILES. Watch skipped this push because a partial scan could delete files incorrectly. Increase VIBEGRAPH_MAX_FILES or narrow --root.",
   );
 }

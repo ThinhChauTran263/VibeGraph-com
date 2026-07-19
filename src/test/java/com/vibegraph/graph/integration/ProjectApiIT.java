@@ -29,6 +29,7 @@ import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -60,7 +61,8 @@ class ProjectApiIT {
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
                 deletionOrchestrator, Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
                 Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class),
-                Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class));
+                Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class),
+                Mockito.mock(CliRepositoryService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.domain.ProjectUsage;
 import com.vibegraph.auth.domain.UserAccountSettings;
+import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.ProjectUsageRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.common.exception.QuotaExceededException;
@@ -30,6 +31,7 @@ public class ProjectUsageService {
 
     private final ProjectUsageRepository projectUsageRepository;
     private final UserAccountSettingsRepository settingsRepository;
+    private final ProjectOwnershipRepository ownershipRepository;
 
     /**
      * Record storage usage after a successful project import (local, archive, or GitHub).
@@ -53,6 +55,7 @@ public class ProjectUsageService {
         assertWithinQuota(ownerId, settings, usage.getStorageBytes(), safeBytes);
         usage.setStorageBytes(safeBytes);
         projectUsageRepository.save(usage);
+        syncOwnershipSize(projectId, safeBytes);
         log.debug("Recorded import usage for project {}: {} bytes", projectId, safeBytes);
     }
 
@@ -77,6 +80,7 @@ public class ProjectUsageService {
         assertWithinQuota(ownerId, settings, usage.getStorageBytes(), updated);
         usage.setStorageBytes(updated);
         projectUsageRepository.save(usage);
+        syncOwnershipSize(projectId, updated);
         log.debug("Recorded patch delta {} bytes for project {} -> new total {} bytes",
                 deltaBytes, projectId, updated);
     }
@@ -156,5 +160,12 @@ public class ProjectUsageService {
         } catch (ArithmeticException ex) {
             throw new IllegalArgumentException("Source storage usage is outside the supported range", ex);
         }
+    }
+
+    private void syncOwnershipSize(String projectId, long storageBytes) {
+        ownershipRepository.findById(projectId).ifPresent(project -> {
+            project.setSizeBytes(storageBytes);
+            ownershipRepository.save(project);
+        });
     }
 }

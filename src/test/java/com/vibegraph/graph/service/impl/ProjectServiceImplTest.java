@@ -19,6 +19,7 @@ import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.watcher.service.FileWatcherService;
 
 @DisplayName("ProjectServiceImpl")
@@ -34,6 +35,24 @@ class ProjectServiceImplTest {
         // Confine import to the temp dir so these tests stay deterministic (and exercise the
         // confined path); every project they create lives under tempDir.
         ReflectionTestUtils.setField(service, "allowedRoot", tempDir.toString());
+    }
+
+    @Test
+    @DisplayName("createEmptyWorkspaceProject persists recoverable project metadata")
+    void shouldPersistEmptyWorkspaceProjectMetadata() throws IOException {
+        Path workspaceRoot = Files.createDirectory(tempDir.resolve("uploads"));
+        Path source = Files.createDirectories(workspaceRoot.resolve("cli/abcd1234/source"));
+        ArchiveImportProperties props = new ArchiveImportProperties();
+        props.setWorkspaceRoot(workspaceRoot);
+        GraphRepository graphRepository = mock(GraphRepository.class);
+        ReflectionTestUtils.setField(service, "archiveImportProperties", props);
+        ReflectionTestUtils.setField(service, "graphRepository", graphRepository);
+
+        ProjectResponse project = service.createEmptyWorkspaceProject("cli repo", source);
+
+        assertThat(project.getName()).isEqualTo("cli repo");
+        assertThat(project.getRootPath()).isEqualTo(source.toRealPath().toString());
+        verify(graphRepository).upsertProject(project.getId(), "cli repo", source.toRealPath().toString());
     }
 
     @Test

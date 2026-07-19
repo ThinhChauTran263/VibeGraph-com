@@ -125,12 +125,12 @@
         "diagrams": {
           "tag": "Diagrams",
           "title": "Architecture diagrams",
-          "body": "Reverse-engineered UML use-case and class diagrams generated straight from the source: design-vs-code verification, not hand-drawn fiction."
+          "body": "Reverse-engineered UML use-case diagrams generated straight from the source: design-vs-code verification, not hand-drawn fiction."
         },
         "import": {
           "tag": "Import",
-          "title": "Folder, archive or GitHub",
-          "body": "Analyze a local path, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds."
+          "title": "CLI, archive or GitHub",
+          "body": "Create a CLI-synced repository, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds."
         }
       }
     },
@@ -375,6 +375,9 @@
       "localFolder": "Local folder",
       "localShort": "Local",
       "localDescription": "Analyze a folder on this machine and keep its graph current without an archive.",
+      "cliPush": "CLI Push",
+      "cliShort": "CLI",
+      "cliDescription": "Create an empty VibeGraph repository, then push source from your terminal with relative paths only.",
       "archive": "Archive",
       "archiveDescription": "Upload a Java project archive (.zip, .tar, .tar.gz, .tgz) for analysis.",
       "githubDescription": "Import a public GitHub repository using its HTTPS URL.",
@@ -392,6 +395,24 @@
       "githubPlaceholder": "https://github.com/owner/repo",
       "importGithub": "Import GitHub repo",
       "reset": "Reset",
+      "cli": {
+        "title": "Create a CLI-synced repository",
+        "hint": "VibeGraph creates an empty server workspace and a project-bound API key. Run the commands from your project terminal to sync code without exposing local drive paths.",
+        "namePlaceholder": "my-service",
+        "create": "Create repo & key",
+        "creating": "Creating...",
+        "readyTitle": "{name} is ready for CLI push",
+        "secretNotice": "Copy the API key now. It is shown once and identifies this repository for CLI and MCP.",
+        "apiKey": "API key",
+        "copy": "Copy",
+        "copyAll": "Copy all",
+        "copied": "Copied",
+        "copyFailed": "Could not copy. Select the text and copy it manually.",
+        "commands": "Run in your project terminal",
+        "openRepository": "Open repository",
+        "createAnother": "Create another",
+        "error": "Could not create the CLI repository."
+      },
       "localTitle": "Add project from a local folder",
       "localHint": "Analyze a folder that already exists on this machine. The graph updates as you edit files — no zip needed.",
       "folderPath": "Project folder path",

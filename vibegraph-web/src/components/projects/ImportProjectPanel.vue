@@ -2,7 +2,7 @@
 /**
  * ImportProjectPanel - unified import surface.
  *
- * Combines the three import flows (local folder, archive upload, GitHub URL)
+ * Combines the supported import flows (CLI push, archive upload, GitHub URL)
  * into a single card with a segmented control, so the user switches methods in
  * place instead of scanning three separate cards. Each underlying form is
  * rendered `embedded` (no card chrome / header) and the panel owns the title,
@@ -12,10 +12,10 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
-import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
+import AddProjectCli from '@/components/projects/AddProjectCli.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
 
-type Method = 'local' | 'archive' | 'github'
+type Method = 'cli' | 'archive' | 'github'
 
 const { t } = useI18n({ useScope: 'global' })
 const props = withDefaults(
@@ -40,10 +40,10 @@ interface MethodTab {
 
 const tabs = computed<MethodTab[]>(() => [
   {
-    id: 'local',
-    label: t('user.projects.localFolder'),
-    short: t('user.projects.localShort'),
-    description: t('user.projects.localDescription'),
+    id: 'cli',
+    label: t('user.projects.cliPush'),
+    short: t('user.projects.cliShort'),
+    description: t('user.projects.cliDescription'),
     accent: 'var(--vg-blue-bright)',
     accentSoft: 'rgba(96, 165, 250, 0.16)',
   },
@@ -67,14 +67,14 @@ const tabs = computed<MethodTab[]>(() => [
 
 const enabledTabs = computed(() => tabs.value.filter((tab) => !props.disabledMethods[tab.id]))
 const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
-const active = ref<Method>(enabledTabs.value[0]?.id ?? 'local')
+const active = ref<Method>(enabledTabs.value[0]?.id ?? 'cli')
 const activeTab = computed<MethodTab>(() => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!)
 
 watch(
   () => props.disabledMethods,
   () => {
     if (props.disabledMethods[active.value]) {
-      active.value = enabledTabs.value[0]?.id ?? 'local'
+      active.value = enabledTabs.value[0]?.id ?? 'cli'
     }
   },
   { deep: true, immediate: true },
@@ -91,8 +91,8 @@ function selectMethod(method: Method): void {
 // Each method gets a distinct icon so the segmented control reads at a glance.
 function iconPath(id: Method): string {
   switch (id) {
-    case 'local':
-      return 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'
+    case 'cli':
+      return 'M4 5h16v14H4z M8 9l3 3-3 3 M13 15h4'
     case 'archive':
       return 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10'
     case 'github':
@@ -160,7 +160,7 @@ function iconPath(id: Method): string {
 
     <div v-else class="import-panel__body">
       <Transition name="import-fade" mode="out-in">
-        <AddProjectLocal v-if="active === 'local'" key="local" embedded @imported="onImported" />
+        <AddProjectCli v-if="active === 'cli'" key="cli" embedded @imported="onImported" />
         <AddProjectArchive
           v-else-if="active === 'archive'"
           key="archive"

@@ -152,6 +152,12 @@ export interface ProjectStatusEvent {
   timestamp: string
 }
 
+export interface CliRepositorySetup {
+  project: Project
+  apiKey: ApiKeyCreated
+  commands: string[]
+}
+
 /**
  * Shared 401 handler for all fetch-based API calls.
  * Clears stored auth session and redirects to /login (unless already there).
@@ -359,6 +365,12 @@ export const importApi = {
     return api.post<Project>('/api/projects/import-github', { url })
   },
 
+  createCliRepository(name?: string): Promise<CliRepositorySetup> {
+    return api.post<CliRepositorySetup>('/api/projects/cli-setup', {
+      name: name?.trim() || undefined,
+    })
+  },
+
   /**
    * Import an existing directory on the backend host in place (no upload). The backend
    * analyzes it and starts a file watcher so later edits stream realtime graph updates.
@@ -437,14 +449,6 @@ export const graphApi = {
     if (endLine != null) params.set('endLine', String(endLine))
     return api.get<SourceContent>(`/api/projects/${encodeURIComponent(projectId)}/source?${params}`)
   },
-}
-
-export interface DiagramResponse {
-  diagramType: string
-  mermaidSyntax: string
-  plantUmlSyntax?: string | null
-  /** Distinct packages containing classifiers; used to drive the class-diagram package filter. */
-  availablePackages?: string[]
 }
 
 /** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */
@@ -526,18 +530,6 @@ export const diagramApi = {
     const query = new URLSearchParams({ style: 'uml', mode })
     return api.get<UmlUseCaseResponse>(
       `/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase?${query}`,
-    )
-  },
-  classDiagram: (projectId: string, pkg?: string) => {
-    const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
-    return api.get<DiagramResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`,
-    )
-  },
-  sequence: (projectId: string, entry: string) => {
-    const query = new URLSearchParams({ entry })
-    return api.get<DiagramResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`,
     )
   },
 }

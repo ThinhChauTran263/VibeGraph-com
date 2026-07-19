@@ -1,5 +1,4 @@
 /**
- * Diagram module services: UseCaseDiagramService, ClassDiagramService, SequenceDiagramService.
- * Generates Mermaid syntax from graph data.
+ * Diagram module services. Generates UML use-case model output from graph data.
  */
 package com.vibegraph.diagram.service;

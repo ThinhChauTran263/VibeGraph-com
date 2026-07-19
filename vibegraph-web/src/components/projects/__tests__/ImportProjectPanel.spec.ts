@@ -4,7 +4,7 @@ import ImportProjectPanel from '../ImportProjectPanel.vue'
 import i18n from '@/language'
 
 const formStubs = {
-  AddProjectLocal: { template: '<div data-test="local-form" />' },
+  AddProjectCli: { template: '<div data-test="cli-form" />' },
   AddProjectArchive: { template: '<div data-test="archive-form" />' },
   GitHubImportForm: { template: '<div data-test="github-form" />' },
 }
@@ -12,12 +12,12 @@ const formStubs = {
 describe('ImportProjectPanel', () => {
   it('selects the first enabled method instead of rendering a disabled form', async () => {
     const wrapper = mount(ImportProjectPanel, {
-      props: { disabledMethods: { local: 'Local imports are disabled.' } },
+      props: { disabledMethods: { cli: 'CLI push is disabled.' } },
       global: { plugins: [i18n], stubs: formStubs },
     })
 
-    expect(wrapper.get('[data-test="import-tab-local"]').attributes()).toHaveProperty('disabled')
-    expect(wrapper.find('[data-test="local-form"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="import-tab-cli"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.find('[data-test="cli-form"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="archive-form"]').exists()).toBe(true)
   })
 
@@ -25,7 +25,7 @@ describe('ImportProjectPanel', () => {
     const wrapper = mount(ImportProjectPanel, {
       props: {
         disabledMethods: {
-          local: 'Capability unavailable.',
+          cli: 'Capability unavailable.',
           archive: 'Capability unavailable.',
           github: 'Capability unavailable.',
         },
@@ -34,7 +34,7 @@ describe('ImportProjectPanel', () => {
     })
 
     expect(wrapper.get('[role="status"]').text()).toContain('No import method is currently available')
-    expect(wrapper.find('[data-test="local-form"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cli-form"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="archive-form"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="github-form"]').exists()).toBe(false)
   })

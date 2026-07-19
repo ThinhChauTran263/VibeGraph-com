@@ -125,12 +125,12 @@
         "diagrams": {
           "tag": "Diagram",
           "title": "Sơ đồ kiến trúc",
-          "body": "Sinh UML use-case và class diagram từ source thật để kiểm tra thiết kế với code, không phải vẽ tay cảm tính."
+          "body": "Sinh UML use-case từ source thật để kiểm tra thiết kế với code, không phải vẽ tay cảm tính."
         },
         "import": {
           "tag": "Import",
-          "title": "Thư mục, archive hoặc GitHub",
-          "body": "Phân tích local path, upload archive hoặc nhập GitHub URL public. VibeGraph index và cho bạn khám phá trong vài giây."
+          "title": "CLI, archive hoặc GitHub",
+          "body": "Tạo repository đồng bộ bằng CLI, upload archive hoặc nhập GitHub URL public. VibeGraph index và cho bạn khám phá trong vài giây."
         }
       }
     },
@@ -375,6 +375,9 @@
       "localFolder": "Thư mục local",
       "localShort": "Local",
       "localDescription": "Phân tích một thư mục trên máy này và giữ graph luôn cập nhật mà không cần file nén.",
+      "cliPush": "CLI Push",
+      "cliShort": "CLI",
+      "cliDescription": "Tạo kho dự án trống trên VibeGraph, rồi đẩy source từ terminal bằng đường dẫn tương đối.",
       "archive": "File nén",
       "archiveDescription": "Tải lên file nén dự án Java (.zip, .tar, .tar.gz, .tgz) để phân tích.",
       "githubDescription": "Nhập repository GitHub public bằng URL HTTPS.",
@@ -392,6 +395,24 @@
       "githubPlaceholder": "https://github.com/owner/repo",
       "importGithub": "Nhập repo GitHub",
       "reset": "Đặt lại",
+      "cli": {
+        "title": "Tạo kho dự án đồng bộ bằng CLI",
+        "hint": "VibeGraph tạo workspace trống trên server và API key gắn với dự án. Chạy các lệnh này trong terminal của dự án để đồng bộ code mà không lộ đường dẫn ổ đĩa local.",
+        "namePlaceholder": "my-service",
+        "create": "Tạo repo & key",
+        "creating": "Đang tạo...",
+        "readyTitle": "{name} đã sẵn sàng để push bằng CLI",
+        "secretNotice": "Sao chép API key ngay bây giờ. Key chỉ hiển thị một lần và dùng để định danh repo này cho CLI và MCP.",
+        "apiKey": "API key",
+        "copy": "Sao chép",
+        "copyAll": "Sao chép tất cả",
+        "copied": "Đã sao chép",
+        "copyFailed": "Không thể sao chép. Hãy chọn văn bản và sao chép thủ công.",
+        "commands": "Chạy trong terminal của dự án",
+        "openRepository": "Mở repo",
+        "createAnother": "Tạo repo khác",
+        "error": "Không thể tạo repo CLI."
+      },
       "localTitle": "Thêm dự án từ thư mục local",
       "localHint": "Phân tích thư mục đã có trên máy này. Graph sẽ cập nhật khi bạn chỉnh sửa file, không cần file zip.",
       "folderPath": "Đường dẫn thư mục dự án",

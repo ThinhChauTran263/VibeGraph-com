@@ -130,3 +130,42 @@ test("doctor checks health and validates a configured API key without printing i
     await rm(configDir, { recursive: true, force: true });
   }
 });
+
+test("apiRequest formats backend error envelopes without [object Object]", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: "vbg_error12345678wxyz",
+  });
+  try {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "API_KEY_ADMIN_LOCKED",
+            message: "Administrator-locked API key cannot be changed",
+          },
+        }),
+        {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        },
+      );
+
+    await assert.rejects(
+      module.apiRequest("/api/projects/current/patch", {
+        method: "POST",
+        auth: "api-key-only",
+        body: { files: [], deletions: [], dryRun: true },
+      }),
+      /HTTP 403: API_KEY_ADMIN_LOCKED: Administrator-locked API key cannot be changed/,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});

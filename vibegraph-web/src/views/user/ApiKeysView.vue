@@ -65,8 +65,7 @@ async function loadProjects(): Promise<void> {
   }
 }
 async function loadApiKeys(): Promise<void> {
-  if (account.apiKeysLoaded) return
-  await account.fetchApiKeys()
+  await account.fetchApiKeys({ force: true })
 }
 const canSubmit = computed(
   () =>

@@ -5,6 +5,8 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,9 +25,12 @@ import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
+import com.vibegraph.graph.dto.request.CliRepositoryCreateRequest;
+import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectService;
 
 import jakarta.validation.Valid;
@@ -46,6 +51,7 @@ public class ProjectController {
     private final AccountSettingsService accountSettingsService;
     private final FeatureGateService featureGateService;
     private final ProjectUsageService projectUsageService;
+    private final CliRepositoryService cliRepositoryService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -64,6 +70,14 @@ public class ProjectController {
             throw ex;
         }
         return ResponseEntity.ok(ApiResponse.success(project));
+    }
+
+    @PostMapping("/cli-setup")
+    public ResponseEntity<ApiResponse<CliRepositorySetupResponse>> createCliRepository(
+            @Valid @RequestBody(required = false) CliRepositoryCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(CacheControl.noStore())
+                .body(ApiResponse.success(cliRepositoryService.create(request)));
     }
 
     @GetMapping
