@@ -48,6 +48,11 @@ public class ProjectOwnershipRegistrar {
         register(projectId, name, ProjectSourceType.GITHUB);
     }
 
+    @Transactional
+    public void unregister(String projectId) {
+        ownershipRepository.deleteById(projectId);
+    }
+
     /**
      * Record ownership of {@code projectId} for the current user. Ownership is <b>never
      * transferred</b>:

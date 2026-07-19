@@ -67,7 +67,10 @@ function nodeTypePriority(type: NodeType): number {
  * Cap the graph to at most {@link limit} nodes, keeping the most meaningful ones.
  * Returns the original data untouched when it already fits.
  */
-export function capGraphData(data: GraphData, limit: number = GRAPH_SAFE_NODE_LIMIT): GraphCapResult {
+export function capGraphData(
+  data: GraphData,
+  limit: number = GRAPH_SAFE_NODE_LIMIT,
+): GraphCapResult {
   const totalNodes = data.nodes.length
   const totalEdges = data.edges.length
 

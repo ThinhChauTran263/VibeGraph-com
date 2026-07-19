@@ -2,7 +2,7 @@
 /**
  * MainLayout - 3-column layout container.
  * Left: SidePanel (resizable)
- * Center: GraphCanvas + DiagramPanel (tabs)
+ * Center: GraphCanvas + DiagramPanel
  * Right: NodeDetailPanel (collapsible)
  */
 </script>

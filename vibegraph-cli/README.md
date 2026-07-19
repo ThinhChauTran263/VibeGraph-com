@@ -14,9 +14,10 @@ Requires Node.js 20+.
 
 ```bash
 vibegraph config set-url http://localhost:8080
-vibegraph register --email you@example.com --password "YourPass123!" --name "Your Name"
-vibegraph projects import-local --path /projects/demo --name demo
-vibegraph projects push <projectId> --root ./projects/demo
+# Create a project-bound API key in the VibeGraph web app, then copy it once.
+vibegraph auth set-key vbg_...
+vibegraph push --root ./projects/demo
+vibegraph watch --root ./projects/demo
 ```
 
 For the full walkthrough, see **[docs/local-patch.md](../docs/local-patch.md)**.
@@ -24,6 +25,19 @@ For the full walkthrough, see **[docs/local-patch.md](../docs/local-patch.md)**.
 ## Commands
 
 ### Auth
+
+```bash
+vibegraph auth set-key <apiKey>
+vibegraph auth status
+vibegraph auth clear
+```
+
+API keys are created by users in the web app and are bound to one repository/project. The CLI
+stores the key in `~/.vibegraph/config.json`, sends it as `X-API-Key`, and never prints the full
+value. `auth clear` removes the stored key but does not remove a `VIBEGRAPH_API_KEY` environment
+override.
+
+Legacy login commands remain available for compatibility and local development:
 
 ```bash
 vibegraph register --email <e> --password <p> --name <displayName>
@@ -42,6 +56,7 @@ vibegraph config set-url <url>
 ### Projects
 
 ```bash
+vibegraph push --root <hostPath> [--dry-run]
 vibegraph projects list
 vibegraph projects import-local --path <containerPath> --name <name>
 vibegraph projects push <projectId> --root <hostPath> [--dry-run]
@@ -53,10 +68,16 @@ vibegraph projects delete <projectId>
 ### Watch
 
 ```bash
+vibegraph watch --root <hostPath>
 vibegraph watch <projectId> --root <hostPath>
 ```
 
-Continuously monitors for file changes and auto-pushes patches. Debounces at 800ms. Press Ctrl+C to stop.
+The root-only forms resolve the project from the configured API key. The project-ID forms are
+retained for compatibility. Push and watch prefer `X-API-Key`; they use the legacy Bearer token
+only when a project ID is explicitly supplied and no API key is configured.
+
+Watch continuously monitors for file changes and auto-pushes patches. Debounces at 800ms. Press
+Ctrl+C to stop.
 
 ### Ignore
 
@@ -99,5 +120,6 @@ These rules apply at any directory depth. Customize with `.vibegraphignore`.
 |----------|---------|---------|
 | `VIBEGRAPH_CONFIG_DIR` | `~/.vibegraph` | Config/snapshot directory |
 | `VIBEGRAPH_API_URL` | (from config) | Override API URL |
+| `VIBEGRAPH_API_KEY` | (from config) | Override the project-bound API key |
 | `VIBEGRAPH_MAX_FILE_SIZE` | `1048576` (1MB) | Max file size in bytes |
 | `VIBEGRAPH_MAX_FILES` | `200` | Max files per push |

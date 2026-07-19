@@ -2,17 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import DiagramPanel from '../DiagramPanel.vue'
-import { ApiError, type DiagramResponse, type UmlUseCaseResponse } from '@/lib/api'
+import { ApiError, type UmlUseCaseResponse } from '@/lib/api'
 import { clearDiagramCache } from '@/composables/useDiagrams'
-
-vi.mock('mermaid', () => ({
-  default: {
-    initialize: vi.fn<(config?: unknown) => void>(),
-    render: vi.fn<(id: string, source: string) => Promise<{ svg: string }>>(async (id, source) => ({
-      svg: `<svg role="img" data-id="${id}"><text>${source}</text></svg>`,
-    })),
-  },
-}))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -21,14 +12,12 @@ vi.mock('@/lib/api', async () => {
     diagramApi: {
       ...actual.diagramApi,
       umlUseCase: vi.fn<(projectId: string, mode?: string) => Promise<UmlUseCaseResponse>>(),
-      classDiagram: vi.fn<(projectId: string, pkg?: string) => Promise<DiagramResponse>>(),
     },
   }
 })
 
 const { diagramApi } = await import('@/lib/api')
 const umlUseCaseMock = diagramApi.umlUseCase as ReturnType<typeof vi.fn>
-const classDiagramMock = diagramApi.classDiagram as ReturnType<typeof vi.fn>
 
 function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUseCaseResponse {
   return {
@@ -49,17 +38,19 @@ function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUse
       },
     ],
     relations: [
-      { from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 },
+      {
+        from: 'A_Admin',
+        to: 'UC_ManageProduct',
+        type: 'association',
+        label: null,
+        confidence: 0.8,
+      },
     ],
     warnings: ['Role for POST /api/products inferred from HTTP method.'],
     mermaidSyntax: 'flowchart TB\n  subgraph Orders\n    uc([Manage products])\n  end',
     plantUmlSyntax: '@startuml\nleft to right direction\nrectangle "Orders Service" {\n}\n@enduml',
     ...overrides,
   }
-}
-
-function classResponse(mermaidSyntax = 'classDiagram\n  class OrderService'): DiagramResponse {
-  return { diagramType: 'class', mermaidSyntax }
 }
 
 function deferred<T>() {
@@ -80,7 +71,6 @@ async function flushAsync(): Promise<void> {
 beforeEach(() => {
   clearDiagramCache()
   umlUseCaseMock.mockReset()
-  classDiagramMock.mockReset()
 })
 
 afterEach(() => {
@@ -88,17 +78,15 @@ afterEach(() => {
 })
 
 describe('DiagramPanel', () => {
-  it('loads and renders the UML use case diagram by default (no API Map tab)', async () => {
+  it('loads and renders the UML use case diagram without extra diagram tabs', async () => {
     umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
 
     const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
     await flushAsync()
 
     expect(umlUseCaseMock).toHaveBeenCalledWith('p1', 'detailed')
-    // API Map has been removed; only UML and Class tabs remain.
-    expect(wrapper.find('[data-test="diagram-tab-api-map"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="diagram-tab-uml"]').text()).toBe('As-Built Use Case')
-    expect(wrapper.get('[data-test="diagram-tab-class"]').text()).toBe('Class')
+    expect(wrapper.find('[data-test="diagram-tab-uml"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="diagram-tab-class"]').exists()).toBe(false)
     expect(wrapper.html()).toContain('<svg')
     expect(wrapper.html()).toContain('Manage products')
   })
@@ -109,7 +97,9 @@ describe('DiagramPanel', () => {
     const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
     await flushAsync()
 
-    expect(wrapper.get('[data-test="diagram-warnings"]').text()).toContain('inferred from HTTP method')
+    expect(wrapper.get('[data-test="diagram-warnings"]').text()).toContain(
+      'inferred from HTTP method',
+    )
     expect(wrapper.find('[data-test="diagram-plantuml-source"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="diagram-copy-plantuml"]').exists()).toBe(false)
     expect(wrapper.html()).toContain('Manage products')
@@ -148,7 +138,13 @@ describe('DiagramPanel', () => {
               },
             ],
             relations: [
-              { from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 },
+              {
+                from: 'A_Admin',
+                to: 'UC_ManageProduct',
+                type: 'association',
+                label: null,
+                confidence: 0.8,
+              },
             ],
             mermaidSyntax: '',
             plantUmlSyntax: '',
@@ -169,7 +165,13 @@ describe('DiagramPanel', () => {
               },
             ],
             relations: [
-              { from: 'A_User', to: 'UC_TrackShipments', type: 'association', label: null, confidence: 0.8 },
+              {
+                from: 'A_User',
+                to: 'UC_TrackShipments',
+                type: 'association',
+                label: null,
+                confidence: 0.8,
+              },
             ],
             mermaidSyntax: '',
             plantUmlSyntax: '',
@@ -224,7 +226,9 @@ describe('DiagramPanel', () => {
     expect(document.body.querySelector('[data-test="diagram-fullscreen"]')).not.toBeNull()
     expect(document.body.textContent).toContain('Diagram viewer')
 
-    const close = document.body.querySelector('[data-test="diagram-fullscreen-close"]') as HTMLButtonElement
+    const close = document.body.querySelector(
+      '[data-test="diagram-fullscreen-close"]',
+    ) as HTMLButtonElement
     close.click()
     await flushAsync()
     expect(document.body.querySelector('[data-test="diagram-fullscreen"]')).toBeNull()
@@ -232,45 +236,11 @@ describe('DiagramPanel', () => {
     wrapper.unmount()
   })
 
-  it('switches to class diagram and renders the class response', async () => {
-    umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
-    classDiagramMock.mockResolvedValueOnce(classResponse())
-
-    const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
-    await flushAsync()
-    await wrapper.get('[data-test="diagram-tab-class"]').trigger('click')
-    await flushAsync()
-
-    expect(classDiagramMock).toHaveBeenCalledWith('p1', undefined)
-    expect(wrapper.text()).toContain('Class')
-    expect(wrapper.html()).toContain('OrderService')
-  })
-
-  it('passes the package filter to the class endpoint', async () => {
-    umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
-    classDiagramMock.mockResolvedValueOnce(classResponse())
-    classDiagramMock.mockResolvedValueOnce(classResponse('classDiagram\n  class InvoiceService'))
-
-    const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
-    await flushAsync()
-    await wrapper.get('[data-test="diagram-tab-class"]').trigger('click')
-    await flushAsync()
-    await wrapper.get('#diagram-package-filter').setValue('com.example.billing')
-    await wrapper.get('[data-test="diagram-refresh"]').trigger('click')
-    await flushAsync()
-
-    expect(classDiagramMock).toHaveBeenLastCalledWith('p1', 'com.example.billing')
-    expect(wrapper.html()).toContain('InvoiceService')
-  })
-
   it('re-renders on refresh even when the source is unchanged (no blank screen)', async () => {
-    // Class tab uses the Mermaid render path; refreshing identical content must not blank out.
     umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
-    classDiagramMock.mockResolvedValue(classResponse())
+    umlUseCaseMock.mockResolvedValueOnce(umlUseCaseResponse())
 
     const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
-    await flushAsync()
-    await wrapper.get('[data-test="diagram-tab-class"]').trigger('click')
     await flushAsync()
     expect(wrapper.get('[data-test="diagram-stage"]').html()).toContain('<svg')
 
@@ -280,7 +250,7 @@ describe('DiagramPanel', () => {
     const stage = wrapper.find('[data-test="diagram-stage"]')
     expect(stage.exists()).toBe(true)
     expect(stage.html()).toContain('<svg')
-    expect(stage.html()).toContain('OrderService')
+    expect(stage.html()).toContain('Manage products')
   })
 
   it('shows a friendly PROJECT_NOT_ANALYZED error', async () => {

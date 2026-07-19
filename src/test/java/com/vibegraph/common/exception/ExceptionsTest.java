@@ -137,6 +137,21 @@ class ExceptionsTest {
     }
 
     @Test
+    @DisplayName("GlobalExceptionHandler maps deactivated accounts to a distinct safe code")
+    void globalHandlerMapsAccountDeactivatedToForbidden() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleAccountBlocked(
+                new AccountDeactivatedException("private admin reason", "Account closed by administrator"));
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("ACCOUNT_DEACTIVATED", response.getBody().getError().getCode());
+        assertEquals("Account closed by administrator", response.getBody().getError().getMessage());
+        assertFalse(response.getBody().getError().getMessage().contains("private admin reason"));
+    }
+
+    @Test
     @DisplayName("GlobalExceptionHandler maps quota and API key contract errors")
     void globalHandlerMapsPhase4ContractErrors() {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
@@ -148,9 +163,17 @@ class ExceptionsTest {
         assertError(handler.handleApiKeyPlanLimitReached(
                         new ApiKeyPlanLimitReachedException("API key plan limit reached")),
                 HttpStatus.CONFLICT, "API_KEY_PLAN_LIMIT_REACHED", "API key plan limit reached");
-        assertError(handler.handleQuotaBelowCurrentUsage(
-                        new QuotaBelowCurrentUsageException("Quota cannot be below current usage")),
-                HttpStatus.BAD_REQUEST, "QUOTA_BELOW_CURRENT_USAGE", "Quota cannot be below current usage");
+        assertError(handler.handleFeatureDisabled(new FeatureDisabledException("cli.push")),
+                HttpStatus.FORBIDDEN, "FEATURE_DISABLED", "Feature is currently disabled");
+        assertFalse(handler.handleFeatureDisabled(new FeatureDisabledException("cli.push"))
+                .getBody().getError().getMessage().contains("cli.push"));
+        ResponseEntity<ApiResponse<Void>> belowUsage = handler.handleQuotaBelowCurrentUsage(
+                new QuotaBelowCurrentUsageException(2_000L, 1_000L));
+        assertError(belowUsage, HttpStatus.BAD_REQUEST, "QUOTA_BELOW_CURRENT_USAGE",
+                "Requested quota is lower than current storage usage");
+        assertNotNull(belowUsage.getBody());
+        assertEquals("currentUsageMb=1; requestedQuotaMb=0",
+                belowUsage.getBody().getError().getDetails());
     }
 
     private void assertError(ResponseEntity<ApiResponse<Void>> response, HttpStatus status,

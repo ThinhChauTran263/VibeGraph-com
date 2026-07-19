@@ -39,6 +39,8 @@ public class AuthService {
     private final JwtService jwtService;
     private final CurrentUser currentUser;
     private final AccountSettingsService accountSettingsService;
+    private final FeatureGateService featureGateService;
+    private final AuditService auditService;
 
     /**
      * Create a local account and return a fresh token + safe user projection.
@@ -47,6 +49,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        featureGateService.assertEnabled(FeatureGateService.REGISTRATION);
         String email = request.email().trim();
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new EmailAlreadyExistsException("Email already registered");
@@ -77,10 +80,15 @@ public class AuthService {
                 : DUMMY_PASSWORD_HASH;
         boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHash);
         if (!passwordMatches || user == null || user.getPasswordHash() == null) {
+            auditService.record(
+                    "FAILED_LOGIN", null, null, "USER", request.email().trim(), "FAILURE",
+                    java.util.Map.of("reason", "INVALID_CREDENTIALS"));
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        accountSettingsService.assertNotBlocked(user.getId());
-        return toAuthResponse(user);
+        AuthResponse response = toAuthResponse(user);
+        auditService.record("LOGIN", user.getId(), user.getId(), "USER", user.getId().toString(), "SUCCESS",
+                java.util.Map.of("email", user.getEmail()));
+        return response;
     }
 
     /**
@@ -93,10 +101,14 @@ public class AuthService {
         UUID id = currentUser.id();
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new UnauthorizedException("Authenticated user not found"));
-        return UserResponse.from(user);
+        return toUserResponse(user);
     }
 
     private AuthResponse toAuthResponse(User user) {
-        return new AuthResponse(jwtService.issue(user), UserResponse.from(user));
+        return new AuthResponse(jwtService.issue(user), toUserResponse(user));
+    }
+
+    private UserResponse toUserResponse(User user) {
+        return UserResponse.from(user, accountSettingsService.findSettings(user.getId()));
     }
 }

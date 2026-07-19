@@ -28,6 +28,7 @@ import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -108,6 +109,37 @@ class Neo4jGraphRepositoryIT {
         assertThat(persisted.getType()).isEqualTo("Class");
         assertThat(persisted.getName()).isEqualTo("UserService");
         assertThat(persisted.getProperties()).containsEntry("springLayer", "SERVICE");
+    }
+
+    @Test
+    @DisplayName("findProject returns aggregate repository stats for restart recovery")
+    void shouldReturnProjectMetadataWithStats() {
+        NodeData clazz = NodeData.of(
+                "Class", "UserService", "com.example.UserService",
+                "src/UserService.java", 1, 50,
+                Map.of("visibility", "public"));
+        NodeData method = NodeData.of(
+                "Method", "save", "com.example.UserService.save(User)",
+                "src/UserService.java", 10, 12,
+                Map.of("visibility", "public"));
+
+        repository.upsertProject(projectId, "Demo Repo", "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(clazz, method));
+        repository.upsertEdges(projectId, List.of(EdgeData.of(
+                "HAS_METHOD",
+                "com.example.UserService",
+                "com.example.UserService.save(User)")));
+
+        ProjectMetadata metadata = repository.findProject(projectId);
+
+        assertThat(metadata.id()).isEqualTo(projectId);
+        assertThat(metadata.name()).isEqualTo("Demo Repo");
+        assertThat(metadata.path()).isEqualTo("/tmp/demo");
+        assertThat(metadata.createdAt()).isNotNull();
+        assertThat(metadata.lastAnalyzedAt()).isNotNull();
+        assertThat(metadata.totalFiles()).isEqualTo(1);
+        assertThat(metadata.totalNodes()).isEqualTo(2);
+        assertThat(metadata.totalEdges()).isEqualTo(1);
     }
 
     @Test

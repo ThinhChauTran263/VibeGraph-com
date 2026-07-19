@@ -6,14 +6,26 @@ import type { GraphData } from '@/types/graph'
 import { EXPAND_MAX_NEIGHBORS } from '@/lib/neighborsAdapter'
 
 const getNeighbors = vi.fn<(p: string, n: string, h: number) => Promise<NodeDetailResponse>>()
-vi.mock('@/lib/api', () => ({ graphApi: { getNeighbors: (...a: [string, string, number]) => getNeighbors(...a) } }))
+vi.mock('@/lib/api', () => ({
+  graphApi: { getNeighbors: (...a: [string, string, number]) => getNeighbors(...a) },
+}))
 
 const { useGraphExpand } = await import('@/composables/useGraphExpand')
 const { useGraphStore } = await import('@/stores/graph')
 
 function seedGraph(): GraphData {
   return {
-    nodes: [{ id: 'Center', type: 'Class', name: 'Center', fullName: 'Center', filePath: 'C.java', lineNumber: 1, properties: {} }],
+    nodes: [
+      {
+        id: 'Center',
+        type: 'Class',
+        name: 'Center',
+        fullName: 'Center',
+        filePath: 'C.java',
+        lineNumber: 1,
+        properties: {},
+      },
+    ],
     edges: [],
     nodeStats: { Class: 1 } as GraphData['nodeStats'],
     edgeStats: {} as GraphData['edgeStats'],
@@ -22,12 +34,41 @@ function seedGraph(): GraphData {
 
 function detail(): NodeDetailResponse {
   return {
-    node: { id: 'Center', type: 'Class', name: 'Center', fullName: 'Center', filePath: 'C.java', lineNumber: 1 },
+    node: {
+      id: 'Center',
+      type: 'Class',
+      name: 'Center',
+      fullName: 'Center',
+      filePath: 'C.java',
+      lineNumber: 1,
+    },
     incoming: [
-      { otherNode: { id: 'Caller', type: 'Class', name: 'Caller', fullName: 'Caller', filePath: 'X.java', lineNumber: 2 }, relationshipType: 'CALLS', direction: 'INCOMING' },
+      {
+        otherNode: {
+          id: 'Caller',
+          type: 'Class',
+          name: 'Caller',
+          fullName: 'Caller',
+          filePath: 'X.java',
+          lineNumber: 2,
+        },
+        relationshipType: 'CALLS',
+        direction: 'INCOMING',
+      },
     ],
     outgoing: [
-      { otherNode: { id: 'Dep', type: 'Interface', name: 'Dep', fullName: 'Dep', filePath: 'D.java', lineNumber: 4 }, relationshipType: 'INJECTS', direction: 'OUTGOING' },
+      {
+        otherNode: {
+          id: 'Dep',
+          type: 'Interface',
+          name: 'Dep',
+          fullName: 'Dep',
+          filePath: 'D.java',
+          lineNumber: 4,
+        },
+        relationshipType: 'INJECTS',
+        direction: 'OUTGOING',
+      },
     ],
   }
 }
@@ -48,7 +89,10 @@ describe('useGraphExpand', () => {
 
     expect(added).toBe(2)
     expect(store.graphData.nodes.map((n) => n.id).sort()).toEqual(['Caller', 'Center', 'Dep'])
-    expect(store.graphData.edges.map((e) => e.id).sort()).toEqual(['Caller|CALLS|Center', 'Center|INJECTS|Dep'])
+    expect(store.graphData.edges.map((e) => e.id).sort()).toEqual([
+      'Caller|CALLS|Center',
+      'Center|INJECTS|Dep',
+    ])
   })
 
   it('ignores a response that resolves after the project was reset (stale guard)', async () => {
@@ -92,10 +136,24 @@ describe('useGraphExpand', () => {
     const store = useGraphStore()
     store.graphData = seedGraph()
     getNeighbors.mockResolvedValue({
-      node: { id: 'Center', type: 'Class', name: 'Center', fullName: 'Center', filePath: 'C.java', lineNumber: 1 },
+      node: {
+        id: 'Center',
+        type: 'Class',
+        name: 'Center',
+        fullName: 'Center',
+        filePath: 'C.java',
+        lineNumber: 1,
+      },
       incoming: [],
       outgoing: Array.from({ length: EXPAND_MAX_NEIGHBORS + 10 }, (_, i) => ({
-        otherNode: { id: `n${String(i).padStart(4, '0')}`, type: 'Class', name: `n${i}`, fullName: `n${i}`, filePath: 'x.java', lineNumber: 1 },
+        otherNode: {
+          id: `n${String(i).padStart(4, '0')}`,
+          type: 'Class',
+          name: `n${i}`,
+          fullName: `n${i}`,
+          filePath: 'x.java',
+          lineNumber: 1,
+        },
         relationshipType: 'CALLS',
         direction: 'OUTGOING',
       })),

@@ -37,7 +37,12 @@ const items = computed(() =>
   <section class="legend" aria-label="Node type legend">
     <h3 v-if="(title ?? 'Legend') !== ''" class="legend__title">{{ title ?? 'Legend' }}</h3>
     <ul v-if="items.length > 0" class="legend__grid">
-      <li v-for="item in items" :key="item.type" class="legend__item" :class="{ 'legend__item--highlighted': item.highlighted }">
+      <li
+        v-for="item in items"
+        :key="item.type"
+        class="legend__item"
+        :class="{ 'legend__item--highlighted': item.highlighted }"
+      >
         <span
           class="legend__swatch"
           :class="{ 'legend__swatch--highlighted': item.highlighted }"
@@ -89,7 +94,9 @@ const items = computed(() =>
   height: 0.75rem;
   border-radius: 999px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 150ms ease, transform 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 /* Swatch of a node type present in the current graph highlight: a yellow ring +

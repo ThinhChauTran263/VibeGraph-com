@@ -13,7 +13,7 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 - Force-directed graph visualization (Sigma.js) with filtering, search, and click-driven node detail/highlight
 - Project import qua 3 luồng: **local folder** (`POST /api/projects/import-local`), **archive** `.zip`/`.tar`/`.tar.gz` (`POST /api/projects/import-archive`), và **GitHub public repo** (`POST /api/projects/import-github`), có thanh tiến độ realtime
 - Local-folder import với realtime thật: sửa file `.java` trong IDE và graph cập nhật tại chỗ (add/modify/delete) qua server-side File Watcher + WebSocket/STOMP. (GitHub/archive import theo dõi bản copy server-side = snapshot.)
-- UML diagrams: **Use Case** (SVG UML 2.5 chuẩn) & **Class** (Mermaid), API Map
+- UML diagram: **Use Case** (SVG UML 2.5 standard)
 - **Impact Analysis** với 3 profile (`dependency` / `structural` / `type-data-flow`) qua `GET /api/projects/{id}/graph/impact`
 - **Source viewer**: đọc source file redacted, project-relative path qua `SourceController` + FE `CodeViewerModal` (+ MCP source tools)
 - **AI-refined Use Case** qua Gemini failover client (`com.vibegraph.ai/*` + `LlmUseCaseRefiner`)
@@ -26,7 +26,7 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 - `ImpactController` chuyên biệt là scaffold rỗng — thực tế impact endpoint đang dùng `GraphController /graph/impact`
 
 **Hoãn sau MVP (post-MVP):**
-- Sequence diagram
+- Additional diagram types remain out of scope until explicitly reintroduced
 - Steering-file generation for AI tools
 - Multi-language parsing, authentication/billing (xem `VibeGraph-specs-2month/security-multiuser-roadmap.md`)
 
@@ -35,7 +35,7 @@ Realtime Java code analyzer with knowledge graph visualization and AI integratio
 - Backend: Spring Boot 4.0.6 / Java 21
 - Parser: JavaParser 3.28.0 (+ Symbol Solver)
 - Database: Neo4j 5.x (raw Java Driver — no Spring Data Neo4j OGM)
-- Frontend: Vue 3.5 + Vite 8 + TypeScript 6 + Sigma.js 3 + Mermaid 11
+- Frontend: Vue 3.5 + Vite 8 + TypeScript 6 + Sigma.js 3
 - MCP: Spring AI MCP Server (`spring-ai-starter-mcp-server`)
 - Build: Maven
 - Container: Docker Compose

@@ -27,4 +27,6 @@ public interface ProjectOwnershipRepository extends JpaRepository<ProjectOwnersh
     List<String> findProjectIdsByOwnerId(@Param("ownerId") UUID ownerId);
 
     Page<ProjectOwnership> findByOwnerId(UUID ownerId, Pageable pageable);
+
+    Optional<ProjectOwnership> findByProjectIdAndOwnerId(String projectId, UUID ownerId);
 }

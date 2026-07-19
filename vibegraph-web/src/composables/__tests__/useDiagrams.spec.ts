@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type DiagramResponse, type UmlUseCaseResponse } from '@/lib/api'
+import { ApiError, type UmlUseCaseResponse } from '@/lib/api'
 import { clearDiagramCache, useDiagrams } from '../useDiagrams'
 
 vi.mock('@/lib/api', async () => {
@@ -9,14 +9,12 @@ vi.mock('@/lib/api', async () => {
     diagramApi: {
       ...actual.diagramApi,
       umlUseCase: vi.fn<(projectId: string, mode?: string) => Promise<UmlUseCaseResponse>>(),
-      classDiagram: vi.fn<(projectId: string, pkg?: string) => Promise<DiagramResponse>>(),
     },
   }
 })
 
 const { diagramApi } = await import('@/lib/api')
 const umlUseCaseMock = diagramApi.umlUseCase as ReturnType<typeof vi.fn>
-const classDiagramMock = diagramApi.classDiagram as ReturnType<typeof vi.fn>
 
 function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUseCaseResponse {
   return {
@@ -36,18 +34,18 @@ function umlUseCaseResponse(overrides: Partial<UmlUseCaseResponse> = {}): UmlUse
         confidence: 0.8,
       },
     ],
-    relations: [{ from: 'A_Admin', to: 'UC_ManageProduct', type: 'association', label: null, confidence: 0.8 }],
+    relations: [
+      {
+        from: 'A_Admin',
+        to: 'UC_ManageProduct',
+        type: 'association',
+        label: null,
+        confidence: 0.8,
+      },
+    ],
     warnings: ['Role for POST /api/products inferred from HTTP method.'],
     mermaidSyntax: 'flowchart LR\n  subgraph Orders\n    uc([Manage products])\n  end',
     plantUmlSyntax: '@startuml\nleft to right direction\n@enduml',
-    ...overrides,
-  }
-}
-
-function classResponse(overrides: Partial<DiagramResponse> = {}): DiagramResponse {
-  return {
-    diagramType: 'class',
-    mermaidSyntax: 'classDiagram\n  class OrderService',
     ...overrides,
   }
 }
@@ -63,7 +61,6 @@ function deferred<T>() {
 beforeEach(() => {
   clearDiagramCache()
   umlUseCaseMock.mockReset()
-  classDiagramMock.mockReset()
 })
 
 afterEach(() => {
@@ -95,16 +92,6 @@ describe('useDiagrams', () => {
     expect(umlUseCaseMock).toHaveBeenCalledWith('p1', 'detailed')
   })
 
-  it('loads a class diagram and forwards the trimmed package filter', async () => {
-    classDiagramMock.mockResolvedValueOnce(classResponse())
-    const composable = useDiagrams()
-
-    await composable.loadClassDiagram('p1', ' com.example.service ')
-
-    expect(classDiagramMock).toHaveBeenCalledWith('p1', 'com.example.service')
-    expect(composable.diagram.value?.mermaidSyntax).toContain('classDiagram')
-  })
-
   it('maps PROJECT_NOT_ANALYZED to a friendly error', async () => {
     umlUseCaseMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'PROJECT_NOT_ANALYZED'))
     const composable = useDiagrams()
@@ -119,12 +106,12 @@ describe('useDiagrams', () => {
   it('rejects a blank projectId without calling the API', async () => {
     const composable = useDiagrams()
 
-    const result = await composable.loadClassDiagram('   ')
+    const result = await composable.loadUmlUseCaseDiagram('   ')
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
     expect(composable.errorMessage.value).toContain('project')
-    expect(classDiagramMock).not.toHaveBeenCalled()
+    expect(umlUseCaseMock).not.toHaveBeenCalled()
   })
 
   it('ignores stale responses after reset', async () => {

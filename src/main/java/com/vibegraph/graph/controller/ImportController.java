@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.vibegraph.common.dto.response.ApiResponse;
-import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
@@ -32,14 +31,11 @@ public class ImportController {
 
     private final TarballImportService tarballImportService;
     private final ArchiveImportService archiveImportService;
-    private final ProjectOwnershipRegistrar ownershipRegistrar;
 
     public ImportController(TarballImportService tarballImportService,
-                            ArchiveImportService archiveImportService,
-                            ProjectOwnershipRegistrar ownershipRegistrar) {
+                            ArchiveImportService archiveImportService) {
         this.tarballImportService = tarballImportService;
         this.archiveImportService = archiveImportService;
-        this.ownershipRegistrar = ownershipRegistrar;
     }
 
     /**
@@ -64,11 +60,9 @@ public class ImportController {
             // only analysis is backgrounded. Record ownership before the 202 so the accepted
             // project always has an owner row.
             ProjectResponse accepted = archiveImportService.importArchiveAsync(name, file);
-            ownershipRegistrar.registerArchive(accepted.getId(), accepted.getName());
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(accepted));
         }
         ProjectResponse response = archiveImportService.importArchive(name, file);
-        ownershipRegistrar.registerArchive(response.getId(), response.getName());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -77,7 +71,6 @@ public class ImportController {
             @Valid @RequestBody GithubImportRequest request) {
         ProjectResponse response = tarballImportService.importFromGithub(request);
         // Record ownership synchronously before the 202 so no imported project lacks an owner row.
-        ownershipRegistrar.registerGithub(response.getId(), response.getName());
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success(response));

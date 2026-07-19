@@ -1,8 +1,8 @@
 /**
  * Auth store — manages JWT token, user profile, and auth lifecycle.
  *
- * Persistence: token + user JSON are stored in localStorage so a page refresh
- * (F5) keeps the session alive until token expiration.
+ * Persistence: the JWT lives in an HttpOnly cookie. localStorage only keeps
+ * non-sensitive user JSON so refreshes can route before /api/auth/me revalidates.
  *
  * The store exposes reactive state for the router guard, HeaderBar, and any
  * component that needs the current user context.
@@ -18,11 +18,11 @@ const USER_KEY = 'vg_user'
 
 export const useAuthStore = defineStore('auth', () => {
   // ─── State ───────────────────────────────────────────────────────────────────
-  const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
+  const token = ref<string | null>(null)
   const user = ref<User | null>(loadUser())
 
   // ─── Getters ─────────────────────────────────────────────────────────────────
-  const isAuthenticated = computed(() => !!token.value)
+  const isAuthenticated = computed(() => !!user.value)
   const userEmail = computed(() => user.value?.email ?? '')
   const userDisplayName = computed(() => user.value?.displayName ?? '')
 
@@ -41,7 +41,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** Clear local session and redirect handled by the caller (router guard or interceptor). */
-  function logout(): void {
+  async function logout(): Promise<void> {
+    await authApi.logout().catch(() => undefined)
     clearSession()
   }
 
@@ -64,9 +65,9 @@ export const useAuthStore = defineStore('auth', () => {
   // ─── Internal helpers ────────────────────────────────────────────────────────
 
   function setSession(response: AuthResponse): void {
-    token.value = response.token
+    token.value = null
     user.value = response.user
-    localStorage.setItem(TOKEN_KEY, response.token)
+    localStorage.removeItem(TOKEN_KEY)
     localStorage.setItem(USER_KEY, JSON.stringify(response.user))
   }
 

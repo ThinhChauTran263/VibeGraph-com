@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -138,6 +138,72 @@ test("no files to push emits a no-op, does not call backend when nothing changed
   } finally {
     if (prevConfig === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
     else process.env.VIBEGRAPH_CONFIG_DIR = prevConfig;
+    await rm(snapDir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project-bound push without projectId uses the current-project endpoint and API-key auth", async () => {
+  const root = await makeProjectRoot();
+  const snapDir = await mkdtemp(path.join(tmpdir(), "vg-push-cfg-"));
+  const prevConfig = process.env.VIBEGRAPH_CONFIG_DIR;
+  try {
+    process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
+    await writeFile(path.join(root, "Current.java"), "class Current {}\n");
+    const stub = makeStubApi();
+
+    await executePush(null, {
+      root,
+      dryRun: false,
+      snapshotId: "api-key-1234",
+    }, stub.apiRequest);
+
+    assert.equal(stub.calls[0].url, "/api/projects/current/patch");
+    assert.equal(stub.calls[0].options.auth, "api-key-first");
+  } finally {
+    if (prevConfig === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = prevConfig;
+    await rm(snapDir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("truncated scans fail closed and never send deletion payloads", async () => {
+  const root = await makeProjectRoot();
+  const snapDir = await mkdtemp(path.join(tmpdir(), "vg-push-cfg-"));
+  const prevConfig = process.env.VIBEGRAPH_CONFIG_DIR;
+  const prevMaxFiles = process.env.VIBEGRAPH_MAX_FILES;
+  try {
+    process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
+    delete process.env.VIBEGRAPH_MAX_FILES;
+    await writeFile(path.join(root, "a.java"), "class A {}\n");
+    await writeFile(path.join(root, "b.java"), "class B {}\n");
+    await writeFile(path.join(root, "c.java"), "class C {}\n");
+    const stub = makeStubApi();
+
+    await executePush("proj-truncated", { root, dryRun: false }, stub.apiRequest);
+    assert.equal(stub.calls.length, 1);
+
+    process.env.VIBEGRAPH_MAX_FILES = "1";
+    await assert.rejects(
+      executePush("proj-truncated", { root, dryRun: false }, stub.apiRequest),
+      /partial scan could delete files incorrectly/,
+    );
+
+    assert.equal(stub.calls.length, 1, "truncated push must not call backend again");
+    const snapshot = JSON.parse(
+      await readFile(path.join(snapDir, "projects", "proj-truncated.json"), "utf8"),
+    );
+    assert.deepEqual(Object.keys(snapshot.files).sort(), [
+      "a.java",
+      "b.java",
+      "c.java",
+    ]);
+  } finally {
+    if (prevConfig === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = prevConfig;
+    if (prevMaxFiles === undefined) delete process.env.VIBEGRAPH_MAX_FILES;
+    else process.env.VIBEGRAPH_MAX_FILES = prevMaxFiles;
     await rm(snapDir, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }

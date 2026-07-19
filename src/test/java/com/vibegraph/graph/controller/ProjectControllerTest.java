@@ -1,12 +1,14 @@
 package com.vibegraph.graph.controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -20,8 +22,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.hamcrest.Matchers.containsString;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.PartialDeletionException;
@@ -31,8 +38,12 @@ import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
+import com.vibegraph.auth.dto.ApiKeyCreateResponse;
+import com.vibegraph.auth.dto.ProjectBindingResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -52,6 +63,11 @@ class ProjectControllerTest {
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
     private ProjectDeletionOrchestrator deletionOrchestrator;
+    private CurrentUser currentUser;
+    private AccountSettingsService accountSettingsService;
+    private com.vibegraph.auth.service.FeatureGateService featureGateService;
+    private com.vibegraph.auth.service.ProjectUsageService projectUsageService;
+    private CliRepositoryService cliRepositoryService;
 
     @BeforeEach
     void setUp() {
@@ -61,12 +77,46 @@ class ProjectControllerTest {
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
+        projectUsageService = Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class);
+        cliRepositoryService = Mockito.mock(CliRepositoryService.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator);
+                deletionOrchestrator, currentUser, accountSettingsService, featureGateService, projectUsageService,
+                cliRepositoryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/cli-setup returns one-time key and no-store cache policy")
+    void shouldCreateCliRepositorySetup() throws Exception {
+        ProjectResponse project = ProjectResponse.builder()
+                .id("cli123").name("CLI Repo").rootPath("/tmp/cli/source").status("CREATED").build();
+        ApiKeyCreateResponse apiKey = new ApiKeyCreateResponse(
+                UUID.randomUUID(),
+                "vbg_abcd1234",
+                "CLI Repo CLI",
+                "vbg_fullsecret",
+                new ProjectBindingResponse("cli123", "CLI Repo", "LOCAL", "ANALYZING"),
+                java.time.Instant.now(),
+                null);
+        when(cliRepositoryService.create(any())).thenReturn(new CliRepositorySetupResponse(
+                project,
+                apiKey,
+                List.of("vibegraph login vbg_fullsecret", "vibegraph push", "vibegraph watch")));
+
+        mockMvc.perform(post("/api/projects/cli-setup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"CLI Repo\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.project.id").value("cli123"))
+                .andExpect(jsonPath("$.data.apiKey.secretKey").value("vbg_fullsecret"))
+                .andExpect(jsonPath("$.data.commands[1]").value("vibegraph push"))
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
     }
 
     @Test
@@ -85,6 +135,25 @@ class ProjectControllerTest {
 
         // Ownership is recorded for the created project.
         verify(ownershipRegistrar, times(1)).registerLocal("abc123", "test");
+        verify(projectUsageService).recordImport(eq("abc123"), isNull(), eq(0L));
+    }
+
+    @Test
+    @DisplayName("POST /api/projects cleans up when quota tracking initialization fails")
+    void shouldCleanUpWhenUsageInitializationFails() throws Exception {
+        ProjectResponse created = ProjectResponse.builder()
+                .id("abc123").name("test").rootPath("/tmp/test").status("CREATED").build();
+        when(projectService.createProject(any())).thenReturn(created);
+        doThrow(new IllegalStateException("usage unavailable"))
+                .when(projectUsageService).recordImport(eq("abc123"), isNull(), eq(0L));
+
+        mockMvc.perform(post("/api/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"test\",\"rootPath\":\"/tmp/test\"}"))
+                .andExpect(status().isConflict());
+
+
+        verify(deletionOrchestrator).delete("abc123");
     }
 
     @Test
@@ -142,8 +211,10 @@ class ProjectControllerTest {
     @Test
     @DisplayName("POST /api/projects/{id}/analyze persists stats via the service contract")
     void shouldPersistStatsThroughInterface() throws Exception {
+        UUID userId = UUID.randomUUID();
         ProjectResponse project = ProjectResponse.builder()
                 .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
+        when(currentUser.id()).thenReturn(userId);
         when(projectService.getProject("p1")).thenReturn(project);
         when(analyzeService.analyzeProject("p1", "p1", "/tmp/p1"))
                 .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
@@ -156,6 +227,41 @@ class ProjectControllerTest {
         // The key regression guard for the removed downcast: stats must be pushed
         // through the interface method, which a plain mock honors.
         verify(projectService, times(1)).updateProjectStats("p1", 3, 10, 7);
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/analyze rejects a disabled feature before metering or analysis")
+    void shouldRejectDisabledAnalyzeBeforeWork() throws Exception {
+        doThrow(new com.vibegraph.common.exception.FeatureDisabledException("project.analyze"))
+                .when(featureGateService).assertEnabled("project.analyze");
+
+        mockMvc.perform(post("/api/projects/p1/analyze"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FEATURE_DISABLED"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verify(currentUser, never()).id();
+        verify(projectService, never()).getProject("p1");
+        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/analyze rejects a blocked account before analysis work")
+    void shouldRejectBlockedAccountBeforeAnalyzeWork() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(userId);
+        doThrow(new AccountBlockedException("internal risk note", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        mockMvc.perform(post("/api/projects/p1/analyze"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_BLOCKED"))
+                .andExpect(jsonPath("$.error.message").value("Policy review"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verify(projectService, never()).getProject("p1");
+        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        verify(projectService, never()).updateProjectStats(eq("p1"), any(Integer.class), any(Integer.class), any(Integer.class));
     }
 
     @Test

@@ -1,11 +1,5 @@
 import { computed, ref } from 'vue'
-import {
-  ApiError,
-  importApi,
-  projectApi,
-  type Project,
-  type ProjectStatusEvent,
-} from '@/lib/api'
+import { ApiError, importApi, projectApi, type Project, type ProjectStatusEvent } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
 import {
   IMPORT_POLL_INTERVAL_MS,
@@ -13,7 +7,8 @@ import {
   IMPORT_ABSOLUTE_TIMEOUT_MS,
 } from '@/lib/runtimeConfig'
 
-const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
+const GITHUB_REPO_URL_PATTERN =
+  /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
 const GENERIC_GITHUB_IMPORT_ERROR = 'Import failed. Verify the repository is public and try again.'
 const SERVER_UNREACHABLE_ERROR =
   'Cannot reach the server. Make sure the VibeGraph backend is running, then try again.'
@@ -65,7 +60,9 @@ function getGitHubImportError(error: unknown): string {
     return GENERIC_GITHUB_IMPORT_ERROR
   }
 
-  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message)) ? message : GENERIC_GITHUB_IMPORT_ERROR
+  return SAFE_ERROR_PATTERNS.some((pattern) => pattern.test(message))
+    ? message
+    : GENERIC_GITHUB_IMPORT_ERROR
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -82,7 +79,10 @@ function timeoutMessage(progress: number): string {
   return `Analysis is taking longer than expected${suffix}. It keeps running in the background — open the project again shortly to continue.`
 }
 
-async function waitForGitHubAnalysis(project: Project, onProgress: (value: number) => void): Promise<Project> {
+async function waitForGitHubAnalysis(
+  project: Project,
+  onProgress: (value: number) => void,
+): Promise<Project> {
   let lastProgress = project.progress ?? 0
 
   if (project.status !== 'ANALYZING') {
@@ -117,7 +117,11 @@ async function waitForGitHubAnalysis(project: Project, onProgress: (value: numbe
     }
 
     if (latestProject.status === 'FAILED') {
-      throw new ApiError(400, 'Import Failed', 'Import failed. Verify the repository is public and try again.')
+      throw new ApiError(
+        400,
+        'Import Failed',
+        'Import failed. Verify the repository is public and try again.',
+      )
     }
 
     // Only surface a timeout when the analysis is genuinely stuck (no progress for a long while)

@@ -7,6 +7,7 @@ import { API_BASE_URL } from './constants'
 import http from './http'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
+import type { ApiErrorCode, ApiErrorPayload } from '@/types/api'
 
 /**
  * A node as returned inside an impact-analysis result. Mirrors the backend
@@ -98,6 +99,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly statusText: string,
     message?: string,
+    public readonly code?: ApiErrorCode,
+    public readonly details?: string | null,
   ) {
     super(message ?? `HTTP ${status}: ${statusText}`)
     this.name = 'ApiError'
@@ -107,7 +110,7 @@ export class ApiError extends Error {
 interface ApiResponse<T> {
   success: boolean
   data: T
-  error?: { code: string; message: string }
+  error?: ApiErrorPayload | null
 }
 
 /**
@@ -149,6 +152,12 @@ export interface ProjectStatusEvent {
   timestamp: string
 }
 
+export interface CliRepositorySetup {
+  project: Project
+  apiKey: ApiKeyCreated
+  commands: string[]
+}
+
 /**
  * Shared 401 handler for all fetch-based API calls.
  * Clears stored auth session and redirects to /login (unless already there).
@@ -166,41 +175,65 @@ async function unwrap<T>(res: Response): Promise<T> {
     if (res.status === 401) {
       handleUnauthorized()
     }
-    // Try to extract a structured error message from the response body
-    // before falling back to the raw text or HTTP status.
-    const message = await extractErrorMessage(res)
-    throw new ApiError(res.status, res.statusText, message)
+    const error = await extractApiError(res)
+    throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
   }
   const json = (await res.json()) as ApiResponse<T>
   if (!json.success) {
-    throw new ApiError(400, 'API Error', json.error?.message ?? 'Unknown error')
+    throw new ApiError(
+      400,
+      'API Error',
+      json.error?.message ?? 'Unknown error',
+      json.error?.code,
+      json.error?.details,
+    )
   }
   return json.data
 }
 
-async function extractErrorMessage(res: Response): Promise<string | undefined> {
+interface ExtractedApiError {
+  message?: string
+  code?: ApiErrorCode
+  details?: string | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseApiError(value: unknown): ExtractedApiError | null {
+  if (!isRecord(value) || !isRecord(value.error)) return null
+  const error = value.error
+  return {
+    message: typeof error.message === 'string' ? error.message : undefined,
+    code: typeof error.code === 'string' ? error.code : undefined,
+    details:
+      typeof error.details === 'string' || error.details === null ? error.details : undefined,
+  }
+}
+
+async function extractApiError(res: Response): Promise<ExtractedApiError> {
   const text = await res.text().catch(() => '')
-  if (!text) return undefined
+  if (!text) return {}
   try {
-    const parsed = JSON.parse(text) as Partial<ApiResponse<unknown>>
-    return parsed?.error?.message ?? text
+    return parseApiError(JSON.parse(text)) ?? { message: text }
   } catch {
-    return text
+    return { message: text }
   }
 }
 
 export const api = {
   baseUrl: API_BASE_URL,
 
-  /** Build auth headers if a token is present. */
+  /** Browser auth uses the HttpOnly cookie; CLI/API clients keep their own Bearer-token flow. */
   _authHeaders(): Record<string, string> {
-    const token = localStorage.getItem('vg_token')
-    return token ? { Authorization: `Bearer ${token}` } : {}
+    return {}
   },
 
   async get<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: { ...this._authHeaders() },
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
     return unwrap<T>(res)
   },
@@ -208,7 +241,40 @@ export const api = {
   async post<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    return unwrap<T>(res)
+  },
+
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    return unwrap<T>(res)
+  },
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
     return unwrap<T>(res)
@@ -221,10 +287,10 @@ export const api = {
    */
   async postMultipart<T>(path: string, form: FormData): Promise<T> {
     const authHeaders = this._authHeaders()
-    const hasAuth = Object.keys(authHeaders).length > 0
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      ...(hasAuth ? { headers: authHeaders } : {}),
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...authHeaders },
       body: form,
     })
     return unwrap<T>(res)
@@ -233,14 +299,15 @@ export const api = {
   async delete(path: string): Promise<void> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: 'DELETE',
-      headers: { ...this._authHeaders() },
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
     if (!res.ok) {
       if (res.status === 401) {
         handleUnauthorized()
       }
-      const message = await extractErrorMessage(res)
-      throw new ApiError(res.status, res.statusText, message)
+      const error = await extractApiError(res)
+      throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
     }
   },
 }
@@ -298,12 +365,21 @@ export const importApi = {
     return api.post<Project>('/api/projects/import-github', { url })
   },
 
+  createCliRepository(name?: string): Promise<CliRepositorySetup> {
+    return api.post<CliRepositorySetup>('/api/projects/cli-setup', {
+      name: name?.trim() || undefined,
+    })
+  },
+
   /**
    * Import an existing directory on the backend host in place (no upload). The backend
    * analyzes it and starts a file watcher so later edits stream realtime graph updates.
    */
   importLocal(path: string, name?: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-local', { path, name: name?.trim() || undefined })
+    return api.post<Project>('/api/projects/import-local', {
+      path,
+      name: name?.trim() || undefined,
+    })
   },
 }
 
@@ -349,11 +425,14 @@ export const graphApi = {
    * `depth` must be one of {@link IMPACT_ALLOWED_DEPTHS}; the backend rejects
    * other values with a 400. Query params are encoded via URLSearchParams.
    */
-  getImpact: (projectId: string, nodeId: string, depth: number, profile: ImpactProfile = 'dependency') => {
+  getImpact: (
+    projectId: string,
+    nodeId: string,
+    depth: number,
+    profile: ImpactProfile = 'dependency',
+  ) => {
     const query = new URLSearchParams({ nodeId, depth: String(depth), profile })
-    return api.get<ImpactAnalysisResponse>(
-      `/api/projects/${projectId}/graph/impact?${query}`,
-    )
+    return api.get<ImpactAnalysisResponse>(`/api/projects/${projectId}/graph/impact?${query}`)
   },
 
   /**
@@ -368,18 +447,8 @@ export const graphApi = {
     const params = new URLSearchParams({ path })
     if (startLine != null) params.set('startLine', String(startLine))
     if (endLine != null) params.set('endLine', String(endLine))
-    return api.get<SourceContent>(
-      `/api/projects/${encodeURIComponent(projectId)}/source?${params}`,
-    )
+    return api.get<SourceContent>(`/api/projects/${encodeURIComponent(projectId)}/source?${params}`)
   },
-}
-
-export interface DiagramResponse {
-  diagramType: string
-  mermaidSyntax: string
-  plantUmlSyntax?: string | null
-  /** Distinct packages containing classifiers; used to drive the class-diagram package filter. */
-  availablePackages?: string[]
 }
 
 /** UML Use Case layout mode. `detailed` is the default flat business-facing diagram. */
@@ -463,16 +532,7 @@ export const diagramApi = {
       `/api/projects/${encodeURIComponent(projectId)}/diagrams/usecase?${query}`,
     )
   },
-  classDiagram: (projectId: string, pkg?: string) => {
-    const query = pkg ? `?${new URLSearchParams({ package: pkg })}` : ''
-    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/class${query}`)
-  },
-  sequence: (projectId: string, entry: string) => {
-    const query = new URLSearchParams({ entry })
-    return api.get<DiagramResponse>(`/api/projects/${encodeURIComponent(projectId)}/diagrams/sequence?${query}`)
-  },
 }
-
 
 // ─── Auth API ──────────────────────────────────────────────────────────────────
 
@@ -489,9 +549,376 @@ export const authApi = {
     return api.post<AuthResponse>('/api/auth/login', data)
   },
 
-  /** Fetch current user profile; requires a valid token. */
+  logout(): Promise<void> {
+    return api.post<void>('/api/auth/logout')
+  },
+
   async me(): Promise<User> {
     const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
+    // Tùy thuộc vào cấu trúc trả về của backend, có thể là res.data hoặc res.data.data
     return res.data.data
+  },
+}
+
+// --- Account (user-side) API ---
+
+import type {
+  UserProfile,
+  UserUsage,
+  CreditLedgerEntry,
+  Project as AccountProject,
+  ApiKey,
+  ApiKeyCreated,
+  Report,
+  ReportMessage,
+  UserNotification,
+  AccountSessionState,
+  PagedResponse,
+  FeedbackCategory,
+  AdminOverview,
+  AdminPlan,
+  AdminPlanRequest,
+  AdminPricingRule,
+  AdminPricingRuleRequest,
+  AdminUserResponse,
+  AdminReport,
+  AdminFeatureFlag,
+  AdminFeatureFlagRequest,
+  AdminAnnouncement,
+  AdminAnnouncementRequest,
+  AdminSecurityEvent,
+  AdminCreditOverview,
+  AdminRequestEvent,
+  AdminRequestAggregate,
+  AdminSuspiciousNetwork,
+  AdminIpBlock,
+  AdminIpBlockRequest,
+  AdminAuditLog,
+  AdminAuditRetention,
+  ApiKeyCreateRequest,
+} from '@/types/api'
+
+/**
+ * All user-facing account endpoints under `/api/account/`.
+ * Every method returns the unwrapped `data` payload from `ApiResponse<T>`.
+ */
+export const accountApi = {
+  getSessionState(): Promise<AccountSessionState> {
+    return api.get<AccountSessionState>('/api/account/session-state')
+  },
+  getProfile(): Promise<UserProfile> {
+    return api.get<UserProfile>('/api/account/profile')
+  },
+  updateProfile(displayName: string): Promise<UserProfile> {
+    return api.patch<UserProfile>('/api/account/profile', { displayName })
+  },
+  changePassword(oldPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
+    return api.patch<void>('/api/account/password', { oldPassword, newPassword, confirmPassword })
+  },
+  getUsage(): Promise<UserUsage> {
+    return api.get<UserUsage>('/api/account/usage')
+  },
+  getCreditLedger(limit = 10): Promise<CreditLedgerEntry[]> {
+    return api.get<CreditLedgerEntry[]>(`/api/account/usage/ledger?limit=${limit}`)
+  },
+  getProjects(page = 0, size = 20): Promise<PagedResponse<AccountProject>> {
+    return api.get<PagedResponse<AccountProject>>(`/api/account/projects?page=${page}&size=${size}`)
+  },
+  listApiKeys(): Promise<ApiKey[]> {
+    return api.get<ApiKey[]>('/api/account/api-keys')
+  },
+  createApiKey(request: ApiKeyCreateRequest): Promise<ApiKeyCreated> {
+    return api.post<ApiKeyCreated>('/api/account/api-keys', request)
+  },
+  disableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  enableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/account/api-keys/${encodeURIComponent(id)}/enable`, undefined)
+  },
+  deleteApiKey(id: string): Promise<void> {
+    return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
+  },
+  listReports(): Promise<Report[]> {
+    return api.get<Report[]>('/api/account/reports')
+  },
+  createReport(category: FeedbackCategory, title: string, body: string): Promise<Report> {
+    return api.post<Report>('/api/account/reports', { category, title, body })
+  },
+  getReportDetail(reportId: string): Promise<{ report: Report; messages: ReportMessage[] }> {
+    return api.get<{ report: Report; messages: ReportMessage[] }>(
+      `/api/account/reports/${encodeURIComponent(reportId)}`,
+    )
+  },
+  addMessage(reportId: string, body: string): Promise<ReportMessage> {
+    return api.post<ReportMessage>(
+      `/api/account/reports/${encodeURIComponent(reportId)}/messages`,
+      { body },
+    )
+  },
+  closeReport(reportId: string): Promise<Report> {
+    return api.patch<Report>(
+      `/api/account/reports/${encodeURIComponent(reportId)}/close`,
+      undefined,
+    )
+  },
+  listNotifications(limit = 50): Promise<UserNotification[]> {
+    const query = new URLSearchParams({ limit: String(limit) })
+    return api.get<UserNotification[]>(`/api/account/notifications?${query}`)
+  },
+  listAnnouncements(limit = 50): Promise<UserNotification[]> {
+    const query = new URLSearchParams({ limit: String(limit) })
+    return api.get<UserNotification[]>(`/api/account/announcements?${query}`)
+  },
+  getNotification(id: string): Promise<UserNotification> {
+    return api.get<UserNotification>(`/api/account/notifications/${encodeURIComponent(id)}`)
+  },
+  markNotificationRead(id: string): Promise<UserNotification> {
+    return api.patch<UserNotification>(
+      `/api/account/notifications/${encodeURIComponent(id)}/read`,
+      undefined,
+    )
+  },
+  dismissNotification(id: string): Promise<UserNotification> {
+    return api.patch<UserNotification>(
+      `/api/account/notifications/${encodeURIComponent(id)}/dismiss`,
+      undefined,
+    )
+  },
+}
+
+// --- Admin API ---
+
+/**
+ * All admin endpoints under `/api/admin/`.
+ * Every method returns the unwrapped `data` payload from `ApiResponse<T>`.
+ */
+export const adminApi = {
+  getOverview(): Promise<AdminOverview> {
+    return api.get<AdminOverview>('/api/admin/overview')
+  },
+  listPlans(): Promise<AdminPlan[]> {
+    return api.get<AdminPlan[]>('/api/admin/plans')
+  },
+  createPlan(data: AdminPlanRequest): Promise<AdminPlan> {
+    return api.post<AdminPlan>('/api/admin/plans', data)
+  },
+  updateCatalogPlan(code: string, data: AdminPlanRequest): Promise<AdminPlan> {
+    return api.put<AdminPlan>(`/api/admin/plans/${encodeURIComponent(code)}`, data)
+  },
+  deleteCatalogPlan(code: string): Promise<void> {
+    return api.delete(`/api/admin/plans/${encodeURIComponent(code)}`)
+  },
+  listPricingRules(): Promise<AdminPricingRule[]> {
+    return api.get<AdminPricingRule[]>('/api/admin/pricing-rules')
+  },
+  createPricingRule(data: AdminPricingRuleRequest): Promise<AdminPricingRule> {
+    return api.post<AdminPricingRule>('/api/admin/pricing-rules', data)
+  },
+  updatePricingRule(
+    operationCode: string,
+    data: AdminPricingRuleRequest,
+  ): Promise<AdminPricingRule> {
+    return api.put<AdminPricingRule>(
+      `/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`,
+      data,
+    )
+  },
+  deletePricingRule(operationCode: string): Promise<void> {
+    return api.delete(`/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`)
+  },
+  listUsers(
+    params: { search?: string; status?: string; plan?: string; page?: number; size?: number } = {},
+  ): Promise<PagedResponse<AdminUserResponse>> {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.status) q.set('status', params.status)
+    if (params.plan) q.set('plan', params.plan)
+    q.set('page', String(params.page ?? 0))
+    q.set('size', String(params.size ?? 20))
+    return api.get<PagedResponse<AdminUserResponse>>(`/api/admin/users?${q}`)
+  },
+  getUserDetail(userId: string): Promise<AdminUserResponse> {
+    return api.get<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}`)
+  },
+  createUser(data: {
+    email: string
+    displayName: string
+    role: string
+    planCode: string
+    temporaryPassword: string
+  }): Promise<AdminUserResponse> {
+    return api.post<AdminUserResponse>('/api/admin/users', data)
+  },
+  blockUser(userId: string, reason: string, safeReason: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/block`, {
+      reason,
+      safeReason,
+    })
+  },
+  unblockUser(userId: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/unblock`,
+      undefined,
+    )
+  },
+  deactivateUser(userId: string, reason: string, safeReason: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/deactivate`,
+      { reason, safeReason },
+    )
+  },
+  updatePlan(userId: string, planCode: string): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+      planCode,
+    })
+  },
+  updateQuota(
+    userId: string,
+    storageQuotaOverrideMb: number | null,
+    creditQuotaOverride: number | null,
+  ): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(`/api/admin/users/${encodeURIComponent(userId)}/quota`, {
+      storageQuotaOverrideMb,
+      creditQuotaOverride,
+    })
+  },
+  updateApiKeyCreation(userId: string, disabled: boolean): Promise<AdminUserResponse> {
+    return api.patch<AdminUserResponse>(
+      `/api/admin/users/${encodeURIComponent(userId)}/api-key-creation`,
+      { disabled },
+    )
+  },
+  listApiKeysForUser(userId: string): Promise<ApiKey[]> {
+    return api.get<ApiKey[]>(`/api/admin/api-keys?userId=${encodeURIComponent(userId)}`)
+  },
+  disableApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/disable`, undefined)
+  },
+  lockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/lock`, undefined)
+  },
+  unlockApiKey(id: string): Promise<void> {
+    return api.patch<void>(`/api/admin/api-keys/${encodeURIComponent(id)}/unlock`, undefined)
+  },
+  listReports(
+    params: { status?: string; q?: string; page?: number; size?: number } = {},
+  ): Promise<PagedResponse<AdminReport>> {
+    const qs = new URLSearchParams()
+    if (params.status) qs.set('status', params.status)
+    if (params.q) qs.set('q', params.q)
+    qs.set('page', String(params.page ?? 0))
+    qs.set('size', String(params.size ?? 20))
+    return api.get<PagedResponse<AdminReport>>(`/api/admin/reports?${qs}`)
+  },
+  getReportDetail(reportId: string): Promise<{ report: AdminReport; messages: ReportMessage[] }> {
+    return api.get<{ report: AdminReport; messages: ReportMessage[] }>(
+      `/api/admin/reports/${encodeURIComponent(reportId)}`,
+    )
+  },
+  replyToReport(reportId: string, body: string): Promise<void> {
+    return api.post<void>(`/api/admin/reports/${encodeURIComponent(reportId)}/reply`, { body })
+  },
+  closeReport(reportId: string): Promise<void> {
+    return api.patch<void>(`/api/admin/reports/${encodeURIComponent(reportId)}/close`, undefined)
+  },
+  listFeatureFlags(): Promise<AdminFeatureFlag[]> {
+    return api.get<AdminFeatureFlag[]>('/api/admin/feature-flags')
+  },
+  createFeatureFlag(data: AdminFeatureFlagRequest): Promise<AdminFeatureFlag> {
+    return api.post<AdminFeatureFlag>('/api/admin/feature-flags', data)
+  },
+  updateFeatureFlag(key: string, data: AdminFeatureFlagRequest): Promise<AdminFeatureFlag> {
+    return api.put<AdminFeatureFlag>(`/api/admin/feature-flags/${encodeURIComponent(key)}`, data)
+  },
+  deleteFeatureFlag(key: string): Promise<void> {
+    return api.delete(`/api/admin/feature-flags/${encodeURIComponent(key)}`)
+  },
+  listAnnouncements(): Promise<AdminAnnouncement[]> {
+    return api.get<AdminAnnouncement[]>('/api/admin/announcements')
+  },
+  createAnnouncement(data: AdminAnnouncementRequest): Promise<AdminAnnouncement> {
+    return api.post<AdminAnnouncement>('/api/admin/announcements', data)
+  },
+  updateAnnouncement(id: string, data: AdminAnnouncementRequest): Promise<AdminAnnouncement> {
+    return api.put<AdminAnnouncement>(`/api/admin/announcements/${encodeURIComponent(id)}`, data)
+  },
+  disableAnnouncement(id: string): Promise<AdminAnnouncement> {
+    return api.patch<AdminAnnouncement>(
+      `/api/admin/announcements/${encodeURIComponent(id)}/disable`,
+      undefined,
+    )
+  },
+  deleteAnnouncement(id: string): Promise<void> {
+    return api.delete(`/api/admin/announcements/${encodeURIComponent(id)}`)
+  },
+  getCreditOverview(userId: string): Promise<AdminCreditOverview> {
+    return api.get<AdminCreditOverview>(`/api/admin/credits/users/${encodeURIComponent(userId)}`)
+  },
+  adjustCredits(userId: string, creditsDelta: number, reason: string): Promise<void> {
+    return api.post<void>(`/api/admin/credits/users/${encodeURIComponent(userId)}/adjust`, {
+      creditsDelta,
+      reason,
+    })
+  },
+  listSecurityEvents(limit = 50): Promise<AdminSecurityEvent[]> {
+    return api.get<AdminSecurityEvent[]>(`/api/admin/security/events?limit=${limit}`)
+  },
+  listRequestEvents(limit = 100): Promise<AdminRequestEvent[]> {
+    return api.get<AdminRequestEvent[]>(`/api/admin/security/request-events?limit=${limit}`)
+  },
+  listTopUsers(minutes = 60, limit = 20): Promise<AdminRequestAggregate[]> {
+    return api.get<AdminRequestAggregate[]>(
+      `/api/admin/security/top-users?minutes=${minutes}&limit=${limit}`,
+    )
+  },
+  listTopIps(minutes = 60, limit = 20): Promise<AdminSuspiciousNetwork[]> {
+    return api.get<AdminSuspiciousNetwork[]>(
+      `/api/admin/security/suspicious-networks?minutes=${minutes}&limit=${limit}`,
+    )
+  },
+  listIpBlocks(limit = 100): Promise<AdminIpBlock[]> {
+    return api.get<AdminIpBlock[]>(`/api/admin/security/ip-blocks?limit=${limit}`)
+  },
+  createIpBlock(data: AdminIpBlockRequest): Promise<AdminIpBlock> {
+    return api.post<AdminIpBlock>('/api/admin/security/ip-blocks', data)
+  },
+  updateIpBlock(id: string, data: AdminIpBlockRequest): Promise<AdminIpBlock> {
+    return api.patch<AdminIpBlock>(`/api/admin/security/ip-blocks/${encodeURIComponent(id)}`, data)
+  },
+  deleteIpBlock(id: string): Promise<void> {
+    return api.delete(`/api/admin/security/ip-blocks/${encodeURIComponent(id)}`)
+  },
+  listAuditLogs(
+    params: {
+      action?: string
+      outcome?: string
+      actorUserId?: string
+      targetUserId?: string
+      from?: string
+      to?: string
+      page?: number
+      size?: number
+    } = {},
+  ): Promise<PagedResponse<AdminAuditLog>> {
+    const query = new URLSearchParams()
+    if (params.action) query.set('action', params.action)
+    if (params.outcome) query.set('outcome', params.outcome)
+    if (params.actorUserId) query.set('actorUserId', params.actorUserId)
+    if (params.targetUserId) query.set('targetUserId', params.targetUserId)
+    if (params.from) query.set('from', params.from)
+    if (params.to) query.set('to', params.to)
+    query.set('page', String(params.page ?? 0))
+    query.set('size', String(params.size ?? 50))
+    return api.get<PagedResponse<AdminAuditLog>>(`/api/admin/audit-logs?${query}`)
+  },
+  getAuditLog(id: string): Promise<AdminAuditLog> {
+    return api.get<AdminAuditLog>(`/api/admin/audit-logs/${encodeURIComponent(id)}`)
+  },
+  getAuditRetention(): Promise<AdminAuditRetention> {
+    return api.get<AdminAuditRetention>('/api/admin/audit-logs/retention')
+  },
+  updateAuditRetention(retentionDays: number): Promise<AdminAuditRetention> {
+    return api.put<AdminAuditRetention>('/api/admin/audit-logs/retention', { retentionDays })
   },
 }

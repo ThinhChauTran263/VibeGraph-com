@@ -94,7 +94,10 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
       })
 
       context.strokeStyle = ghostEdgeColor(graph.getEdgeAttribute(edge, 'color'))
-      context.lineWidth = sigma.scaleSize(ghostEdgeSize(graph.getEdgeAttribute(edge, 'size')), cameraRatio)
+      context.lineWidth = sigma.scaleSize(
+        ghostEdgeSize(graph.getEdgeAttribute(edge, 'size')),
+        cameraRatio,
+      )
       context.beginPath()
       context.moveTo(start.x, start.y)
       context.lineTo(end.x, end.y)
@@ -107,7 +110,10 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
         x: graph.getNodeAttribute(node, 'x') as number,
         y: graph.getNodeAttribute(node, 'y') as number,
       })
-      const radius = sigma.scaleSize(ghostNodeSize(graph.getNodeAttribute(node, 'size')), cameraRatio)
+      const radius = sigma.scaleSize(
+        ghostNodeSize(graph.getNodeAttribute(node, 'size')),
+        cameraRatio,
+      )
       context.fillStyle = ghostNodeColor(graph.getNodeAttribute(node, 'color'))
       context.beginPath()
       context.arc(position.x, position.y, radius, 0, Math.PI * 2)

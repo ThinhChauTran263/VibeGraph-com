@@ -1,460 +1,229 @@
 <script setup lang="ts">
-/**
- * HomeView - landing page for project management.
- *
- * Shows the three import flows plus a list of already-imported projects so a
- * project is always reachable — even if an import's progress poll timed out
- * (the analysis still finishes on the backend and the project shows up here).
- */
-
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
-import BrandMark from '@/components/ui/BrandMark.vue'
-import { useProjectStore } from '@/stores/project'
-import { projectApi, type Project } from '@/lib/api'
-import { PROJECTS_AUTO_REFRESH_INTERVAL_MS } from '@/lib/runtimeConfig'
+import { useAccountStore } from '@/stores/account'
+import AppIcon from '@/components/ui/AppIcon.vue'
+import { displayPlanName } from '@/lib/planDisplay'
 
 const router = useRouter()
-const projectStore = useProjectStore()
-
-const projects = ref<Project[]>([])
-const loadingProjects = ref(false)
-const projectsError = ref<string | null>(null)
-const deletingId = ref<string | null>(null)
-const clearingAll = ref(false)
-
-const hasProjects = computed(() => projects.value.length > 0)
-
-// While the user sits on this page, silently re-fetch the list so a project still ANALYZING on the
-// backend (e.g. an import whose in-page progress poll dropped) appears — and flips to ANALYZED —
-// without anyone pressing Refresh/F5. The list call is cheap and the tab is gated on visibility.
-const AUTO_REFRESH_INTERVAL_MS = PROJECTS_AUTO_REFRESH_INTERVAL_MS
-let refreshTimer: ReturnType<typeof setInterval> | null = null
-
-async function loadProjects(): Promise<void> {
-  loadingProjects.value = true
-  projectsError.value = null
-  try {
-    projects.value = await projectApi.list()
-  } catch {
-    projectsError.value = 'Could not load projects. Is the backend running?'
-  } finally {
-    loadingProjects.value = false
-  }
-}
-
-// Background refresh used by the timer: same fetch, but it must not flip the visible "Loading…"
-// state or clobber an error the user is reading, so it updates the list quietly and stays silent
-// on failure (the next manual Refresh surfaces any real problem).
-async function refreshProjectsQuietly(): Promise<void> {
-  if (loadingProjects.value) return
-  try {
-    projects.value = await projectApi.list()
-  } catch {
-    // Transient failure — leave the current list and error state untouched.
-  }
-}
-
-function startAutoRefresh(): void {
-  if (refreshTimer !== null) return
-  refreshTimer = setInterval(() => {
-    // Don't poll a backgrounded tab; it resumes on the next tick once visible again.
-    if (typeof document !== 'undefined' && document.hidden) return
-    void refreshProjectsQuietly()
-  }, AUTO_REFRESH_INTERVAL_MS)
-}
-
-function stopAutoRefresh(): void {
-  if (refreshTimer !== null) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
-}
-
-function openProject(project: Project): void {
-  projectStore.currentProjectId = project.id
-  projectStore.projectName = project.name
-  router.push({ name: 'graph', params: { projectId: project.id } })
-}
-
-async function removeProject(project: Project): Promise<void> {
-  if (deletingId.value) return
-  deletingId.value = project.id
-  try {
-    await projectApi.remove(project.id)
-    projects.value = projects.value.filter((p) => p.id !== project.id)
-  } catch {
-    projectsError.value = `Could not delete "${project.name}".`
-  } finally {
-    deletingId.value = null
-  }
-}
-
-async function clearAll(): Promise<void> {
-  if (clearingAll.value || !hasProjects.value) return
-  if (!window.confirm(`Delete all ${projects.value.length} projects? This cannot be undone.`)) return
-  clearingAll.value = true
-  projectsError.value = null
-  // Snapshot the ids up front; each delete reassigns projects.value, so iterating a copy of the
-  // ids avoids mutating the list we're walking.
-  const ids = projects.value.map((p) => p.id)
-  for (const id of ids) {
-    try {
-      await projectApi.remove(id)
-      projects.value = projects.value.filter((p) => p.id !== id)
-    } catch {
-      projectsError.value = 'Some projects could not be deleted. Try Refresh, then clear again.'
-    }
-  }
-  clearingAll.value = false
-}
-
-function onImported(project: Project): void {
-  projectStore.currentProjectId = project.id
-  projectStore.projectName = project.name
-  router.push({ name: 'graph', params: { projectId: project.id } })
-}
+const account = useAccountStore()
+const { t } = useI18n({ useScope: 'global' })
+const name = computed(
+  () => account.profile?.displayName || account.profile?.email?.split('@')[0] || t('user.layout.account'),
+)
+const remainingCredits = computed(() => {
+  const usage = account.usage as (typeof account.usage & { creditsRemaining?: number }) | null
+  if (typeof usage?.creditsRemaining === 'number') return usage.creditsRemaining.toLocaleString()
+  const limit = usage?.creditsLimit
+  const used = usage?.creditsUsed
+  return typeof limit === 'number' && typeof used === 'number'
+    ? Math.max(limit - used, 0).toLocaleString()
+    : t('user.overview.unavailable')
+})
+const planLabel = computed(() =>
+  displayPlanName(
+    t,
+    account.usage?.planCode,
+    account.usage?.planName,
+    t('user.overview.unavailable'),
+  ),
+)
 
 onMounted(() => {
-  void loadProjects()
-  startAutoRefresh()
+  const tasks: Promise<unknown>[] = []
+  if (!account.profile) tasks.push(account.fetchProfile())
+  if (!account.projectsLoaded) tasks.push(account.fetchProjects())
+  if (!account.usage) tasks.push(account.fetchUsage())
+  void Promise.allSettled(tasks)
 })
-// Refresh when navigating back from the graph view (e.g. after a delete or a new import), and
-// resume the background poll. Stop the poll while the view is inactive or torn down so it never
-// runs against a hidden/destroyed page.
-onActivated(() => {
-  void loadProjects()
-  startAutoRefresh()
-})
-onDeactivated(stopAutoRefresh)
-onUnmounted(stopAutoRefresh)
 </script>
 
 <template>
-  <div class="dash">
-    <nav class="dash-nav" aria-label="Dashboard">
-      <RouterLink class="dash-nav__brand" :to="{ name: 'home' }" aria-label="VibeGraph home">
-        <BrandMark :size="28" />
-      </RouterLink>
-      <RouterLink class="dash-nav__back" :to="{ name: 'home' }">
-        <span aria-hidden="true">←</span> Home
-      </RouterLink>
-    </nav>
+  <section class="overview" aria-labelledby="overview-title">
+    <header class="overview__header">
+      <span class="eyebrow">{{ t('user.overview.eyebrow') }}</span>
+      <h1 id="overview-title">{{ t('user.overview.welcome', { name }) }}</h1>
+      <p>{{ t('user.overview.description') }}</p>
+    </header>
 
-    <main class="home">
-      <header class="home__header">
-        <span class="home__eyebrow">Dashboard</span>
-        <h1>Your projects</h1>
-        <p class="home__subtitle">
-          Import a Java project from a local folder, an archive, or GitHub to start exploring its
-          graph.
-        </p>
-      </header>
-
-    <section class="home__import" aria-label="Project import options">
-      <ImportProjectPanel @imported="onImported" />
+    <section class="summary" :aria-label="t('user.overview.summaryLabel')">
+      <article>
+        <AppIcon name="repository" :size="24" /><span>{{ t('user.overview.repositories') }}</span
+        ><strong>{{ account.projects.length }}</strong
+        ><small>{{ t('user.overview.importedProjects') }}</small>
+      </article>
+      <article>
+        <AppIcon name="usage" :size="24" /><span>{{ t('user.overview.credits') }}</span
+        ><strong>{{ remainingCredits }}</strong
+        ><small v-if="typeof account.usage?.creditsUsed === 'number'">{{
+          t('user.overview.usedThisMonth', { count: account.usage.creditsUsed.toLocaleString() })
+        }}</small
+        ><small v-else>{{ t('user.overview.usageUnavailable') }}</small>
+      </article>
+      <article>
+        <AppIcon name="subscription" :size="24" /><span>{{ t('user.overview.plan') }}</span
+        ><strong>{{ planLabel }}</strong
+        ><small>{{ t('user.overview.currentPlan') }}</small>
+      </article>
     </section>
 
-    <section class="home__projects" aria-label="Imported projects">
-      <div class="home__projects-head">
-        <h2>Imported projects</h2>
-        <div class="home__projects-actions">
-          <button
-            class="home__refresh"
-            type="button"
-            :disabled="loadingProjects"
-            data-test="projects-refresh"
-            @click="loadProjects"
-          >
-            {{ loadingProjects ? 'Loading…' : 'Refresh' }}
-          </button>
-          <button
-            v-if="hasProjects"
-            class="home__clear-all"
-            type="button"
-            :disabled="clearingAll"
-            data-test="projects-clear-all"
-            @click="clearAll"
-          >
-            {{ clearingAll ? 'Clearing…' : 'Clear all' }}
-          </button>
-        </div>
+    <section class="quick" aria-labelledby="quick-heading">
+      <div>
+        <span class="eyebrow">{{ t('user.overview.nextStep') }}</span>
+        <h2 id="quick-heading">{{ t('user.overview.quickActions') }}</h2>
       </div>
-
-      <p v-if="projectsError" class="home__projects-error" role="alert">{{ projectsError }}</p>
-      <p v-else-if="!loadingProjects && !hasProjects" class="home__projects-empty">
-        No projects yet. Import one above — it will appear here when analysis finishes.
-      </p>
-
-      <ul v-else class="home__projects-list">
-        <li v-for="project in projects" :key="project.id" class="home__project-row">
-          <button
-            class="home__project-open"
-            type="button"
-            :data-test="`open-project-${project.id}`"
-            @click="openProject(project)"
-          >
-            <span class="home__project-name">{{ project.name }}</span>
-            <span class="home__project-meta">{{ project.status }}</span>
-          </button>
-          <button
-            class="home__project-delete"
-            type="button"
-            :disabled="deletingId === project.id"
-            :aria-label="`Delete ${project.name}`"
-            :data-test="`delete-project-${project.id}`"
-            @click="removeProject(project)"
-          >
-            {{ deletingId === project.id ? '…' : '✕' }}
-          </button>
-        </li>
-      </ul>
+      <div class="quick__actions">
+        <button
+          data-test="quick-repositories"
+          type="button"
+          @click="router.push({ name: 'projects', query: { import: 'new' } })"
+        >
+          <span class="quick__icon" aria-hidden="true"
+            ><AppIcon name="repository" :size="22"
+          /></span>
+          <span>{{ t('user.overview.newRepository') }}</span>
+        </button>
+        <button data-test="quick-api-keys" type="button" @click="router.push({ name: 'api-keys' })">
+          <span class="quick__icon" aria-hidden="true"><AppIcon name="key" :size="22" /></span>
+          <span>{{ t('user.overview.createApiKey') }}</span>
+        </button>
+        <button data-test="quick-reports" type="button" @click="router.push({ name: 'reports' })">
+          <span class="quick__icon" aria-hidden="true"><AppIcon name="reports" :size="22" /></span>
+          <span>{{ t('user.overview.openReports') }}</span>
+        </button>
+      </div>
     </section>
-    </main>
-  </div>
+  </section>
 </template>
 
 <style scoped>
-.dash {
-  min-height: 100vh;
-  background: radial-gradient(100% 60% at 100% 0%, rgba(34, 197, 94, 0.06), transparent 55%),
-    radial-gradient(80% 50% at 0% 0%, rgba(59, 130, 246, 0.08), transparent 55%), var(--vg-bg);
-  color: var(--vg-text);
-}
-
-.dash-nav {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: var(--vg-space-4);
-  padding: 0.85rem clamp(1rem, 0.5rem + 2vw, 2.5rem);
-  background: rgba(7, 11, 22, 0.72);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--vg-border);
-}
-
-.dash-nav__brand {
-  display: inline-flex;
-  border-radius: var(--vg-radius-sm);
-}
-
-.dash-nav__back {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.9rem;
-  border-radius: var(--vg-radius-pill);
-  border: 1px solid var(--vg-border-strong);
-  background: rgba(148, 163, 184, 0.06);
-  color: var(--vg-text-muted);
-  font-size: var(--vg-text-sm);
-  font-weight: 500;
-  transition: color var(--vg-dur-fast), border-color var(--vg-dur-fast),
-    background-color var(--vg-dur-fast);
-}
-.dash-nav__back:hover {
-  color: var(--vg-text);
-  border-color: var(--vg-blue-bright);
-  background: rgba(148, 163, 184, 0.12);
-}
-
-.home {
-  max-width: var(--vg-maxw);
-  margin: 0 auto;
-  padding: clamp(2rem, 1.5rem + 2vw, 3rem) clamp(1rem, 0.5rem + 2vw, 2.5rem) 4rem;
+.overview {
   display: flex;
   flex-direction: column;
-  gap: var(--vg-space-12);
+  gap: var(--vg-space-5);
+  color: var(--vg-text);
 }
-
-.home__header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+.overview__header {
+  max-width: 48rem;
 }
-
-.home__eyebrow {
-  font-family: var(--vg-font-display);
-  font-size: var(--vg-text-sm);
-  letter-spacing: 0.06em;
+.eyebrow {
+  color: var(--vg-blue-bright);
+  font: 700 var(--vg-text-xs) var(--vg-font-display);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+.overview h1 {
+  margin: 0.25rem 0;
+  font: 700 clamp(1.75rem, 2.4vw, 2rem) var(--vg-font-display);
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.overview p,
+.summary small {
+  color: var(--vg-text-muted);
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vg-space-3);
+}
+.summary article {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--vg-space-2);
+  row-gap: 0.2rem;
+  padding: var(--vg-space-3);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-grad-surface);
+  box-shadow: var(--vg-shadow-sm);
+}
+.summary article:first-child {
+  border-color: rgba(96, 165, 250, 0.35);
+}
+.summary svg {
   color: var(--vg-blue-bright);
 }
-
-.home__header h1 {
-  margin: 0;
-  font-size: var(--vg-text-2xl);
-  font-weight: 700;
-}
-
-.home__subtitle {
-  margin: 0;
-  max-width: 42rem;
-  color: var(--vg-text-muted);
-  font-size: var(--vg-text-lg);
-}
-
-.home__import {
-  max-width: 52rem;
-  width: 100%;
-  margin-inline: auto;
-}
-
-.home__projects {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vg-space-4);
-}
-
-.home__projects-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.home__projects-head h2 {
-  margin: 0;
-  font-size: var(--vg-text-xl);
-  font-weight: 600;
-}
-
-.home__projects-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.home__refresh {
-  font: inherit;
-  padding: 0.4rem 0.95rem;
-  border-radius: var(--vg-radius-pill);
-  border: 1px solid var(--vg-border-strong);
-  background: rgba(148, 163, 184, 0.06);
-  color: inherit;
-  cursor: pointer;
-  transition: border-color var(--vg-dur-fast), background-color var(--vg-dur-fast);
-}
-
-.home__refresh:hover:not(:disabled) {
-  border-color: var(--vg-blue-bright);
-  background: rgba(148, 163, 184, 0.12);
-}
-
-.home__refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.home__clear-all {
-  font: inherit;
-  padding: 0.4rem 0.95rem;
-  border-radius: var(--vg-radius-pill);
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  background: transparent;
-  color: #f87171;
-  cursor: pointer;
-  transition: background-color var(--vg-dur-fast);
-}
-
-.home__clear-all:hover:not(:disabled) {
-  background: rgba(127, 29, 29, 0.25);
-}
-
-.home__clear-all:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.home__projects-error {
-  margin: 0;
-  color: #f87171;
-  font-size: var(--vg-text-sm);
-}
-
-.home__projects-empty {
-  margin: 0;
-  padding: var(--vg-space-8);
-  text-align: center;
-  border: 1px dashed var(--vg-border-strong);
-  border-radius: var(--vg-radius-lg);
+.summary span {
   color: var(--vg-text-muted);
   font-size: var(--vg-text-sm);
 }
-
-.home__projects-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.summary strong,
+.summary small {
+  grid-column: 2;
 }
-
-.home__project-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
+.summary strong {
+  font: 700 var(--vg-text-xl) var(--vg-font-display);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
-
-.home__project-open {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  font: inherit;
-  text-align: left;
-  padding: 0.8rem 1.1rem;
-  border-radius: var(--vg-radius);
-  border: 1px solid var(--vg-border);
-  background: var(--vg-grad-surface);
-  color: inherit;
-  cursor: pointer;
-  transition: border-color var(--vg-dur-fast) ease, transform var(--vg-dur-fast) ease,
-    box-shadow var(--vg-dur) ease;
-}
-
-.home__project-open:hover {
-  border-color: var(--vg-blue-bright);
-  box-shadow: var(--vg-shadow);
-}
-
-.home__project-name {
-  font-weight: 600;
-}
-
-.home__project-meta {
-  font-family: var(--vg-font-display);
+.summary small {
   font-size: var(--vg-text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.6rem;
-  border-radius: var(--vg-radius-pill);
-  border: 1px solid var(--vg-border-strong);
-  color: var(--vg-green-bright);
+  line-height: 1.35;
+  text-wrap: pretty;
 }
-
-.home__project-delete {
-  font: inherit;
-  width: 2.75rem;
-  border-radius: var(--vg-radius);
+.quick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vg-space-2);
+  padding-top: var(--vg-space-4);
+  border-top: 1px solid var(--vg-border);
+}
+.quick h2 {
+  margin: 0.2rem 0;
+  font: 700 var(--vg-text-xl) var(--vg-font-display);
+}
+.quick__actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vg-space-3);
+}
+.quick button {
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--vg-space-3);
+  padding: var(--vg-space-3);
   border: 1px solid var(--vg-border);
-  background: transparent;
-  color: var(--vg-text-dim);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+  color: var(--vg-text);
+  font: 700 var(--vg-text-base) var(--vg-font-body);
+  text-align: left;
   cursor: pointer;
-  transition: border-color var(--vg-dur-fast) ease, color var(--vg-dur-fast) ease;
 }
-
-.home__project-delete:hover:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.6);
-  color: #f87171;
+.quick__icon {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 36px;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--vg-blue-bright);
 }
-
-.home__project-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.quick button > span:last-child {
+  align-self: center;
+}
+.quick button:hover {
+  border-color: var(--vg-blue-bright);
+  background: var(--vg-surface-3);
+}
+@media (max-width: 760px) {
+  .summary {
+    grid-template-columns: 1fr;
+  }
+  .quick__actions {
+    grid-template-columns: 1fr;
+  }
+  .quick button {
+    min-height: 72px;
+  }
 }
 </style>

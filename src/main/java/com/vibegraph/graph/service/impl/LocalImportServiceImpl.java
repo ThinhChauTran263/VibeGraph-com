@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
@@ -17,7 +18,13 @@ import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.ServiceBusyException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.LocalImportRequest;
@@ -26,6 +33,8 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
+import com.vibegraph.graph.service.DirectorySizeMeasurer;
+import com.vibegraph.graph.service.LocalProjectPathValidator;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.LocalImportService;
 import com.vibegraph.graph.service.ProjectService;
@@ -35,7 +44,8 @@ import com.vibegraph.graph.websocket.GraphUpdateController;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Default {@link LocalImportService}: orchestrates {@code createProject → analyze → watch} for
+ * Default {@link LocalImportService}: orchestrates
+ * {@code createProject → analyze → watch} for
  * an in-place directory, and exposes a base-confined directory browser.
  */
 @Service
@@ -43,8 +53,8 @@ import lombok.extern.slf4j.Slf4j;
 public class LocalImportServiceImpl implements LocalImportService {
 
     /** Directories never offered by the browser (build output, VCS, deps). */
-    private static final Set<String> IGNORED_DIRS =
-            Set.of("target", "build", "out", ".git", ".idea", ".gradle", "node_modules", "dist", ".vibegraph");
+    private static final Set<String> IGNORED_DIRS = Set.of("target", "build", "out", ".git", ".idea", ".gradle",
+            "node_modules", "dist", ".vibegraph");
 
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
@@ -52,48 +62,95 @@ public class LocalImportServiceImpl implements LocalImportService {
     private final ProjectsProperties projectsProperties;
     private final GraphUpdateController graphUpdateController;
     private final Executor analysisExecutor;
+    private final AccountSettingsService accountSettingsService;
+    private final ProjectUsageService projectUsageService;
+    private final CurrentUser currentUser;
+    private final ProjectOwnershipRegistrar ownershipRegistrar;
+    private final LocalProjectPathValidator pathValidator;
+    private final DirectorySizeMeasurer directorySizeMeasurer;
+    private final ConcurrentImportGuard concurrentImportGuard;
+    private final FeatureGateService featureGateService;
 
     public LocalImportServiceImpl(ProjectService projectService,
-                                  AnalyzeService analyzeService,
-                                  FileChangeBroadcaster fileChangeBroadcaster,
-                                  ProjectsProperties projectsProperties,
-                                  GraphUpdateController graphUpdateController,
-                                  @Qualifier("analysisExecutor") Executor analysisExecutor) {
+            AnalyzeService analyzeService,
+            FileChangeBroadcaster fileChangeBroadcaster,
+            ProjectsProperties projectsProperties,
+            GraphUpdateController graphUpdateController,
+            @Qualifier("analysisExecutor") Executor analysisExecutor,
+            AccountSettingsService accountSettingsService,
+            ProjectUsageService projectUsageService,
+            CurrentUser currentUser,
+            ProjectOwnershipRegistrar ownershipRegistrar,
+            LocalProjectPathValidator pathValidator,
+            DirectorySizeMeasurer directorySizeMeasurer,
+            ConcurrentImportGuard concurrentImportGuard,
+            FeatureGateService featureGateService) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.projectsProperties = projectsProperties;
         this.graphUpdateController = graphUpdateController;
         this.analysisExecutor = analysisExecutor;
+        this.accountSettingsService = accountSettingsService;
+        this.projectUsageService = projectUsageService;
+        this.currentUser = currentUser;
+        this.ownershipRegistrar = ownershipRegistrar;
+        this.pathValidator = pathValidator;
+        this.directorySizeMeasurer = directorySizeMeasurer;
+        this.concurrentImportGuard = concurrentImportGuard;
+        this.featureGateService = featureGateService;
     }
 
     @Override
     public ProjectResponse importLocal(LocalImportRequest request) {
-        // createProject enforces the allowed-root guard + existence/dir checks synchronously, so a
-        // bad path is rejected with 400 before we accept the import.
-        ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
-                .name(request.name())
-                .rootPath(request.path())
-                .build());
+        featureGateService.assertEnabled(FeatureGateService.IMPORT_LOCAL);
+        // Blocked account must be checked BEFORE quota (returns ACCOUNT_BLOCKED, not QUOTA_EXCEEDED).
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+        ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(userId);
 
-        projectService.markAnalyzing(created.getId());
-        graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
-        // Analyze off the request thread so the client gets an immediate ANALYZING response and a
-        // streamed progress bar (mirrors the archive/GitHub async flow).
         try {
-            analysisExecutor.execute(() ->
-                    analyzeInBackground(created.getId(), created.getName(), created.getRootPath()));
-        } catch (RejectedExecutionException ex) {
-            // Executor saturated: mark FAILED and surface 503 instead of blocking the request thread.
-            String reason = "Server is busy analyzing other projects. Please retry shortly.";
-            projectService.markFailed(created.getId(), reason);
-            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
-            throw new ServiceBusyException(reason);
+            Path validatedRoot = pathValidator.validateImportRoot(request.path());
+            long totalSize = directorySizeMeasurer.measureBytes(validatedRoot);
+            accountSettingsService.assertQuotaNotExceeded(userId, totalSize);
+
+            ProjectResponse created = projectService.createProject(CreateProjectRequest.builder()
+                    .name(request.name())
+                    .rootPath(validatedRoot.toString())
+                    .build());
+
+            try {
+                ownershipRegistrar.registerLocal(created.getId(), created.getName());
+                projectUsageService.recordImport(created.getId(), userId, totalSize);
+            } catch (RuntimeException ex) {
+                cleanupCreatedProject(created.getId());
+                throw ex;
+            }
+
+            projectService.markAnalyzing(created.getId());
+            graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.ANALYZING, 0);
+        // Analyze off the request thread so the client gets an immediate ANALYZING
+        // response and a streamed progress bar (mirrors the archive/GitHub async flow).
+            ProjectResponse accepted = projectService.getProject(created.getId());
+            try {
+                analysisExecutor.execute(() -> analyzeInBackground(
+                        created.getId(), created.getName(), created.getRootPath(), lease));
+            } catch (RejectedExecutionException ex) {
+                String reason = "Server is busy analyzing other projects. Please retry shortly.";
+                projectService.markFailed(created.getId(), reason);
+                graphUpdateController.broadcastStatus(created.getId(), ProjectStatus.FAILED, 0, reason);
+                lease.close();
+                throw new ServiceBusyException(reason);
+            }
+            return accepted;
+        } catch (RuntimeException e) {
+            lease.close();
+            throw e;
         }
-        return projectService.getProject(created.getId());
     }
 
-    private void analyzeInBackground(String projectId, String name, String rootPath) {
+    private void analyzeInBackground(String projectId, String name, String rootPath,
+            ConcurrentImportGuard.Lease lease) {
         try {
             AnalysisProgressListener listener = (percent, phase) -> {
                 projectService.updateProgress(projectId, percent);
@@ -103,25 +160,45 @@ public class LocalImportServiceImpl implements LocalImportService {
             projectService.markAnalyzed(projectId,
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.ANALYZED, 100);
-            // Watch the very directory we analyzed → edits there stream realtime graph updates.
+            // Watch the very directory we analyzed → edits there stream realtime graph
+            // updates.
             fileChangeBroadcaster.watchProject(projectId, rootPath);
-            log.info("Local-imported project {} from {} ({} files)", projectId, rootPath, result.filesParsed());
+
+            log.info("Local-imported project {} from {} ({} files)",
+                    projectId, rootPath, result.filesParsed());
         } catch (RuntimeException e) {
             projectService.markFailed(projectId, e.getMessage());
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.FAILED.name(), 0, e.getMessage());
             log.error("Local analysis failed for project {} ({}): {}", projectId, rootPath, e.getMessage(), e);
+        } finally {
+            lease.close();
+        }
+    }
+
+    private void cleanupCreatedProject(String projectId) {
+        try {
+            projectService.deleteProject(projectId);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to clean local import project {}: {}", projectId, ex.getMessage());
+        }
+        try {
+            ownershipRegistrar.unregister(projectId);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to clean local import ownership {}: {}", projectId, ex.getMessage());
         }
     }
 
     @Override
     public DirectoryListing browse(String path) {
-        Path base = configuredBase(); // null = unconfined (no allowed-root): browse the whole host
+        Path base = configuredBase();
+        boolean isUnconfined = base == null && projectsProperties.isAllowUnconfinedBrowse();
+        if (base == null && !isUnconfined) {
+            throw new IllegalStateException(
+                    "Directory browsing is disabled until an allowed root is configured");
+        }
         String trimmed = path == null ? "" : path.trim();
 
-        // Unconfined + top-level view → list the filesystem roots ("This PC": drive letters on
-        // Windows, "/" on Unix) so a developer can reach projects on any drive without a fixed
-        // root. Each team member's disk layout differs, so a hardcoded allowed-root would not fit.
-        if (base == null && trimmed.isEmpty()) {
+        if (isUnconfined && trimmed.isEmpty()) {
             return listRoots();
         }
 
@@ -147,7 +224,10 @@ public class LocalImportServiceImpl implements LocalImportService {
         return new DirectoryListing(target.toString(), parentOf(target, base), entries);
     }
 
-    /** Configured allowed base, or {@code null} when browsing is unconfined (no allowed-root set). */
+    /**
+     * Configured allowed base, or {@code null} when browsing is unconfined (no
+     * allowed-root set).
+     */
     private Path configuredBase() {
         String allowedRoot = projectsProperties.getAllowedRoot();
         if (allowedRoot == null || allowedRoot.isBlank()) {
@@ -169,9 +249,12 @@ public class LocalImportServiceImpl implements LocalImportService {
     }
 
     /**
-     * Top-level "This PC" view for unconfined browsing: the filesystem roots — drive letters on
-     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are not accessible
-     * (empty removable/optical media) are skipped so one bad drive can't break the whole listing.
+     * Top-level "This PC" view for unconfined browsing: the filesystem roots —
+     * drive letters on
+     * Windows ({@code C:\}, {@code D:\}, ...), {@code /} on Unix. Drives that are
+     * not accessible
+     * (empty removable/optical media) are skipped so one bad drive can't break the
+     * whole listing.
      * The parent is {@code null} because there is nothing above "This PC".
      */
     private DirectoryListing listRoots() {
@@ -193,12 +276,13 @@ public class LocalImportServiceImpl implements LocalImportService {
         return new DirectoryListing("", null, entries);
     }
 
-
     /**
      * Parent path for the Up control:
      * <ul>
-     *   <li>Confined: {@code null} at the base; otherwise the parent (still inside the base).</li>
-     *   <li>Unconfined: the parent path, or {@code ""} (the roots sentinel) when at a drive root.</li>
+     * <li>Confined: {@code null} at the base; otherwise the parent (still inside
+     * the base).</li>
+     * <li>Unconfined: the parent path, or {@code ""} (the roots sentinel) when at a
+     * drive root.</li>
      * </ul>
      */
     private String parentOf(Path target, Path base) {
@@ -212,16 +296,22 @@ public class LocalImportServiceImpl implements LocalImportService {
         return parent == null ? "" : parent.toString();
     }
 
-    /** A sub-directory is offered only if it is not hidden (dot-prefixed) and not an ignored build/VCS dir. */
+    /**
+     * A sub-directory is offered only if it is not hidden (dot-prefixed) and not an
+     * ignored build/VCS dir.
+     */
     private static boolean isBrowsable(Path dir) {
         String name = fileName(dir);
         return !name.isEmpty() && !name.startsWith(".") && !IGNORED_DIRS.contains(name);
     }
 
     /**
-     * Cheap best-effort hint of whether {@code dir} looks like a Java project root: presence of a
-     * {@code src} dir / Maven / Gradle build file, or a {@code .java} file directly inside. Bounded
-     * (one directory listing + a few existence checks) so it stays fast even at drive-root level.
+     * Cheap best-effort hint of whether {@code dir} looks like a Java project root:
+     * presence of a
+     * {@code src} dir / Maven / Gradle build file, or a {@code .java} file directly
+     * inside. Bounded
+     * (one directory listing + a few existence checks) so it stays fast even at
+     * drive-root level.
      */
     private static boolean looksLikeJava(Path dir) {
         try {
@@ -246,4 +336,5 @@ public class LocalImportServiceImpl implements LocalImportService {
         Path name = p.getFileName();
         return name == null ? "" : name.toString();
     }
+
 }

@@ -20,6 +20,7 @@ import com.vibegraph.auth.dto.RegisterRequest;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
+import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.InvalidCredentialsException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,6 +47,12 @@ class AuthServiceTest {
     @Mock
     private AccountSettingsService accountSettingsService;
 
+    @Mock
+    private FeatureGateService featureGateService;
+
+    @Mock
+    private AuditService auditService;
+
     private AuthService authService;
 
     @BeforeEach
@@ -55,7 +62,9 @@ class AuthServiceTest {
                 passwordEncoder,
                 jwtService,
                 currentUser,
-                accountSettingsService);
+                accountSettingsService,
+                featureGateService,
+                auditService);
     }
 
     @Test
@@ -80,6 +89,18 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("register is blocked by the global registration feature flag before persistence")
+    void register_featureDisabled_blocksBeforePersistence() {
+        doThrow(new FeatureDisabledException(FeatureGateService.REGISTRATION))
+                .when(featureGateService).assertEnabled(FeatureGateService.REGISTRATION);
+        RegisterRequest request = new RegisterRequest("new@test.local", "Password123!", "New User");
+
+        assertThrows(FeatureDisabledException.class, () -> authService.register(request));
+
+        verifyNoInteractions(userRepository, passwordEncoder, jwtService, accountSettingsService);
+    }
+
+    @Test
     @DisplayName("register does not create settings for duplicate email")
     void register_duplicateEmail_doesNotCreateSettings() {
         RegisterRequest request = new RegisterRequest("taken@test.local", "Password123!", "Taken User");
@@ -91,8 +112,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("login rejects blocked accounts after valid credentials")
-    void login_blockedUser_throwsAccountBlocked() {
+    @DisplayName("login issues a report-only token for blocked accounts after valid credentials")
+    void login_blockedUser_returnsSafeRestrictedStatus() {
         LoginRequest request = new LoginRequest("blocked@test.local", "Password123!");
         UUID userId = UUID.randomUUID();
         User user = User.builder()
@@ -101,15 +122,50 @@ class AuthServiceTest {
                 .passwordHash("hash")
                 .role(Role.USER)
                 .build();
+        var settings = com.vibegraph.auth.domain.UserAccountSettings.builder()
+                .userId(userId)
+                .blockedAt(java.time.Instant.now())
+                .blockedReason("private fraud note")
+                .blockedReasonSafe("Policy review")
+                .build();
         when(userRepository.findByEmailIgnoreCase("blocked@test.local")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Password123!", "hash")).thenReturn(true);
-        doThrow(new AccountBlockedException("Account is blocked", "maintenance"))
-                .when(accountSettingsService).assertNotBlocked(userId);
+        when(accountSettingsService.findSettings(userId)).thenReturn(settings);
+        when(jwtService.issue(user)).thenReturn("restricted-token");
 
-        AccountBlockedException ex = assertThrows(AccountBlockedException.class, () -> authService.login(request));
+        AuthResponse response = authService.login(request);
 
-        assertEquals("ACCOUNT_BLOCKED", ex.getCode());
-        verify(jwtService, never()).issue(any());
+        assertEquals("restricted-token", response.token());
+        assertEquals("BLOCKED", response.user().accountStatus());
+        assertEquals("Policy review", response.user().safeReason());
+        assertFalse(response.user().toString().contains("private fraud note"));
+    }
+
+    @Test
+    @DisplayName("login issues a report-only token for deactivated accounts after valid credentials")
+    void login_deactivatedUser_returnsSafeRestrictedStatus() {
+        LoginRequest request = new LoginRequest("deactivated@test.local", "Password123!");
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("deactivated@test.local")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .deactivated(true)
+                .deactivationReason("private note")
+                .deactivationReasonSafe("Account closed by administrator")
+                .build();
+        when(userRepository.findByEmailIgnoreCase("deactivated@test.local")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password123!", "hash")).thenReturn(true);
+        when(accountSettingsService.findSettings(userId))
+                .thenReturn(com.vibegraph.auth.domain.UserAccountSettings.builder().userId(userId).build());
+        when(jwtService.issue(user)).thenReturn("restricted-token");
+
+        AuthResponse response = authService.login(request);
+
+        assertEquals("DEACTIVATED", response.user().accountStatus());
+        assertEquals("Account closed by administrator", response.user().safeReason());
+        assertFalse(response.user().toString().contains("private note"));
     }
 
     @Test

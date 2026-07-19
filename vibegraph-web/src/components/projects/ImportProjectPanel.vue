@@ -2,23 +2,32 @@
 /**
  * ImportProjectPanel - unified import surface.
  *
- * Combines the three import flows (local folder, archive upload, GitHub URL)
+ * Combines the supported import flows (CLI push, archive upload, GitHub URL)
  * into a single card with a segmented control, so the user switches methods in
  * place instead of scanning three separate cards. Each underlying form is
  * rendered `embedded` (no card chrome / header) and the panel owns the title,
  * tabs, accent and per-method description.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
-import AddProjectLocal from '@/components/projects/AddProjectLocal.vue'
+import AddProjectCli from '@/components/projects/AddProjectCli.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
+
+type Method = 'cli' | 'archive' | 'github'
+
+const { t } = useI18n({ useScope: 'global' })
+const props = withDefaults(
+  defineProps<{
+    disabledMethods?: Partial<Record<Method, string | null>>
+  }>(),
+  { disabledMethods: () => ({}) },
+)
 
 const emit = defineEmits<{
   imported: [project: Project]
 }>()
-
-type Method = 'local' | 'archive' | 'github'
 
 interface MethodTab {
   id: Method
@@ -29,21 +38,20 @@ interface MethodTab {
   accentSoft: string
 }
 
-const tabs: MethodTab[] = [
+const tabs = computed<MethodTab[]>(() => [
   {
-    id: 'local',
-    label: 'Local folder',
-    short: 'Local',
-    description:
-      'Analyze a folder already on the machine running VibeGraph — the graph updates in realtime as you edit, no zip needed.',
+    id: 'cli',
+    label: t('user.projects.cliPush'),
+    short: t('user.projects.cliShort'),
+    description: t('user.projects.cliDescription'),
     accent: 'var(--vg-blue-bright)',
     accentSoft: 'rgba(96, 165, 250, 0.16)',
   },
   {
     id: 'archive',
-    label: 'Archive',
-    short: 'Archive',
-    description: 'Upload a Java project archive (.zip, .tar, .tar.gz, .tgz). VibeGraph extracts and analyzes it for you.',
+    label: t('user.projects.archive'),
+    short: t('user.projects.archive'),
+    description: t('user.projects.archiveDescription'),
     accent: 'var(--vg-cyan)',
     accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
@@ -51,24 +59,40 @@ const tabs: MethodTab[] = [
     id: 'github',
     label: 'GitHub',
     short: 'GitHub',
-    description: 'Point VibeGraph at any public GitHub repository by its HTTPS URL and it clones, indexes and maps it.',
+    description: t('user.projects.githubDescription'),
     accent: 'var(--vg-violet)',
     accentSoft: 'rgba(167, 139, 250, 0.16)',
   },
-]
+])
 
-const active = ref<Method>('local')
-const activeTab = computed<MethodTab>(() => tabs.find((t) => t.id === active.value) ?? tabs[0]!)
+const enabledTabs = computed(() => tabs.value.filter((tab) => !props.disabledMethods[tab.id]))
+const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
+const active = ref<Method>(enabledTabs.value[0]?.id ?? 'cli')
+const activeTab = computed<MethodTab>(() => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!)
+
+watch(
+  () => props.disabledMethods,
+  () => {
+    if (props.disabledMethods[active.value]) {
+      active.value = enabledTabs.value[0]?.id ?? 'cli'
+    }
+  },
+  { deep: true, immediate: true },
+)
 
 function onImported(project: Project): void {
   emit('imported', project)
 }
 
+function selectMethod(method: Method): void {
+  if (!props.disabledMethods[method]) active.value = method
+}
+
 // Each method gets a distinct icon so the segmented control reads at a glance.
 function iconPath(id: Method): string {
   switch (id) {
-    case 'local':
-      return 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'
+    case 'cli':
+      return 'M4 5h16v14H4z M8 9l3 3-3 3 M13 15h4'
     case 'archive':
       return 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10'
     case 'github':
@@ -86,24 +110,30 @@ function iconPath(id: Method): string {
   >
     <header class="import-panel__head">
       <div class="import-panel__title-row">
-        <h2 id="import-panel-heading" class="import-panel__title">Import a project</h2>
+        <h2 id="import-panel-heading" class="import-panel__title">{{ t('user.projects.importDialogTitle') }}</h2>
         <span class="import-panel__badge">Java</span>
       </div>
-      <p class="import-panel__desc">{{ activeTab.description }}</p>
+      <p class="import-panel__desc">
+        {{ hasEnabledMethod ? activeTab.description : t('user.projects.noImportMethod') }}
+      </p>
     </header>
 
-    <div class="import-panel__tabs" role="tablist" aria-label="Import method">
+    <div class="import-panel__tabs" role="tablist" :aria-label="t('user.projects.importMethod')">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         class="import-panel__tab"
         :class="{ 'import-panel__tab--active': active === tab.id }"
-        :style="active === tab.id ? { '--accent': tab.accent, '--accent-soft': tab.accentSoft } : {}"
+        :style="
+          active === tab.id ? { '--accent': tab.accent, '--accent-soft': tab.accentSoft } : {}
+        "
         type="button"
         role="tab"
+        :disabled="Boolean(props.disabledMethods[tab.id])"
         :aria-selected="active === tab.id"
+        :title="props.disabledMethods[tab.id] || undefined"
         :data-test="`import-tab-${tab.id}`"
-        @click="active = tab.id"
+        @click="selectMethod(tab.id)"
       >
         <svg
           class="import-panel__tab-icon"
@@ -124,10 +154,20 @@ function iconPath(id: Method): string {
       </button>
     </div>
 
-    <div class="import-panel__body">
+    <p v-if="!hasEnabledMethod" class="import-panel__disabled" role="status">
+      {{ t('user.projects.noImportMethodDescription') }}
+    </p>
+
+    <div v-else class="import-panel__body">
       <Transition name="import-fade" mode="out-in">
-        <AddProjectLocal v-if="active === 'local'" key="local" embedded @imported="onImported" />
-        <AddProjectArchive v-else-if="active === 'archive'" key="archive" :async="true" embedded @imported="onImported" />
+        <AddProjectCli v-if="active === 'cli'" key="cli" embedded @imported="onImported" />
+        <AddProjectArchive
+          v-else-if="active === 'archive'"
+          key="archive"
+          :async="true"
+          embedded
+          @imported="onImported"
+        />
         <GitHubImportForm v-else key="github" embedded @imported="onImported" />
       </Transition>
     </div>
@@ -141,9 +181,9 @@ function iconPath(id: Method): string {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--vg-space-6);
+  gap: var(--vg-space-4);
   overflow: hidden;
-  padding: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+  padding: var(--vg-space-4);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius-lg);
   background: var(--vg-grad-surface);
@@ -172,7 +212,9 @@ function iconPath(id: Method): string {
   background: radial-gradient(circle, var(--accent-soft), transparent 70%);
   opacity: 0.7;
   pointer-events: none;
-  transition: opacity var(--vg-dur) var(--vg-ease-out), background var(--vg-dur);
+  transition:
+    opacity var(--vg-dur) var(--vg-ease-out),
+    background var(--vg-dur);
 }
 
 .import-panel__head {
@@ -229,26 +271,45 @@ function iconPath(id: Method): string {
 .import-panel__tab {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
+  min-height: 38px;
   font: inherit;
   font-weight: 600;
   font-size: var(--vg-text-sm);
-  padding: 0.6rem 0.85rem;
+  padding: 0.45rem 0.7rem;
+  text-align: left;
   border: 1px solid transparent;
   border-radius: calc(var(--vg-radius) - 4px);
   background: transparent;
   color: var(--vg-text-muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
-    color var(--vg-dur-fast) var(--vg-ease-out), border-color var(--vg-dur-fast) var(--vg-ease-out),
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
-.import-panel__tab:hover {
+.import-panel__tab:hover:not(:disabled) {
   color: var(--vg-text);
   background: rgba(148, 163, 184, 0.08);
+}
+
+.import-panel__tab:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.import-panel__disabled {
+  margin: 0;
+  padding: var(--vg-space-3);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-bg);
+  color: var(--vg-amber);
+  font-size: var(--vg-text-sm);
 }
 
 .import-panel__tab--active {
@@ -273,7 +334,9 @@ function iconPath(id: Method): string {
 /* Method switch transition. */
 .import-fade-enter-active,
 .import-fade-leave-active {
-  transition: opacity var(--vg-dur) var(--vg-ease-out), transform var(--vg-dur) var(--vg-ease-out);
+  transition:
+    opacity var(--vg-dur) var(--vg-ease-out),
+    transform var(--vg-dur) var(--vg-ease-out);
 }
 .import-fade-enter-from {
   opacity: 0;

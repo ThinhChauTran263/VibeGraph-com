@@ -66,9 +66,22 @@ function onActivate(): void {
           height="14"
           aria-hidden="true"
         >
-          <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
-        <svg class="tree-node__icon tree-node__icon--folder" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <svg
+          class="tree-node__icon tree-node__icon--folder"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+        >
           <path
             d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2h7A1.5 1.5 0 0 1 19 8.5v8A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5v-10Z"
             :fill="open ? 'rgba(96,165,250,0.28)' : 'rgba(148,163,184,0.16)'"
@@ -88,7 +101,13 @@ function onActivate(): void {
             stroke-width="1.4"
             stroke-linejoin="round"
           />
-          <path d="M13.5 2v5.5H19" fill="none" :stroke="fileColor" stroke-width="1.4" stroke-linejoin="round" />
+          <path
+            d="M13.5 2v5.5H19"
+            fill="none"
+            :stroke="fileColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
         </svg>
       </template>
 

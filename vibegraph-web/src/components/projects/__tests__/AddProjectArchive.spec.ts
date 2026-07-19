@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import AddProjectArchive from '../AddProjectArchive.vue'
 import type { Project } from '@/lib/api'
+import i18n from '@/language'
 
 /**
  * The component delegates the network call through `useArchiveImport`, which
@@ -44,10 +45,12 @@ vi.mock('@/composables/useWebSocket', () => {
       error: { value: null },
       connect: vi.fn<() => Promise<void>>(() => wsController.connectImpl()),
       disconnect: vi.fn<() => Promise<void>>(async () => {}),
-      subscribe: vi.fn<(topic: string, cb: (e: unknown) => void) => { unsubscribe: () => void }>((topic, cb) => {
-        wsController.captured = { topic, cb }
-        return { unsubscribe: vi.fn<() => void>() }
-      }),
+      subscribe: vi.fn<(topic: string, cb: (e: unknown) => void) => { unsubscribe: () => void }>(
+        (topic, cb) => {
+          wsController.captured = { topic, cb }
+          return { unsubscribe: vi.fn<() => void>() }
+        },
+      ),
     }),
   }
 })
@@ -56,6 +59,13 @@ const { importApi, projectApi } = await import('@/lib/api')
 const uploadArchiveMock = importApi.uploadArchive as ReturnType<typeof vi.fn>
 const uploadArchiveAsyncMock = importApi.uploadArchiveAsync as ReturnType<typeof vi.fn>
 const projectGetMock = projectApi.get as ReturnType<typeof vi.fn>
+
+function mountArchive(options: Parameters<typeof mount>[1] = {}) {
+  return mount(AddProjectArchive, {
+    ...options,
+    global: { ...options.global, plugins: [...(options.global?.plugins ?? []), i18n] },
+  })
+}
 
 function makeFile(name: string, size: number): File {
   const bytes = size > 0 ? new Uint8Array(Math.min(size, 64)) : new Uint8Array(0)
@@ -94,19 +104,19 @@ afterEach(() => {
 
 describe('AddProjectArchive', () => {
   it('disables the submit button when neither name nor file are provided', () => {
-    const wrapper = mount(AddProjectArchive)
+    const wrapper = mountArchive()
     const submit = wrapper.get('button[type="submit"]')
     expect(submit.attributes('disabled')).toBeDefined()
   })
 
   it('disables the submit button when only the project name is filled', async () => {
-    const wrapper = mount(AddProjectArchive)
+    const wrapper = mountArchive()
     await wrapper.get('input[type="text"]').setValue('demo')
     expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
   })
 
   it('shows a validation error and clears the file when the extension is invalid', async () => {
-    const wrapper = mount(AddProjectArchive)
+    const wrapper = mountArchive()
     await wrapper.get('input[type="text"]').setValue('demo')
 
     const fileInput = wrapper.get('input[type="file"]').element as HTMLInputElement
@@ -124,7 +134,7 @@ describe('AddProjectArchive', () => {
   })
 
   it('shows the selected file name and enables submit when name and valid file are present', async () => {
-    const wrapper = mount(AddProjectArchive)
+    const wrapper = mountArchive()
     await wrapper.get('input[type="text"]').setValue('demo')
 
     const fileInput = wrapper.get('input[type="file"]').element as HTMLInputElement
@@ -143,7 +153,7 @@ describe('AddProjectArchive', () => {
     const project = fakeProject({ id: 'imp-1', name: 'imp-demo', status: 'ANALYZED' })
     uploadArchiveMock.mockResolvedValueOnce(project)
 
-    const wrapper = mount(AddProjectArchive)
+    const wrapper = mountArchive()
     await wrapper.get('input[type="text"]').setValue('imp-demo')
 
     const fileInput = wrapper.get('input[type="file"]').element as HTMLInputElement
@@ -170,7 +180,7 @@ describe('AddProjectArchive', () => {
 
 describe('AddProjectArchive - async mode', () => {
   async function selectValidFileAndSubmit(asyncMode: boolean) {
-    const wrapper = mount(AddProjectArchive, { props: { async: asyncMode } })
+    const wrapper = mountArchive({ props: { async: asyncMode } })
     await wrapper.get('input[type="text"]').setValue('async-demo')
     const fileInput = wrapper.get('input[type="file"]').element as HTMLInputElement
     Object.defineProperty(fileInput, 'files', {

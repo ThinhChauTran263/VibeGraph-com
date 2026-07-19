@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +34,7 @@ public class AccountApiKeyController {
     public ResponseEntity<ApiResponse<ApiKeyCreateResponse>> create(
             @Valid @RequestBody ApiKeyCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(ApiResponse.success(apiKeyService.createForCurrentUser(request)));
     }
 
@@ -45,5 +47,17 @@ public class AccountApiKeyController {
     public ResponseEntity<ApiResponse<Void>> disable(@PathVariable UUID id) {
         apiKeyService.disableForCurrentUser(id);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @PatchMapping("/{id}/enable")
+    public ResponseEntity<ApiResponse<Void>> enable(@PathVariable UUID id) {
+        apiKeyService.enableForCurrentUser(id);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        apiKeyService.deleteForCurrentUser(id);
+        return ResponseEntity.noContent().build();
     }
 }

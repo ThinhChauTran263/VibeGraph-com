@@ -2,8 +2,11 @@ package com.vibegraph.graph.controller;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,15 +15,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
+import com.vibegraph.graph.dto.request.CliRepositoryCreateRequest;
+import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectService;
 
 import jakarta.validation.Valid;
@@ -28,7 +38,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/projects")
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -37,6 +47,11 @@ public class ProjectController {
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
     private final ProjectDeletionOrchestrator deletionOrchestrator;
+    private final CurrentUser currentUser;
+    private final AccountSettingsService accountSettingsService;
+    private final FeatureGateService featureGateService;
+    private final ProjectUsageService projectUsageService;
+    private final CliRepositoryService cliRepositoryService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -44,7 +59,25 @@ public class ProjectController {
         // so a validation failure inside createProject leaves no ownership row.
         ProjectResponse project = projectService.createProject(request);
         ownershipRegistrar.registerLocal(project.getId(), project.getName());
+        try {
+            projectUsageService.recordImport(project.getId(), currentUser.id(), 0L);
+        } catch (RuntimeException ex) {
+            try {
+                deletionOrchestrator.delete(project.getId());
+            } catch (RuntimeException cleanupFailure) {
+                ex.addSuppressed(cleanupFailure);
+            }
+            throw ex;
+        }
         return ResponseEntity.ok(ApiResponse.success(project));
+    }
+
+    @PostMapping("/cli-setup")
+    public ResponseEntity<ApiResponse<CliRepositorySetupResponse>> createCliRepository(
+            @Valid @RequestBody(required = false) CliRepositoryCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(CacheControl.noStore())
+                .body(ApiResponse.success(cliRepositoryService.create(request)));
     }
 
     @GetMapping
@@ -68,6 +101,10 @@ public class ProjectController {
     @PostMapping("/{id}/analyze")
     public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
         ownershipGuard.assertOwner(id);
+        featureGateService.assertEnabled(FeatureGateService.PROJECT_ANALYZE);
+        UUID userId = currentUser.id();
+        accountSettingsService.assertNotBlocked(userId);
+
         ProjectResponse project = projectService.getProject(id);
         AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
 

@@ -1,18 +1,10 @@
 import { computed, readonly, ref } from 'vue'
-import {
-  ApiError,
-  diagramApi,
-  type DiagramResponse,
-  type UmlUseCaseMode,
-  type UmlUseCaseResponse,
-} from '@/lib/api'
+import { ApiError, diagramApi, type UmlUseCaseMode, type UmlUseCaseResponse } from '@/lib/api'
 import { graphVersion } from '@/lib/graphVersion'
 
-export type DiagramKind = 'uml' | 'class'
+export type DiagramKind = 'uml'
 export type DiagramStatus = 'idle' | 'loading' | 'success' | 'error'
-export type LoadedDiagram =
-  | (UmlUseCaseResponse & { kind: 'uml' })
-  | (DiagramResponse & { kind: 'class' })
+export type LoadedDiagram = UmlUseCaseResponse & { kind: 'uml' }
 
 interface CacheEntry {
   data: LoadedDiagram
@@ -23,8 +15,8 @@ interface CacheEntry {
 /**
  * App-wide diagram cache keyed by `projectId::kind::variant` (variant = UML mode or
  * class package filter). Module-level so it survives component remounts and tab
- * switches: re-opening a diagram or flipping UML<->Class is instant and skips the
- * network, while a graph change (graphVersion bump) marks entries stale for refetch.
+ * switches: re-opening a diagram is instant and skips the network, while a graph
+ * change (graphVersion bump) marks entries stale for refetch.
  */
 const diagramCache = new Map<string, CacheEntry>()
 
@@ -64,7 +56,9 @@ export function useDiagrams() {
   // graphVersion the currently-shown diagram was built from; drives staleness checks.
   const currentVersion = ref(-1)
   /** True when the shown diagram predates the latest graph change (should revalidate). */
-  const isStale = computed(() => status.value === 'success' && currentVersion.value < graphVersion.value)
+  const isStale = computed(
+    () => status.value === 'success' && currentVersion.value < graphVersion.value,
+  )
   let requestSeq = 0
 
   async function runWithCache(
@@ -131,21 +125,6 @@ export function useDiagrams() {
     )
   }
 
-  function loadClassDiagram(
-    projectId: string,
-    packageFilter?: string,
-    options: DiagramLoadOptions = {},
-  ): Promise<LoadedDiagram | null> {
-    const trimmedPackage = packageFilter?.trim() || undefined
-    return runWithCache(
-      projectId,
-      'class',
-      trimmedPackage ?? '',
-      (trimmedProjectId) => diagramApi.classDiagram(trimmedProjectId, trimmedPackage),
-      options.force ?? false,
-    )
-  }
-
   function reset(): void {
     requestSeq++
     status.value = 'idle'
@@ -161,7 +140,6 @@ export function useDiagrams() {
     isLoading,
     isStale,
     loadUmlUseCaseDiagram,
-    loadClassDiagram,
     reset,
   }
 }

@@ -12,6 +12,7 @@
  */
 
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   ARCHIVE_ACCEPT_ATTRIBUTE,
   ARCHIVE_MAX_SIZE_BYTES,
@@ -22,6 +23,7 @@ import type { Project } from '@/lib/api'
 import { useArchiveImport } from '@/composables/useArchiveImport'
 import Spinner from '@/components/ui/Spinner.vue'
 
+const { t } = useI18n({ useScope: 'global' })
 const props = withDefaults(
   defineProps<{
     /**
@@ -69,10 +71,10 @@ const canSubmit = computed(
 
 const submitLabel = computed(() => {
   if (isAnalyzing.value) {
-    return progress.value >= 98 ? 'Finalizing…' : `Importing… ${progress.value}%`
+    return progress.value >= 98 ? t('user.import.finalizing') : `${t('user.import.importing')} ${progress.value}%`
   }
-  if (status.value === 'uploading') return 'Uploading…'
-  return 'Upload archive'
+  if (status.value === 'uploading') return t('user.import.uploading')
+  return t('user.import.uploadArchive')
 })
 
 // Progress-bar caption. While the file is still uploading the byte progress
@@ -80,8 +82,8 @@ const submitLabel = computed(() => {
 // determinate percentage, and "Finalizing graph…" as it nears completion —
 // matching the GitHub/local import wording.
 const progressLabel = computed(() => {
-  if (!isAnalyzing.value) return 'Uploading…'
-  return progress.value >= 98 ? 'Finalizing graph…' : `Analyzing… ${progress.value}%`
+  if (!isAnalyzing.value) return t('user.import.uploading')
+  return progress.value >= 98 ? t('user.import.finalizing') : `${t('user.import.analyzing')} ${progress.value}%`
 })
 
 function onFileChange(event: Event): void {
@@ -137,27 +139,37 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="archive-import" :class="{ 'archive-import--embedded': embedded }" aria-labelledby="archive-import-heading">
+  <section
+    class="archive-import"
+    :class="{ 'archive-import--embedded': embedded }"
+    aria-labelledby="archive-import-heading"
+  >
     <header v-if="!embedded" class="archive-import__header">
       <span class="archive-import__icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M3 7l9-4 9 4v10l-9 4-9-4z" />
           <path d="M3 7l9 4 9-4" />
           <path d="M12 11v10" />
         </svg>
       </span>
       <div class="archive-import__heading-group">
-        <h2 id="archive-import-heading">Add project from archive</h2>
-        <p class="archive-import__hint">
-          Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Max
-          {{ maxSizeLabel }}.
-        </p>
+        <h2 id="archive-import-heading">{{ t('user.import.archiveTitle') }}</h2>
+        <p class="archive-import__hint">{{ t('user.import.archiveHint', { max: maxSizeLabel }) }}</p>
       </div>
     </header>
 
     <form class="archive-import__form" @submit.prevent="onSubmit">
       <label class="archive-import__field">
-        <span class="archive-import__label">Project name</span>
+        <span class="archive-import__label">{{ t('user.import.projectName') }}</span>
         <input
           v-model="projectName"
           class="archive-import__text-input"
@@ -172,7 +184,7 @@ onBeforeUnmount(() => {
       </label>
 
       <div class="archive-import__field">
-        <span class="archive-import__label">Archive file</span>
+        <span class="archive-import__label">{{ t('user.import.archiveFile') }}</span>
         <input
           ref="fileInputRef"
           class="archive-import__file-input"
@@ -185,9 +197,11 @@ onBeforeUnmount(() => {
         />
         <p id="archive-import-file-help" class="archive-import__file-meta">
           <span v-if="selectedFile">
-            Selected: <strong>{{ selectedFile.name }}</strong> ({{ formatFileSize(selectedFile.size) }})
+            {{ t('user.import.selectedFile') }} <strong>{{ selectedFile.name }}</strong> ({{
+              formatFileSize(selectedFile.size)
+            }})
           </span>
-          <span v-else>No file selected.</span>
+          <span v-else>{{ t('user.import.noFile') }}</span>
         </p>
         <p v-if="fileError" class="archive-import__error" role="alert">{{ fileError }}</p>
       </div>
@@ -228,7 +242,7 @@ onBeforeUnmount(() => {
           :disabled="isBusy"
           @click="clearForm"
         >
-          Reset
+          {{ t('user.import.reset') }}
         </button>
       </div>
 
@@ -245,8 +259,7 @@ onBeforeUnmount(() => {
         class="archive-import__success"
         role="status"
       >
-        Imported <strong>{{ importedProject.name }}</strong> (status:
-        {{ importedProject.status }}).
+        {{ t('user.import.successFor') }} <strong>{{ importedProject.name }}</strong> (status: {{ importedProject.status }}).
       </p>
     </form>
   </section>
@@ -267,8 +280,10 @@ onBeforeUnmount(() => {
   background: var(--vg-grad-surface);
   color: var(--vg-text);
   box-shadow: var(--vg-shadow);
-  transition: border-color var(--vg-dur) var(--vg-ease-out),
-    transform var(--vg-dur) var(--vg-ease-out), box-shadow var(--vg-dur) var(--vg-ease-out);
+  transition:
+    border-color var(--vg-dur) var(--vg-ease-out),
+    transform var(--vg-dur) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 .archive-import::before {
@@ -385,8 +400,10 @@ onBeforeUnmount(() => {
   border: 1px solid var(--vg-border-strong);
   border-radius: var(--vg-radius-sm);
   background: rgba(7, 11, 22, 0.55);
-  transition: border-color var(--vg-dur-fast) var(--vg-ease-out),
-    box-shadow var(--vg-dur-fast) var(--vg-ease-out), background-color var(--vg-dur-fast);
+  transition:
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur-fast) var(--vg-ease-out),
+    background-color var(--vg-dur-fast);
 }
 
 .archive-import__text-input::placeholder {
@@ -418,7 +435,8 @@ onBeforeUnmount(() => {
   border-radius: var(--vg-radius-sm);
   background: rgba(7, 11, 22, 0.4);
   cursor: pointer;
-  transition: border-color var(--vg-dur-fast) var(--vg-ease-out),
+  transition:
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
     background-color var(--vg-dur-fast);
 }
 
@@ -546,8 +564,10 @@ onBeforeUnmount(() => {
   background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   cursor: pointer;
-  transition: background-color var(--vg-dur-fast) var(--vg-ease-out),
-    border-color var(--vg-dur-fast) var(--vg-ease-out), transform var(--vg-dur-fast) var(--vg-ease-out),
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    transform var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -565,7 +585,9 @@ onBeforeUnmount(() => {
 
 .archive-import__btn--primary:not(:disabled):hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.5), 0 18px 40px -14px rgba(34, 211, 238, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 18px 40px -14px rgba(34, 211, 238, 0.8);
 }
 .archive-import__btn--primary:not(:disabled):active {
   transform: translateY(0);

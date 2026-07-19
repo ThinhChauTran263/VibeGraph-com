@@ -83,9 +83,7 @@ function makeFakeWs() {
     ws,
     subscriptions,
     emit(topic: string, payload: unknown) {
-      subscriptions
-        .filter((s) => s.topic === topic && s.active)
-        .forEach((s) => s.cb(payload))
+      subscriptions.filter((s) => s.topic === topic && s.active).forEach((s) => s.cb(payload))
     },
   }
 }

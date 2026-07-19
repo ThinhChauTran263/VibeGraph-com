@@ -5,8 +5,10 @@
  * Optimized with premium interaction, guided auto-cursor tour, problem/solution sections,
  * quick start guides, dynamic world map, and symmetric bento grid cards.
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import LogoTile from '@/components/ui/LogoTile.vue'
 
 // IDE / AI-agent logos
@@ -44,76 +46,77 @@ const stack: LogoItem[] = [
 ]
 
 const scrolled = ref(false)
+const { t } = useI18n({ useScope: 'global' })
 
 function onScroll(): void {
   scrolled.value = window.scrollY > 12
 }
 
 // Stats
-const stats = [
-  { value: '4K+', label: 'symbols mapped per project' },
-  { value: '10K+', label: 'relationships traced' },
-  { value: '300+', label: 'execution flows surfaced' },
-  { value: 'Realtime', label: 'graph updates as you code' },
-]
+const stats = computed(() => [
+  { value: '4K+', label: t('landing.stats.symbols') },
+  { value: '10K+', label: t('landing.stats.relationships') },
+  { value: '300+', label: t('landing.stats.flows') },
+  { value: t('landing.stats.realtimeValue'), label: t('landing.stats.realtimeLabel') },
+])
 
 // Features
-const features = [
+const features = computed(() => [
   {
-    tag: 'Graph',
-    title: 'Code as a living graph',
-    body: 'Classes, methods, fields and routes rendered as an explorable force-directed graph. Pan, zoom and focus to follow any call chain.',
+    tag: t('landing.features.cards.graph.tag'),
+    title: t('landing.features.cards.graph.title'),
+    body: t('landing.features.cards.graph.body'),
     accent: 'blue',
     span: 'wide',
   },
   {
-    tag: 'Impact',
-    title: 'Blast-radius analysis',
-    body: 'Pick any node and see exactly what breaks if you change it — direct callers, affected flows and risk level, before you touch a line.',
+    tag: t('landing.features.cards.impact.tag'),
+    title: t('landing.features.cards.impact.title'),
+    body: t('landing.features.cards.impact.body'),
     accent: 'green',
     span: 'tall',
   },
   {
-    tag: 'Realtime',
-    title: 'Updates as you vibe',
-    body: 'Point VibeGraph at a local folder and the graph re-draws itself the moment you save. No re-import, no zip.',
+    tag: t('landing.features.cards.realtime.tag'),
+    title: t('landing.features.cards.realtime.title'),
+    body: t('landing.features.cards.realtime.body'),
     accent: 'cyan',
     span: 'normal',
   },
   {
-    tag: 'Diagrams',
-    title: 'Architecture diagrams',
-    body: 'Reverse-engineered UML use-case and class diagrams generated straight from the source — design-vs-code verification, not hand-drawn fiction.',
+    tag: t('landing.features.cards.diagrams.tag'),
+    title: t('landing.features.cards.diagrams.title'),
+    body: t('landing.features.cards.diagrams.body'),
     accent: 'violet',
     span: 'normal',
   },
   {
-    tag: 'Import',
-    title: 'Folder, archive or GitHub',
-    body: 'Analyze a local path, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds.',
+    tag: t('landing.features.cards.import.tag'),
+    title: t('landing.features.cards.import.title'),
+    body: t('landing.features.cards.import.body'),
     accent: 'amber',
     span: 'wide', // will span full 3 columns thanks to css grid updates
   },
-]
+])
 
 // Steps for "How it works"
-const steps = [
+const steps = computed(() => [
   {
     n: '01',
-    title: 'Import your project',
-    body: 'Local folder, archive, or a public GitHub repo. VibeGraph parses the source and builds the index.',
+    title: t('landing.how.steps.import.title'),
+    body: t('landing.how.steps.import.body'),
   },
   {
     n: '02',
-    title: 'Explore the graph',
-    body: 'Navigate structure visually, search any symbol, and trace execution flows across the whole codebase.',
+    title: t('landing.how.steps.explore.title'),
+    body: t('landing.how.steps.explore.body'),
   },
   {
     n: '03',
-    title: 'Analyze impact',
-    body: 'Before refactoring, run blast-radius analysis to see what your change touches — and ship with confidence.',
+    title: t('landing.how.steps.analyze.title'),
+    body: t('landing.how.steps.analyze.body'),
   },
-]
+])
 
 // --- Interactive Graph State ---
 interface GraphNode {
@@ -132,13 +135,69 @@ interface GraphEdge {
 }
 
 const nodes: GraphNode[] = [
-  { id: 'test', label: 'ProjectApiIT.java', type: 'test', x: 60, y: 130, r: 12, color: 'var(--vg-blue)' },
-  { id: 'controller', label: 'ProjectController.java', type: 'controller', x: 160, y: 160, r: 14, color: 'var(--vg-cyan)' },
-  { id: 'security', label: 'SecurityConfig.java', type: 'security', x: 90, y: 280, r: 12, color: 'var(--vg-danger)' },
-  { id: 'service', label: 'ProjectService.java', type: 'service', x: 260, y: 170, r: 16, color: 'var(--vg-violet)' },
-  { id: 'repo', label: 'ProjectRepository.java', type: 'repository', x: 340, y: 250, r: 13, color: 'var(--vg-amber)' },
-  { id: 'db', label: 'Database (MySQL)', type: 'database', x: 350, y: 90, r: 10, color: 'var(--vg-green-bright)' },
-  { id: 'util', label: 'GraphBuilder.java', type: 'utility', x: 230, y: 310, r: 11, color: 'var(--vg-blue-bright)' },
+  {
+    id: 'test',
+    label: 'ProjectApiIT.java',
+    type: 'test',
+    x: 60,
+    y: 130,
+    r: 12,
+    color: 'var(--vg-blue)',
+  },
+  {
+    id: 'controller',
+    label: 'ProjectController.java',
+    type: 'controller',
+    x: 160,
+    y: 160,
+    r: 14,
+    color: 'var(--vg-cyan)',
+  },
+  {
+    id: 'security',
+    label: 'SecurityConfig.java',
+    type: 'security',
+    x: 90,
+    y: 280,
+    r: 12,
+    color: 'var(--vg-danger)',
+  },
+  {
+    id: 'service',
+    label: 'ProjectService.java',
+    type: 'service',
+    x: 260,
+    y: 170,
+    r: 16,
+    color: 'var(--vg-violet)',
+  },
+  {
+    id: 'repo',
+    label: 'ProjectRepository.java',
+    type: 'repository',
+    x: 340,
+    y: 250,
+    r: 13,
+    color: 'var(--vg-amber)',
+  },
+  {
+    id: 'db',
+    label: 'Database (MySQL)',
+    type: 'database',
+    x: 350,
+    y: 90,
+    r: 10,
+    color: 'var(--vg-green-bright)',
+  },
+  {
+    id: 'util',
+    label: 'GraphBuilder.java',
+    type: 'utility',
+    x: 230,
+    y: 310,
+    r: 11,
+    color: 'var(--vg-blue-bright)',
+  },
 ]
 
 const edges: GraphEdge[] = [
@@ -157,7 +216,7 @@ const hoverNode = ref<string | null>(null)
 const isPropagating = ref(false)
 
 function getNode(id: string): GraphNode {
-  return nodes.find(n => n.id === id)!
+  return nodes.find((n) => n.id === id)!
 }
 
 function isEdgeActive(edge: GraphEdge): boolean {
@@ -171,16 +230,16 @@ function isEdgeHighlighted(edge: GraphEdge): boolean {
 function triggerImpact(nodeId: string) {
   if (isPropagating.value) return
   isPropagating.value = true
-  
-  const node = nodes.find(n => n.id === nodeId)
+
+  const node = nodes.find((n) => n.id === nodeId)
   if (!node) return
-  
+
   selectedNode.value = node
   activeImpactNodes.value = []
-  
+
   const visited = new Set<string>()
   const queue: string[] = [nodeId]
-  
+
   function step() {
     if (queue.length === 0) {
       isPropagating.value = false
@@ -190,9 +249,9 @@ function triggerImpact(nodeId: string) {
     if (!visited.has(current)) {
       visited.add(current)
       activeImpactNodes.value.push(current)
-      
+
       // Find neighbors
-      edges.forEach(edge => {
+      edges.forEach((edge) => {
         if (edge.to === current && !visited.has(edge.from)) {
           queue.push(edge.from)
         }
@@ -200,7 +259,7 @@ function triggerImpact(nodeId: string) {
           queue.push(edge.to)
         }
       })
-      
+
       setTimeout(step, 180)
     } else {
       step()
@@ -210,9 +269,9 @@ function triggerImpact(nodeId: string) {
 }
 
 function impactLevel(count: number): string {
-  if (count >= 5) return 'CRITICAL RISK'
-  if (count >= 3) return 'HIGH RISK'
-  return 'LOW / SAFE'
+  if (count >= 5) return t('landing.graph.risk.critical')
+  if (count >= 3) return t('landing.graph.risk.high')
+  return t('landing.graph.risk.low')
 }
 
 function impactClass(count: number): string {
@@ -229,7 +288,8 @@ const terminalTyping = ref(false)
 
 const commandsData = {
   impact: {
-    command: 'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
+    command:
+      'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
     output: `{
   "node": "com.vibegraph.graph.repository.ProjectRepository",
   "riskLevel": "HIGH",
@@ -243,7 +303,7 @@ const commandsData = {
     "ProjectApiIT"
   ],
   "warnings": ["Referenced by 2 execution flows"]
-}`
+}`,
   },
   context: {
     command: 'get_class_context({ projectId: "my-app", classQuery: "ProjectService" })',
@@ -253,10 +313,11 @@ const commandsData = {
   "outgoingRelations": ["ProjectRepository", "GraphBuilder"],
   "incomingRelations": ["ProjectController", "ProjectApiIT"],
   "warnings": []
-}`
+}`,
   },
   plan: {
-    command: 'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
+    command:
+      'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
     output: `{
   "changeRequest": "Rename ProjectService to WorkspaceService",
   "candidateFiles": [
@@ -271,8 +332,8 @@ const commandsData = {
     "Update tests"
   ],
   "confidence": "MEDIUM"
-}`
-  }
+}`,
+  },
 }
 
 function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
@@ -281,10 +342,10 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
   terminalTyping.value = true
   terminalInput.value = ''
   terminalOutput.value = ''
-  
+
   const cmdText = commandsData[tabKey].command
   let i = 0
-  
+
   function typeCmd() {
     if (i < cmdText.length) {
       terminalInput.value += cmdText[i]
@@ -297,7 +358,7 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
       }, 250)
     }
   }
-  
+
   typeCmd()
 }
 
@@ -307,7 +368,7 @@ let stepInterval: ReturnType<typeof setInterval> | null = null
 
 function startStepTimer() {
   stepInterval = setInterval(() => {
-    activeStep.value = (activeStep.value + 1) % steps.length
+    activeStep.value = (activeStep.value + 1) % steps.value.length
   }, 7000)
 }
 
@@ -331,11 +392,11 @@ function onMouseMoveBento(e: MouseEvent, index: number) {
 }
 
 // --- User Guide Tabs Data ---
-const guideTabs = [
-  { step: '01', title: 'Run VibeGraph' },
-  { step: '02', title: 'Import a project' },
-  { step: '03', title: 'Connect your AI agent' }
-]
+const guideTabs = computed(() => [
+  { step: '01', title: t('landing.guide.tabs.run') },
+  { step: '02', title: t('landing.guide.tabs.import') },
+  { step: '03', title: t('landing.guide.tabs.agent') },
+])
 const activeGuideTab = ref(0)
 
 // --- Autonomous Cursor Guided Tour ---
@@ -347,19 +408,18 @@ async function moveVirtualCursor(targetX: number, targetY: number, duration = 12
   const startX = virtualCursor.value.x
   const startY = virtualCursor.value.y
   const startTime = performance.now()
-  
+
   return new Promise<void>((resolve) => {
     function update(time: number) {
       if (!autoTourActive.value) return resolve()
       const elapsed = time - startTime
       const progress = Math.min(elapsed / duration, 1)
-      const ease = progress < 0.5 
-        ? 4 * progress * progress * progress 
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2
-        
+      const ease =
+        progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
       virtualCursor.value.x = startX + (targetX - startX) * ease
       virtualCursor.value.y = startY + (targetY - startY) * ease
-      
+
       if (progress < 1) {
         requestAnimationFrame(update)
       } else {
@@ -372,7 +432,7 @@ async function moveVirtualCursor(targetX: number, targetY: number, duration = 12
 
 async function simulateVirtualClick() {
   virtualCursor.value.clicking = true
-  await new Promise(r => setTimeout(r, 200))
+  await new Promise((r) => setTimeout(r, 200))
   virtualCursor.value.clicking = false
 }
 
@@ -382,7 +442,7 @@ const tourTargets = [
   { id: 'hero-node-test', action: () => triggerImpact('test') },
   { id: 'terminal-tab-context', action: () => loadTerminalCommand('context') },
   { id: 'step-control-2', action: () => selectStep(2) },
-  { id: 'hero-node-repo', action: () => triggerImpact('repo') }
+  { id: 'hero-node-repo', action: () => triggerImpact('repo') },
 ]
 
 async function playTourStep() {
@@ -394,15 +454,15 @@ async function playTourStep() {
     // Align relative to viewport since cursor is fixed-positioned
     const targetX = rect.left + rect.width / 2
     const targetY = rect.top + rect.height / 2
-    
+
     await moveVirtualCursor(targetX, targetY, 1500)
-    
+
     if (!autoTourActive.value) return
-    
+
     await simulateVirtualClick()
     target.action()
   }
-  
+
   currentTourStep = (currentTourStep + 1) % tourTargets.length
   tourTimeout = setTimeout(playTourStep, 4500)
 }
@@ -416,13 +476,13 @@ function stopAutoTour() {
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
-  
+
   // Set default interactive graph select
   triggerImpact('service')
-  
+
   // Start terminal typing
   loadTerminalCommand('impact')
-  
+
   // Start stepper timer
   startStepTimer()
 
@@ -431,7 +491,7 @@ onMounted(() => {
   window.addEventListener('mousemove', stopAutoTour, { once: true })
   window.addEventListener('mousedown', stopAutoTour, { once: true })
   window.addEventListener('keydown', stopAutoTour, { once: true })
-  
+
   // Start tour after a delay
   tourTimeout = setTimeout(playTourStep, 4000)
 })
@@ -462,10 +522,15 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     >
       <svg width="22" height="22" viewBox="0 0 20 20" fill="none">
-        <path d="M2 2L9 18L12 11L19 9L2 2Z" fill="var(--vg-cyan)" stroke="#fff" stroke-width="1.8" />
+        <path
+          d="M2 2L9 18L12 11L19 9L2 2Z"
+          fill="var(--vg-cyan)"
+          stroke="#fff"
+          stroke-width="1.8"
+        />
       </svg>
       <div v-if="virtualCursor.clicking" class="click-ripple"></div>
-      <span class="virtual-cursor-tag">Guided Tour Demo</span>
+      <span class="virtual-cursor-tag">{{ t('landing.tour.label') }}</span>
     </div>
 
     <!-- ── Nav ── -->
@@ -473,15 +538,18 @@ onBeforeUnmount(() => {
       <div class="lp-nav__inner">
         <BrandMark :size="30" />
         <nav class="lp-nav__links" aria-label="Primary">
-          <a href="#goals">Goals</a>
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#guide">Guide</a>
+          <a href="#goals">{{ t('landing.nav.goals') }}</a>
+          <a href="#features">{{ t('landing.nav.features') }}</a>
+          <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
+          <a href="#guide">{{ t('landing.nav.guide') }}</a>
         </nav>
-        <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
-          Open Dashboard
-          <span class="btn__arrow" aria-hidden="true">→</span>
-        </RouterLink>
+        <div class="lp-nav__actions">
+          <LanguageSelector />
+          <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
+            {{ t('landing.actions.openDashboard') }}
+            <span class="btn__arrow" aria-hidden="true">→</span>
+          </RouterLink>
+        </div>
       </div>
     </header>
 
@@ -491,23 +559,19 @@ onBeforeUnmount(() => {
         <div class="hero__copy">
           <span class="pill">
             <span class="pill__dot" aria-hidden="true"></span>
-            Source-code intelligence for Java
+            {{ t('landing.hero.pill') }}
           </span>
           <h1 class="hero__title">
-            See your code as a
-            <span class="hero__title-grad">living graph</span>
+            {{ t('landing.hero.titleLead') }}
+            <span class="hero__title-grad">{{ t('landing.hero.titleHighlight') }}</span>
           </h1>
-          <p class="hero__lede">
-            VibeGraph turns a Java codebase into an explorable map of structure, dependencies and
-            execution flows — then keeps it in sync as you vibe code. Understand impact before you
-            change a thing.
-          </p>
+          <p class="hero__lede">{{ t('landing.hero.description') }}</p>
           <div class="hero__cta">
             <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-              Open Dashboard
+              {{ t('landing.actions.openDashboard') }}
               <span class="btn__arrow" aria-hidden="true">→</span>
             </RouterLink>
-            <a class="btn btn--ghost btn--lg" href="#how">See how it works</a>
+            <a class="btn btn--ghost btn--lg" href="#how">{{ t('landing.actions.seeHow') }}</a>
           </div>
           <ul class="hero__stats">
             <li v-for="s in stats" :key="s.label">
@@ -520,26 +584,40 @@ onBeforeUnmount(() => {
         <!-- Interactive Animated Graph Motif -->
         <div class="hero__visual" aria-hidden="true">
           <div class="orb"></div>
-          
+
           <div class="interactive-graph-card">
             <div class="graph-header">
               <span class="graph-status-dot"></span>
-              <span class="graph-header-text">Interactive Blast-Radius Sandbox</span>
+              <span class="graph-header-text">{{ t('landing.graph.header') }}</span>
             </div>
-            
+
             <svg class="graphmotif" viewBox="0 0 420 420" fill="none">
               <defs>
-                <linearGradient id="lp-edge" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+                <linearGradient
+                  id="lp-edge"
+                  x1="0"
+                  y1="0"
+                  x2="420"
+                  y2="420"
+                  gradientUnits="userSpaceOnUse"
+                >
                   <stop stop-color="#3b82f6" />
                   <stop offset="0.5" stop-color="#22d3ee" />
                   <stop offset="1" stop-color="#22c55e" />
                 </linearGradient>
-                <linearGradient id="lp-edge-active" x1="0" y1="0" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+                <linearGradient
+                  id="lp-edge-active"
+                  x1="0"
+                  y1="0"
+                  x2="420"
+                  y2="420"
+                  gradientUnits="userSpaceOnUse"
+                >
                   <stop stop-color="#ef4444" />
                   <stop offset="1" stop-color="#fbbf24" />
                 </linearGradient>
               </defs>
-              
+
               <!-- Edges -->
               <g class="graphmotif__edges" stroke-width="2">
                 <line
@@ -553,11 +631,11 @@ onBeforeUnmount(() => {
                   :class="{
                     'edge--active': isEdgeActive(edge),
                     'edge--dimmed': selectedNode && !isEdgeActive(edge),
-                    'edge--highlighted': isEdgeHighlighted(edge)
+                    'edge--highlighted': isEdgeHighlighted(edge),
                   }"
                 />
               </g>
-              
+
               <!-- Nodes -->
               <g class="graphmotif__nodes">
                 <g
@@ -568,7 +646,7 @@ onBeforeUnmount(() => {
                   :class="{
                     'node-group--active': activeImpactNodes.includes(node.id),
                     'node-group--dimmed': selectedNode && !activeImpactNodes.includes(node.id),
-                    'node-group--hover': hoverNode === node.id
+                    'node-group--hover': hoverNode === node.id,
                   }"
                   @click="triggerImpact(node.id)"
                   @mouseenter="hoverNode = node.id"
@@ -582,13 +660,7 @@ onBeforeUnmount(() => {
                     :fill="node.color"
                     opacity="0.15"
                   />
-                  <circle
-                    class="n"
-                    :cx="node.x"
-                    :cy="node.y"
-                    :r="node.r"
-                    :fill="node.color"
-                  />
+                  <circle class="n" :cx="node.x" :cy="node.y" :r="node.r" :fill="node.color" />
                   <!-- Pulsing element for selected node -->
                   <circle
                     v-if="selectedNode?.id === node.id"
@@ -609,28 +681,28 @@ onBeforeUnmount(() => {
               <div class="telemetry-inner">
                 <div v-if="selectedNode" class="telemetry-grid">
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Target Symbol</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.targetSymbol') }}</span>
                     <span class="telemetry-data text-accent">{{ selectedNode.label }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Symbol Type</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.symbolType') }}</span>
                     <span class="telemetry-data text-capitalize">{{ selectedNode.type }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Blast Radius</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.blastRadius') }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
-                      {{ activeImpactNodes.length }} affected
+                      {{ t('landing.graph.telemetry.affected', { count: activeImpactNodes.length }) }}
                     </span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">Risk Level</span>
+                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.riskLevel') }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
                       {{ impactLevel(activeImpactNodes.length) }}
                     </span>
                   </div>
                 </div>
                 <div v-else class="telemetry-placeholder">
-                  Click any graph node to simulate real-time impact analysis
+                  {{ t('landing.graph.telemetry.placeholder') }}
                 </div>
               </div>
             </div>
@@ -642,56 +714,68 @@ onBeforeUnmount(() => {
       <section id="goals" class="section section--goals">
         <div class="goals-grid">
           <div class="goals-col">
-            <span class="section__eyebrow">The Challenge</span>
-            <h2 class="section__title">The messy middle of codebase comprehension</h2>
+            <span class="section__eyebrow">{{ t('landing.challenge.eyebrow') }}</span>
+            <h2 class="section__title">{{ t('landing.challenge.title') }}</h2>
             <div class="problem-card">
               <div class="problem-item">
                 <span class="problem-num">01</span>
                 <div>
-                  <strong>Cognitive Overload</strong>
-                  <p>Searching through raw files and text is slow, confusing, and fails to reveal actual execution context.</p>
+                  <strong>{{ t('landing.challenge.items.overload.title') }}</strong>
+                  <p>
+                    {{ t('landing.challenge.items.overload.body') }}
+                  </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">02</span>
                 <div>
-                  <strong>Fear of Refactoring</strong>
-                  <p>Editing a method or route could break multiple upstream dependencies or tests without warning.</p>
+                  <strong>{{ t('landing.challenge.items.refactor.title') }}</strong>
+                  <p>
+                    {{ t('landing.challenge.items.refactor.body') }}
+                  </p>
                 </div>
               </div>
               <div class="problem-item">
                 <span class="problem-num">03</span>
                 <div>
-                  <strong>AI Agent Blindspots</strong>
-                  <p>Coding agents lack full call-graph awareness, which leads to broken edits and regression issues.</p>
+                  <strong>{{ t('landing.challenge.items.agent.title') }}</strong>
+                  <p>
+                    {{ t('landing.challenge.items.agent.body') }}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <div class="goals-col">
-            <span class="section__eyebrow">Our Solution</span>
-            <h2 class="section__title">High-fidelity graph intelligence</h2>
+            <span class="section__eyebrow">{{ t('landing.solution.eyebrow') }}</span>
+            <h2 class="section__title">{{ t('landing.solution.title') }}</h2>
             <div class="solution-card">
               <div class="solution-item">
                 <span class="solution-icon">✨</span>
                 <div>
-                  <strong>Interactive Code Maps</strong>
-                  <p>We render your Java codebase as an explorable network, showing classes, methods, and routes visually.</p>
+                  <strong>{{ t('landing.solution.items.maps.title') }}</strong>
+                  <p>
+                    {{ t('landing.solution.items.maps.body') }}
+                  </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">⚡</span>
                 <div>
-                  <strong>Instant Blast-Radius Reports</strong>
-                  <p>Query exact callers, trace execution flows, and assess impact in milliseconds before editing code.</p>
+                  <strong>{{ t('landing.solution.items.impact.title') }}</strong>
+                  <p>
+                    {{ t('landing.solution.items.impact.body') }}
+                  </p>
                 </div>
               </div>
               <div class="solution-item">
                 <span class="solution-icon">🔌</span>
                 <div>
-                  <strong>Model Context Protocol (MCP)</strong>
-                  <p>Expose structure directly to LLMs, so coding agents query context, predict blast-radii, and edit safely.</p>
+                  <strong>{{ t('landing.solution.items.mcp.title') }}</strong>
+                  <p>
+                    {{ t('landing.solution.items.mcp.body') }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -702,12 +786,9 @@ onBeforeUnmount(() => {
       <!-- ── Features (Bento Grid aligned symmetrically) ── -->
       <section id="features" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">What it does</span>
-          <h2 class="section__title">Everything you need to read a codebase fast</h2>
-          <p class="section__sub">
-            Built for the messy middle of real projects — where the architecture lives in everyone's
-            head and nowhere else.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.features.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.features.title') }}</h2>
+          <p class="section__sub">{{ t('landing.features.description') }}</p>
         </header>
 
         <div class="bento">
@@ -716,14 +797,17 @@ onBeforeUnmount(() => {
             :key="f.title"
             :id="`bento-card-${index}`"
             class="card"
-            :class="[`card--${f.accent}`, f.span === 'wide' && index === 4 ? 'card--full' : `card--${f.span}`]"
+            :class="[
+              `card--${f.accent}`,
+              f.span === 'wide' && index === 4 ? 'card--full' : `card--${f.span}`,
+            ]"
             @mousemove="onMouseMoveBento($event, index)"
           >
             <span class="card__tag">{{ f.tag }}</span>
             <h3 class="card__title">{{ f.title }}</h3>
             <p class="card__body">{{ f.body }}</p>
             <span class="card__shine" aria-hidden="true"></span>
-            
+
             <!-- Custom interactive micro-graphics inside bento cards -->
             <div class="card__micro-viz" aria-hidden="true">
               <span v-if="f.accent === 'blue'" class="viz-nodes">
@@ -752,10 +836,10 @@ onBeforeUnmount(() => {
       <!-- ── How it works ── -->
       <section id="how" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">How it works</span>
-          <h2 class="section__title">From repo to insight in three steps</h2>
+          <span class="section__eyebrow">{{ t('landing.how.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.how.title') }}</h2>
         </header>
-        
+
         <div class="stepper-layout">
           <!-- Stepper triggers -->
           <div class="stepper-controls">
@@ -774,7 +858,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          
+
           <!-- Dynamic Device Preview Screen -->
           <div class="stepper-preview">
             <div class="device-mockup">
@@ -782,26 +866,32 @@ onBeforeUnmount(() => {
                 <span class="device-dot"></span>
                 <span class="device-dot"></span>
                 <span class="device-dot"></span>
-                <span class="device-title">VibeGraph Client</span>
+                <span class="device-title">{{ t('landing.how.mock.client') }}</span>
               </div>
               <div class="device-body">
                 <!-- Step 1: Import Mock -->
                 <div v-if="activeStep === 0" class="mock-screen mock-screen--import">
                   <div class="import-area">
                     <div class="import-icon-wrap">
-                      <svg class="import-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg
+                        class="import-icon"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
                     </div>
-                    <h4>Drop your codebase folder</h4>
-                    <p>Or paste a GitHub repository endpoint</p>
+                    <h4>{{ t('landing.how.mock.dropFolder') }}</h4>
+                    <p>{{ t('landing.how.mock.pasteGithub') }}</p>
                     <div class="mock-url-bar">
                       <span class="mock-url-prefix">https://github.com/</span>
                       <span class="mock-url-text">ThinhChauTran263/VibeGraph</span>
                     </div>
-                    <button class="btn btn--primary btn--sm">Analyze Repository</button>
+                    <button class="btn btn--primary btn--sm">{{ t('landing.how.mock.analyze') }}</button>
                   </div>
                 </div>
 
@@ -809,7 +899,7 @@ onBeforeUnmount(() => {
                 <div v-if="activeStep === 1" class="mock-screen mock-screen--explore">
                   <div class="explore-grid">
                     <aside class="mock-sidebar">
-                      <div class="sidebar-title">📁 Project Structure</div>
+                      <div class="sidebar-title">{{ t('landing.how.mock.projectStructure') }}</div>
                       <div class="sidebar-item sidebar-item--active">📁 src/main/java</div>
                       <div class="sidebar-item">📁 controller</div>
                       <div class="sidebar-item">📁 service</div>
@@ -817,15 +907,36 @@ onBeforeUnmount(() => {
                     </aside>
                     <div class="mock-canvas">
                       <svg class="mini-network" viewBox="0 0 200 200">
-                        <line x1="100" y1="100" x2="60" y2="60" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
-                        <line x1="100" y1="100" x2="140" y2="60" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
-                        <line x1="100" y1="100" x2="100" y2="150" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="60"
+                          y2="60"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="140"
+                          y2="60"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="100"
+                          y2="150"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
                         <circle cx="100" cy="100" r="10" fill="var(--vg-blue-bright)" />
                         <circle cx="60" cy="60" r="8" fill="var(--vg-cyan)" />
                         <circle cx="140" cy="60" r="8" fill="var(--vg-violet)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip">Interactive pan & zoom active</span>
+                      <span class="mini-canvas-tip">{{ t('landing.how.mock.panZoom') }}</span>
                     </div>
                   </div>
                 </div>
@@ -836,22 +947,45 @@ onBeforeUnmount(() => {
                     <div class="alert-banner">
                       <span class="alert-dot alert-dot--danger"></span>
                       <div>
-                        <strong>Blast Radius Triggered</strong>
-                        <p>12 downstream callers affected in ProjectController</p>
+                        <strong>{{ t('landing.how.mock.blastTriggered') }}</strong>
+                        <p>{{ t('landing.how.mock.downstreamAffected') }}</p>
                       </div>
                     </div>
                     <div class="mock-canvas">
                       <svg class="mini-network" viewBox="0 0 200 200">
                         <!-- highlighted connections -->
-                        <line x1="100" y1="100" x2="60" y2="60" stroke="var(--vg-danger)" stroke-width="2.5" />
-                        <line x1="100" y1="100" x2="140" y2="60" stroke="var(--vg-danger)" stroke-width="2.5" />
-                        <line x1="100" y1="100" x2="100" y2="150" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="60"
+                          y2="60"
+                          stroke="var(--vg-danger)"
+                          stroke-width="2.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="140"
+                          y2="60"
+                          stroke="var(--vg-danger)"
+                          stroke-width="2.5"
+                        />
+                        <line
+                          x1="100"
+                          y1="100"
+                          x2="100"
+                          y2="150"
+                          stroke="rgba(255,255,255,0.15)"
+                          stroke-width="1.5"
+                        />
                         <circle cx="100" cy="100" r="10" fill="var(--vg-danger)" />
                         <circle cx="60" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="140" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip mini-canvas-tip--danger">Upstream risk: HIGH</span>
+                      <span class="mini-canvas-tip mini-canvas-tip--danger"
+                        >{{ t('landing.how.mock.upstreamRiskHigh') }}</span
+                      >
                     </div>
                   </div>
                 </div>
@@ -864,13 +998,13 @@ onBeforeUnmount(() => {
       <!-- ── Guide Section: Quick Start Guide ── -->
       <section id="guide" class="section section--guide">
         <header class="section__head">
-          <span class="section__eyebrow">Quick Start & Installation</span>
-          <h2 class="section__title">Install & Vibe Code in 2 Minutes</h2>
-          <p class="section__sub">How to install, run analysis, and integrate VibeGraph with your developer workflow.</p>
+          <span class="section__eyebrow">{{ t('landing.guide.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.guide.title') }}</h2>
+          <p class="section__sub">{{ t('landing.guide.description') }}</p>
         </header>
-        
+
         <div class="guide-box">
-          <div class="guide-tabs" role="tablist" aria-label="Setup guide tabs">
+          <div class="guide-tabs" role="tablist" :aria-label="t('landing.guide.tabsAria')">
             <button
               v-for="(g, index) in guideTabs"
               :key="g.title"
@@ -884,14 +1018,14 @@ onBeforeUnmount(() => {
               {{ g.title }}
             </button>
           </div>
-          
+
           <div class="guide-content">
             <div v-if="activeGuideTab === 0" class="guide-pane">
-              <h4>Step 1: Start VibeGraph locally</h4>
-              <p>VibeGraph is a Spring Boot backend (Java 21) with a Vue web client, backed by a Neo4j graph database. Start Neo4j, run the backend, then the web client.</p>
+              <h4>{{ t('landing.guide.step1.title') }}</h4>
+              <p>{{ t('landing.guide.step1.body') }}</p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
-                  <span>Terminal (bash)</span>
+                  <span>{{ t('landing.guide.step1.terminal') }}</span>
                 </div>
                 <pre><code># 1. Start Neo4j (graph database)
 docker compose up -d neo4j
@@ -902,26 +1036,48 @@ docker compose up -d neo4j
 # 3. Run the web client — Vite on :5173
 cd vibegraph-web && npm install && npm run dev</code></pre>
               </div>
-              <p class="text-sm text-dim">Set <code>NEO4J_URI</code>, <code>NEO4J_USERNAME</code> and <code>NEO4J_PASSWORD</code> in <code>.env</code> — or bring the whole stack up at once with <code>docker compose up -d</code>.</p>
+              <p class="text-sm text-dim">
+                {{ t('landing.guide.step1.envLead') }} <code>NEO4J_URI</code>,
+                <code>NEO4J_USERNAME</code> {{ t('landing.guide.step1.envAnd') }}
+                <code>NEO4J_PASSWORD</code> {{ t('landing.guide.step1.envTail') }}
+              </p>
             </div>
 
             <div v-if="activeGuideTab === 1" class="guide-pane">
-              <h4>Step 2: Import your project</h4>
-              <p>Open the dashboard at <code>http://localhost:5173</code> and import a Java project straight from the UI — no analyzer CLI required. Pick one of three methods:</p>
+              <h4>{{ t('landing.guide.step2.title') }}</h4>
+              <p>
+                {{ t('landing.guide.step2.bodyLead') }} <code>http://localhost:5173</code>
+                {{ t('landing.guide.step2.bodyTail') }}
+              </p>
               <ul class="guide-list">
-                <li>📁 <strong>Local folder</strong>: point VibeGraph at a folder on the same machine; the graph re-draws in realtime as you edit (file watcher).</li>
-                <li>🗜️ <strong>Archive</strong>: upload a <code>.zip</code>, <code>.tar</code> or <code>.tar.gz</code> of the project.</li>
-                <li>🔗 <strong>GitHub</strong>: paste a public HTTPS repo URL and VibeGraph clones, indexes and maps it.</li>
+                <li>
+                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong>:
+                  {{ t('landing.guide.step2.localBody') }}
+                </li>
+                <li>
+                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong>:
+                  {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
+                  <code>.tar</code> {{ t('landing.guide.step2.archiveBodyOr') }}
+                  <code>.tar.gz</code> {{ t('landing.guide.step2.archiveBodyTail') }}
+                </li>
+                <li>
+                  🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}
+                </li>
               </ul>
-              <p class="text-sm text-dim">The backend parses the source, stores the call graph in Neo4j, and the Vue client renders it with Sigma.js — search any symbol, double-click a node to focus, or select one to see its blast radius.</p>
+              <p class="text-sm text-dim">
+                {{ t('landing.guide.step2.note') }}
+              </p>
             </div>
 
             <div v-if="activeGuideTab === 2" class="guide-pane">
-              <h4>Step 3: Connect your AI agent over MCP</h4>
-              <p>VibeGraph runs a Model Context Protocol server (Spring AI) over <strong>Streamable HTTP</strong>, so agents like Claude, Cursor and Kiro can query the graph and run impact analysis. Point your agent at the endpoint:</p>
+              <h4>{{ t('landing.guide.step3.title') }}</h4>
+              <p>
+                {{ t('landing.guide.step3.bodyLead') }}
+                <strong>Streamable HTTP</strong>{{ t('landing.guide.step3.bodyTail') }}
+              </p>
               <div class="code-terminal">
                 <div class="code-terminal-header">
-                  <span>AI client config (mcp.json)</span>
+                  <span>{{ t('landing.guide.step3.configTitle') }}</span>
                 </div>
                 <pre><code>{
   "mcpServers": {
@@ -931,7 +1087,10 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   }
 }</code></pre>
               </div>
-              <p class="text-sm text-dim">The server exposes 15 tools — impact analysis, class &amp; method context, references, related tests, endpoint trace, project conventions and more. The exact config key may differ per client (some use <code>"type": "streamable-http"</code>).</p>
+              <p class="text-sm text-dim">
+                {{ t('landing.guide.step3.noteLead') }}
+                <code>"type": "streamable-http"</code>{{ t('landing.guide.step3.noteTail') }}
+              </p>
             </div>
           </div>
         </div>
@@ -940,31 +1099,40 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── Section: Under the hood (the engine) ── -->
       <section id="engine" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">The Engine</span>
-          <h2 class="section__title">How VibeGraph reads your code</h2>
-          <p class="section__sub">A self-hosted AST-and-graph engine — VibeGraph parses your Java source and serves the result to both the web UI and your AI agent.</p>
+          <span class="section__eyebrow">{{ t('landing.engine.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.engine.title') }}</h2>
+          <p class="section__sub">{{ t('landing.engine.description') }}</p>
         </header>
         <div class="nexus-card">
-           <p>VibeGraph parses your Java source into abstract syntax trees, resolves call and usage relationships, and stores the whole graph in <strong>Neo4j</strong> — all on your own machine. Source never leaves the host.</p>
-           <ul class="guide-list">
-             <li>🔒 <strong>Local &amp; private</strong>: parsing and the Neo4j graph stay on your infrastructure; no code is sent to the cloud.</li>
-             <li>⚡ <strong>Incremental</strong>: a file watcher re-parses only what changed, so local projects update in near real-time.</li>
-             <li>🤖 <strong>MCP-native</strong>: the same graph is exposed to AI agents through a Spring AI MCP server (Streamable HTTP) for impact-safe edits.</li>
-           </ul>
+          <p>
+            {{ t('landing.engine.bodyLead') }} <strong>Neo4j</strong>
+            {{ t('landing.engine.bodyTail') }}
+          </p>
+          <ul class="guide-list">
+            <li>
+              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong>:
+              {{ t('landing.engine.items.private.body') }}
+            </li>
+            <li>
+              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong>:
+              {{ t('landing.engine.items.incremental.body') }}
+            </li>
+            <li>
+              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong>:
+              {{ t('landing.engine.items.mcp.body') }}
+            </li>
+          </ul>
         </div>
       </section>
 
       <!-- ── AI agents / MCP ── -->
       <section id="agents" class="section">
         <header class="section__head">
-          <span class="section__eyebrow">Works with your AI agent</span>
-          <h2 class="section__title">Code intelligence, one MCP call away</h2>
-          <p class="section__sub">
-            VibeGraph exposes its graph through the Model Context Protocol, so your AI coding agent
-            can query structure, trace flows and run impact analysis right inside your editor.
-          </p>
+          <span class="section__eyebrow">{{ t('landing.agents.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.agents.title') }}</h2>
+          <p class="section__sub">{{ t('landing.agents.description') }}</p>
         </header>
-        
+
         <!-- Terminal Playground Container -->
         <div class="terminal-playground">
           <div class="terminal-tabs">
@@ -993,35 +1161,38 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
               /plan-change
             </button>
           </div>
-          
+
           <div class="terminal-screen">
             <div class="terminal-screen-header">
               <span class="dot-win dot-win--red"></span>
               <span class="dot-win dot-win--yellow"></span>
               <span class="dot-win dot-win--green"></span>
-              <span class="terminal-screen-title">MCP Client Session</span>
+              <span class="terminal-screen-title">{{ t('landing.agents.terminalTitle') }}</span>
             </div>
-            
+
             <div class="terminal-screen-body">
               <div class="terminal-input-line">
                 <span class="terminal-prompt">$</span>
                 <span class="terminal-typed-input">{{ terminalInput }}</span>
                 <span v-if="terminalTyping" class="terminal-cursor"></span>
               </div>
-              
+
               <transition name="fade">
-                <pre v-if="terminalOutput" class="terminal-output"><code>{{ terminalOutput }}</code></pre>
+                <pre
+                  v-if="terminalOutput"
+                  class="terminal-output"
+                ><code>{{ terminalOutput }}</code></pre>
               </transition>
-              
+
               <div v-if="terminalTyping" class="terminal-loading">
                 <span class="loading-spinner"></span>
-                Running analysis...
+                {{ t('landing.agents.running') }}
               </div>
             </div>
           </div>
         </div>
 
-        <ul class="logo-wall" aria-label="Supported AI coding agents">
+        <ul class="logo-wall" :aria-label="t('landing.agents.logoAria')">
           <li v-for="a in agents" :key="a.label">
             <LogoTile :src="a.src" :label="a.label" :boost="a.boost" />
           </li>
@@ -1031,10 +1202,10 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── Stack ── -->
       <section id="stack" class="section section--stack">
         <header class="section__head">
-          <span class="section__eyebrow">Built with</span>
-          <h2 class="section__title">A modern, no-nonsense stack</h2>
+          <span class="section__eyebrow">{{ t('landing.stack.eyebrow') }}</span>
+          <h2 class="section__title">{{ t('landing.stack.title') }}</h2>
         </header>
-        <ul class="logo-wall" aria-label="Technology stack">
+        <ul class="logo-wall" :aria-label="t('landing.stack.logoAria')">
           <li v-for="tech in stack" :key="tech.label">
             <LogoTile :src="tech.src" :label="tech.label" :tone="tech.tone" />
           </li>
@@ -1044,10 +1215,10 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <!-- ── CTA band ── -->
       <section class="cta">
         <div class="cta__inner">
-          <h2 class="cta__title">Ready to map your codebase?</h2>
-          <p class="cta__sub">Open the dashboard and import your first project — it takes seconds.</p>
+          <h2 class="cta__title">{{ t('landing.cta.title') }}</h2>
+          <p class="cta__sub">{{ t('landing.cta.description') }}</p>
           <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-            Open Dashboard
+            {{ t('landing.actions.openDashboard') }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -1058,24 +1229,26 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
       <div class="footer-top">
         <div class="footer-brand">
           <BrandMark :size="24" />
-          <span class="lp-footer__note">Source-code intelligence for the vibe-coding era.</span>
+          <span class="lp-footer__note">{{ t('landing.footer.note') }}</span>
         </div>
         <div class="footer-links">
           <div class="footer-col">
-            <h4>Product</h4>
-            <a href="#features">Features</a>
-            <a href="#how">How it works</a>
-            <a href="#guide">Installation</a>
+            <h4>{{ t('landing.footer.product') }}</h4>
+            <a href="#features">{{ t('landing.nav.features') }}</a>
+            <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
+            <a href="#guide">{{ t('landing.footer.installation') }}</a>
           </div>
           <div class="footer-col">
-            <h4>Resources</h4>
-            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank">GitHub Repo</a>
-            <a href="#engine">How the engine works</a>
+            <h4>{{ t('landing.footer.resources') }}</h4>
+            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank"
+              >{{ t('landing.footer.githubRepo') }}</a
+            >
+            <a href="#engine">{{ t('landing.footer.engine') }}</a>
           </div>
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 VibeGraph. All rights reserved.</span>
+        <span>{{ t('landing.footer.copyright') }}</span>
       </div>
     </footer>
   </div>
@@ -1086,7 +1259,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   position: relative;
   min-height: 100vh;
   overflow: clip;
-  background: radial-gradient(120% 80% at 80% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
+  background:
+    radial-gradient(120% 80% at 80% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
     radial-gradient(90% 60% at 0% 0%, rgba(96, 165, 250, 0.1), transparent 55%), var(--vg-bg);
 }
 
@@ -1095,7 +1269,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
   position: absolute;
   inset: -20% -10% auto -10%;
   height: 720px;
-  background: radial-gradient(50% 60% at 30% 30%, rgba(59, 130, 246, 0.22), transparent 70%),
+  background:
+    radial-gradient(50% 60% at 30% 30%, rgba(59, 130, 246, 0.22), transparent 70%),
     radial-gradient(45% 55% at 75% 20%, rgba(34, 197, 94, 0.16), transparent 70%);
   filter: blur(20px);
   pointer-events: none;
@@ -1104,14 +1279,19 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes floatBackground {
-  0% { transform: translateY(0) scale(1); }
-  100% { transform: translateY(30px) scale(1.05); }
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    transform: translateY(30px) scale(1.05);
+  }
 }
 
 .lp__grid-overlay {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(80% 60% at 50% 0%, #000 30%, transparent 80%);
@@ -1160,8 +1340,13 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes floatOrb {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(25px, -35px) scale(1.1); }
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(25px, -35px) scale(1.1);
+  }
 }
 
 /* Virtual Cursor Guide Tour style */
@@ -1203,8 +1388,14 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
 }
 
 @keyframes rippleAnim {
-  0% { transform: translate(-5px, -5px) scale(0.1); opacity: 1; }
-  100% { transform: translate(-5px, -5px) scale(1.5); opacity: 0; }
+  0% {
+    transform: translate(-5px, -5px) scale(0.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-5px, -5px) scale(1.5);
+    opacity: 0;
+  }
 }
 
 main,
@@ -1219,8 +1410,10 @@ main,
   position: sticky;
   top: 0;
   z-index: 20;
-  transition: background-color var(--vg-dur) var(--vg-ease-out),
-    border-color var(--vg-dur) var(--vg-ease-out), backdrop-filter var(--vg-dur);
+  transition:
+    background-color var(--vg-dur) var(--vg-ease-out),
+    border-color var(--vg-dur) var(--vg-ease-out),
+    backdrop-filter var(--vg-dur);
   border-bottom: 1px solid transparent;
 }
 
@@ -1284,9 +1477,12 @@ main,
   border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform var(--vg-dur-fast) var(--vg-ease-out),
-    box-shadow var(--vg-dur) var(--vg-ease-out), background-color var(--vg-dur-fast),
-    border-color var(--vg-dur-fast), color var(--vg-dur-fast);
+  transition:
+    transform var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out),
+    background-color var(--vg-dur-fast),
+    border-color var(--vg-dur-fast),
+    color var(--vg-dur-fast);
 }
 
 .btn--sm {
@@ -1305,7 +1501,9 @@ main,
 }
 .btn--primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.5), 0 24px 60px -18px rgba(59, 130, 246, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.5),
+    0 24px 60px -18px rgba(59, 130, 246, 0.7);
 }
 .btn--primary:active {
   transform: translateY(0);
@@ -1425,7 +1623,8 @@ main,
   position: absolute;
   inset: 12%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(96, 165, 250, 0.35), transparent 60%),
+  background:
+    radial-gradient(circle at 35% 30%, rgba(96, 165, 250, 0.35), transparent 60%),
     radial-gradient(circle at 70% 75%, rgba(34, 197, 94, 0.28), transparent 60%);
   filter: blur(26px);
   animation: float 9s var(--vg-ease-in-out) infinite;
@@ -1482,7 +1681,8 @@ main,
 /* Edges Animations */
 .graphmotif__edges line {
   opacity: 0.25;
-  transition: stroke var(--vg-dur) var(--vg-ease-out),
+  transition:
+    stroke var(--vg-dur) var(--vg-ease-out),
     stroke-width var(--vg-dur) var(--vg-ease-out),
     opacity var(--vg-dur) var(--vg-ease-out);
 }
@@ -1517,13 +1717,17 @@ main,
      and snaps back — an infinite hover jitter loop. */
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform var(--vg-dur) var(--vg-ease-out), opacity var(--vg-dur);
+  transition:
+    transform var(--vg-dur) var(--vg-ease-out),
+    opacity var(--vg-dur);
 }
 
 .node-group circle.n {
   stroke: #070b16;
   stroke-width: 3.5;
-  transition: fill var(--vg-dur), stroke var(--vg-dur);
+  transition:
+    fill var(--vg-dur),
+    stroke var(--vg-dur);
 }
 
 .node-group circle.n-outer {
@@ -1559,8 +1763,14 @@ main,
 }
 
 @keyframes ringPulse {
-  0% { transform: scale(0.9); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 /* Telemetry Screen Panel */
@@ -1674,14 +1884,16 @@ main,
   min-height: 2.2em;
 }
 
-.problem-card, .solution-card {
+.problem-card,
+.solution-card {
   margin-top: var(--vg-space-6);
   display: flex;
   flex-direction: column;
   gap: var(--vg-space-6);
 }
 
-.problem-item, .solution-item {
+.problem-item,
+.solution-item {
   display: flex;
   gap: var(--vg-space-4);
   background: rgba(7, 11, 22, 0.4);
@@ -1703,14 +1915,16 @@ main,
   line-height: 1;
 }
 
-.problem-item strong, .solution-item strong {
+.problem-item strong,
+.solution-item strong {
   display: block;
   font-size: var(--vg-text-base);
   color: var(--vg-text);
   margin-bottom: 0.25rem;
 }
 
-.problem-item p, .solution-item p {
+.problem-item p,
+.solution-item p {
   margin: 0;
   font-size: var(--vg-text-sm);
   color: var(--vg-text-muted);
@@ -1734,8 +1948,10 @@ main,
   flex-direction: column;
   gap: 0.5rem;
   min-height: 220px;
-  transition: transform var(--vg-dur) var(--vg-ease-out),
-    border-color var(--vg-dur) var(--vg-ease-out), box-shadow var(--vg-dur) var(--vg-ease-out);
+  transition:
+    transform var(--vg-dur) var(--vg-ease-out),
+    border-color var(--vg-dur) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 /* Cursor Glow Spotlight */
@@ -1825,7 +2041,9 @@ main,
   opacity: 0.3;
   pointer-events: none;
   z-index: 1;
-  transition: opacity var(--vg-dur), transform var(--vg-dur);
+  transition:
+    opacity var(--vg-dur),
+    transform var(--vg-dur);
 }
 
 .card:hover .card__micro-viz {
@@ -1876,8 +2094,12 @@ main,
   border-radius: 50%;
   background: var(--vg-cyan);
 }
-.sync-dot--1 { animation: float 3s infinite ease-in-out; }
-.sync-dot--2 { animation: float 3s infinite ease-in-out -1.5s; }
+.sync-dot--1 {
+  animation: float 3s infinite ease-in-out;
+}
+.sync-dot--2 {
+  animation: float 3s infinite ease-in-out -1.5s;
+}
 
 /* Violet UML class structure */
 .viz-diagram {
@@ -1928,7 +2150,8 @@ main,
   display: flex;
   gap: var(--vg-space-4);
   cursor: pointer;
-  transition: border-color var(--vg-dur) var(--vg-ease-out),
+  transition:
+    border-color var(--vg-dur) var(--vg-ease-out),
     background var(--vg-dur);
 }
 
@@ -2004,9 +2227,15 @@ main,
   background: var(--vg-border-strong);
 }
 
-.device-dot:nth-child(1) { background: #ef4444; }
-.device-dot:nth-child(2) { background: #fbbf24; }
-.device-dot:nth-child(3) { background: #22c55e; }
+.device-dot:nth-child(1) {
+  background: #ef4444;
+}
+.device-dot:nth-child(2) {
+  background: #fbbf24;
+}
+.device-dot:nth-child(3) {
+  background: #22c55e;
+}
 
 .device-title {
   margin-left: auto;
@@ -2033,8 +2262,14 @@ main,
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Screen 1: Import Mockup */
@@ -2091,7 +2326,7 @@ main,
   font-size: 11px;
   display: flex;
   margin-bottom: var(--vg-space-4);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .mock-url-prefix {
@@ -2251,12 +2486,14 @@ main,
   font-size: var(--vg-text-sm);
   text-align: left;
   cursor: pointer;
-  transition: background var(--vg-dur), color var(--vg-dur-fast);
+  transition:
+    background var(--vg-dur),
+    color var(--vg-dur-fast);
   border-left: 3px solid transparent;
 }
 
 .guide-tab:hover {
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--vg-text);
 }
 
@@ -2297,7 +2534,7 @@ main,
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   overflow: hidden;
-  box-shadow: inset 0 4px 12px rgba(0,0,0,0.6);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.6);
   margin-bottom: var(--vg-space-4);
 }
 
@@ -2378,7 +2615,9 @@ main,
   font-family: var(--vg-font-display);
   font-size: var(--vg-text-xs);
   cursor: pointer;
-  transition: background var(--vg-dur), color var(--vg-dur-fast);
+  transition:
+    background var(--vg-dur),
+    color var(--vg-dur-fast);
   text-align: center;
 }
 
@@ -2412,9 +2651,15 @@ main,
   height: 10px;
   border-radius: 50%;
 }
-.dot-win--red { background: #ff5f56; }
-.dot-win--yellow { background: #ffbd2e; }
-.dot-win--green { background: #27c93f; }
+.dot-win--red {
+  background: #ff5f56;
+}
+.dot-win--yellow {
+  background: #ffbd2e;
+}
+.dot-win--green {
+  background: #27c93f;
+}
 
 .terminal-screen-title {
   margin-left: auto;
@@ -2485,19 +2730,25 @@ main,
 }
 
 /* Fade transitions for JSON output */
-.fade-enter-active, .fade-leave-active {
+.fade-enter-active,
+.fade-leave-active {
   transition: opacity 0.3s ease;
 }
-.fade-enter-from, .fade-leave-to {
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Logo wall (agents + stack) ── */
@@ -2524,7 +2775,8 @@ main,
   padding: clamp(2.5rem, 2rem + 4vw, 5rem) var(--vg-space-6);
   border-radius: var(--vg-radius-xl);
   border: 1px solid var(--vg-border-strong);
-  background: radial-gradient(70% 120% at 50% 0%, rgba(59, 130, 246, 0.22), transparent 70%),
+  background:
+    radial-gradient(70% 120% at 50% 0%, rgba(59, 130, 246, 0.22), transparent 70%),
     var(--vg-surface);
 }
 .cta__title {
@@ -2683,6 +2935,12 @@ main,
   .guide-tab--active {
     border-bottom-color: var(--vg-blue-bright);
   }
+}
+
+.lp-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
 }
 
 @media (max-width: 600px) {

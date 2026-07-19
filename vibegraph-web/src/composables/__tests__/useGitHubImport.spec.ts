@@ -69,8 +69,15 @@ function makeFakeWs(opts: { connectRejects?: boolean } = {}) {
   let unsubscribed = false
 
   const subscribe = <T>(topic: string, cb: (payload: T) => void) => {
+    const active = ref(true)
     captured = { topic, cb: cb as unknown as (e: ProjectStatusEvent) => void }
-    return { unsubscribe: () => { unsubscribed = true } }
+    return {
+      active,
+      unsubscribe: () => {
+        active.value = false
+        unsubscribed = true
+      },
+    }
   }
 
   const ws: UseWebSocketReturn = {
@@ -132,9 +139,13 @@ describe('useGitHubImport', () => {
     importGithubMock.mockResolvedValueOnce(project)
     const composable = useGitHubImport()
 
-    const result = await composable.importGithub('  https://github.com/spring-projects/spring-petclinic  ')
+    const result = await composable.importGithub(
+      '  https://github.com/spring-projects/spring-petclinic  ',
+    )
 
-    expect(importGithubMock).toHaveBeenCalledWith('https://github.com/spring-projects/spring-petclinic')
+    expect(importGithubMock).toHaveBeenCalledWith(
+      'https://github.com/spring-projects/spring-petclinic',
+    )
     expect(result).toEqual(project)
     expect(composable.status.value).toBe('success')
     expect(composable.importedProject.value).toEqual(project)
@@ -142,7 +153,12 @@ describe('useGitHubImport', () => {
 
   it('waits for an async import to finish before exposing success', async () => {
     vi.useFakeTimers()
-    const analyzingProject = fakeProject({ id: 'gh-3', name: 'lab7', status: 'ANALYZING', progress: 20 })
+    const analyzingProject = fakeProject({
+      id: 'gh-3',
+      name: 'lab7',
+      status: 'ANALYZING',
+      progress: 20,
+    })
     const analyzedProject = fakeProject({
       id: 'gh-3',
       name: 'lab7',
@@ -175,8 +191,18 @@ describe('useGitHubImport', () => {
 
   it('updates progress live from WebSocket events during analysis', async () => {
     vi.useFakeTimers()
-    const analyzingProject = fakeProject({ id: 'gh-live', name: 'live', status: 'ANALYZING', progress: 5 })
-    const analyzedProject = fakeProject({ id: 'gh-live', name: 'live', status: 'ANALYZED', progress: 100 })
+    const analyzingProject = fakeProject({
+      id: 'gh-live',
+      name: 'live',
+      status: 'ANALYZING',
+      progress: 5,
+    })
+    const analyzedProject = fakeProject({
+      id: 'gh-live',
+      name: 'live',
+      status: 'ANALYZED',
+      progress: 100,
+    })
     importGithubMock.mockResolvedValueOnce(analyzingProject)
     getProjectMock.mockResolvedValueOnce(analyzedProject)
     fetchFullGraphMock.mockResolvedValueOnce(fakeGraph())
@@ -190,11 +216,23 @@ describe('useGitHubImport', () => {
 
       expect(getTopic()).toBe('/topic/projects/gh-live/status')
 
-      emit({ projectId: 'gh-live', status: 'ANALYZING', progress: 42, message: null, timestamp: '2026-01-01T00:00:00Z' })
+      emit({
+        projectId: 'gh-live',
+        status: 'ANALYZING',
+        progress: 42,
+        message: null,
+        timestamp: '2026-01-01T00:00:00Z',
+      })
       expect(composable.progress.value).toBe(42)
 
       // A stale event for another project must be ignored.
-      emit({ projectId: 'other', status: 'ANALYZING', progress: 99, message: null, timestamp: '2026-01-01T00:00:01Z' })
+      emit({
+        projectId: 'other',
+        status: 'ANALYZING',
+        progress: 99,
+        message: null,
+        timestamp: '2026-01-01T00:00:01Z',
+      })
       expect(composable.progress.value).toBe(42)
 
       await vi.advanceTimersByTimeAsync(1_000)
@@ -210,7 +248,11 @@ describe('useGitHubImport', () => {
 
   it('keeps waiting when GitHub analysis takes longer than one minute', async () => {
     vi.useFakeTimers()
-    const analyzingProject = fakeProject({ id: 'gh-slow', name: 'spx-tracking', status: 'ANALYZING' })
+    const analyzingProject = fakeProject({
+      id: 'gh-slow',
+      name: 'spx-tracking',
+      status: 'ANALYZING',
+    })
     const analyzedProject = fakeProject({
       id: 'gh-slow',
       name: 'spx-tracking',
@@ -221,9 +263,9 @@ describe('useGitHubImport', () => {
       totalEdges: 1852,
     })
     importGithubMock.mockResolvedValueOnce(analyzingProject)
-    getProjectMock.mockImplementation(async () => (
-      getProjectMock.mock.calls.length >= 65 ? analyzedProject : analyzingProject
-    ))
+    getProjectMock.mockImplementation(async () =>
+      getProjectMock.mock.calls.length >= 65 ? analyzedProject : analyzingProject,
+    )
     const { ws } = makeFakeWs({ connectRejects: true })
     const composable = useGitHubImport({ ws })
 
@@ -244,7 +286,9 @@ describe('useGitHubImport', () => {
   })
 
   it('maps safe API errors to user-visible error state', async () => {
-    importGithubMock.mockRejectedValueOnce(new ApiError(400, 'Bad Request', 'Repository is private.'))
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(400, 'Bad Request', 'Repository is private.'),
+    )
     const composable = useGitHubImport()
 
     const result = await composable.importGithub('https://github.com/owner/private-repo')
@@ -255,14 +299,18 @@ describe('useGitHubImport', () => {
   })
 
   it('uses a generic message for unexpected API errors', async () => {
-    importGithubMock.mockRejectedValueOnce(new ApiError(500, 'Internal Server Error', 'Stack trace: /srv/app/importer'))
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(500, 'Internal Server Error', 'Stack trace: /srv/app/importer'),
+    )
     const composable = useGitHubImport()
 
     const result = await composable.importGithub('https://github.com/owner/repo')
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toBe('Import failed. Verify the repository is public and try again.')
+    expect(composable.errorMessage.value).toBe(
+      'Import failed. Verify the repository is public and try again.',
+    )
   })
 
   it('reports a connectivity error (not a repo error) when the backend is unreachable', async () => {

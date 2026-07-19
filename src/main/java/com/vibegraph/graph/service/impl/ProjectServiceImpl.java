@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.graph.config.ProjectsProperties;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -34,6 +35,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Value("${vibegraph.projects.allowed-root:}")
     private String allowedRoot;
+
+    @Autowired(required = false)
+    private com.vibegraph.graph.service.LocalProjectPathValidator localProjectPathValidator;
 
     @Autowired
     private ArchiveImportProperties archiveImportProperties;
@@ -71,42 +75,41 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private Path validateRootPath(String rawRootPath) {
-        if (rawRootPath == null || rawRootPath.isBlank()) {
-            throw new IllegalArgumentException("rootPath is required");
+        if (localProjectPathValidator != null) {
+            return localProjectPathValidator.validateImportRoot(rawRootPath);
         }
-        try {
-            Path rootPath = Path.of(rawRootPath).toRealPath();
-            if (!Files.isDirectory(rootPath)) {
-                throw new IllegalArgumentException("rootPath must be an existing directory");
-            }
-            Path allowedRootPath = resolveAllowedRoot();
-            // Unconfined when no allowed-root is configured (local-dev default): any existing
-            // directory on the host may be imported, so a team member can pick a project on any
-            // drive without hardcoding a per-machine root. Set vibegraph.projects.allowed-root to
-            // confine imports for shared/deployed instances.
-            if (allowedRootPath != null && !rootPath.startsWith(allowedRootPath)) {
-                throw new IllegalArgumentException("rootPath must be inside the configured allowed root");
-            }
-            return rootPath;
-        } catch (InvalidPathException ex) {
-            throw new IllegalArgumentException("rootPath is not a valid filesystem path", ex);
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("rootPath must be an existing directory", ex);
-        }
-    }
-
-    private Path resolveAllowedRoot() throws IOException {
-        if (allowedRoot == null || allowedRoot.isBlank()) {
-            return null;
-        }
-        return Path.of(allowedRoot).toRealPath();
+        ProjectsProperties fallbackProperties = new ProjectsProperties();
+        fallbackProperties.setAllowedRoot(allowedRoot);
+        fallbackProperties.setAllowUnconfinedImport(false);
+        return new com.vibegraph.graph.service.LocalProjectPathValidator(fallbackProperties)
+                .validateImportRoot(rawRootPath);
     }
 
     @Override
     public ProjectResponse createProjectFromWorkspace(String name, Path workspaceSource) {
         Path source = validateWorkspacePath(workspaceSource);
         String id = UUID.randomUUID().toString().substring(0, 8);
-        ProjectResponse project = ProjectResponse.builder()
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        log.info("Created archive-workspace project {} at {}", id, source);
+        return project;
+    }
+
+    @Override
+    public ProjectResponse createEmptyWorkspaceProject(String name, Path workspaceSource) {
+        Path source = validateWorkspacePath(workspaceSource);
+        String id = UUID.randomUUID().toString().substring(0, 8);
+        ProjectResponse project = workspaceProject(id, name, source);
+        projects.put(id, project);
+        if (graphRepository != null) {
+            graphRepository.upsertProject(id, project.getName(), project.getRootPath());
+        }
+        log.info("Created CLI workspace project {} at {}", id, source);
+        return project;
+    }
+
+    private ProjectResponse workspaceProject(String id, String name, Path source) {
+        return ProjectResponse.builder()
                 .id(id)
                 .name(name != null && !name.isBlank() ? name : id)
                 .rootPath(source.toString())
@@ -114,9 +117,6 @@ public class ProjectServiceImpl implements ProjectService {
                 .status(ProjectStatus.CREATED.name())
                 .progress(0)
                 .build();
-        projects.put(id, project);
-        log.info("Created archive-workspace project {} at {}", id, source);
-        return project;
     }
 
     /**
@@ -160,13 +160,7 @@ public class ProjectServiceImpl implements ProjectService {
                             || !isPersistedRootAllowed(metadata.path())) {
                         continue;
                     }
-                    merged.put(metadata.id(), ProjectResponse.builder()
-                            .id(metadata.id())
-                            .name(metadata.name() != null ? metadata.name() : metadata.id())
-                            .rootPath(metadata.path())
-                            .status(ProjectStatus.ANALYZED.name())
-                            .progress(100)
-                            .build());
+                    merged.put(metadata.id(), projectFromMetadata(metadata, metadata.id()));
                 }
             } catch (RuntimeException ex) {
                 log.warn("Could not load persisted projects for listing: {}", ex.getMessage());
@@ -214,10 +208,25 @@ public class ProjectServiceImpl implements ProjectService {
             throw new IllegalArgumentException("Persisted project root is outside the allowed workspace");
         }
         log.info("Recovered project {} from persisted graph metadata", id);
+        return projectFromMetadata(metadata, id);
+    }
+
+    private ProjectResponse projectFromMetadata(ProjectMetadata metadata, String fallbackId) {
+        String id = metadata.id() != null ? metadata.id() : fallbackId;
+        Instant recoveredAt = Instant.now();
+        Instant createdAt = metadata.createdAt() != null
+                ? metadata.createdAt()
+                : (metadata.lastAnalyzedAt() != null ? metadata.lastAnalyzedAt() : recoveredAt);
+        Instant lastAnalyzedAt = metadata.lastAnalyzedAt() != null ? metadata.lastAnalyzedAt() : createdAt;
         return ProjectResponse.builder()
-                .id(metadata.id() != null ? metadata.id() : id)
+                .id(id)
                 .name(metadata.name() != null ? metadata.name() : id)
                 .rootPath(metadata.path())
+                .createdAt(createdAt)
+                .lastAnalyzedAt(lastAnalyzedAt)
+                .totalFiles(metadata.totalFiles())
+                .totalNodes(metadata.totalNodes())
+                .totalEdges(metadata.totalEdges())
                 .status(ProjectStatus.ANALYZED.name())
                 .progress(100)
                 .build();

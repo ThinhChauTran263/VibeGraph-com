@@ -90,7 +90,10 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
 
   const colW: number[] = [UC_MIN_W]
   for (let k = 0; k < count; k++) {
-    const longest = wrapLabel(ordered[k]!.name, UC_MAX_CHARS, 2).reduce((m, ln) => Math.max(m, ln.length), 0)
+    const longest = wrapLabel(ordered[k]!.name, UC_MAX_CHARS, 2).reduce(
+      (m, ln) => Math.max(m, ln.length),
+      0,
+    )
     colW[0] = Math.max(colW[0]!, ellipseWidth('x'.repeat(longest)))
   }
 
@@ -154,9 +157,7 @@ export function renderUmlUseCaseSvg(model: UmlUseCaseModel): string {
   }
   const placeColumn = (group: UmlActor[], x: number) => {
     // desired y from centroid, sorted, then pushed apart to avoid overlap
-    const desired = group
-      .map((a) => ({ a, y: centroidY(a.id) }))
-      .sort((p, q) => p.y - q.y)
+    const desired = group.map((a) => ({ a, y: centroidY(a.id) })).sort((p, q) => p.y - q.y)
     for (let i = 1; i < desired.length; i++) {
       const minY = desired[i - 1]!.y + ACTOR_GAP_Y
       if (desired[i]!.y < minY) desired[i]!.y = minY

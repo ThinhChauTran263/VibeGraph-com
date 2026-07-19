@@ -1,5 +1,7 @@
 package com.vibegraph.patch.controller;
 
+import com.vibegraph.auth.CurrentUser;
+
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -19,10 +21,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.UnauthorizedException;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.auth.service.AccountSettingsService;
+import java.util.UUID;
 import com.vibegraph.patch.dto.request.PatchRequest;
 import com.vibegraph.patch.dto.response.PatchResult;
 import com.vibegraph.patch.exception.PatchExceptionHandler;
@@ -45,12 +50,19 @@ class LocalPatchControllerTest {
     private MockMvc mockMvc;
     private LocalPatchService localPatchService;
     private ProjectOwnershipGuard ownershipGuard;
+    private AccountSettingsService accountSettingsService;
+    private CurrentUser currentUser;
+    private com.vibegraph.auth.web.ApiKeyRequestContextAccessor apiKeyContextAccessor;
 
     @BeforeEach
     void setUp() {
         localPatchService = Mockito.mock(LocalPatchService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
-        LocalPatchController controller = new LocalPatchController(localPatchService, ownershipGuard);
+        accountSettingsService = Mockito.mock(AccountSettingsService.class);
+        currentUser = Mockito.mock(CurrentUser.class);
+        apiKeyContextAccessor = Mockito.mock(com.vibegraph.auth.web.ApiKeyRequestContextAccessor.class);
+        LocalPatchController controller = new LocalPatchController(
+                localPatchService, ownershipGuard, accountSettingsService, currentUser, apiKeyContextAccessor);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler(), new PatchExceptionHandler())
                 .build();
@@ -86,6 +98,25 @@ class LocalPatchControllerTest {
     }
 
     @Test
+    @DisplayName("returns 403 for a blocked account before patch service work")
+    void shouldReturn403WhenBlockedAccount() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(currentUser.id()).thenReturn(userId);
+        doThrow(new AccountBlockedException("internal risk note", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        mockMvc.perform(post("/api/projects/p1/patch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_BLOCKED"))
+                .andExpect(jsonPath("$.error.message").value("Policy review"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verify(localPatchService, never()).applyPatch(any(), any());
+    }
+
+    @Test
     @DisplayName("returns 200 with the patch result for an owned project")
     void shouldApplyPatchForOwner() throws Exception {
         when(localPatchService.applyPatch(eq("p1"), any(PatchRequest.class)))
@@ -101,6 +132,38 @@ class LocalPatchControllerTest {
                 .andExpect(jsonPath("$.data.requiresAnalyze").value(true));
 
         verify(ownershipGuard).assertOwner("p1");
+    }
+
+    @Test
+    @DisplayName("resolves the current patch project from a project-bound API key")
+    void shouldApplyPatchForCurrentApiKeyProject() throws Exception {
+        when(apiKeyContextAccessor.current()).thenReturn(java.util.Optional.of(
+                new com.vibegraph.auth.web.ApiKeyRequestContext("key-ref", "p1")));
+        when(localPatchService.applyPatch(eq("p1"), any(PatchRequest.class)))
+                .thenReturn(new PatchResult("p1", 1, 0, List.of(), true));
+
+        mockMvc.perform(post("/api/projects/current/patch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projectId").value("p1"));
+
+        verify(ownershipGuard).assertOwner("p1");
+        verify(localPatchService).applyPatch(eq("p1"), any(PatchRequest.class));
+    }
+
+    @Test
+    @DisplayName("requires a project-bound API key for the current patch route")
+    void shouldRejectCurrentPatchWithoutApiKeyContext() throws Exception {
+        when(apiKeyContextAccessor.current()).thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/projects/current/patch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        verify(localPatchService, never()).applyPatch(any(), any());
     }
 
     @Test

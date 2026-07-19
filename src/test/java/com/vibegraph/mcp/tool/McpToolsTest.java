@@ -15,9 +15,17 @@ import static org.mockito.Mockito.when;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountAccessGuard;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.config.McpServerConfig;
 import com.vibegraph.common.exception.NodeNotFoundException;
 import com.vibegraph.common.exception.ProjectNotFoundException;
+import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -67,7 +75,15 @@ class McpToolsTest {
                 new SuggestTestPlanTool(null),
                 new PlanCodeChangeTool(null),
                 new ExplainFailureTool(null),
-                new ProjectConventionsTool(null));
+                new ProjectConventionsTool(null),
+                Mockito.mock(CurrentUser.class),
+                Mockito.mock(CreditPricingService.class),
+                Mockito.mock(CreditBalanceService.class),
+                Mockito.mock(ProjectOwnershipGuard.class),
+                Mockito.mock(FeatureGateService.class),
+                Mockito.mock(AccountAccessGuard.class),
+                Mockito.mock(ApiKeyRequestContextAccessor.class),
+                new ObjectMapper());
     }
 
     @Nested

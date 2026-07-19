@@ -39,7 +39,12 @@ function shortPath(filePath?: string): string {
   <section class="dfd" aria-labelledby="dfd-heading">
     <header class="dfd__header">
       <h2 id="dfd-heading" class="dfd__eyebrow">Data Flow</h2>
-      <button class="dfd__close" type="button" aria-label="Close data flow detail" @click="emit('close')">
+      <button
+        class="dfd__close"
+        type="button"
+        aria-label="Close data flow detail"
+        @click="emit('close')"
+      >
         ✕
       </button>
     </header>
@@ -57,11 +62,7 @@ function shortPath(filePath?: string): string {
 
     <p class="dfd__desc">{{ description }}</p>
 
-    <p
-      v-if="!item.flow.complete"
-      class="dfd__notice"
-      role="status"
-    >
+    <p v-if="!item.flow.complete" class="dfd__notice" role="status">
       ⚠ Incomplete — trace stopped before reaching a database model.
     </p>
 
@@ -78,11 +79,16 @@ function shortPath(filePath?: string): string {
           <span class="dfd__step-index">{{ step.index }}</span>
           <span class="dfd__step-body">
             <span class="dfd__step-top">
-              <span class="dfd__step-dot" :style="{ backgroundColor: NODE_COLORS[step.nodeType] ?? '#94a3b8' }" />
+              <span
+                class="dfd__step-dot"
+                :style="{ backgroundColor: NODE_COLORS[step.nodeType] ?? '#94a3b8' }"
+              />
               <span class="dfd__step-name">{{ step.name }}</span>
               <span v-if="step.springLayer" class="dfd__layer">{{ step.springLayer }}</span>
             </span>
-            <span v-if="shortPath(step.filePath)" class="dfd__step-file">{{ shortPath(step.filePath) }}</span>
+            <span v-if="shortPath(step.filePath)" class="dfd__step-file">{{
+              shortPath(step.filePath)
+            }}</span>
           </span>
         </button>
       </li>
@@ -170,11 +176,26 @@ function shortPath(filePath?: string): string {
   color: #cbd5e1;
 }
 
-.dfd__method--get { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; }
-.dfd__method--post { background: rgba(59, 130, 246, 0.22); color: #93c5fd; }
-.dfd__method--put { background: rgba(245, 158, 11, 0.22); color: #fcd34d; }
-.dfd__method--patch { background: rgba(168, 85, 247, 0.22); color: #d8b4fe; }
-.dfd__method--delete { background: rgba(239, 68, 68, 0.22); color: #fca5a5; }
+.dfd__method--get {
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+}
+.dfd__method--post {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+.dfd__method--put {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
+.dfd__method--patch {
+  background: rgba(168, 85, 247, 0.22);
+  color: #d8b4fe;
+}
+.dfd__method--delete {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+}
 
 .dfd__domain {
   padding: 0.125rem 0.5rem;

@@ -19,7 +19,7 @@ export interface User {
 
 /** Response from `POST /api/auth/login` and `POST /api/auth/register`. */
 export interface AuthResponse {
-  token: string
+  token?: string | null
   user: User
 }
 

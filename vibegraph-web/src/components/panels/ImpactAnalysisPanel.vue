@@ -69,9 +69,7 @@ const DEPENDENCY_TARGET_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'External',
 ])
 
-const targetSupported = computed(
-  () => !!props.node && DEPENDENCY_TARGET_TYPES.has(props.node.type),
-)
+const targetSupported = computed(() => !!props.node && DEPENDENCY_TARGET_TYPES.has(props.node.type))
 
 // A new node selection invalidates any previous result, and we pick the profile
 // that yields meaningful results for that node type: dependency-target types keep
@@ -133,8 +131,7 @@ const depthGroups = computed(() => {
     { key: 'willBreak', label: labels.direct, nodes: data.willBreak ?? [] },
     { key: 'likelyAffected', label: labels.likely, nodes: data.likelyAffected ?? [] },
     { key: 'mayNeedTesting', label: labels.maybe, nodes: data.mayNeedTesting ?? [] },
-  ]
-    .filter((group) => group.nodes.length > 0)
+  ].filter((group) => group.nodes.length > 0)
 })
 
 const hasAffectedNodes = computed(() => depthGroups.value.length > 0)
@@ -286,24 +283,33 @@ watch(status, (next) => {
                     <span aria-hidden="true">{&nbsp;}</span>
                   </button>
                 </div>
-                <FilePath v-if="affected.filePath" :path="affected.filePath" class="impact-panel__node-path" />
+                <FilePath
+                  v-if="affected.filePath"
+                  :path="affected.filePath"
+                  class="impact-panel__node-path"
+                />
               </li>
             </ul>
           </section>
 
-          <p v-if="selectedProfile === 'dependency' && !hasAffectedNodes && !targetSupported" class="impact-panel__empty-list">
-            Impact analysis measures the <strong>dependency blast radius</strong> — what
-            calls, imports, extends, implements or injects this node.
-            <strong>{{ node.type }}</strong> nodes are not targets of those relationships,
-            so an empty result here is expected (not a missing dependency). Select a
+          <p
+            v-if="selectedProfile === 'dependency' && !hasAffectedNodes && !targetSupported"
+            class="impact-panel__empty-list"
+          >
+            Impact analysis measures the <strong>dependency blast radius</strong> — what calls,
+            imports, extends, implements or injects this node.
+            <strong>{{ node.type }}</strong> nodes are not targets of those relationships, so an
+            empty result here is expected (not a missing dependency). Select a
             <strong>Class</strong>, <strong>Interface</strong>, or <strong>Method</strong>
             to see dependents.
           </p>
-          <p v-else-if="selectedProfile === 'dependency' && !hasAffectedNodes" class="impact-panel__empty-list">
-            Nothing depends on <strong>{{ node.name }}</strong> through call, import,
-            inheritance or injection edges within depth {{ selectedDepth }}. This is common
-            for entrypoints such as a controller or route handler that nothing else depends
-            on.
+          <p
+            v-else-if="selectedProfile === 'dependency' && !hasAffectedNodes"
+            class="impact-panel__empty-list"
+          >
+            Nothing depends on <strong>{{ node.name }}</strong> through call, import, inheritance or
+            injection edges within depth {{ selectedDepth }}. This is common for entrypoints such as
+            a controller or route handler that nothing else depends on.
           </p>
           <p v-else-if="!hasAffectedNodes" class="impact-panel__empty-list">
             No {{ profileLabels[selectedProfile].toLowerCase() }} relationships found for
@@ -583,7 +589,10 @@ watch(status, (next) => {
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .impact-panel__node-code:hover,

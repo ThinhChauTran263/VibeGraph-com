@@ -8,8 +8,8 @@
  *   - `connect()` resolves once the STOMP CONNECTED frame arrives, and rejects
  *     on transport/STOMP errors so callers can surface a clear failure instead
  *     of hanging silently.
- *   - `subscribe()` may be called before `connect()` resolves; pending
- *     subscriptions are flushed on connect.
+ *   - `subscribe()` may be called before `connect()` resolves; desired
+ *     subscriptions are activated on connect and replayed after reconnects.
  *   - `sockjs-client` is imported lazily inside `connect()` so unit tests that
  *     inject a fake client never pull the transport into the module graph.
  */
@@ -26,12 +26,15 @@ import {
 export type WebSocketStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export interface TopicSubscription {
+  active: Readonly<Ref<boolean>>
   unsubscribe: () => void
 }
 
 export interface UseWebSocketOptions {
   /** Override the SockJS endpoint. Defaults to `WS_URL`. */
   url?: string
+  /** Optional STOMP CONNECT headers. Browser auth normally uses the HttpOnly cookie handshake. */
+  connectHeaders?: Record<string, string> | (() => Record<string, string>)
   /**
    * Override the STOMP client factory. Primarily a test seam so unit tests can
    * inject a fake client without a real socket. When omitted, a real
@@ -52,6 +55,7 @@ interface PendingSubscription {
   topic: string
   handler: (message: IMessage) => void
   sub: StompSubscription | null
+  active: Ref<boolean>
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
@@ -60,7 +64,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const error = ref<string | null>(null)
 
   let client: Client | null = null
-  let pending: PendingSubscription[] = []
+  let connectPromise: Promise<void> | null = null
+  let desiredSubscriptions: PendingSubscription[] = []
 
   async function buildClient(): Promise<Client> {
     // Lazy import keeps the SockJS transport out of the test module graph.
@@ -68,33 +73,55 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     const SockJS = sockjsModule.default
     return new Client({
       webSocketFactory: () => new SockJS(url) as unknown as IStompSocket,
+      connectHeaders: resolveConnectHeaders(),
       reconnectDelay: WS_RECONNECT_DELAY_MS,
       heartbeatIncoming: WS_HEARTBEAT_INCOMING_MS,
       heartbeatOutgoing: WS_HEARTBEAT_OUTGOING_MS,
     })
   }
 
-  function flushPending(activeClient: Client): void {
-    for (const entry of pending) {
+  function activateSubscription(activeClient: Client, entry: PendingSubscription): void {
+    try {
       entry.sub = activeClient.subscribe(entry.topic, entry.handler)
+      entry.active.value = true
+    } catch (err: unknown) {
+      entry.sub = null
+      entry.active.value = false
+      error.value = err instanceof Error ? err.message : `Failed to subscribe to ${entry.topic}.`
     }
-    pending = []
+  }
+
+  function replayDesiredSubscriptions(activeClient: Client): void {
+    for (const entry of desiredSubscriptions) {
+      entry.sub = null
+      entry.active.value = false
+      activateSubscription(activeClient, entry)
+    }
+  }
+
+  function markSubscriptionsInactive(): void {
+    for (const entry of desiredSubscriptions) {
+      entry.sub = null
+      entry.active.value = false
+    }
   }
 
   function connect(): Promise<void> {
     if (client && status.value === 'connected') {
       return Promise.resolve()
     }
+    if (connectPromise) return connectPromise
     status.value = 'connecting'
     error.value = null
 
-    return new Promise<void>((resolve, reject) => {
+    connectPromise = new Promise<void>((resolve, reject) => {
       const wire = (built: Client): void => {
         client = built
 
         built.onConnect = () => {
+          error.value = null
+          replayDesiredSubscriptions(built)
           status.value = 'connected'
-          flushPending(built)
           resolve()
         }
 
@@ -111,6 +138,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         }
 
         built.onWebSocketClose = () => {
+          markSubscriptionsInactive()
           // Only downgrade to disconnected if we are not already flagged as errored.
           if (status.value !== 'error') {
             status.value = 'disconnected'
@@ -129,7 +157,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         } catch (err: unknown) {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         }
         return
       }
@@ -139,9 +171,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         .catch((err: unknown) => {
           status.value = 'error'
           error.value = err instanceof Error ? err.message : 'Failed to initialize WebSocket.'
-          reject(err instanceof Error ? err : new Error(error.value ?? 'Failed to initialize WebSocket.'))
+          reject(
+            err instanceof Error
+              ? err
+              : new Error(error.value ?? 'Failed to initialize WebSocket.'),
+          )
         })
+    }).finally(() => {
+      connectPromise = null
     })
+    return connectPromise
   }
 
   function subscribe<T>(topic: string, callback: (payload: T) => void): TopicSubscription {
@@ -152,28 +191,29 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
     }
 
-    const entry: PendingSubscription = { topic, handler, sub: null }
+    const entry: PendingSubscription = { topic, handler, sub: null, active: ref(false) }
+    desiredSubscriptions.push(entry)
 
     if (client && status.value === 'connected') {
-      entry.sub = client.subscribe(topic, handler)
-    } else {
-      pending.push(entry)
+      activateSubscription(client, entry)
     }
 
     return {
+      active: entry.active,
       unsubscribe: () => {
+        desiredSubscriptions = desiredSubscriptions.filter((candidate) => candidate !== entry)
         if (entry.sub) {
           entry.sub.unsubscribe()
           entry.sub = null
-        } else {
-          pending = pending.filter((p) => p !== entry)
         }
+        entry.active.value = false
       },
     }
   }
 
   async function disconnect(): Promise<void> {
-    pending = []
+    markSubscriptionsInactive()
+    desiredSubscriptions = []
     if (client) {
       const active = client
       client = null
@@ -191,6 +231,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       error.value = 'Received a malformed WebSocket message.'
       return undefined
     }
+  }
+
+  function resolveConnectHeaders(): Record<string, string> {
+    if (typeof options.connectHeaders === 'function') {
+      return options.connectHeaders()
+    }
+    if (options.connectHeaders) {
+      return options.connectHeaders
+    }
+    return {}
   }
 
   return { status, error, connect, disconnect, subscribe }

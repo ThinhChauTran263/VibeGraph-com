@@ -74,7 +74,13 @@ function mixedGraph(): GraphData {
     nodes,
     edges,
     nodeStats: { Class: 2, Method: 1, Field: 1 } as GraphData['nodeStats'],
-    edgeStats: { HAS_METHOD: 1, EXTENDS: 1, RETURNS: 1, HAS_FIELD: 1, INJECTS: 1 } as GraphData['edgeStats'],
+    edgeStats: {
+      HAS_METHOD: 1,
+      EXTENDS: 1,
+      RETURNS: 1,
+      HAS_FIELD: 1,
+      INJECTS: 1,
+    } as GraphData['edgeStats'],
   }
 }
 
@@ -214,10 +220,7 @@ describe('deep CPG (READS/WRITES/CATCHES + LocalVariable) default visibility', (
  */
 describe('STEP_IN_FLOW default visibility', () => {
   function flowGraph(): GraphData {
-    const nodes: GraphNode[] = [
-      graphNode('handle', 'Method'),
-      graphNode('save', 'Method'),
-    ]
+    const nodes: GraphNode[] = [graphNode('handle', 'Method'), graphNode('save', 'Method')]
     const edges: GraphEdge[] = [
       graphEdge('call', 'handle', 'save', 'CALLS'), // visible by default
       graphEdge('flow', 'handle', 'save', 'STEP_IN_FLOW'), // default-hidden

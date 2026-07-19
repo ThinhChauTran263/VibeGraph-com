@@ -49,7 +49,11 @@ const activeSidebarTab = ref<'explorer' | 'filters' | 'flows'>('explorer')
 
 // Active Data Flow highlight (set of node ids + connecting edge ids). When set,
 // the canvas spotlights the whole traced chain instead of a single node.
-const activeFlow = ref<{ nodeIds: Set<string>; edgeIds: Set<string>; primaryNodeId: string } | null>(null)
+const activeFlow = ref<{
+  nodeIds: Set<string>
+  edgeIds: Set<string>
+  primaryNodeId: string
+} | null>(null)
 // The selected flow shown in the right-hand DataFlowDetailPanel.
 const activeFlowDetail = ref<FlowListItem | null>(null)
 
@@ -212,7 +216,8 @@ const {
     emit('nodeSelected', null)
   },
   onNodeHover: (nodeId: string) => {
-    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value) return
+    if (selectedNode.value || pinnedRelation.value || hoveredRelation.value || activeFlow.value)
+      return
     hoveredGraphNode.value = nodeId
     applyFocusReducers()
   },
@@ -534,11 +539,15 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
 }
 
 /** Place a newly-added node next to an already-present neighbour (small jitter), else near origin. */
-function spawnPosition(nodeId: string, edges: { source: string; target: string }[]): { x: number; y: number } {
+function spawnPosition(
+  nodeId: string,
+  edges: { source: string; target: string }[],
+): { x: number; y: number } {
   const graph = graphInstance.value
   if (graph) {
     for (const edge of edges) {
-      const other = edge.source === nodeId ? edge.target : edge.target === nodeId ? edge.source : null
+      const other =
+        edge.source === nodeId ? edge.target : edge.target === nodeId ? edge.source : null
       if (other && graph.hasNode(other)) {
         const ox = graph.getNodeAttribute(other, 'x') as number
         const oy = graph.getNodeAttribute(other, 'y') as number
@@ -563,19 +572,16 @@ const rebuildGraph = debounce((data: typeof filteredGraphData.value) => {
   applyFocusReducers()
 }, 200)
 
-watch(
-  filteredGraphData,
-  (graphData) => {
-    // Selection consistency is cheap and must stay synchronous so a stale selected
-    // node is cleared immediately even before the debounced rebuild runs.
-    if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
-      clearSelection()
-    }
+watch(filteredGraphData, (graphData) => {
+  // Selection consistency is cheap and must stay synchronous so a stale selected
+  // node is cleared immediately even before the debounced rebuild runs.
+  if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+    clearSelection()
+  }
 
-    if (!canvasRef.value || loading.value || error.value) return
-    rebuildGraph(graphData)
-  },
-)
+  if (!canvasRef.value || loading.value || error.value) return
+  rebuildGraph(graphData)
+})
 
 onUnmounted(() => {
   rebuildGraph.cancel()
@@ -598,36 +604,36 @@ onUnmounted(() => {
     <aside v-show="!loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
       <div class="graph-canvas__sidebar-topbar">
         <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'explorer'"
-          @click="activeSidebarTab = 'explorer'"
-        >
-          Explorer
-        </button>
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'filters'"
-          @click="activeSidebarTab = 'filters'"
-        >
-          Filters
-        </button>
-        <button
-          class="graph-canvas__sidebar-tab"
-          :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSidebarTab === 'flows'"
-          @click="activeSidebarTab = 'flows'"
-        >
-          Flows
-        </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'explorer' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'explorer'"
+            @click="activeSidebarTab = 'explorer'"
+          >
+            Explorer
+          </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'filters' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'filters'"
+            @click="activeSidebarTab = 'filters'"
+          >
+            Filters
+          </button>
+          <button
+            class="graph-canvas__sidebar-tab"
+            :class="{ 'graph-canvas__sidebar-tab--active': activeSidebarTab === 'flows' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSidebarTab === 'flows'"
+            @click="activeSidebarTab = 'flows'"
+          >
+            Flows
+          </button>
         </div>
         <button
           class="graph-canvas__sidebar-collapse"
@@ -670,45 +676,45 @@ onUnmounted(() => {
     <div class="graph-canvas__stage">
       <div ref="canvasRef" class="graph-canvas" />
 
-      <button
-        v-if="!loading && !error && sidebarCollapsed"
-        type="button"
-        class="graph-canvas__sidebar-expand"
-        title="Expand panel"
-        aria-label="Expand sidebar panel"
-        @click="toggleSidebar"
-      >
-        <span aria-hidden="true">›</span>
-      </button>
+      <div v-if="!loading && !error" class="graph-top-controls">
+        <button
+          v-if="sidebarCollapsed"
+          type="button"
+          class="graph-canvas__sidebar-expand"
+          title="Expand panel"
+          aria-label="Expand sidebar panel"
+          @click="toggleSidebar"
+        >
+          <span aria-hidden="true">›</span>
+        </button>
 
-      <button
-        v-if="!loading && !error"
-        type="button"
-        class="graph-edge-label-toggle"
-        :class="{
-          'graph-edge-label-toggle--off': !edgeLabelsEnabled,
-          'graph-edge-label-toggle--shifted': sidebarCollapsed,
-        }"
-        :aria-pressed="edgeLabelsEnabled"
-        @click="toggleEdgeLabels"
-      >
-        {{ edgeLabelsEnabled ? 'Edge labels: On' : 'Edge labels: Off' }}
-      </button>
+        <button
+          type="button"
+          class="graph-edge-label-toggle"
+          :class="{ 'graph-edge-label-toggle--off': !edgeLabelsEnabled }"
+          :aria-pressed="edgeLabelsEnabled"
+          @click="toggleEdgeLabels"
+        >
+          {{ edgeLabelsEnabled ? 'Edge labels: On' : 'Edge labels: Off' }}
+        </button>
 
-      <button
-        v-if="!loading && !error"
-        type="button"
-        class="graph-edge-label-toggle graph-edge-kind-toggle"
-        :class="{
-          'graph-edge-label-toggle--off': !edgeKindEnabled,
-          'graph-edge-kind-toggle--shifted': sidebarCollapsed,
-          'graph-edge-kind-toggle--tucked': selectedNode || activeFlowDetail,
-        }"
-        :aria-pressed="edgeKindEnabled"
-        @click="toggleEdgeKind"
-      >
-        {{ edgeKindEnabled ? 'Node kind: On' : 'Node kind: Off' }}
-      </button>
+        <button
+          type="button"
+          class="graph-edge-label-toggle graph-edge-kind-toggle"
+          :class="{ 'graph-edge-label-toggle--off': !edgeKindEnabled }"
+          :aria-pressed="edgeKindEnabled"
+          @click="toggleEdgeKind"
+        >
+          {{ edgeKindEnabled ? 'Node kind: On' : 'Node kind: Off' }}
+        </button>
+
+        <SearchBar
+          :nodes="nodes"
+          :selected-node-id="selectedNode?.id ?? null"
+          @select="onSearchSelect"
+          @clear="onSearchClear"
+        />
+      </div>
 
       <div v-if="!loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
         <div class="graph-controls-help__title">Controls</div>
@@ -725,14 +731,6 @@ onUnmounted(() => {
           <span><strong>Scroll Wheel</strong><small>Zoom In / Out</small></span>
         </div>
       </div>
-
-      <SearchBar
-        v-if="!loading && !error"
-        :nodes="nodes"
-        :selected-node-id="selectedNode?.id ?? null"
-        @select="onSearchSelect"
-        @clear="onSearchClear"
-      />
 
       <div v-if="loading" class="graph-overlay graph-overlay--loading">
         <div class="spinner" aria-label="Loading graph" />
@@ -763,7 +761,11 @@ onUnmounted(() => {
         @relation-hover="onRelationHover"
         @relation-select="onRelationSelect"
       />
-      <ImpactAnalysisPanel :project-id="props.projectId" :node="selectedNode" @select="onImpactSelect" />
+      <ImpactAnalysisPanel
+        :project-id="props.projectId"
+        :node="selectedNode"
+        @select="onImpactSelect"
+      />
     </aside>
   </div>
 </template>
@@ -825,7 +827,9 @@ onUnmounted(() => {
   left: 50%;
   width: 1px;
   background: rgba(148, 163, 184, 0.2);
-  transition: background 150ms ease, width 150ms ease;
+  transition:
+    background 150ms ease,
+    width 150ms ease;
 }
 
 .graph-canvas__resizer:hover::after,
@@ -893,13 +897,10 @@ onUnmounted(() => {
   outline: none;
 }
 
-/* Floating chevron to reopen the sidebar after it has been collapsed. */
+/* Inline chevron to reopen the sidebar after it has been collapsed. */
 .graph-canvas__sidebar-expand {
-  position: absolute;
-  top: 0.75rem;
-  left: 0.75rem;
-  z-index: 5;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 2rem;
@@ -1030,6 +1031,14 @@ onUnmounted(() => {
 
   .graph-canvas-wrapper--detail-open {
     grid-template-rows: auto 1fr auto;
+  }
+
+  .graph-canvas-wrapper--collapsed {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .graph-canvas__detail {
@@ -1163,12 +1172,29 @@ onUnmounted(() => {
   color: #34d399;
 }
 
-.graph-edge-label-toggle {
+.graph-top-controls {
   position: absolute;
   top: 1rem;
   left: 1rem;
+  right: 1rem;
   z-index: 6;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.graph-top-controls :deep(.search-bar) {
+  flex: 1 1 14rem;
+  width: auto;
+  max-width: 45rem;
+  min-width: 0;
+}
+
+.graph-edge-label-toggle {
+  flex: 0 0 auto;
   min-width: 8rem;
+  min-height: 2.25rem;
   text-align: center;
   padding: 0.4rem 0.75rem;
   border: 1px solid rgba(96, 165, 250, 0.45);
@@ -1182,8 +1208,7 @@ onUnmounted(() => {
   transition:
     background 150ms ease,
     border-color 150ms ease,
-    color 150ms ease,
-    left 150ms ease;
+    color 150ms ease;
 }
 
 .graph-edge-label-toggle:hover,
@@ -1198,27 +1223,8 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
-/* Sidebar collapsed: clear the floating expand chevron in the top-left corner. */
-.graph-edge-label-toggle--shifted {
-  left: 3.5rem;
-}
-
-/* Node-kind toggle sits to the RIGHT of the edge-labels toggle on the same row
-   (both 8rem wide + gap). Only THIS button relocates while a detail panel is open
-   (the search bar shifts left over this spot) — the shorter edge-labels toggle
-   stays put since it never reaches the search bar. */
 .graph-edge-kind-toggle {
-  left: 9.5rem;
-}
-
-.graph-edge-kind-toggle--shifted {
-  left: 12rem;
-}
-
-/* Detail open: tuck the node-kind toggle into the empty space just past the
-   (centered) search bar's Clear button. */
-.graph-edge-kind-toggle--tucked {
-  left: calc(50% + 14rem + 0.75rem);
+  min-width: 8rem;
 }
 
 @keyframes spin {
@@ -1226,5 +1232,4 @@ onUnmounted(() => {
     transform: rotate(360deg);
   }
 }
-
 </style>

@@ -4,6 +4,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+
+import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ConcurrentImportGuard;
+import com.vibegraph.common.exception.AccountBlockedException;
+import com.vibegraph.common.exception.FeatureDisabledException;
+import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,6 +28,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,18 +75,28 @@ class TarballImportServiceImplTest {
     @Mock
     FileChangeBroadcaster fileChangeBroadcaster;
 
+    @Mock AccountSettingsService accountSettingsService;
+    @Mock ProjectUsageService projectUsageService;
+    @Mock CurrentUser currentUser;
+    @Mock ProjectOwnershipRegistrar ownershipRegistrar;
+    @Mock FeatureGateService featureGateService;
+
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
     private TarballImportServiceImpl service;
+    private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         workspaceRoot = tempDir.resolve("uploads");
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
+        lenient().when(currentUser.id()).thenReturn(userId);
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
-                backgroundTasks::add);
+                backgroundTasks::add, accountSettingsService, projectUsageService,
+                currentUser, ownershipRegistrar, featureGateService,
+                new ConcurrentImportGuard(new AbuseProperties()));
     }
 
     @Test
@@ -110,6 +133,35 @@ class TarballImportServiceImplTest {
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZED), eq(100), any(String.class));
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+    }
+
+    @Test
+    @DisplayName("disabled GitHub import flag blocks before preflight or download")
+    void disabledGithubImportFlag_blocksBeforeNetwork() {
+        doThrow(new FeatureDisabledException(FeatureGateService.IMPORT_GITHUB))
+                .when(featureGateService).assertEnabled(FeatureGateService.IMPORT_GITHUB);
+
+        assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .isInstanceOf(FeatureDisabledException.class);
+
+        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
+    }
+
+    @Test
+    @DisplayName("blocked account stops before GitHub preflight or download")
+    void blockedAccount_stopsBeforeNetwork() {
+        doThrow(new AccountBlockedException("internal reason", "Policy review"))
+                .when(accountSettingsService).assertNotBlocked(userId);
+
+        assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .isInstanceOf(AccountBlockedException.class);
+
+        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
+        verify(archiveExtractor, never()).extract(any(), any(), any());
+        verify(projectService, never()).createProjectFromWorkspace(any(), any());
     }
 
     @Test

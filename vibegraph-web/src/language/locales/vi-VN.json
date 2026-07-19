@@ -1,0 +1,1670 @@
+{
+  "common": {
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "disable": "Tắt",
+    "enable": "Bật",
+    "search": "Tìm kiếm",
+    "close": "Đóng",
+    "create": "Tạo",
+    "update": "Cập nhật",
+    "retry": "Thử lại"
+  },
+  "language": {
+    "label": "Ngôn ngữ",
+    "english": "Tiếng Anh",
+    "vietnamese": "Tiếng Việt"
+  },
+  "planNames": {
+    "FREE": "Miễn phí",
+    "PRO": "Pro",
+    "PRO_PLUS": "Pro Plus",
+    "MAX": "Max",
+    "ENTERPRISE": "Enterprise"
+  },
+  "landing": {
+    "nav": {
+      "goals": "Mục tiêu",
+      "features": "Tính năng",
+      "howItWorks": "Cách hoạt động",
+      "guide": "Hướng dẫn"
+    },
+    "actions": {
+      "openDashboard": "Mở Dashboard",
+      "seeHow": "Xem cách hoạt động"
+    },
+    "hero": {
+      "pill": "Trí tuệ source-code cho Java",
+      "titleLead": "Xem code của bạn như một",
+      "titleHighlight": "đồ thị sống",
+      "description": "VibeGraph biến codebase Java thành bản đồ có thể khám phá về cấu trúc, phụ thuộc và luồng thực thi, rồi giữ mọi thứ đồng bộ khi bạn vibe code. Hiểu rõ tác động trước khi thay đổi."
+    },
+    "stats": {
+      "symbols": "symbol được map trên mỗi dự án",
+      "relationships": "quan hệ được truy vết",
+      "flows": "luồng thực thi được phát hiện",
+      "realtimeValue": "Realtime",
+      "realtimeLabel": "graph cập nhật khi bạn code"
+    },
+    "tour": {
+      "label": "Demo hướng dẫn"
+    },
+    "graph": {
+      "header": "Sandbox phân tích blast-radius",
+      "telemetry": {
+        "targetSymbol": "Symbol mục tiêu",
+        "symbolType": "Loại symbol",
+        "blastRadius": "Blast radius",
+        "affected": "{count} bị ảnh hưởng",
+        "riskLevel": "Mức rủi ro",
+        "placeholder": "Bấm vào một node trên graph để mô phỏng phân tích tác động realtime"
+      },
+      "risk": {
+        "critical": "RỦI RO NGHIÊM TRỌNG",
+        "high": "RỦI RO CAO",
+        "low": "THẤP / AN TOÀN"
+      }
+    },
+    "challenge": {
+      "eyebrow": "Vấn đề",
+      "title": "Phần khó nhất khi phải hiểu một codebase lớn",
+      "items": {
+        "overload": {
+          "title": "Quá tải nhận thức",
+          "body": "Tìm trong file thô và text rất chậm, dễ rối và không cho thấy ngữ cảnh thực thi thật."
+        },
+        "refactor": {
+          "title": "Sợ refactor",
+          "body": "Sửa một method hoặc route có thể làm hỏng nhiều dependency hoặc test phía upstream mà bạn không được cảnh báo."
+        },
+        "agent": {
+          "title": "Điểm mù của AI agent",
+          "body": "Coding agent thiếu nhận thức đầy đủ về call graph nên dễ tạo edit hỏng và regression."
+        }
+      }
+    },
+    "solution": {
+      "eyebrow": "Giải pháp",
+      "title": "Graph intelligence có độ tin cậy cao",
+      "items": {
+        "maps": {
+          "title": "Bản đồ code tương tác",
+          "body": "VibeGraph hiển thị codebase Java của bạn như một mạng có thể khám phá, gồm class, method và route."
+        },
+        "impact": {
+          "title": "Báo cáo blast-radius tức thì",
+          "body": "Truy vấn caller chính xác, lần theo luồng thực thi và đánh giá tác động trước khi sửa code."
+        },
+        "mcp": {
+          "title": "Model Context Protocol (MCP)",
+          "body": "Đưa cấu trúc code trực tiếp cho LLM để coding agent truy vấn ngữ cảnh, dự đoán tác động và sửa an toàn hơn."
+        }
+      }
+    },
+    "features": {
+      "eyebrow": "Tính năng",
+      "title": "Những gì bạn cần để đọc codebase nhanh hơn",
+      "description": "Được xây cho những dự án thật, nơi kiến trúc thường nằm trong đầu mọi người thay vì ở một nơi rõ ràng.",
+      "cards": {
+        "graph": {
+          "tag": "Graph",
+          "title": "Code dưới dạng graph sống",
+          "body": "Class, method, field và route được hiển thị thành graph tương tác. Pan, zoom và focus để lần theo mọi call chain."
+        },
+        "impact": {
+          "tag": "Impact",
+          "title": "Phân tích blast-radius",
+          "body": "Chọn một node và xem chính xác thay đổi có thể ảnh hưởng gì: caller trực tiếp, flow liên quan và mức rủi ro."
+        },
+        "realtime": {
+          "tag": "Realtime",
+          "title": "Cập nhật khi bạn code",
+          "body": "Trỏ VibeGraph vào thư mục local và graph tự vẽ lại khi bạn lưu file. Không cần import lại, không cần zip."
+        },
+        "diagrams": {
+          "tag": "Diagram",
+          "title": "Sơ đồ kiến trúc",
+          "body": "Sinh UML use-case từ source thật để kiểm tra thiết kế với code, không phải vẽ tay cảm tính."
+        },
+        "import": {
+          "tag": "Import",
+          "title": "CLI, archive hoặc GitHub",
+          "body": "Tạo repository đồng bộ bằng CLI, upload archive hoặc nhập GitHub URL public. VibeGraph index và cho bạn khám phá trong vài giây."
+        }
+      }
+    },
+    "how": {
+      "eyebrow": "Cách hoạt động",
+      "title": "Từ repository đến insight trong ba bước",
+      "steps": {
+        "import": {
+          "title": "Import dự án",
+          "body": "Dùng thư mục local, archive hoặc GitHub repo public. VibeGraph parse source và xây index."
+        },
+        "explore": {
+          "title": "Khám phá graph",
+          "body": "Duyệt cấu trúc trực quan, tìm symbol và lần theo luồng thực thi trên toàn codebase."
+        },
+        "analyze": {
+          "title": "Phân tích tác động",
+          "body": "Trước khi refactor, chạy phân tích blast-radius để biết thay đổi sẽ chạm tới đâu."
+        }
+      },
+      "mock": {
+        "client": "VibeGraph Client",
+        "dropFolder": "Thả thư mục codebase",
+        "pasteGithub": "Hoặc dán endpoint GitHub repository",
+        "analyze": "Phân tích repository",
+        "projectStructure": "Cấu trúc dự án",
+        "panZoom": "Pan và zoom tương tác đang bật",
+        "blastTriggered": "Đã kích hoạt blast radius",
+        "downstreamAffected": "12 caller downstream bị ảnh hưởng trong ProjectController",
+        "upstreamRiskHigh": "Rủi ro upstream: CAO"
+      }
+    },
+    "guide": {
+      "eyebrow": "Cài đặt nhanh",
+      "title": "Cài đặt và vibe code trong 2 phút",
+      "description": "Cách cài đặt, chạy phân tích và tích hợp VibeGraph vào workflow phát triển của bạn.",
+      "tabsAria": "Các tab hướng dẫn cài đặt",
+      "tabs": {
+        "run": "Chạy VibeGraph",
+        "import": "Import dự án",
+        "agent": "Kết nối AI agent"
+      },
+      "step1": {
+        "title": "Bước 1: Chạy VibeGraph local",
+        "body": "VibeGraph gồm backend Spring Boot, web client Vue và database graph Neo4j. Khởi động Neo4j, chạy backend rồi chạy web client.",
+        "terminal": "Terminal (bash)",
+        "envLead": "Thiết lập",
+        "envAnd": "và",
+        "envTail": "trong .env, hoặc khởi động toàn bộ stack bằng docker compose up -d."
+      },
+      "step2": {
+        "title": "Bước 2: Import dự án",
+        "bodyLead": "Mở dashboard tại",
+        "bodyTail": "và import dự án Java trực tiếp từ UI. Không cần analyzer CLI. Chọn một trong ba cách:",
+        "localTitle": "Thư mục local",
+        "localBody": "trỏ VibeGraph tới thư mục trên cùng máy; graph tự vẽ lại realtime khi bạn sửa file.",
+        "archiveTitle": "Archive",
+        "archiveBodyLead": "upload",
+        "archiveBodyOr": "hoặc",
+        "archiveBodyTail": "của dự án.",
+        "githubBody": "dán URL HTTPS repo public để VibeGraph clone, index và map.",
+        "note": "Backend parse source, lưu call graph trong Neo4j, còn Vue client render bằng Sigma.js. Bạn có thể tìm symbol, double-click node để focus hoặc chọn node để xem blast radius."
+      },
+      "step3": {
+        "title": "Bước 3: Kết nối AI agent qua MCP",
+        "bodyLead": "VibeGraph chạy server Model Context Protocol qua",
+        "bodyTail": ", để Claude, Cursor, Kiro và các agent khác truy vấn graph và chạy phân tích tác động. Trỏ agent tới endpoint:",
+        "configTitle": "Cấu hình AI client (mcp.json)",
+        "noteLead": "Server cung cấp 15 tool: impact analysis, class và method context, references, related tests, endpoint trace, project conventions và nhiều hơn nữa. Khóa cấu hình có thể khác theo từng client, ví dụ",
+        "noteTail": "."
+      }
+    },
+    "engine": {
+      "eyebrow": "Engine",
+      "title": "VibeGraph đọc code của bạn như thế nào",
+      "description": "Một AST-and-graph engine self-hosted. VibeGraph parse source Java và phục vụ kết quả cho cả web UI lẫn AI agent.",
+      "bodyLead": "VibeGraph parse source Java thành abstract syntax tree, resolve quan hệ call/usage và lưu toàn bộ graph trong",
+      "bodyTail": "trên chính máy của bạn. Source không rời khỏi host.",
+      "items": {
+        "private": {
+          "title": "Local & riêng tư",
+          "body": "quá trình parse và graph Neo4j nằm trên hạ tầng của bạn; code không gửi lên cloud."
+        },
+        "incremental": {
+          "title": "Incremental",
+          "body": "file watcher chỉ parse lại phần thay đổi để dự án local cập nhật gần realtime."
+        },
+        "mcp": {
+          "title": "MCP-native",
+          "body": "cùng graph đó được expose cho AI agent qua Spring AI MCP server để edit an toàn theo impact."
+        }
+      }
+    },
+    "agents": {
+      "eyebrow": "Hoạt động với AI agent của bạn",
+      "title": "Code intelligence chỉ cách một MCP call",
+      "description": "VibeGraph expose graph qua Model Context Protocol để AI coding agent truy vấn cấu trúc, lần theo flow và chạy impact analysis ngay trong editor.",
+      "terminalTitle": "Phiên MCP client",
+      "running": "Đang chạy phân tích...",
+      "logoAria": "AI coding agent được hỗ trợ"
+    },
+    "stack": {
+      "eyebrow": "Được xây bằng",
+      "title": "Một stack hiện đại và thực dụng",
+      "logoAria": "Technology stack"
+    },
+    "cta": {
+      "title": "Sẵn sàng map codebase của bạn?",
+      "description": "Mở dashboard và import dự án đầu tiên. Chỉ mất vài giây."
+    },
+    "footer": {
+      "note": "Source-code intelligence cho thời đại vibe-coding.",
+      "product": "Sản phẩm",
+      "installation": "Cài đặt",
+      "resources": "Tài nguyên",
+      "githubRepo": "GitHub Repo",
+      "engine": "Cách engine hoạt động",
+      "copyright": "© 2026 VibeGraph. Đã đăng ký bản quyền."
+    }
+  },
+  "nav": {
+    "overview": "Tổng quan",
+    "repositories": "Kho dự án",
+    "apiKeys": "Khóa API",
+    "usage": "Sử dụng",
+    "subscription": "Gói dịch vụ",
+    "reports": "Báo cáo",
+    "settings": "Cài đặt",
+    "users": "Người dùng",
+    "feedbackReports": "Phản hồi / Báo cáo",
+    "plansCredits": "Gói dịch vụ & credit",
+    "security": "Bảo mật",
+    "audit": "Nhật ký audit",
+    "system": "Hệ thống",
+    "announcements": "Thông báo"
+  },
+  "auth": {
+    "signInTitle": "Đăng nhập VibeGraph",
+    "signInSubtitle": "Phân tích và trực quan hóa codebase Java của bạn",
+    "email": "Email",
+    "password": "Mật khẩu",
+    "missingCredentials": "Vui lòng nhập email và mật khẩu.",
+    "connectionError": "Không thể kết nối. Vui lòng thử lại.",
+    "signIn": "Đăng nhập",
+    "signingIn": "Đang đăng nhập...",
+    "noAccount": "Bạn chưa có tài khoản?",
+    "createAccount": "Tạo tài khoản",
+    "signOut": "Đăng xuất",
+    "homeAria": "Trang chủ VibeGraph",
+    "registerTitle": "Tạo tài khoản",
+    "registerSubtitle": "Bắt đầu phân tích dự án Java với VibeGraph",
+    "displayName": "Tên hiển thị",
+    "displayNamePlaceholder": "Tên của bạn",
+    "emailPlaceholder": "ban{'@'}example.com",
+    "passwordPlaceholder": "Tối thiểu 8 ký tự",
+    "confirmPassword": "Xác nhận mật khẩu",
+    "confirmPasswordPlaceholder": "Nhập lại mật khẩu",
+    "displayNameRequired": "Vui lòng nhập tên hiển thị.",
+    "emailRequired": "Vui lòng nhập email.",
+    "validEmail": "Vui lòng nhập email hợp lệ.",
+    "passwordMinimum": "Mật khẩu phải có ít nhất 8 ký tự.",
+    "passwordMismatch": "Mật khẩu không khớp.",
+    "register": "Tạo tài khoản",
+    "registering": "Đang tạo tài khoản...",
+    "hasAccount": "Bạn đã có tài khoản?",
+    "signInLink": "Đăng nhập"
+  },
+  "user": {
+    "layout": {
+      "account": "Tài khoản",
+      "signedIn": "Đã đăng nhập",
+      "planUnavailable": "Chưa có thông tin gói",
+      "unavailable": "Không khả dụng",
+      "openNavigation": "Mở điều hướng",
+      "closeNavigation": "Đóng điều hướng",
+      "navigationLabel": "Điều hướng người dùng",
+      "overviewLinkLabel": "Tổng quan VibeGraph",
+      "expandSidebar": "Mở rộng thanh bên",
+      "collapseSidebar": "Thu gọn thanh bên",
+      "navUnavailable": "{label} không khả dụng",
+      "accountTitle": "{displayName}, {plan}, còn {credits} credit",
+      "accountCollapsedTitle": "{displayName} · {plan} · {credits} credit",
+      "credits": "credit",
+      "checkingAccess": "Đang kiểm tra quyền truy cập tài khoản...",
+      "accessVerificationFailed": "Không thể xác minh quyền truy cập tài khoản",
+      "accessVerificationRetryHint": "Các điều khiển sản phẩm vẫn bị khóa cho đến khi VibeGraph xác minh được trạng thái tài khoản hiện tại.",
+      "retryAccessVerification": "Thử lại",
+      "accountStatus": "Trạng thái tài khoản",
+      "accountDeactivated": "Tài khoản đã bị vô hiệu hóa",
+      "accountRestricted": "Quyền truy cập tài khoản bị giới hạn",
+      "restrictionFallback": "Tài khoản này hiện không thể sử dụng các tính năng sản phẩm.",
+      "contactSupport": "Liên hệ hỗ trợ",
+      "productUnavailable": "Các điều khiển sản phẩm không khả dụng",
+      "openSupportReport": "Mở report hỗ trợ"
+    },
+    "overview": {
+      "eyebrow": "Tổng quan",
+      "welcome": "Chào mừng trở lại, {name}",
+      "description": "Tóm tắt nhanh không gian làm việc VibeGraph của bạn.",
+      "summaryLabel": "Tóm tắt không gian làm việc",
+      "repositories": "Kho dự án",
+      "importedProjects": "Dự án đã nhập",
+      "credits": "Credit",
+      "usedThisMonth": "Đã dùng {count} trong tháng này",
+      "usageUnavailable": "Chưa có chi tiết sử dụng",
+      "plan": "Gói dịch vụ",
+      "currentPlan": "Gói hiện tại của không gian làm việc",
+      "unavailable": "Không khả dụng",
+      "nextStep": "Bước tiếp theo",
+      "quickActions": "Thao tác nhanh",
+      "newRepository": "Tạo kho dự án",
+      "createApiKey": "Tạo khóa API",
+      "openReports": "Mở báo cáo"
+    },
+    "projects": {
+      "workspace": "Không gian làm việc",
+      "title": "Kho dự án",
+      "description": "Các dự án Java đã nhập, sẵn sàng để khám phá graph.",
+      "close": "Đóng",
+      "newRepository": "Kho dự án mới",
+      "importedRepositories": "Kho dự án đã nhập",
+      "ready": "Sẵn sàng",
+      "files": "File",
+      "nodes": "Node",
+      "updated": "Cập nhật",
+      "exploreGraph": "Mở graph",
+      "deleteAria": "Xóa {name}",
+      "emptyTitle": "Chưa có kho dự án",
+      "emptyDescription": "Nhập dự án Java đầu tiên để xây dựng graph.",
+      "importDialogTitle": "Nhập dự án",
+      "closeImportDialog": "Đóng hộp thoại nhập dự án",
+      "deleteTitle": "Xóa kho dự án",
+      "deleteMessage": "Xóa {name}? Thao tác này không thể hoàn tác.",
+      "deleteConfirm": "Xóa kho dự án",
+      "loadFallback": "Không thể tải danh sách kho dự án.",
+      "deleteFallback": "Không thể xóa kho dự án.",
+      "importBlocked": "Tính năng nhập dự án đang bị chặn cho đến khi hợp đồng capability của tài khoản báo có phương thức được bật.",
+      "notAnalyzed": "Chưa phân tích",
+      "daysAgo": "{count} ngày trước",
+      "hoursAgo": "{count} giờ trước",
+      "justNow": "Vừa xong",
+      "localFolder": "Thư mục local",
+      "localShort": "Local",
+      "localDescription": "Phân tích một thư mục trên máy này và giữ graph luôn cập nhật mà không cần file nén.",
+      "cliPush": "CLI Push",
+      "cliShort": "CLI",
+      "cliDescription": "Tạo kho dự án trống trên VibeGraph, rồi đẩy source từ terminal bằng đường dẫn tương đối.",
+      "archive": "File nén",
+      "archiveDescription": "Tải lên file nén dự án Java (.zip, .tar, .tar.gz, .tgz) để phân tích.",
+      "githubDescription": "Nhập repository GitHub public bằng URL HTTPS.",
+      "noImportMethod": "Hiện chưa có phương thức nhập nào khả dụng.",
+      "noImportMethodDescription": "Hiện chưa có phương thức nhập nào khả dụng. Việc nhập bị chặn cho đến khi hợp đồng capability của tài khoản báo có phương thức được bật.",
+      "importMethod": "Phương thức nhập"
+    },
+    "import": {
+      "finalizing": "Đang hoàn tất graph...",
+      "analyzing": "Đang phân tích kho dự án...",
+      "importing": "Đang nhập...",
+      "githubTitle": "Thêm dự án từ GitHub",
+      "githubHint": "Nhập repository public bằng URL HTTPS. Ví dụ:",
+      "githubUrl": "URL repository GitHub",
+      "githubPlaceholder": "https://github.com/owner/repo",
+      "importGithub": "Nhập repo GitHub",
+      "reset": "Đặt lại",
+      "cli": {
+        "title": "Tạo kho dự án đồng bộ bằng CLI",
+        "hint": "VibeGraph tạo workspace trống trên server và API key gắn với dự án. Chạy các lệnh này trong terminal của dự án để đồng bộ code mà không lộ đường dẫn ổ đĩa local.",
+        "namePlaceholder": "my-service",
+        "create": "Tạo repo & key",
+        "creating": "Đang tạo...",
+        "readyTitle": "{name} đã sẵn sàng để push bằng CLI",
+        "secretNotice": "Sao chép API key ngay bây giờ. Key chỉ hiển thị một lần và dùng để định danh repo này cho CLI và MCP.",
+        "apiKey": "API key",
+        "copy": "Sao chép",
+        "copyAll": "Sao chép tất cả",
+        "copied": "Đã sao chép",
+        "copyFailed": "Không thể sao chép. Hãy chọn văn bản và sao chép thủ công.",
+        "commands": "Chạy trong terminal của dự án",
+        "openRepository": "Mở repo",
+        "createAnother": "Tạo repo khác",
+        "error": "Không thể tạo repo CLI."
+      },
+      "localTitle": "Thêm dự án từ thư mục local",
+      "localHint": "Phân tích thư mục đã có trên máy này. Graph sẽ cập nhật khi bạn chỉnh sửa file, không cần file zip.",
+      "folderPath": "Đường dẫn thư mục dự án",
+      "browse": "Duyệt",
+      "displayNameOptional": "Tên hiển thị (không bắt buộc)",
+      "importFolder": "Nhập thư mục",
+      "analyzingFolder": "Đang phân tích thư mục...",
+      "uploading": "Đang tải lên...",
+      "uploadArchive": "Tải file nén lên",
+      "archiveTitle": "Thêm dự án từ file nén",
+      "archiveHint": "Tải lên file nén dự án Java. Hỗ trợ: .zip, .tar, .tar.gz, .tgz. Tối đa {max}.",
+      "projectName": "Tên dự án",
+      "archiveFile": "File nén",
+      "selectedFile": "Đã chọn:",
+      "noFile": "Chưa chọn file.",
+      "successFor": "Đã nhập",
+      "directoryFallback": "Không thể liệt kê thư mục.",
+      "chooseFolder": "Chọn thư mục dự án",
+      "up": "Lên trên",
+      "pathPlaceholder": "Máy tính này - dán đường dẫn rồi nhấn Enter",
+      "currentPath": "Đường dẫn thư mục hiện tại",
+      "go": "Đi",
+      "loading": "Đang tải...",
+      "noSubfolders": "Không có thư mục con.",
+      "currentDefault": "Mặc định hiện tại: {path}",
+      "noDefault": "Chưa đặt mặc định",
+      "defaultFolder": "Thư mục mặc định",
+      "setDefault": "Đặt làm mặc định",
+      "useFolder": "Dùng thư mục này"
+    },
+    "apiKeys": {
+      "eyebrow": "Quyền truy cập dành cho nhà phát triển",
+      "title": "Khóa API",
+      "description": "Khóa định danh kho dự án khi công cụ kết nối tới VibeGraph.",
+      "create": "Tạo khóa",
+      "secretTitle": "Sao chép secret ngay bây giờ",
+      "secretDescription": "Secret chỉ hiển thị một lần và không được lưu trong danh sách này.",
+      "secretCopy": "Sao chép secret",
+      "secretCopied": "Đã sao chép secret.",
+      "secretCopyFailed": "Không thể sao chép secret. Hãy chọn và sao chép thủ công.",
+      "yourKeys": "Khóa của bạn",
+      "empty": "Chưa tạo khóa API.",
+      "repository": "Kho dự án: {name}",
+      "noRepository": "Chưa gắn kho dự án",
+      "disabled": "Đã tắt",
+      "active": "Đang bật",
+      "adminLocked": "Admin đã khóa",
+      "disabledBy": "Đã tắt bởi {actor}",
+      "enable": "Bật",
+      "enabling": "Đang bật...",
+      "disable": "Tắt",
+      "delete": "Xóa",
+      "enableAria": "Bật khóa API {name}",
+      "disableAria": "Tắt khóa API {name}",
+      "deleteAria": "Xóa khóa API {name}",
+      "lockedDelete": "Không thể xóa khóa đã bị admin khóa.",
+      "createTitle": "Tạo khóa API cho dự án",
+      "closeDialog": "Đóng hộp thoại tạo khóa",
+      "keyName": "Tên khóa",
+      "keyPlaceholder": "Production CLI",
+      "repositoryLabel": "Kho dự án",
+      "selectRepository": "Chọn kho dự án",
+      "existingKey": "phải xóa khóa hiện có",
+      "importFirst": "Hãy nhập kho dự án trước khi tạo khóa.",
+      "creating": "Đang tạo...",
+      "disableTitle": "Tắt khóa API",
+      "disableMessage": "Khóa này sẽ ngừng hoạt động ngay lập tức.",
+      "disableConfirm": "Tắt khóa",
+      "deleteTitle": "Xóa khóa API",
+      "deleteMessage": "Xóa vĩnh viễn khóa này? Sau khi xóa, bạn có thể tạo khóa thay thế cho dự án đó.",
+      "deleteConfirm": "Xóa khóa",
+      "duplicateLocked": "Dự án này có khóa đã bị admin khóa. Admin phải mở khóa trước khi thay thế.",
+      "duplicateExisting": "Xóa khóa hiện có của dự án này trước khi tạo khóa thay thế.",
+      "checkingRepositories": "Đang kiểm tra kho dự án trước khi tạo khóa.",
+      "loadFallback": "Không thể tải kho dự án.",
+      "createFallback": "Không thể tạo khóa API.",
+      "disableFallback": "Không thể tắt khóa API này.",
+      "enableFallback": "Không thể bật khóa API này.",
+      "deleteFallback": "Không thể xóa khóa API này.",
+      "disabledMessage": "Đã tắt khóa API.",
+      "enabledMessage": "Đã bật khóa API.",
+      "deletedMessage": "Đã xóa khóa API. Bạn có thể tạo khóa thay thế cho dự án này."
+    },
+    "usage": {
+      "title": "Sử dụng",
+      "description": "Gói hiện tại, hạn mức lưu trữ mã nguồn và credit còn lại từ API tài khoản.",
+      "unavailable": "Không thể tải thông tin sử dụng",
+      "retry": "Tải lại thông tin sử dụng",
+      "loading": "Đang tải dữ liệu sử dụng...",
+      "currentPlan": "Gói hiện tại",
+      "activePlan": "Gói tài khoản đang dùng",
+      "creditBalance": "Số dư credit",
+      "credits": "credit",
+      "usedCycle": "Đã dùng {used} / {limit} credit trong chu kỳ này",
+      "sourceStorage": "Hạn mức lưu trữ mã nguồn",
+      "remaining": "Còn {count} MB",
+      "ledger": "Nhật ký credit gần đây",
+      "activityUnavailable": "Không thể tải hoạt động credit",
+      "retryLedger": "Tải lại nhật ký",
+      "loadingActivity": "Đang tải hoạt động credit...",
+      "emptyActivity": "Chưa có hoạt động credit.",
+      "loadFallback": "Không thể tải dữ liệu sử dụng.",
+      "ledgerFallback": "Không thể tải hoạt động credit.",
+      "operations": {
+        "MCP_TOOL_CALL": "Gọi công cụ MCP",
+        "CLI_PUSH": "Đẩy thay đổi từ CLI",
+        "PROJECT_ANALYZE": "Phân tích dự án",
+        "IMPORT_ARCHIVE": "Nhập bằng archive",
+        "IMPORT_GITHUB": "Nhập từ GitHub",
+        "IMPORT_LOCAL": "Nhập thư mục local",
+        "LOCAL_PATCH": "Cập nhật từ local patch",
+        "ADMIN_ADJUSTMENT": "Điều chỉnh bởi admin",
+        "QUOTA_RESET": "Đặt lại hạn mức"
+      }
+    },
+    "subscription": {
+      "title": "Gói dịch vụ",
+      "description": "Xem gói hiện tại và hạn mức tài khoản từ API sử dụng.",
+      "unavailable": "Không thể tải thông tin gói",
+      "retry": "Tải lại thông tin gói",
+      "loading": "Đang tải dữ liệu gói dịch vụ...",
+      "currentPlan": "Gói hiện tại",
+      "unavailableValue": "Không khả dụng",
+      "planCode": "Gói",
+      "sourceStorage": "Hạn mức lưu trữ mã nguồn",
+      "remainingStorage": "Lưu trữ còn lại",
+      "remainingCredits": "Credit còn lại",
+      "credits": "credit",
+      "detailsUnavailable": "Chi tiết gói chưa khả dụng cho đến khi API sử dụng của tài khoản phản hồi.",
+      "catalogUnavailable": "API người dùng hiện chưa có danh mục gói công khai. Các lựa chọn nâng cấp, bao gồm liên hệ bán hàng cho gói doanh nghiệp, sẽ chưa khả dụng cho đến khi backend cung cấp hợp đồng này.",
+      "loadFallback": "Không thể tải dữ liệu gói dịch vụ."
+    },
+    "reports": {
+      "bug": "Báo lỗi",
+      "project": "Sự cố dự án",
+      "quota": "Hạn mức / Thanh toán",
+      "feature": "Yêu cầu tính năng",
+      "other": "Khác",
+      "live": "Trực tiếp",
+      "realtimeUnavailable": "Realtime không khả dụng",
+      "syncing": "Đang đồng bộ",
+      "offline": "Ngoại tuyến",
+      "title": "Báo cáo của tôi",
+      "subtitle": "Gửi phản hồi hoặc báo cáo sự cố",
+      "submitTitle": "Gửi báo cáo",
+      "category": "Danh mục",
+      "subject": "Tiêu đề",
+      "message": "Nội dung",
+      "submitting": "Đang gửi...",
+      "submit": "Gửi",
+      "previous": "Báo cáo trước đó",
+      "empty": "Chưa có báo cáo.",
+      "status": "Trạng thái",
+      "lastUpdated": "Cập nhật lần cuối",
+      "action": "Thao tác",
+      "view": "Xem",
+      "back": "Quay lại danh sách báo cáo",
+      "support": "Hỗ trợ VibeGraph",
+      "you": "Bạn",
+      "supportTeam": "Đội hỗ trợ",
+      "justNow": "Vừa xong",
+      "reply": "Trả lời",
+      "continue": "Tiếp tục cuộc trao đổi hỗ trợ này",
+      "replyPlaceholder": "Nhập phản hồi...",
+      "sending": "Đang gửi...",
+      "send": "Gửi",
+      "close": "Đóng báo cáo",
+      "closed": "Báo cáo này đã đóng.",
+      "scheduledDeletion": "Dự kiến xóa sau {date}.",
+      "closeMessage": "Đóng luồng báo cáo này? Bạn vẫn có thể xem cuộc trao đổi cho đến ngày lưu giữ.",
+      "loadFallback": "Không thể tải báo cáo",
+      "submitFallback": "Không thể gửi báo cáo",
+      "replyFallback": "Không thể gửi phản hồi",
+      "closeFallback": "Không thể đóng báo cáo"
+    },
+    "profile": {
+      "title": "Cài đặt",
+      "description": "Quản lý thông tin tài khoản và mật khẩu.",
+      "unavailable": "Không thể tải cài đặt",
+      "retry": "Tải lại cài đặt",
+      "loading": "Đang tải cài đặt...",
+      "account": "Tài khoản",
+      "email": "Email",
+      "role": "Vai trò",
+      "displayName": "Tên hiển thị",
+      "update": "Cập nhật",
+      "updating": "Đang cập nhật...",
+      "password": "Mật khẩu",
+      "currentPassword": "Mật khẩu hiện tại",
+      "newPassword": "Mật khẩu mới",
+      "confirmPassword": "Xác nhận mật khẩu mới",
+      "changePassword": "Đổi mật khẩu",
+      "changing": "Đang đổi...",
+      "displayNameRequired": "Tên hiển thị là bắt buộc.",
+      "displayNameUpdated": "Đã cập nhật tên hiển thị.",
+      "profileFallback": "Không thể cập nhật hồ sơ.",
+      "passwordFieldsRequired": "Nhập mật khẩu hiện tại, mật khẩu mới và xác nhận.",
+      "passwordMinimum": "Mật khẩu mới phải có ít nhất {count} ký tự.",
+      "passwordMismatch": "Mật khẩu mới và xác nhận không khớp.",
+      "passwordChanged": "Đã đổi mật khẩu.",
+      "passwordFallback": "Không thể đổi mật khẩu.",
+      "loadFallback": "Không thể tải cài đặt.",
+      "roleNames": {
+        "admin": "Quản trị viên",
+        "user": "Người dùng",
+        "unknown": "Không rõ"
+      }
+    },
+    "notifications": {
+      "inbox": "Hộp thư",
+      "title": "Thông báo",
+      "description": "Thông báo sản phẩm và cập nhật vận hành, mới nhất ở trên.",
+      "loading": "Đang tải thông báo...",
+      "unavailableTitle": "Thông báo không khả dụng",
+      "unavailableDescription": "Contract thông báo của backend chưa khả dụng trong môi trường này.",
+      "emptyTitle": "Chưa có thông báo",
+      "emptyDescription": "Tài khoản của bạn chưa có thông báo đang hoạt động.",
+      "listLabel": "Danh sách thông báo",
+      "updating": "Đang cập nhật...",
+      "dismiss": "Bỏ qua",
+      "creatorFallback": "Đội VibeGraph",
+      "loadFallback": "Không thể tải thông báo.",
+      "announcementUnavailable": "Thông báo hệ thống tạm thời không khả dụng.",
+      "readFallback": "Không thể đánh dấu thông báo này là đã đọc.",
+      "dismissFallback": "Không thể bỏ qua thông báo này."
+    },
+    "quota": {
+      "used": "đã dùng",
+      "remaining": "còn lại",
+      "unavailable": "Hạn mức không khả dụng",
+      "value": "Đã dùng {used} / {total} {unit}"
+    },
+    "tutorial": {
+      "title": "Hướng dẫn",
+      "description": "Theo dõi quy trình cốt lõi của VibeGraph từ nhập dự án đến phân tích tác động.",
+      "importTitle": "Nhập kho dự án",
+      "importDescription": "Mở Kho dự án và nhập dự án Java từ thư mục local, file nén hoặc URL GitHub.",
+      "graphTitle": "Mở graph",
+      "graphDescription": "Chọn kho dự án đã phân tích để xem package, class, method và quan hệ.",
+      "impactTitle": "Chạy phân tích tác động",
+      "impactDescription": "Chọn một symbol và phân tích các phụ thuộc upstream trước khi đổi code.",
+      "reportsTitle": "Dùng báo cáo khi cần hỗ trợ",
+      "reportsDescription": "Gửi luồng báo cáo về sự cố dự án hoặc hạn mức để đội hỗ trợ theo dõi."
+    }
+  },
+  "admin": {
+    "console": "Bảng điều khiển quản trị",
+    "operations": "Vận hành",
+    "layout": {
+      "openNavigation": "Mở điều hướng quản trị",
+      "closeNavigation": "Đóng điều hướng quản trị",
+      "navigationLabel": "Điều hướng quản trị",
+      "overviewLinkLabel": "Tổng quan quản trị VibeGraph",
+      "expandSidebar": "Mở rộng thanh bên quản trị",
+      "collapseSidebar": "Thu gọn thanh bên quản trị",
+      "adminAccount": "Tài khoản quản trị",
+      "adminRole": "Quản trị viên",
+      "signedIn": "Đã đăng nhập",
+      "signOut": "Đăng xuất",
+      "console": "Bảng điều khiển quản trị",
+      "operations": "Vận hành",
+      "nav": {
+        "overview": "Tổng quan",
+        "users": "Người dùng",
+        "feedbackReports": "Phản hồi / Báo cáo",
+        "plansCredits": "Gói dịch vụ & credit",
+        "security": "Bảo mật",
+        "audit": "Nhật ký audit",
+        "system": "Hệ thống",
+        "announcements": "Thông báo",
+        "settings": "Cài đặt"
+      }
+    },
+    "system": {
+      "title": "Hệ thống",
+      "description": "Điều khiển cấu hình cho import, CLI, công cụ MCP, đăng ký và tạo API key toàn hệ thống.",
+      "loading": "Đang tải feature flag...",
+      "apiState": {
+        "error": "Lỗi API feature flag",
+        "connected": "Đã kết nối runtime",
+        "configurationOnly": "Chỉ là cấu hình"
+      },
+      "errors": {
+        "load": "Không thể tải feature flag.",
+        "runtimeVerification": "Không thể xác minh trạng thái năng lực ở runtime. Các điều khiển vẫn chỉ là cấu hình.",
+        "save": "Không thể lưu feature flag.",
+        "updateFlag": "Không thể cập nhật feature flag.",
+        "updateControl": "Không thể cập nhật điều khiển hệ thống."
+      },
+      "runtime": {
+        "configurationOnlyTitle": "Điều khiển chỉ ở mức cấu hình",
+        "configurationOnlyDescription": "Giá trị cờ được lưu qua API quản trị nhưng chưa được truyền tới trạng thái năng lực ở runtime cho người dùng. Không xem các công tắc này là biện pháp bảo vệ đang hoạt động.",
+        "connectedTitle": "Đã kết nối truyền trạng thái năng lực tới runtime",
+        "connectedDescription": "Các điều khiển phía người dùng đang sử dụng trạng thái năng lực thực của phiên."
+      },
+      "form": {
+        "title": "Tạo hoặc cập nhật điều khiển hệ thống",
+        "description": "Dùng cho feature gate mới chưa có trong các nhóm mặc định bên dưới.",
+        "key": "Khóa",
+        "keyPlaceholder": "cli.push",
+        "scope": "Phạm vi",
+        "displayName": "Tên hiển thị",
+        "displayNamePlaceholder": "CLI push",
+        "flagDescription": "Mô tả",
+        "descriptionPlaceholder": "Ghi chú tùy chọn cho nhân viên vận hành"
+      },
+      "scopes": {
+        "global": "Toàn hệ thống",
+        "mcpTool": "Công cụ MCP"
+      },
+      "states": {
+        "enabled": "Đã bật",
+        "disabled": "Đã tắt"
+      },
+      "actions": {
+        "saveFlag": "Lưu flag",
+        "toggle": "Chuyển trạng thái {name}"
+      },
+      "groups": {
+        "importMethods": "Phương thức import",
+        "cliPush": "CLI push",
+        "projectAnalysis": "Phân tích dự án",
+        "useCaseGeneration": "Tạo use case",
+        "apiKeyCreation": "Tạo API key",
+        "registration": "Đăng ký",
+        "mcpTools": "MCP toàn cục và công cụ con"
+      },
+      "controls": {
+        "localImport": {
+          "name": "Import thư mục cục bộ",
+          "note": "Tạm dừng import thư mục cục bộ nếu luồng import dự án gặp sự cố."
+        },
+        "archiveImport": {
+          "name": "Import file nén",
+          "note": "Tắt khi xử lý file nén hoặc lưu trữ bị suy giảm."
+        },
+        "githubImport": {
+          "name": "GitHub import",
+          "note": "Tắt mà không ảnh hưởng đến import cục bộ hoặc file nén."
+        },
+        "cliPush": {
+          "name": "CLI push",
+          "note": "Tạm dừng CLI push khi ghi patch hoặc kiểm tra credit đang được bảo trì."
+        },
+        "projectAnalyze": {
+          "name": "Phân tích dự án",
+          "note": "Tắt khi trình phân tích gặp sự cố mà không chặn duyệt repository."
+        },
+        "useCaseGeneration": {
+          "name": "Sinh use case",
+          "note": "Tắt sinh use case mà không tắt khám phá graph."
+        },
+        "newApiKeys": {
+          "name": "API key mới",
+          "note": "Chỉ tạm dừng tạo mới; key hiện có không thay đổi. Chính sách cấp người dùng vẫn được ưu tiên."
+        },
+        "registration": {
+          "name": "Đăng ký",
+          "note": "Cho phép đăng ký tài khoản mới."
+        },
+        "allMcpTools": {
+          "name": "Tất cả công cụ MCP",
+          "note": "Cho phép thực thi công cụ MCP."
+        },
+        "mcpChildTool": {
+          "name": "Công cụ MCP",
+          "note": "Điều khiển con; công tắc MCP toàn cục ghi đè trạng thái này."
+        }
+      },
+      "otherControls": {
+        "title": "Điều khiển đã cấu hình khác",
+        "noDescription": "Chưa có mô tả."
+      }
+    },
+    "audit": {
+      "eyebrow": "Khả năng truy vết",
+      "title": "Nhật ký audit",
+      "description": "Kiểm tra thao tác quản trị, kết quả, đối tượng và chính sách lưu giữ.",
+      "status": {
+        "liveConnected": "Đã kết nối trực tiếp",
+        "polling": "Đang tự làm mới",
+        "reconnecting": "Đang kết nối lại",
+        "livePaused": "Cập nhật trực tiếp đã tạm dừng"
+      },
+      "errors": {
+        "loadData": "Không thể tải dữ liệu audit.",
+        "loadDetail": "Không thể tải chi tiết audit.",
+        "updateRetention": "Không thể cập nhật thời gian lưu giữ."
+      },
+      "messages": {
+        "retentionUpdated": "Đã cập nhật thời gian lưu giữ thành {days} ngày."
+      },
+      "liveWarning": {
+        "title": "Cập nhật audit trực tiếp tạm thời không khả dụng.",
+        "description": "Trang hiện tại không thay đổi trong khi stream kết nối lại."
+      },
+      "polling": {
+        "title": "Nhật ký audit đang tự làm mới.",
+        "description": "Live stream đang kết nối lại, nên trang này sẽ tự làm mới mỗi 10 giây."
+      },
+      "retention": {
+        "title": "Chính sách lưu giữ",
+        "description": "Lưu lịch sử audit từ 1 đến 3.650 ngày.",
+        "lastUpdated": "Cập nhật gần nhất {date}.",
+        "days": "Số ngày"
+      },
+      "filters": {
+        "action": "Thao tác",
+        "actionPlaceholder": "USER_BLOCK",
+        "outcome": "Kết quả",
+        "allOutcomes": "Tất cả kết quả",
+        "success": "Thành công",
+        "failure": "Thất bại",
+        "from": "Từ ngày",
+        "to": "Đến ngày"
+      },
+      "actions": {
+        "loading": "Đang tải...",
+        "refresh": "Làm mới",
+        "saving": "Đang lưu...",
+        "saveRetention": "Lưu thời gian lưu giữ",
+        "retryLiveUpdates": "Thử lại cập nhật trực tiếp",
+        "apply": "Áp dụng",
+        "reset": "Đặt lại",
+        "inspect": "Kiểm tra",
+        "previous": "Trước",
+        "next": "Sau",
+        "closeDetail": "Đóng chi tiết"
+      },
+      "table": {
+        "action": "Thao tác",
+        "outcome": "Kết quả",
+        "actor": "Người thực hiện",
+        "target": "Đối tượng",
+        "ip": "IP",
+        "created": "Thời điểm tạo",
+        "detail": "Chi tiết",
+        "empty": "Không có bản ghi audit phù hợp với bộ lọc."
+      },
+      "labels": {
+        "system": "Hệ thống"
+      },
+      "pagination": {
+        "entries": "{count} mục",
+        "page": "Trang {current} / {total}"
+      },
+      "detail": {
+        "eyebrow": "Sự kiện đã chọn",
+        "outcome": "Kết quả",
+        "actor": "Người thực hiện",
+        "targetUser": "Người dùng mục tiêu",
+        "target": "Đối tượng",
+        "ipAddress": "Địa chỉ IP",
+        "created": "Thời điểm tạo",
+        "redactedDetails": "Chi tiết đã ẩn dữ liệu nhạy cảm",
+        "noAdditionalDetails": "Không có chi tiết bổ sung."
+      }
+    },
+    "overview": {
+      "title": "Tổng quan",
+      "accessibility": {
+        "analyticsCharts": "Biểu đồ phân tích",
+        "chartAggregation": "Cách tổng hợp biểu đồ",
+        "chartType": "Loại biểu đồ {chartTitle}",
+        "summaryMetrics": "Các chỉ số tổng quan",
+        "supportingDetails": "Chi tiết bổ sung"
+      },
+      "analytics": {
+        "subtitle": "So sánh tăng trưởng tài khoản, hoạt động credit và năng lực dịch vụ theo thời gian.",
+        "title": "Phân tích nền tảng"
+      },
+      "chartLabels": {
+        "quarter": "Q{quarter}"
+      },
+      "chartModes": {
+        "bar": "Cột",
+        "line": "Đường",
+        "pie": "Tròn"
+      },
+      "charts": {
+        "credits": {
+          "empty": "Không có dữ liệu credit.",
+          "ledgerTotals": "Tổng sổ credit theo {buckets}",
+          "noneForPeriod": "Không có giao dịch credit trong kỳ này",
+          "title": "Credits"
+        },
+        "noData": "Không có dữ liệu",
+        "onlineUsers": {
+          "empty": "Không có người dùng online.",
+          "eyebrow": "Hoạt động realtime",
+          "minuteAbbreviation": "{count} phút",
+          "ofLastWindow": "trong {minutes} phút gần nhất",
+          "onlineCount": "{formattedCount} đang online · {count}",
+          "onlineNow": "Đang online",
+          "samplesInWindow": "{count} mẫu trong {minutes} phút gần nhất",
+          "title": "Người dùng online"
+        },
+        "storage": {
+          "availableLabel": "Khả dụng",
+          "serverDisk": "Ổ đĩa máy chủ",
+          "title": "Lưu trữ",
+          "unavailable": "Không khả dụng",
+          "unavailableEnvironment": "Môi trường này không cung cấp chỉ số lưu trữ.",
+          "usedLabel": "Đã dùng",
+          "usedOf": "Đã dùng {used} / {total}",
+          "usedPercent": "Đã dùng {percent}%"
+        },
+        "totalUsers": {
+          "empty": "Không có dữ liệu người dùng.",
+          "newUsersAcross": "{formattedCount} người dùng mới trong {buckets} · {count}",
+          "title": "Tổng số người dùng"
+        }
+      },
+      "details": {
+        "planDistribution": {
+          "count": "Số lượng · {count}",
+          "empty": "Không có dữ liệu phân bổ gói dịch vụ.",
+          "title": "Phân bổ gói dịch vụ"
+        },
+        "securityAlerts": {
+          "count": "Số lượng · {count}",
+          "empty": "Không có cảnh báo bảo mật. · {count} · {formattedCount}",
+          "noTimestamp": "Không có thời gian ghi nhận",
+          "title": "Cảnh báo bảo mật / lạm dụng"
+        },
+        "topStorageProjects": {
+          "count": "Số lượng · {count}",
+          "empty": "Không có dữ liệu repository dùng nhiều lưu trữ.",
+          "title": "Repository dùng nhiều lưu trữ nhất"
+        },
+        "topStorageUsers": {
+          "count": "Số lượng · {count}",
+          "empty": "Không có dữ liệu người dùng dùng nhiều lưu trữ.",
+          "title": "Người dùng dùng nhiều lưu trữ nhất"
+        }
+      },
+      "errors": {
+        "loadFailed": "Không thể tải tổng quan quản trị."
+      },
+      "loading": "Đang tải tổng quan...",
+      "months": {
+        "apr": "Apr",
+        "aug": "Aug",
+        "dec": "Dec",
+        "feb": "Feb",
+        "jan": "Jan",
+        "jul": "Jul",
+        "jun": "Jun",
+        "mar": "Mar",
+        "may": "May",
+        "nov": "Nov",
+        "oct": "Oct",
+        "sep": "Sep"
+      },
+      "periodBuckets": {
+        "day": "{count} ngày",
+        "month": "{count} tháng",
+        "quarter": "{count} quý",
+        "year": "{count} năm"
+      },
+      "periods": {
+        "day": "Ngày",
+        "month": "Tháng",
+        "quarter": "Quý",
+        "year": "Năm"
+      },
+      "polling": {
+        "everySeconds": "Làm mới mỗi {seconds} giây",
+        "unavailable": "Không thể làm mới trực tiếp"
+      },
+      "subtitle": "Theo dõi người dùng, mức sử dụng, lưu trữ và tín hiệu bảo mật.",
+      "summary": {
+        "importedRepositories": {
+          "subtitle": "Repository sẵn sàng để phân tích graph",
+          "title": "Repository đã import"
+        },
+        "onlineUsers": {
+          "subtitle": "Phiên hoạt động trong mẫu gần nhất",
+          "title": "Người dùng online"
+        },
+        "securityAlerts": {
+          "subtitle": "Request gần đây cần xem xét",
+          "title": "Cảnh báo bảo mật"
+        },
+        "totalUsers": {
+          "title": "Tổng số người dùng"
+        }
+      },
+      "trend": {
+        "newUsersInView": "{formattedCount} người dùng mới trong phạm vi xem · {count}",
+        "noNewUsers": "Không có người dùng mới",
+        "waitingForSamples": "Đang chờ mẫu hoạt động"
+      },
+      "units": {
+        "bytes": "{value} byte",
+        "gb": "{value} GB",
+        "kb": "{value} KB",
+        "mb": "{value} MB",
+        "tb": "{value} TB"
+      }
+    },
+    "users": {
+      "title": "Người dùng",
+      "actions": {
+        "block": "Chặn",
+        "cancel": "Hủy",
+        "create": "Tạo",
+        "creating": "Đang tạo...",
+        "detail": "Chi tiết",
+        "next": "Sau",
+        "previous": "Trước",
+        "search": "Tìm kiếm",
+        "unblock": "Bỏ chặn"
+      },
+      "aria": {
+        "closeCreateModal": "Đóng hộp thoại tạo người dùng",
+        "createUser": "Tạo người dùng",
+        "createUserPlan": "Gói dịch vụ cho người dùng mới",
+        "createUserRole": "Vai trò cho người dùng mới",
+        "filterByPlan": "Lọc người dùng theo gói dịch vụ",
+        "filterByStatus": "Lọc người dùng theo trạng thái",
+        "searchUsers": "Tìm kiếm người dùng"
+      },
+      "create": {
+        "description": "Tạo tài khoản với vai trò, gói dịch vụ và mật khẩu tạm thời ban đầu.",
+        "displayName": "Tên hiển thị",
+        "displayNamePlaceholder": "Nhập tên người dùng",
+        "email": "Email",
+        "emailPlaceholder": "user@example.com",
+        "kicker": "Cấp tài khoản",
+        "plan": "Gói dịch vụ",
+        "planDescription": "{storageMb} MB lưu trữ · {credits} credit mỗi tháng",
+        "role": "Vai trò",
+        "roles": {
+          "admin": {
+            "description": "Toàn quyền sử dụng tính năng quản trị và người dùng.",
+            "label": "Quản trị viên"
+          },
+          "user": {
+            "description": "Quyền tiêu chuẩn với repository và công cụ dành cho lập trình viên.",
+            "label": "Người dùng"
+          }
+        },
+        "temporaryPassword": "Mật khẩu tạm thời",
+        "temporaryPasswordPlaceholder": "Nhập mật khẩu tạm thời",
+        "title": "Tạo người dùng"
+      },
+      "description": "Tìm kiếm người dùng và quản lý quyền truy cập tài khoản.",
+      "dialogs": {
+        "block": {
+          "confirm": "Chặn người dùng",
+          "description": "Chặn {email} và cung cấp lý do hiển thị cho người dùng.",
+          "title": "Chặn người dùng"
+        },
+        "unblock": {
+          "confirm": "Bỏ chặn người dùng",
+          "message": "Khôi phục quyền truy cập cho {email}?",
+          "title": "Bỏ chặn người dùng"
+        }
+      },
+      "errors": {
+        "blockUser": "Không thể chặn người dùng.",
+        "createUser": "Không thể tạo người dùng.",
+        "unblockUser": "Không thể bỏ chặn người dùng."
+      },
+      "fallback": {
+        "emptyValue": "Chưa cung cấp",
+        "thisUser": "Người dùng này"
+      },
+      "filters": {
+        "allPlans": "Tất cả gói dịch vụ",
+        "allStatuses": "Tất cả trạng thái",
+        "searchPlaceholder": "Tìm theo email hoặc tên hiển thị"
+      },
+      "pagination": {
+        "page": "Trang {current} / {total}",
+        "showing": "Hiển thị {visible} / {total} người dùng"
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "blocked": "Đã chặn",
+        "deactivated": "Đã vô hiệu hóa"
+      },
+      "table": {
+        "actions": "Thao tác",
+        "email": "Email",
+        "name": "Tên",
+        "plan": "Gói dịch vụ",
+        "reason": "Lý do",
+        "role": "Vai trò",
+        "status": "Trạng thái"
+      }
+    },
+    "userDetail": {
+      "header": {
+        "kicker": "Chi tiết người dùng cho quản trị viên",
+        "adminControl": "Quản trị tài khoản"
+      },
+      "actions": {
+        "adjusting": "Đang áp dụng...",
+        "allowCreation": "Cho phép tạo API key",
+        "applyCreditAdjustment": "Áp dụng điều chỉnh credit",
+        "blockUser": "Chặn người dùng",
+        "close": "Đóng",
+        "deactivateAccount": "Vô hiệu hóa tài khoản",
+        "disable": "Tắt",
+        "lock": "Khóa",
+        "pauseCreation": "Tạm dừng tạo API key",
+        "saveCreditLimit": "Lưu giới hạn credit",
+        "saveStorageLimit": "Lưu hạn mức lưu trữ",
+        "saving": "Đang lưu...",
+        "unblockUser": "Bỏ chặn người dùng",
+        "unlock": "Mở khóa",
+        "updatePlan": "Cập nhật gói dịch vụ"
+      },
+      "apiKeyCreation": {
+        "allowed": "Được phép",
+        "allowedHelp": "Người dùng có thể tạo API key mới nếu điều khiển toàn hệ thống cũng cho phép.",
+        "currentPolicy": "Chính sách tạo key hiện tại",
+        "description": "Tạm dừng hoặc cho phép người dùng này tạo API key mới. API key hiện có không bị tắt.",
+        "paused": "Đã tạm dừng",
+        "pausedHelp": "Đã tạm dừng tạo key mới. API key hiện có và đang hoạt động vẫn tiếp tục hoạt động.",
+        "policyAllowed": "Được phép tạo API key mới.",
+        "policyPaused": "Đã tạm dừng tạo API key mới; key hiện có không thay đổi.",
+        "title": "Tạo API key"
+      },
+      "apiKeys": {
+        "created": "Tạo lúc {date}",
+        "description": "Xem API key của người dùng và áp dụng thao tác tắt, khóa hoặc mở khóa.",
+        "disabledBy": "Bị tắt bởi {actor}",
+        "empty": "Không có API key.",
+        "expires": "Hết hạn {date}",
+        "lastUsed": "Dùng gần nhất {date}",
+        "locked": "Quản trị viên đã khóa. {details}",
+        "lockedBy": "Bị khóa bởi {actor}.",
+        "lockedByAdministrator": "Bị quản trị viên khóa",
+        "lockedOn": "Khóa lúc {date}.",
+        "noRepository": "Chưa gán repository",
+        "prefix": "Tiền tố: {prefix}",
+        "repository": "Repository: {name}",
+        "secretHelp": "Secret không bao giờ được hiển thị lại sau khi tạo key.",
+        "sourceUnknown": "Không rõ nguồn",
+        "status": {
+          "active": "Đang hoạt động",
+          "deleted": "Đã xóa",
+          "disabled": "Đã tắt",
+          "expired": "Đã hết hạn",
+          "locked": "Đã khóa"
+        },
+        "statusUnknown": "Không rõ trạng thái",
+        "table": {
+          "apiKey": "API key",
+          "name": "Tên",
+          "status": "Trạng thái"
+        },
+        "title": "Metadata API key"
+      },
+      "aria": {
+        "closeUserDetail": "Đóng chi tiết người dùng",
+        "plan": "Gói dịch vụ",
+        "selectedUserDetail": "Chi tiết người dùng đã chọn",
+        "storageQuotaUsage": "Mức dùng hạn mức lưu trữ",
+        "userCreditBalance": "Số dư credit của người dùng"
+      },
+      "credits": {
+        "adjustment": "Mức điều chỉnh",
+        "adminAdjustment": "Điều chỉnh của quản trị viên",
+        "creditsRemaining": "Credit còn lại",
+        "description": "Điều chỉnh số dư credit hoặc đặt giới hạn hằng tháng riêng cho người dùng.",
+        "internalReason": "Lý do audit nội bộ",
+        "limit": "Giới hạn",
+        "quotaOverride": "Giới hạn credit ghi đè",
+        "remaining": "Còn {count} credit",
+        "title": "Credit",
+        "used": "Đã dùng"
+      },
+      "dialogs": {
+        "block": {
+          "confirm": "Chặn người dùng",
+          "description": "Chặn tài khoản này và nhập lý do người dùng có thể xem.",
+          "title": "Chặn người dùng"
+        },
+        "deactivate": {
+          "confirm": "Vô hiệu hóa tài khoản",
+          "description": "Vô hiệu hóa vĩnh viễn tài khoản này và ghi nhận cả lý do hiển thị cho người dùng lẫn lý do nội bộ.",
+          "title": "Vô hiệu hóa tài khoản"
+        },
+        "disableApiKey": {
+          "confirm": "Tắt API key",
+          "message": "Tắt API key này? Request sử dụng key sẽ thất bại ngay lập tức.",
+          "title": "Tắt API key"
+        },
+        "lockApiKey": {
+          "confirm": "Khóa API key",
+          "message": "Khóa API key này để quản trị viên xem xét? Người dùng không thể bật lại hoặc xóa key khi đang bị khóa.",
+          "title": "Khóa API key"
+        },
+        "unblock": {
+          "confirm": "Bỏ chặn người dùng",
+          "message": "Bỏ chặn tài khoản này và khôi phục quyền đăng nhập?",
+          "title": "Bỏ chặn"
+        },
+        "unlockApiKey": {
+          "confirm": "Mở khóa API key",
+          "message": "Mở khóa API key này? Trạng thái tắt của key vẫn được giữ nguyên.",
+          "title": "Mở khóa API key"
+        }
+      },
+      "errors": {
+        "adjustCredits": "Không thể điều chỉnh credit.",
+        "applyAction": "Không thể áp dụng thao tác.",
+        "blockUser": "Không thể chặn người dùng.",
+        "deactivateUser": "Không thể vô hiệu hóa người dùng.",
+        "invalidCreditAdjustment": "Nhập mức điều chỉnh credit khác 0 và hợp lệ.",
+        "quotaBelowUsage": "Hạn mức không thể thấp hơn mức sử dụng hiện tại ({usedMb} MB).",
+        "toggleApiKeyCreation": "Không thể thay đổi chính sách tạo API key.",
+        "updatePlan": "Không thể cập nhật gói dịch vụ.",
+        "updateQuota": "Không thể cập nhật hạn mức."
+      },
+      "fallback": {
+        "emptyValue": "Chưa cung cấp"
+      },
+      "placeholders": {
+        "creditAdjustment": "Nhập số dương hoặc âm",
+        "internalReason": "Lý do được ghi vào nhật ký audit",
+        "usePlanDefault": "Dùng mặc định của gói dịch vụ"
+      },
+      "sections": {
+        "actions": "Thao tác",
+        "plan": "Gói dịch vụ"
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "blocked": "Đã chặn",
+        "deactivated": "Đã vô hiệu hóa"
+      },
+      "storage": {
+        "description": "Xem mức dùng lưu trữ và đặt hạn mức riêng cho người dùng.",
+        "overrideLabel": "Hạn mức lưu trữ ghi đè",
+        "quota": "Hạn mức",
+        "title": "Lưu trữ",
+        "used": "Đã dùng"
+      },
+      "summary": {
+        "accountState": "Trạng thái tài khoản",
+        "blockedReason": "Lý do chặn: {reason}",
+        "creditsRemaining": "Credit còn lại",
+        "deactivatedReason": "Lý do vô hiệu hóa: {reason}",
+        "quota": "Hạn mức",
+        "storage": "Lưu trữ",
+        "used": "Đã dùng"
+      }
+    },
+    "security": {
+      "title": "Bảo mật",
+      "actions": {
+        "createBlock": "Tạo lệnh chặn",
+        "createIpBlock": "Chặn IP hoặc CIDR",
+        "created": "tạo",
+        "edit": "Chỉnh sửa",
+        "editIpBlock": "Sửa lệnh chặn IP",
+        "loading": "Đang tải...",
+        "refresh": "Làm mới",
+        "remove": "Gỡ bỏ",
+        "reset": "Đặt lại",
+        "retry": "Thử lại {panel}",
+        "retrying": "Đang thử lại...",
+        "saving": "Đang lưu...",
+        "toggleNetwork": "Mở/đóng chi tiết cho {ipAddress}",
+        "updateBlock": "Cập nhật lệnh chặn",
+        "updated": "cập nhật"
+      },
+      "columns": {
+        "event": "Sự kiện",
+        "ip": "IP",
+        "methodRoute": "Method / route",
+        "occurred": "Thời điểm",
+        "route": "Route",
+        "status": "Trạng thái",
+        "userKey": "Người dùng / API key"
+      },
+      "confirm": {
+        "removeIpBlock": {
+          "confirm": "Gỡ lệnh chặn",
+          "message": "Gỡ lệnh chặn cho {ipAddress}?",
+          "title": "Gỡ lệnh chặn IP"
+        }
+      },
+      "description": "Xem hoạt động request, mạng đáng ngờ và lệnh chặn IP hoặc CIDR đang được thực thi.",
+      "empty": {
+        "ipBlocks": "Chưa cấu hình lệnh chặn IP.",
+        "requestEvents": "Không có request event.",
+        "suspiciousNetworks": "Không phát hiện mạng đáng ngờ.",
+        "userAggregates": "Không có dữ liệu tổng hợp request theo người dùng."
+      },
+      "errors": {
+        "load": "Không thể tải dữ liệu.",
+        "removeBlock": "Không thể gỡ lệnh chặn.",
+        "saveBlock": "Không thể lưu lệnh chặn."
+      },
+      "eyebrow": "Bảo vệ lưu lượng",
+      "fields": {
+        "expiresAt": "Thời điểm hết hạn",
+        "ipAddressCidr": "Địa chỉ IP hoặc CIDR",
+        "safeReason": "Lý do hiển thị cho người dùng"
+      },
+      "ipBlockEditor": {
+        "help": "Tạo hoặc sửa lệnh chặn IP/CIDR và thời điểm hết hạn tùy chọn."
+      },
+      "ipBlockPolicies": {
+        "help": "Xem chính sách thực thi IP/CIDR đang hoạt động hoặc tạm dừng.",
+        "title": "Chính sách chặn IP"
+      },
+      "labels": {
+        "apiKey": "API Key",
+        "apiKeys": "API Keys",
+        "eventCount": "{count} sự kiện",
+        "expires": "Hết hạn",
+        "never": "Không bao giờ",
+        "noApiKey": "Không có API key",
+        "policyCount": "{count} chính sách",
+        "request": "request",
+        "requests": "request",
+        "risk": "Rủi ro",
+        "sharedNetwork": "Mạng dùng chung",
+        "system": "Hệ thống",
+        "thisAddress": "Địa chỉ này",
+        "user": "Người dùng",
+        "users": "Người dùng"
+      },
+      "messages": {
+        "policyRemoved": "Đã gỡ chính sách chặn IP thành công",
+        "policySaved": "Đã {action} chính sách chặn IP thành công",
+        "refreshPanel": "Làm mới panel này để thử lại."
+      },
+      "metrics": {
+        "abuseState": "Trạng thái chống lạm dụng",
+        "activeIpBlocks": "Lệnh chặn IP đang hoạt động",
+        "ariaLabel": "Chỉ số bảo mật",
+        "blockedLimited": "Bị chặn hoặc giới hạn tốc độ",
+        "enforcedPolicies": "Chính sách đang thực thi",
+        "httpBlockedStatuses": "HTTP response bị chặn",
+        "latestEvents": "Request event gần đây",
+        "liveSignals": "Tín hiệu realtime",
+        "requestSample": "Request đã lấy mẫu"
+      },
+      "placeholders": {
+        "ipAddress": "203.0.113.42",
+        "safeReason": "Quyền truy cập tạm thời bị hạn chế do lưu lượng request bất thường."
+      },
+      "requestEvents": {
+        "help": "Kiểm tra dữ liệu thô về method, route, trạng thái, người dùng, API key, IP và event type.",
+        "title": "Request event"
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "critical": "Nghiêm trọng",
+        "defending": "Đang bảo vệ",
+        "liveConnected": "Đã kết nối trực tiếp",
+        "livePaused": "Cập nhật trực tiếp đã tạm dừng",
+        "paused": "Đã tạm dừng",
+        "policyActive": "Chính sách đang hoạt động",
+        "policyPaused": "Chính sách đã tạm dừng",
+        "reconnecting": "Đang kết nối lại",
+        "stable": "Ổn định"
+      },
+      "suspiciousNetworks": {
+        "help": "Các mạng được nhóm từ request và tín hiệu thực thi gần đây.",
+        "title": "Mạng đáng ngờ"
+      },
+      "topUsers": {
+        "help": "Xếp hạng người dùng theo lượng request và tín hiệu rủi ro gần đây.",
+        "title": "Người dùng có nhiều request nhất"
+      },
+      "unavailable": {
+        "help": "Thử tải lại từng bảng mà không làm gián đoạn dữ liệu giám sát vẫn đang khả dụng.",
+        "title": "Một số bảng giám sát không khả dụng"
+      },
+      "panels": {
+        "securityEvents": "sự kiện bảo mật",
+        "requestEvents": "sự kiện request",
+        "topUsers": "người dùng có nhiều request nhất",
+        "suspiciousNetworks": "mạng đáng ngờ",
+        "ipBlocks": "lệnh chặn IP",
+        "userIdentities": "danh tính người dùng"
+      }
+    },
+    "plansCredits": {
+      "title": "Gói dịch vụ & credit",
+      "actions": {
+        "confirm": "Xác nhận",
+        "createPlan": "Tạo gói dịch vụ",
+        "createRule": "Tạo quy tắc",
+        "deactivate": "Vô hiệu hóa",
+        "delete": "Vô hiệu hóa",
+        "disable": "Tắt",
+        "edit": "Chỉnh sửa",
+        "newRule": "Quy tắc mới",
+        "reset": "Đặt lại",
+        "resetForm": "Đặt lại biểu mẫu",
+        "updatePlan": "Cập nhật gói dịch vụ",
+        "updateRule": "Cập nhật quy tắc"
+      },
+      "apiError": "API quản trị không khả dụng.",
+      "columns": {
+        "actions": "Thao tác",
+        "apiKeys": "API key",
+        "base": "Cơ bản",
+        "code": "Mã",
+        "creditsPerMonth": "Credit mỗi tháng",
+        "minimum": "Tối thiểu",
+        "name": "Tên",
+        "operation": "Thao tác",
+        "per1kNodes": "Mỗi 1.000 node",
+        "perFile": "Mỗi file",
+        "perMb": "Mỗi MB",
+        "sales": "Bán hàng",
+        "status": "Trạng thái",
+        "storage": "Lưu trữ"
+      },
+      "confirm": {
+        "deactivatePlan": {
+          "message": "Vô hiệu hóa gói {code}? Các tài khoản đã dùng gói này không thay đổi, nhưng gói sẽ không còn cho phép chọn mới.",
+          "title": "Vô hiệu hóa gói dịch vụ"
+        },
+        "disableRule": {
+          "message": "Tắt quy tắc tính giá {operationCode}? Quy tắc sẽ không được dùng cho phép tính credit mới.",
+          "title": "Tắt quy tắc"
+        }
+      },
+      "description": "Cấu hình gói tài khoản, hạn mức và cách tính credit theo thao tác.",
+      "empty": {
+        "plans": "Chưa cấu hình gói dịch vụ.",
+        "rules": "Chưa cấu hình quy tắc tính credit."
+      },
+      "errors": {
+        "deletePlan": "Không thể vô hiệu hóa gói dịch vụ.",
+        "deleteRule": "Không thể tắt quy tắc tính giá.",
+        "loadCatalogs": "Không thể tải danh mục.",
+        "savePlan": "Không thể lưu gói dịch vụ.",
+        "saveRule": "Không thể lưu quy tắc."
+      },
+      "fields": {
+        "apiKeys": "Giới hạn API key",
+        "base": "Cơ bản",
+        "code": "Mã",
+        "displayName": "Tên hiển thị",
+        "minimum": "Tối thiểu",
+        "monthlyCredits": "Credit hằng tháng",
+        "name": "Tên",
+        "operationCode": "Mã thao tác",
+        "per1kNodes": "Mỗi 1.000 node",
+        "perFile": "Mỗi file",
+        "perMb": "Mỗi MB",
+        "storageMb": "Lưu trữ (MB)"
+      },
+      "loading": "Đang tải gói dịch vụ và giá credit...",
+      "placeholders": {
+        "displayName": "Tên gói hiển thị cho khách hàng",
+        "planName": "Tên gói nội bộ"
+      },
+      "plans": {
+        "help": "Tạo hoặc cập nhật hạn mức và tính khả dụng của gói. Thao tác xóa sẽ vô hiệu hóa gói.",
+        "title": "Gói dịch vụ"
+      },
+      "rules": {
+        "help": "Đặt chi phí credit theo thao tác. Thao tác xóa sẽ tắt quy tắc.",
+        "title": "Quy tắc tính credit"
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "contactSales": "Liên hệ kinh doanh",
+        "disabled": "Đã tắt",
+        "paused": "Đã tạm dừng",
+        "selfService": "Tự phục vụ"
+      }
+    },
+    "announcements": {
+      "title": "Thông báo",
+      "actions": {
+        "cancelEdit": "Hủy chỉnh sửa",
+        "create": "Tạo",
+        "delete": "Xóa",
+        "disable": "Tắt",
+        "edit": "Chỉnh sửa",
+        "saveChanges": "Lưu thay đổi",
+        "saving": "Đang lưu..."
+      },
+      "apiError": "API quản trị không khả dụng.",
+      "description": "Tạo, lên lịch, chọn đối tượng, tắt hoặc xóa thông báo hiển thị cho người dùng.",
+      "dialogs": {
+        "delete": {
+          "confirm": "Xóa thông báo",
+          "message": "Xóa vĩnh viễn thông báo này?",
+          "title": "Xóa thông báo"
+        },
+        "disable": {
+          "message": "Tắt thông báo này? Thông báo sẽ không còn hiển thị cho đối tượng đã chọn.",
+          "title": "Tắt thông báo"
+        }
+      },
+      "empty": "Không có thông báo.",
+      "errors": {
+        "delete": "Không thể xóa thông báo.",
+        "disable": "Không thể tắt thông báo.",
+        "duplicate": "Đã có thông báo trùng tiêu đề.",
+        "load": "Không thể tải thông báo.",
+        "required": "Vui lòng điền đủ trường bắt buộc.",
+        "save": "Không thể lưu thông báo."
+      },
+      "form": {
+        "active": "Đang hoạt động",
+        "createAria": "Tạo thông báo",
+        "dismissible": "Cho phép người dùng ẩn",
+        "editAria": "Chỉnh sửa thông báo",
+        "endsAt": "Kết thúc lúc",
+        "message": "Nội dung",
+        "messagePlaceholder": "Nhập nội dung thông báo",
+        "severity": "Mức độ",
+        "startsAt": "Bắt đầu lúc",
+        "target": "Đối tượng",
+        "title": "Trình soạn thông báo",
+        "titlePlaceholder": "Nhập tiêu đề thông báo",
+        "type": "Loại"
+      },
+      "loading": "Đang tải thông báo...",
+      "publishedTitle": "Thông báo đã phát hành",
+      "schedule": {
+        "ends": "Kết thúc {date}",
+        "noEndDate": "Không có ngày kết thúc",
+        "starts": "Bắt đầu {date}",
+        "startsImmediately": "Bắt đầu ngay"
+      },
+      "severities": {
+        "critical": "Nghiêm trọng",
+        "info": "Thông tin",
+        "warning": "Cảnh báo"
+      },
+      "states": {
+        "disabled": "Đã tắt"
+      },
+      "targets": {
+        "admin": "Quản trị viên",
+        "all": "Tất cả",
+        "user": "Người dùng"
+      },
+      "types": {
+        "cli_update": "Cập nhật CLI",
+        "disk_warning": "Cảnh báo ổ đĩa",
+        "general": "Chung",
+        "maintenance": "Bảo trì",
+        "plan_change": "Thay đổi gói dịch vụ",
+        "security": "Bảo mật"
+      }
+    },
+    "reports": {
+      "title": "Phản hồi & báo cáo",
+      "actions": {
+        "backToReports": "Quay lại danh sách báo cáo",
+        "closeReport": "Đóng báo cáo",
+        "closing": "Đang đóng...",
+        "sendReply": "Gửi phản hồi",
+        "sending": "Đang gửi...",
+        "view": "Xem"
+      },
+      "closed": {
+        "deletesAfter": "Xóa sau {date}",
+        "description": "Thread hỗ trợ này đã đóng và vẫn có thể đọc đến ngày xóa."
+      },
+      "confirmClose": {
+        "confirm": "Đóng báo cáo",
+        "message": "Đóng thread hỗ trợ này? Thread vẫn có thể đọc đến ngày xóa đã lên lịch.",
+        "title": "Đóng báo cáo"
+      },
+      "description": "Xem thread hỗ trợ và phản hồi, trả lời người dùng và đóng báo cáo đã xử lý.",
+      "errors": {
+        "closeReport": "Không thể đóng báo cáo.",
+        "loadReport": "Không thể tải báo cáo.",
+        "loadReports": "Không thể tải danh sách báo cáo.",
+        "sendReply": "Không thể gửi phản hồi."
+      },
+      "labels": {
+        "justNow": "Vừa xong"
+      },
+      "list": {
+        "empty": "Không có báo cáo hỗ trợ.",
+        "showing": "Hiển thị {visible} / {total} báo cáo"
+      },
+      "realtime": {
+        "live": "Trực tiếp",
+        "offline": "Ngoại tuyến",
+        "syncing": "Đang đồng bộ",
+        "unavailable": "Không khả dụng"
+      },
+      "reply": {
+        "description": "Gửi phản hồi hỗ trợ trong thread báo cáo này.",
+        "label": "Nội dung phản hồi",
+        "placeholder": "Nhập phản hồi cho người dùng...",
+        "title": "Phản hồi báo cáo"
+      },
+      "roles": {
+        "admin": "Quản trị viên",
+        "support": "Hỗ trợ",
+        "user": "Người dùng"
+      },
+      "table": {
+        "action": "Thao tác",
+        "category": "Danh mục",
+        "lastUpdated": "Cập nhật gần nhất",
+        "status": "Trạng thái",
+        "subject": "Chủ đề"
+      },
+      "thread": {
+        "empty": "Thread báo cáo chưa có tin nhắn."
+      }
+    },
+    "settings": {
+      "title": "Cài đặt",
+      "description": "Cập nhật hồ sơ và mật khẩu quản trị viên.",
+      "eyebrow": "Tài khoản quản trị viên",
+      "messages": {
+        "passwordChangeFailed": "Không thể đổi mật khẩu.",
+        "passwordChanged": "Đã đổi mật khẩu.",
+        "passwordMismatch": "Mật khẩu mới và phần xác nhận không khớp.",
+        "profileLoadFailed": "Không thể tải hồ sơ quản trị viên.",
+        "profileUpdateFailed": "Không thể cập nhật hồ sơ.",
+        "profileUpdated": "Đã cập nhật hồ sơ."
+      },
+      "password": {
+        "confirm": "Xác nhận mật khẩu mới",
+        "current": "Mật khẩu hiện tại",
+        "new": "Mật khẩu mới",
+        "submit": "Đổi mật khẩu",
+        "title": "Mật khẩu"
+      },
+      "profile": {
+        "displayName": "Tên hiển thị",
+        "email": "Email",
+        "save": "Lưu hồ sơ",
+        "title": "Hồ sơ"
+      }
+    },
+    "dialogs": {
+      "cancel": "Hủy",
+      "apply": "Áp dụng",
+      "confirm": "Xác nhận",
+      "internalReason": "Lý do audit nội bộ",
+      "internalReasonPlaceholder": "Lý do chỉ quản trị viên có thể xem",
+      "understandAccessDisabled": "Tôi hiểu thao tác này sẽ vô hiệu hóa quyền truy cập tài khoản",
+      "userVisibleReason": "Lý do hiển thị cho người dùng",
+      "userVisibleReasonPlaceholder": "Giải thích lý do thay đổi quyền truy cập",
+      "working": "Đang áp dụng..."
+    }
+  }
+}

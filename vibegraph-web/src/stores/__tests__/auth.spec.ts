@@ -8,6 +8,7 @@ vi.mock('@/lib/api', () => ({
   authApi: {
     login: vi.fn(),
     register: vi.fn(),
+    logout: vi.fn(),
     me: vi.fn(),
   },
   ApiError: class ApiError extends Error {
@@ -26,6 +27,7 @@ import { authApi } from '@/lib/api'
 const mockAuthApi = authApi as {
   login: ReturnType<typeof vi.fn>
   register: ReturnType<typeof vi.fn>
+  logout: ReturnType<typeof vi.fn>
   me: ReturnType<typeof vi.fn>
 }
 
@@ -37,7 +39,7 @@ const fakeUser: User = {
 }
 
 const fakeAuthResponse: AuthResponse = {
-  token: 'jwt-fake-token-123',
+  token: null,
   user: fakeUser,
 }
 
@@ -63,8 +65,7 @@ describe('useAuthStore', () => {
       expect(store.userDisplayName).toBe('')
     })
 
-    it('restores token and user from localStorage', () => {
-      localStorage.setItem('vg_token', 'saved-token')
+    it('restores user from localStorage without requiring readable token storage', () => {
       localStorage.setItem('vg_user', JSON.stringify(fakeUser))
 
       // Must create a new pinia and a new store instance AFTER setting localStorage
@@ -72,19 +73,18 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
 
       expect(store.isAuthenticated).toBe(true)
-      expect(store.token).toBe('saved-token')
+      expect(store.token).toBeNull()
       expect(store.user).toEqual(fakeUser)
       expect(store.userEmail).toBe(fakeUser.email)
     })
 
     it('handles corrupted user JSON gracefully', () => {
-      localStorage.setItem('vg_token', 'some-token')
       localStorage.setItem('vg_user', '{invalid-json')
 
       setActivePinia(createPinia())
       const store = useAuthStore()
 
-      expect(store.token).toBe('some-token')
+      expect(store.token).toBeNull()
       expect(store.user).toBeNull()
     })
   })
@@ -92,24 +92,36 @@ describe('useAuthStore', () => {
   // ─── Login action ────────────────────────────────────────────────────────────
 
   describe('login', () => {
-    it('stores token and user on successful login', async () => {
+    it('stores only user profile on successful login', async () => {
       mockAuthApi.login.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
 
       await store.login({ email: 'dev@vibegraph.io', password: 'secret123' })
 
       expect(store.isAuthenticated).toBe(true)
-      expect(store.token).toBe(fakeAuthResponse.token)
+      expect(store.token).toBeNull()
       expect(store.user).toEqual(fakeUser)
-      expect(localStorage.getItem('vg_token')).toBe(fakeAuthResponse.token)
+      expect(localStorage.getItem('vg_token')).toBeNull()
       expect(localStorage.getItem('vg_user')).toBe(JSON.stringify(fakeUser))
+    })
+
+    it('ignores a readable token accidentally returned in a web login response', async () => {
+      mockAuthApi.login.mockResolvedValue({ ...fakeAuthResponse, token: 'must-not-persist' })
+      const store = useAuthStore()
+
+      await store.login({ email: 'dev@vibegraph.io', password: 'secret123' })
+
+      expect(store.token).toBeNull()
+      expect(localStorage.getItem('vg_token')).toBeNull()
     })
 
     it('propagates errors from authApi.login', async () => {
       mockAuthApi.login.mockRejectedValue(new Error('Invalid credentials'))
       const store = useAuthStore()
 
-      await expect(store.login({ email: 'x', password: 'y' })).rejects.toThrow('Invalid credentials')
+      await expect(store.login({ email: 'x', password: 'y' })).rejects.toThrow(
+        'Invalid credentials',
+      )
       expect(store.isAuthenticated).toBe(false)
     })
   })
@@ -117,7 +129,7 @@ describe('useAuthStore', () => {
   // ─── Register action ─────────────────────────────────────────────────────────
 
   describe('register', () => {
-    it('stores token and user on successful registration', async () => {
+    it('stores only user profile on successful registration', async () => {
       mockAuthApi.register.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
 
@@ -128,8 +140,9 @@ describe('useAuthStore', () => {
       })
 
       expect(store.isAuthenticated).toBe(true)
-      expect(store.token).toBe(fakeAuthResponse.token)
+      expect(store.token).toBeNull()
       expect(store.user).toEqual(fakeUser)
+      expect(localStorage.getItem('vg_token')).toBeNull()
     })
 
     it('propagates errors from authApi.register', async () => {
@@ -146,15 +159,16 @@ describe('useAuthStore', () => {
   // ─── Logout action ───────────────────────────────────────────────────────────
 
   describe('logout', () => {
-    it('clears token, user, and localStorage', () => {
+    it('clears user profile and stale token storage', async () => {
       localStorage.setItem('vg_token', 'tk')
       localStorage.setItem('vg_user', JSON.stringify(fakeUser))
+      mockAuthApi.logout.mockResolvedValue(undefined)
       setActivePinia(createPinia())
       const store = useAuthStore()
 
       expect(store.isAuthenticated).toBe(true)
 
-      store.logout()
+      await store.logout()
 
       expect(store.isAuthenticated).toBe(false)
       expect(store.token).toBeNull()
@@ -168,7 +182,6 @@ describe('useAuthStore', () => {
 
   describe('fetchCurrentUser', () => {
     it('updates user from /api/auth/me response', async () => {
-      localStorage.setItem('vg_token', 'valid-tk')
       setActivePinia(createPinia())
       const store = useAuthStore()
 
@@ -182,7 +195,6 @@ describe('useAuthStore', () => {
     })
 
     it('clears session if me() throws (e.g. expired token)', async () => {
-      localStorage.setItem('vg_token', 'expired-tk')
       localStorage.setItem('vg_user', JSON.stringify(fakeUser))
       setActivePinia(createPinia())
       const store = useAuthStore()

@@ -1,17 +1,22 @@
 package com.vibegraph.auth.web;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vibegraph.auth.dto.AccountCreditLedgerResponse;
 import com.vibegraph.auth.dto.AccountProfileUpdateRequest;
+import com.vibegraph.auth.dto.AccountPasswordChangeRequest;
 import com.vibegraph.auth.dto.AccountProjectPageRequest;
 import com.vibegraph.auth.dto.AccountProjectsPageResponse;
+import com.vibegraph.auth.dto.AccountSessionStateResponse;
 import com.vibegraph.auth.dto.AccountUsageResponse;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.service.AccountService;
@@ -36,15 +41,35 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(accountService.profile()));
     }
 
+    @GetMapping("/session-state")
+    public ResponseEntity<ApiResponse<AccountSessionStateResponse>> sessionState() {
+        return ResponseEntity.ok(ApiResponse.success(accountService.sessionState()));
+    }
+
     @PatchMapping("/profile")
     public ResponseEntity<ApiResponse<UserResponse>> updateProfile(
             @Valid @RequestBody AccountProfileUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.success(accountService.updateProfile(request)));
     }
 
+    @PatchMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody AccountPasswordChangeRequest request) {
+        accountService.changePassword(request);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     @GetMapping("/usage")
     public ResponseEntity<ApiResponse<AccountUsageResponse>> usage() {
         return ResponseEntity.ok(ApiResponse.success(accountService.usage()));
+    }
+
+    @GetMapping("/usage/ledger")
+    public ResponseEntity<ApiResponse<List<AccountCreditLedgerResponse>>> creditLedger(
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "limit must be at least 1")
+            @Max(value = 50, message = "limit must be at most 50") int limit) {
+        validateLimit(limit);
+        return ResponseEntity.ok(ApiResponse.success(accountService.creditLedger(limit)));
     }
 
     @GetMapping("/projects")
@@ -62,6 +87,12 @@ public class AccountController {
         }
         if (size < 1 || size > 100) {
             throw new ConstraintViolationException("size must be between 1 and 100", java.util.Set.of());
+        }
+    }
+
+    private void validateLimit(int limit) {
+        if (limit < 1 || limit > 50) {
+            throw new ConstraintViolationException("limit must be between 1 and 50", java.util.Set.of());
         }
     }
 }

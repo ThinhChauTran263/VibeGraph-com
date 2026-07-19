@@ -68,7 +68,13 @@ function clearSearch(): void {
         @input="onInput"
         @focus="onInput"
       />
-      <button v-if="hasQuery" class="search-bar__clear" type="button" aria-label="Clear search" @click="clearSearch">
+      <button
+        v-if="hasQuery"
+        class="search-bar__clear"
+        type="button"
+        aria-label="Clear search"
+        @click="clearSearch"
+      >
         Clear
       </button>
     </div>
@@ -93,12 +99,9 @@ function clearSearch(): void {
 
 <style scoped>
 .search-bar {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
+  position: relative;
   z-index: 20;
-  width: min(28rem, calc(100% - 2rem));
-  transform: translateX(-50%);
+  width: min(36rem, 100%);
   color: #e5e7eb;
 }
 
@@ -203,5 +206,17 @@ function clearSearch(): void {
   padding: 0.75rem 0.875rem;
   color: #9ca3af;
   font-size: 0.875rem;
+}
+
+@media (max-width: 93.75rem) {
+  .search-bar {
+    width: min(36rem, calc(100% - 2rem));
+  }
+}
+
+@media (max-width: 56rem) {
+  .search-bar {
+    width: calc(100% - 2rem);
+  }
 }
 </style>

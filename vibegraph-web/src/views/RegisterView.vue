@@ -4,6 +4,7 @@
  * On success, auto-logs-in and navigates to /dashboard.
  */
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/lib/api'
@@ -11,6 +12,7 @@ import { ApiError } from '@/lib/api'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const displayName = ref('')
 const email = ref('')
@@ -20,11 +22,11 @@ const error = ref('')
 const loading = ref(false)
 
 function validate(): string | null {
-  if (!displayName.value.trim()) return 'Display name is required.'
-  if (!email.value.trim()) return 'Email is required.'
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) return 'Please enter a valid email.'
-  if (password.value.length < 8) return 'Password must be at least 8 characters.'
-  if (password.value !== confirmPassword.value) return 'Passwords do not match.'
+  if (!displayName.value.trim()) return t('auth.displayNameRequired')
+  if (!email.value.trim()) return t('auth.emailRequired')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) return t('auth.validEmail')
+  if (password.value.length < 8) return t('auth.passwordMinimum')
+  if (password.value !== confirmPassword.value) return t('auth.passwordMismatch')
   return null
 }
 
@@ -50,7 +52,7 @@ async function handleRegister() {
     if (e instanceof ApiError) {
       error.value = e.message
     } else {
-      error.value = 'Unable to connect. Please try again.'
+      error.value = t('auth.connectionError')
     }
   } finally {
     loading.value = false
@@ -61,44 +63,44 @@ async function handleRegister() {
 <template>
   <main class="auth-page">
     <div class="auth-card">
-      <h1 class="auth-card__title">Create your account</h1>
-      <p class="auth-card__subtitle">Start analyzing Java projects with VibeGraph</p>
+      <h1 class="auth-card__title">{{ t('auth.registerTitle') }}</h1>
+      <p class="auth-card__subtitle">{{ t('auth.registerSubtitle') }}</p>
 
       <form class="auth-form" @submit.prevent="handleRegister" novalidate>
         <div class="auth-form__field">
-          <label for="reg-name" class="auth-form__label">Display name</label>
+          <label for="reg-name" class="auth-form__label">{{ t('auth.displayName') }}</label>
           <input
             id="reg-name"
             v-model="displayName"
             type="text"
             class="auth-form__input"
-            placeholder="Your name"
+            :placeholder="t('auth.displayNamePlaceholder')"
             autocomplete="name"
             required
           />
         </div>
 
         <div class="auth-form__field">
-          <label for="reg-email" class="auth-form__label">Email</label>
+          <label for="reg-email" class="auth-form__label">{{ t('auth.email') }}</label>
           <input
             id="reg-email"
             v-model="email"
             type="email"
             class="auth-form__input"
-            placeholder="you@example.com"
+            :placeholder="t('auth.emailPlaceholder')"
             autocomplete="email"
             required
           />
         </div>
 
         <div class="auth-form__field">
-          <label for="reg-password" class="auth-form__label">Password</label>
+          <label for="reg-password" class="auth-form__label">{{ t('auth.password') }}</label>
           <input
             id="reg-password"
             v-model="password"
             type="password"
             class="auth-form__input"
-            placeholder="Minimum 8 characters"
+            :placeholder="t('auth.passwordPlaceholder')"
             autocomplete="new-password"
             required
             minlength="8"
@@ -106,13 +108,13 @@ async function handleRegister() {
         </div>
 
         <div class="auth-form__field">
-          <label for="reg-confirm" class="auth-form__label">Confirm password</label>
+          <label for="reg-confirm" class="auth-form__label">{{ t('auth.confirmPassword') }}</label>
           <input
             id="reg-confirm"
             v-model="confirmPassword"
             type="password"
             class="auth-form__input"
-            placeholder="Repeat password"
+            :placeholder="t('auth.confirmPasswordPlaceholder')"
             autocomplete="new-password"
             required
           />
@@ -122,18 +124,14 @@ async function handleRegister() {
           {{ error }}
         </div>
 
-        <button
-          type="submit"
-          class="auth-form__submit"
-          :disabled="loading"
-        >
-          {{ loading ? 'Creating account…' : 'Create account' }}
+        <button type="submit" class="auth-form__submit" :disabled="loading">
+          {{ loading ? t('auth.registering') : t('auth.register') }}
         </button>
       </form>
 
       <p class="auth-card__footer">
-        Already have an account?
-        <RouterLink :to="{ name: 'login' }" class="auth-link">Sign in</RouterLink>
+        {{ t('auth.hasAccount') }}
+        <RouterLink :to="{ name: 'login' }" class="auth-link">{{ t('auth.signInLink') }}</RouterLink>
       </p>
     </div>
   </main>

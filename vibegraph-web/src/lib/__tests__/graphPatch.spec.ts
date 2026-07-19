@@ -15,7 +15,12 @@ function node(id: string, overrides: Partial<GraphNode> = {}): GraphNode {
   }
 }
 
-function edge(id: string, source: string, target: string, overrides: Partial<GraphEdge> = {}): GraphEdge {
+function edge(
+  id: string,
+  source: string,
+  target: string,
+  overrides: Partial<GraphEdge> = {},
+): GraphEdge {
   return { id, source, target, type: 'CALLS', ...overrides }
 }
 
@@ -51,7 +56,11 @@ describe('parseGraphUpdateEvent', () => {
 
   it('rejects a FULL_UPDATE with a malformed graph', () => {
     expect(
-      parseGraphUpdateEvent({ type: 'FULL_UPDATE', projectId: 'p1', graph: { nodes: 'x', edges: [] } }),
+      parseGraphUpdateEvent({
+        type: 'FULL_UPDATE',
+        projectId: 'p1',
+        graph: { nodes: 'x', edges: [] },
+      }),
     ).toBeNull()
     // node missing id
     expect(
@@ -74,7 +83,11 @@ describe('parseGraphUpdateEvent', () => {
     ).not.toBeNull()
 
     expect(
-      parseGraphUpdateEvent({ type: 'INCREMENTAL', projectId: 'p1', added: { nodes: [{ name: 'x' }] } }),
+      parseGraphUpdateEvent({
+        type: 'INCREMENTAL',
+        projectId: 'p1',
+        added: { nodes: [{ name: 'x' }] },
+      }),
     ).toBeNull()
     expect(
       parseGraphUpdateEvent({ type: 'INCREMENTAL', projectId: 'p1', removed: { nodeIds: [42] } }),

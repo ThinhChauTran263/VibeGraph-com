@@ -58,7 +58,8 @@ describe('importApi.uploadArchive (sync)', () => {
     expect(form.get('name')).toBe('my-svc')
     expect(form.get('file')).toBeInstanceOf(File)
     // Content-Type must be left for the browser to compute (multipart boundary).
-    expect(init.headers).toBeUndefined()
+    expect(init.headers).toMatchObject({ 'X-VibeGraph-Client': 'web' })
+    expect(init.headers).not.toHaveProperty('Content-Type')
   })
 })
 
@@ -74,7 +75,10 @@ describe('importApi.importGithub', () => {
     const init = call[1]!
     expect(String(url)).toMatch(/\/api\/projects\/import-github$/)
     expect(init.method).toBe('POST')
-    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-VibeGraph-Client': 'web',
+    })
     expect(init.body).toBe(JSON.stringify({ url: 'https://github.com/owner/repo' }))
   })
 
@@ -86,7 +90,10 @@ describe('importApi.importGithub', () => {
       text: async () =>
         JSON.stringify({
           success: false,
-          error: { code: 'GITHUB_IMPORT_ERROR', message: 'GitHub repository is private or not found' },
+          error: {
+            code: 'GITHUB_IMPORT_ERROR',
+            message: 'GitHub repository is private or not found',
+          },
         }),
     } as unknown as Response)
 
@@ -94,6 +101,30 @@ describe('importApi.importGithub', () => {
       status: 422,
       message: 'GitHub repository is private or not found',
     })
+  })
+})
+
+describe('importApi.createCliRepository', () => {
+  it('POSTs to /api/projects/cli-setup with an optional name payload', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({
+      project: { id: 'cli-1', name: 'CLI Repo', status: 'CREATED' },
+      apiKey: { id: 'key-1', secretKey: 'vbg_secret' },
+      commands: ['vibegraph login vbg_secret', 'vibegraph push', 'vibegraph watch'],
+    }))
+
+    await importApi.createCliRepository('  CLI Repo  ')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const call = fetchMock.mock.calls[0]!
+    const url = call[0]
+    const init = call[1]!
+    expect(String(url)).toMatch(/\/api\/projects\/cli-setup$/)
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-VibeGraph-Client': 'web',
+    })
+    expect(init.body).toBe(JSON.stringify({ name: 'CLI Repo' }))
   })
 })
 

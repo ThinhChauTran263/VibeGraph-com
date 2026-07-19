@@ -20,6 +20,14 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ClientAddressResolver;
+import com.vibegraph.abuse.IpBlockFilter;
+import com.vibegraph.abuse.IpBlockService;
+import com.vibegraph.abuse.RateLimitFilter;
+import com.vibegraph.abuse.RequestEventService;
+import com.vibegraph.auth.web.ApiKeyAuthFilter;
 import com.vibegraph.auth.web.JwtAuthFilter;
 import com.vibegraph.auth.web.RestAccessDeniedHandler;
 import com.vibegraph.auth.web.RestAuthEntryPoint;
@@ -31,10 +39,10 @@ import lombok.RequiredArgsConstructor;
  * Explicit, stateless security policy (Phase 1). No HTTP session, no CSRF (token-based,
  * no cookies), JWT bearer auth via {@link JwtAuthFilter}.
  *
- * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, and CORS
- * preflight. {@code /ws/**} and {@code /mcp/**} require authentication (fail closed) unless the
- * explicit {@code vibegraph.auth.realtime.demo-permit} flag is set, in which case they are permitted
- * for demo/local use only and a startup WARNING is logged. Everything else requires authentication.
+ * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, the
+ * WebSocket transport handshake, and CORS preflight. STOMP sessions authenticate independently on
+ * {@code CONNECT}; {@code /mcp/**} requires HTTP authentication unless the explicit
+ * {@code vibegraph.auth.realtime.demo-permit} flag is set. Everything else requires authentication.
  *
  * <p>CORS is driven from the same {@link CorsProperties} allow-list the app already uses (no
  * wildcard with credentials), wired into the security chain so preflight is handled before authz.
@@ -43,25 +51,47 @@ import lombok.RequiredArgsConstructor;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class, AbuseProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final RestAuthEntryPoint authEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final RealtimeSecurityProperties realtimeProperties;
     private final CorsProperties corsProperties;
+    private final AbuseProperties abuseProperties;
+    private final IpBlockService ipBlockService;
+    private final RequestEventService requestEventService;
+    private final ObjectMapper objectMapper;
+
+    @Bean
+    public ClientAddressResolver clientAddressResolver() {
+        return new ClientAddressResolver(abuseProperties);
+    }
+
+    @Bean
+    public IpBlockFilter ipBlockFilter(ClientAddressResolver resolver) {
+        return new IpBlockFilter(resolver, ipBlockService, objectMapper);
+    }
+
+    @Bean
+    public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver) {
+        return new RateLimitFilter(abuseProperties, resolver, requestEventService, objectMapper,
+                java.time.Clock.systemUTC());
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         boolean demoPermit = realtimeProperties.isDemoPermit();
         if (demoPermit) {
-            log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /ws/** and /mcp/** are "
-                    + "PERMITTED WITHOUT AUTHENTICATION. This is for demo/local only and is NOT "
-                    + "multi-user safe. Per-connection realtime/MCP auth is deferred to Phase 3.");
+            log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
+                    + "PERMITTED WITHOUT HTTP AUTHENTICATION. This is for demo/local only and is NOT "
+                    + "multi-user safe. STOMP connections require either a Bearer token or an authenticated "
+                    + "browser cookie handshake.");
         }
 
         http
@@ -73,19 +103,25 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    auth.requestMatchers("/api/auth/**", "/actuator/health").permitAll();
+                    auth.requestMatchers("/api/auth/**", "/actuator/health", "/ws/**").permitAll();
+                    auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
-                        auth.requestMatchers("/ws/**", "/mcp/**").permitAll();
+                        auth.requestMatchers("/mcp/**").permitAll();
+                    } else {
+                        auth.requestMatchers("/mcp/**").hasAuthority("API_KEY");
                     }
                     auth.anyRequest().authenticated();
                 })
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter(clientAddressResolver()), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
+    public static PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 

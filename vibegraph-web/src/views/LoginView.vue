@@ -1,16 +1,20 @@
 <script setup lang="ts">
 /**
  * LoginView — email + password authentication.
- * On success, navigates to /dashboard. Shows inline error on failure.
+ * On success, navigates to the role-appropriate dashboard. Shows inline error on failure.
  */
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import BrandMark from '@/components/ui/BrandMark.vue'
+import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/lib/api'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n({ useScope: 'global' })
 
 const email = ref('')
 const password = ref('')
@@ -20,7 +24,7 @@ const loading = ref(false)
 async function handleLogin() {
   error.value = ''
   if (!email.value.trim() || !password.value) {
-    error.value = 'Please enter email and password.'
+    error.value = t('auth.missingCredentials')
     return
   }
 
@@ -28,42 +32,57 @@ async function handleLogin() {
   try {
     await auth.login({ email: email.value.trim(), password: password.value })
     const raw = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-    const redirectTo = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard'
-    router.push(redirectTo)
+    router.push(resolvePostLoginRedirect(raw, auth.user?.role))
   } catch (e) {
     if (e instanceof ApiError) {
       error.value = e.message
     } else {
-      error.value = 'Unable to connect. Please try again.'
+      error.value = t('auth.connectionError')
     }
   } finally {
     loading.value = false
   }
 }
+
+function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
+  const isAdmin = role?.toUpperCase() === 'ADMIN'
+  const fallback = isAdmin ? '/admin' : '/dashboard'
+  if (!rawRedirect.startsWith('/') || rawRedirect.startsWith('//')) return fallback
+  if (isAdmin)
+    return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? rawRedirect : fallback
+  return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? fallback : rawRedirect
+}
 </script>
 
 <template>
   <main class="auth-page">
+    <header class="auth-page__header">
+      <RouterLink class="auth-brand" :to="{ name: 'home' }" :aria-label="t('auth.homeAria')">
+        <BrandMark :size="30" :show-wordmark="true" />
+      </RouterLink>
+      <LanguageSelector />
+    </header>
+
     <div class="auth-card">
-      <h1 class="auth-card__title">Sign in to VibeGraph</h1>
-      <p class="auth-card__subtitle">Analyze and visualize your Java codebase</p>
+      <h1 class="auth-card__title">{{ t('auth.signInTitle') }}</h1>
+      <p class="auth-card__subtitle">{{ t('auth.signInSubtitle') }}</p>
 
       <form class="auth-form" @submit.prevent="handleLogin" novalidate>
         <div class="auth-form__field">
-          <label for="login-email" class="auth-form__label">Email</label>
+          <label for="login-email" class="auth-form__label">{{ t('auth.email') }}</label>
           <input
             id="login-email"
             v-model="email"
             type="email"
             class="auth-form__input"
-            placeholder="you@example.com"
+            :placeholder="t('auth.emailPlaceholder')"
             autocomplete="email"
             required
           />
         </div>
 
         <div class="auth-form__field">
-          <label for="login-password" class="auth-form__label">Password</label>
+          <label for="login-password" class="auth-form__label">{{ t('auth.password') }}</label>
           <input
             id="login-password"
             v-model="password"
@@ -79,18 +98,14 @@ async function handleLogin() {
           {{ error }}
         </div>
 
-        <button
-          type="submit"
-          class="auth-form__submit"
-          :disabled="loading"
-        >
-          {{ loading ? 'Signing in…' : 'Sign in' }}
+        <button type="submit" class="auth-form__submit" :disabled="loading">
+          {{ loading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
       </form>
 
       <p class="auth-card__footer">
-        Don't have an account?
-        <RouterLink :to="{ name: 'register' }" class="auth-link">Create one</RouterLink>
+        {{ t('auth.noAccount') }}
+        <RouterLink :to="{ name: 'register' }" class="auth-link">{{ t('auth.createAccount') }}</RouterLink>
       </p>
     </div>
   </main>
@@ -99,20 +114,39 @@ async function handleLogin() {
 <style scoped>
 .auth-page {
   min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: var(--vg-space-5);
+  background: var(--vg-bg);
+  overflow-x: hidden;
+}
+
+.auth-page__header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--vg-space-4);
-  background: var(--vg-bg);
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--vg-space-2);
+  text-decoration: none;
+  border-radius: var(--vg-radius-sm);
 }
 
 .auth-card {
-  width: 100%;
+  align-self: center;
+  justify-self: center;
+  box-sizing: border-box;
+  width: min(100%, 400px);
   max-width: 400px;
   padding: var(--vg-space-8);
   background: var(--vg-surface);
   border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius-lg);
+  border-radius: var(--vg-radius);
   box-shadow: var(--vg-shadow-lg);
 }
 
@@ -151,6 +185,8 @@ async function handleLogin() {
 }
 
 .auth-form__input {
+  box-sizing: border-box;
+  width: 100%;
   padding: 0.6rem 0.75rem;
   font-size: var(--vg-text-base);
   font-family: var(--vg-font-body);
@@ -181,6 +217,8 @@ async function handleLogin() {
 }
 
 .auth-form__submit {
+  box-sizing: border-box;
+  width: 100%;
   padding: 0.65rem 1rem;
   font-size: var(--vg-text-base);
   font-weight: 600;
@@ -224,5 +262,21 @@ async function handleLogin() {
 
 .auth-link:hover {
   color: var(--vg-cyan);
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: var(--vg-space-4);
+  }
+
+  .auth-card {
+    align-self: start;
+    margin-top: var(--vg-space-6);
+    padding: var(--vg-space-5);
+  }
+
+  .auth-card__title {
+    font-size: var(--vg-text-lg);
+  }
 }
 </style>
