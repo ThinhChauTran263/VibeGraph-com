@@ -1041,7 +1041,7 @@
         "displayName": "Tên hiển thị",
         "displayNamePlaceholder": "Nhập tên người dùng",
         "email": "Email",
-        "emailPlaceholder": "user@example.com",
+        "emailPlaceholder": "user{'@'}example.com",
         "kicker": "Cấp tài khoản",
         "plan": "Gói dịch vụ",
         "planDescription": "{storageMb} MB lưu trữ · {credits} credit mỗi tháng",

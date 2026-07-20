@@ -433,7 +433,9 @@ export interface AdminAuditLog {
   id: string
   action: string
   actorUserId: string | null
+  actorDisplayName?: string | null
   targetUserId: string | null
+  targetUserDisplayName?: string | null
   targetType: string | null
   targetId: string | null
   outcome: string

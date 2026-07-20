@@ -164,21 +164,25 @@ const formatDate = (value: string): string => new Date(value).toLocaleDateString
             <thead>
               <tr>
                 <th>{{ t('admin.reports.table.subject') }}</th>
-                <th>{{ t('admin.reports.table.category') }}</th>
-                <th>{{ t('admin.reports.table.status') }}</th>
+                <th class="center-column">{{ t('admin.reports.table.category') }}</th>
+                <th class="center-column">{{ t('admin.reports.table.status') }}</th>
                 <th>{{ t('admin.reports.table.lastUpdated') }}</th>
-                <th>{{ t('admin.reports.table.action') }}</th>
+                <th class="action-heading">
+                  {{ t('admin.reports.table.action') }}
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="r in adminStore.reports" :key="r.id">
                 <td class="font-medium">{{ r.title }}</td>
-                <td class="text-muted">{{ r.category }}</td>
-                <td><StatusChip :status="r.status.toLowerCase()" :label="r.status" /></td>
+                <td class="text-muted center-column">{{ r.category }}</td>
+                <td class="center-column">
+                  <StatusChip :status="r.status.toLowerCase()" :label="r.status" />
+                </td>
                 <td class="text-muted">
                   {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
-                <td>
+                <td class="action-cell">
                   <button class="btn-secondary btn-sm" @click="selectReport(r)">
                     {{ t('admin.reports.actions.view') }}
                   </button>
@@ -356,6 +360,7 @@ const formatDate = (value: string): string => new Date(value).toLocaleDateString
   text-align: left;
   border-bottom: 1px solid var(--vg-border);
   color: var(--vg-text);
+  vertical-align: middle;
 }
 .table th {
   background: var(--vg-surface-2);
@@ -375,6 +380,16 @@ const formatDate = (value: string): string => new Date(value).toLocaleDateString
 }
 .text-muted {
   color: var(--vg-text-muted);
+}
+.table th.center-column,
+.table td.center-column,
+.table th.action-heading,
+.table td.action-cell {
+  text-align: center;
+}
+.action-cell .btn-secondary {
+  min-width: 4.5rem;
+  margin: 0 auto;
 }
 .text-sm {
   font-size: var(--vg-text-sm);
