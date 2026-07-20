@@ -1041,7 +1041,7 @@
         "displayName": "Display name",
         "displayNamePlaceholder": "Enter the user's name",
         "email": "Email",
-        "emailPlaceholder": "user@example.com",
+        "emailPlaceholder": "user{'@'}example.com",
         "kicker": "Account provisioning",
         "plan": "Plan",
         "planDescription": "{storageMb} MB storage · {credits} credits per month",

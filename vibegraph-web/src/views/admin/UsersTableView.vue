@@ -249,10 +249,10 @@ function userStatusLabel(u: AdminUserResponse): string {
             <tr>
               <th>{{ t('admin.users.table.name') }}</th>
               <th>{{ t('admin.users.table.email') }}</th>
-              <th>{{ t('admin.users.table.role') }}</th>
-              <th>{{ t('admin.users.table.plan') }}</th>
-              <th>{{ t('admin.users.table.status') }}</th>
-              <th>{{ t('admin.users.table.reason') }}</th>
+              <th class="cell-center">{{ t('admin.users.table.role') }}</th>
+              <th class="cell-center">{{ t('admin.users.table.plan') }}</th>
+              <th class="cell-center">{{ t('admin.users.table.status') }}</th>
+              <th class="cell-center">{{ t('admin.users.table.reason') }}</th>
               <th>{{ t('admin.users.table.actions') }}</th>
             </tr>
           </thead>
@@ -262,16 +262,16 @@ function userStatusLabel(u: AdminUserResponse): string {
                 {{ user.displayName }}
               </td>
               <td :data-label="t('admin.users.table.email')">{{ user.email }}</td>
-              <td class="capitalize" :data-label="t('admin.users.table.role')">
+              <td class="capitalize cell-center" :data-label="t('admin.users.table.role')">
                 {{ user.role }}
               </td>
-              <td class="text-muted" :data-label="t('admin.users.table.plan')">
+              <td class="text-muted cell-center" :data-label="t('admin.users.table.plan')">
                 {{ user.planCode }}
               </td>
-              <td :data-label="t('admin.users.table.status')">
+              <td class="status-cell" :data-label="t('admin.users.table.status')">
                 <StatusChip :status="userStatus(user)" :label="userStatusLabel(user)" />
               </td>
-              <td class="text-muted" :data-label="t('admin.users.table.reason')">
+              <td class="text-muted cell-center" :data-label="t('admin.users.table.reason')">
                 {{
                   user.blockedReasonSafe ??
                   user.deactivationReasonSafe ??
@@ -655,6 +655,7 @@ function userStatusLabel(u: AdminUserResponse): string {
   border-bottom: 1px solid var(--vg-border);
   color: var(--vg-text);
   font-family: var(--vg-font-body);
+  vertical-align: middle;
 }
 .users-table tbody tr {
   background: var(--vg-surface);
@@ -677,9 +678,24 @@ function userStatusLabel(u: AdminUserResponse): string {
   color: var(--vg-text-dim);
   font-size: var(--vg-text-xs);
 }
+.users-table th.cell-center,
+.users-table td.cell-center {
+  text-align: center;
+}
 .actions-cell {
   min-width: 10rem;
   white-space: nowrap;
+  vertical-align: middle;
+}
+.status-cell {
+  vertical-align: middle;
+  text-align: center;
+  min-width: 9rem;
+}
+.status-cell :deep(.status-chip) {
+  display: flex;
+  width: fit-content;
+  margin: 0 auto;
 }
 .row-actions {
   display: flex;
@@ -1031,6 +1047,10 @@ select.form-input {
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+
+  .users-table td.cell-center {
+    text-align: left;
   }
 
   .users-table td.actions-cell {

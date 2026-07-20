@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -17,11 +19,14 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.AuditRetentionSetting;
+import com.vibegraph.auth.domain.AuditLog;
+import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
 import com.vibegraph.auth.repository.AuditLogSpecifications;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
+import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.UnauthorizedException;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,6 +41,7 @@ public class AuditService {
     private final AuditLogRepository auditLogRepository;
     private final AuditRetentionSettingRepository retentionRepository;
     private final AuditLogWriter auditLogWriter;
+    private final UserRepository userRepository;
     private final Clock clock;
     private final CurrentUser currentUser;
 
@@ -84,17 +90,22 @@ public class AuditService {
                 Math.max(0, pageable.getPageNumber()),
                 Math.min(Math.max(1, pageable.getPageSize()), 100),
                 Sort.by(Sort.Direction.DESC, "createdAt"));
-        return auditLogRepository.findAll(
+        Page<AuditLog> logs = auditLogRepository.findAll(
                         AuditLogSpecifications.withFilters(
                                 normalize(action), normalize(outcome), actorUserId, targetUserId, from, to),
-                        safePageable)
-                .map(AuditLogResponse::from);
+                        safePageable);
+        Map<UUID, String> names = userDisplayNames(logs);
+        return logs.map(log -> AuditLogResponse.from(log).withUserDisplayNames(
+                names.get(log.getActorUserId()),
+                names.get(log.getTargetUserId())));
     }
 
     @Transactional(readOnly = true)
     public AuditLogResponse get(UUID id) {
         return auditLogRepository.findById(id)
-                .map(AuditLogResponse::from)
+                .map(log -> AuditLogResponse.from(log).withUserDisplayNames(
+                        userDisplayName(log.getActorUserId()),
+                        userDisplayName(log.getTargetUserId())))
                 .orElseThrow(() -> new IllegalArgumentException("Audit log not found"));
     }
 
@@ -143,6 +154,39 @@ public class AuditService {
 
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private Map<UUID, String> userDisplayNames(Page<AuditLog> logs) {
+        HashSet<UUID> ids = new HashSet<>();
+        logs.getContent().forEach(log -> {
+            if (log.getActorUserId() != null) {
+                ids.add(log.getActorUserId());
+            }
+            if (log.getTargetUserId() != null) {
+                ids.add(log.getTargetUserId());
+            }
+        });
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        HashMap<UUID, String> names = new HashMap<>();
+        userRepository.findAllById(ids).forEach(user -> names.put(user.getId(), displayName(user)));
+        return names;
+    }
+
+    private String userDisplayName(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return userRepository.findById(userId)
+                .map(this::displayName)
+                .orElse(null);
+    }
+
+    private String displayName(User user) {
+        return user.getDisplayName() == null || user.getDisplayName().isBlank()
+                ? user.getEmail()
+                : user.getDisplayName();
     }
 
 }

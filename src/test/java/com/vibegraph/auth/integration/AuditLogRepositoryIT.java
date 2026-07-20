@@ -23,6 +23,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.repository.AuditLogRepository;
+import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AuditLogEventPublisher;
 import com.vibegraph.auth.service.AuditLogEventStream;
 import com.vibegraph.auth.service.AuditLogWriter;
@@ -73,8 +74,9 @@ class AuditLogRepositoryIT {
 
         @Bean
         AuditLogWriter auditLogWriter(
-                AuditLogRepository repository, AuditRedactor redactor, AuditLogEventPublisher publisher) {
-            return new AuditLogWriter(repository, redactor, publisher);
+                AuditLogRepository repository, UserRepository userRepository, AuditRedactor redactor,
+                AuditLogEventPublisher publisher) {
+            return new AuditLogWriter(repository, userRepository, redactor, publisher);
         }
     }
 

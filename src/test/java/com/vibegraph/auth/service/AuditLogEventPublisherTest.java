@@ -36,7 +36,7 @@ class AuditLogEventPublisherTest {
         when(stream.hasSubscribers()).thenReturn(true);
         AuditLogEventPublisher publisher = new AuditLogEventPublisher(stream, Clock.fixed(NOW, ZoneOffset.UTC));
         AuditLogResponse event = new AuditLogResponse(
-                UUID.randomUUID(), "API_KEY_CREATE", null, null, "API_KEY", "key-1", "SUCCESS",
+                UUID.randomUUID(), "API_KEY_CREATE", null, null, null, null, "API_KEY", "key-1", "SUCCESS",
                 "127.0.0.1", "{\"secret\":\"raw\"}", null);
 
         TransactionSynchronizationManager.initSynchronization();

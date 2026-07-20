@@ -20,6 +20,7 @@ import com.vibegraph.auth.domain.AuditRetentionSetting;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
+import com.vibegraph.auth.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuditService")
@@ -30,6 +31,7 @@ class AuditServiceTest {
     @Mock private AuditLogRepository auditLogRepository;
     @Mock private AuditRetentionSettingRepository retentionRepository;
     @Mock private AuditLogWriter auditLogWriter;
+    @Mock private UserRepository userRepository;
     @Mock private CurrentUser currentUser;
 
     private AuditService service;
@@ -40,6 +42,7 @@ class AuditServiceTest {
                 auditLogRepository,
                 retentionRepository,
                 auditLogWriter,
+                userRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 currentUser);
     }

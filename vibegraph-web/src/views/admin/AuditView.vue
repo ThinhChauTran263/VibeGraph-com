@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import type { AdminAuditLog } from '@/types/api'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const admin = useAdminStore()
@@ -14,6 +15,7 @@ const outcome = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 const retentionDays = ref(90)
+const detailPanelRef = ref<HTMLElement | null>(null)
 let isActive = true
 
 const pageNumber = computed(
@@ -62,6 +64,9 @@ async function load(page = 0): Promise<void> {
 async function openDetail(id: string): Promise<void> {
   try {
     await admin.fetchAuditLogDetail(id)
+    await nextTick()
+    detailPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    detailPanelRef.value?.focus({ preventScroll: true })
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : t('admin.audit.errors.loadDetail')
   }
@@ -95,6 +100,30 @@ function retryLiveUpdates(): void {
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString(locale.value) : '-'
+}
+
+function shortId(value: string | null | undefined): string {
+  return value ? value.slice(0, 8) : ''
+}
+
+function principalLabel(id: string | null | undefined, displayName: string | null | undefined): string {
+  if (!id) return t('admin.audit.labels.system')
+  return `${shortId(id)}/${displayName?.trim() || id}`
+}
+
+function actorLabel(log: AdminAuditLog): string {
+  return principalLabel(log.actorUserId, log.actorDisplayName)
+}
+
+function targetUserLabel(log: AdminAuditLog): string {
+  return log.targetUserId ? principalLabel(log.targetUserId, log.targetUserDisplayName) : '-'
+}
+
+function targetIdentifierLabel(log: AdminAuditLog): string {
+  if (log.targetUserId && (!log.targetId || log.targetId === log.targetUserId || log.targetType === 'USER')) {
+    return targetUserLabel(log)
+  }
+  return log.targetId || log.targetUserId || ''
 }
 </script>
 
@@ -224,12 +253,12 @@ function formatDate(value: string | null): string {
               <td :data-label="t('admin.audit.table.outcome')">
                 <span class="outcome" :class="log.outcome.toLowerCase()">{{ log.outcome }}</span>
               </td>
-              <td :data-label="t('admin.audit.table.actor')" class="mono">
-                {{ log.actorUserId || t('admin.audit.labels.system') }}
+              <td :data-label="t('admin.audit.table.actor')" class="principal-cell">
+                {{ actorLabel(log) }}
               </td>
               <td :data-label="t('admin.audit.table.target')">
                 {{ log.targetType || '-'
-                }}<small>{{ log.targetId || log.targetUserId || '' }}</small>
+                }}<small>{{ targetIdentifierLabel(log) }}</small>
               </td>
               <td :data-label="t('admin.audit.table.ip')" class="mono">
                 {{ log.ipAddress || '-' }}
@@ -280,7 +309,13 @@ function formatDate(value: string | null): string {
       </footer>
     </section>
 
-    <section v-if="admin.auditLogDetail" class="panel detail-panel" aria-live="polite">
+    <section
+      v-if="admin.auditLogDetail"
+      ref="detailPanelRef"
+      class="panel detail-panel"
+      aria-live="polite"
+      tabindex="-1"
+    >
       <div class="detail-heading">
         <div>
           <span class="eyebrow">{{ t('admin.audit.detail.eyebrow') }}</span>
@@ -297,17 +332,17 @@ function formatDate(value: string | null): string {
         </div>
         <div>
           <dt>{{ t('admin.audit.detail.actor') }}</dt>
-          <dd>{{ admin.auditLogDetail.actorUserId || t('admin.audit.labels.system') }}</dd>
+          <dd>{{ actorLabel(admin.auditLogDetail) }}</dd>
         </div>
         <div>
           <dt>{{ t('admin.audit.detail.targetUser') }}</dt>
-          <dd>{{ admin.auditLogDetail.targetUserId || '-' }}</dd>
+          <dd>{{ targetUserLabel(admin.auditLogDetail) }}</dd>
         </div>
         <div>
           <dt>{{ t('admin.audit.detail.target') }}</dt>
           <dd>
             {{ admin.auditLogDetail.targetType || '-' }} /
-            {{ admin.auditLogDetail.targetId || '-' }}
+            {{ targetIdentifierLabel(admin.auditLogDetail) || '-' }}
           </dd>
         </div>
         <div>
@@ -364,6 +399,7 @@ th, td { padding: var(--vg-space-3); border-bottom: 1px solid var(--vg-border); 
 th { background: var(--vg-surface-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); text-transform: uppercase; letter-spacing: .04em; }
 td small { display: block; margin-top: .2rem; color: var(--vg-text-dim); }
 .mono { font-family: var(--vg-font-mono, monospace); font-size: var(--vg-text-xs); }
+.principal-cell { font-family: var(--vg-font-mono, monospace); font-size: var(--vg-text-xs); overflow-wrap: anywhere; }
 .outcome { display: inline-flex; padding: .2rem .5rem; border-radius: 999px; background: rgba(148,163,184,.1); font-size: var(--vg-text-xs); font-weight: 800; }
 .outcome.success { color: var(--vg-green-bright); background: rgba(34,197,94,.1); }
 .outcome.failure { color: var(--vg-danger); background: rgba(239,68,68,.1); }
