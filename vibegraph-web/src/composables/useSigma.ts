@@ -14,19 +14,8 @@ import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
   SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
-  FA2_GRAVITY,
-  FA2_SCALING_RATIO,
-  FA2_BARNES_HUT_MIN_NODES,
-  FA2_SLOW_DOWN,
   FA2_ITERATIONS,
-  FA2_LINLOG_MODE,
-  FA2_OUTBOUND_ATTRACTION,
-  FA2_ADJUST_SIZES,
-  FA2_STRONG_GRAVITY_MODE,
-  FA2_OUTLIER_CLAMP_PERCENTILE,
   FA2_LARGE_GRAPH_THRESHOLD,
-  FA2_GRAVITY_LARGE,
-  FA2_SCALING_RATIO_LARGE,
   FA2_ITERATIONS_LARGE,
   LAYOUT_NORMALIZE_SPAN,
   NOVERLAP_ENABLED,
@@ -305,27 +294,19 @@ export function useSigma(options: UseSigmaOptions) {
     if (graph.order === 0) return
     const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     try {
+      const settings = forceAtlas2.inferSettings(graph)
       forceAtlas2.assign(graph, {
         iterations: isLarge ? FA2_ITERATIONS_LARGE : FA2_ITERATIONS,
-        settings: {
-          gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
-          scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
-          barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
-          slowDown: FA2_SLOW_DOWN,
-          linLogMode: FA2_LINLOG_MODE,
-          outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
-          adjustSizes: FA2_ADJUST_SIZES,
-          strongGravityMode: FA2_STRONG_GRAVITY_MODE,
-        },
+        settings,
       })
     } catch {
       // Leave the random seed positions if the layout fails.
     }
 
-    // Bound far-flung outliers first so the camera frames the main body, THEN run
-    // Noverlap as the final pass so it also resolves any pile-up the clamp creates
-    // on the bounding ring — guaranteeing no two nodes render touching.
-    if (isLarge) clampOutliers(graph, FA2_OUTLIER_CLAMP_PERCENTILE)
+    // Keep the settled body free-form. We intentionally do NOT clamp outliers
+    // into a ring: the previous "bounded disc" look was the source of the
+    // circular hairball the user complained about.
+    // If the graph later needs framing, zoom-to-fit handles that at the camera.
 
     // Normalize the settled layout to a fixed span so node sizes (rendered in
     // layout space, see Sigma `itemSizesReference`) map to a predictable pixel
@@ -672,18 +653,9 @@ export function useSigma(options: UseSigmaOptions) {
   function startLayout(graph: Graph) {
     stopLayout()
 
-    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
+    const settings = forceAtlas2.inferSettings(graph)
     const fa2 = new FA2Layout(graph, {
-      settings: {
-        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
-        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
-        barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
-        slowDown: FA2_SLOW_DOWN,
-        linLogMode: FA2_LINLOG_MODE,
-        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
-        adjustSizes: FA2_ADJUST_SIZES,
-        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
-      },
+      settings,
     })
 
     fa2.start()
