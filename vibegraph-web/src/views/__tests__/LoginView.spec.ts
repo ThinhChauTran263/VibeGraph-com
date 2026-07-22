@@ -38,6 +38,19 @@ describe('LoginView', () => {
     expect(header.text()).toContain('VibeGraph')
   })
 
+  it('renders Google and GitHub OAuth login links', async () => {
+    const { wrapper } = await mountLogin()
+
+    const google = wrapper.get('a[href="http://localhost:8080/oauth2/authorization/google"]')
+    const github = wrapper.get('a[href="http://localhost:8080/oauth2/authorization/github"]')
+
+    expect(google.text()).toContain('Google')
+    expect(github.text()).toContain('GitHub')
+    expect(google.find('img.oauth-button__icon').exists()).toBe(true)
+    expect(github.find('img.oauth-button__icon').exists()).toBe(true)
+    expect(wrapper.find('.oauth-button__badge').exists()).toBe(false)
+  })
+
   it('validates required credentials before calling login', async () => {
     const { wrapper, pinia } = await mountLogin()
     const auth = useAuthStore(pinia)
@@ -46,6 +59,12 @@ describe('LoginView', () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain('Please enter email and password.')
     expect(auth.login).not.toHaveBeenCalled()
+  })
+
+  it('shows a safe OAuth error message returned by the backend', async () => {
+    const { wrapper } = await mountLogin('/login?error=oauth_email_unavailable')
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('did not share an email address')
   })
 
   it('trims credentials and redirects a normal user to the dashboard', async () => {

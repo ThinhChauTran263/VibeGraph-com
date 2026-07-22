@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import com.vibegraph.common.exception.ConcurrentImportLimitException;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ConcurrentImportGuardTest {
@@ -38,5 +39,21 @@ class ConcurrentImportGuardTest {
 
         first.close();
         second.close();
+    }
+
+    @Test
+    void acquire_zeroLimit_disablesThatDimension() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setConcurrentImportsPerUser(0);
+        ConcurrentImportGuard guard = new ConcurrentImportGuard(properties);
+        UUID userId = UUID.randomUUID();
+
+        ConcurrentImportGuard.Lease first = guard.acquire(userId);
+        ConcurrentImportGuard.Lease second = guard.acquire(userId);
+        ConcurrentImportGuard.Lease third = guard.acquire(userId);
+
+        first.close();
+        second.close();
+        third.close();
     }
 }

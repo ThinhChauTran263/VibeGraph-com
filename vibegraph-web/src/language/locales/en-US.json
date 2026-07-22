@@ -274,8 +274,15 @@
     "password": "Password",
     "missingCredentials": "Please enter email and password.",
     "connectionError": "Unable to connect. Please try again.",
+    "oauthFailed": "OAuth sign-in failed. Please try again.",
+    "oauthEmailUnavailable": "This OAuth account did not share an email address.",
+    "oauthEmailUnverified": "Please verify your email with the OAuth provider before signing in.",
+    "oauthAccountLinkFailed": "We could not safely link this OAuth account.",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
+    "continueWith": "Or continue with",
+    "signInWithGoogle": "Google",
+    "signInWithGitHub": "GitHub",
     "noAccount": "Don't have an account?",
     "createAccount": "Create one",
     "signOut": "Sign Out",
@@ -700,7 +707,8 @@
         "runtimeVerification": "Runtime capability state could not be verified. Controls remain configuration-only.",
         "save": "Failed to save feature flag.",
         "updateFlag": "Failed to update feature flag.",
-        "updateControl": "Failed to update system control."
+        "updateControl": "Failed to update system control.",
+        "updateImportLimits": "Failed to update import limits."
       },
       "runtime": {
         "configurationOnlyTitle": "Configuration-only controls",

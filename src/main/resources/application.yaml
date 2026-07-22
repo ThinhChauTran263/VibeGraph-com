@@ -33,6 +33,26 @@ spring:
       max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
       max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:__disabled__}
+            client-secret: ${GOOGLE_CLIENT_SECRET:__disabled__}
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+          github:
+            client-id: ${GITHUB_CLIENT_ID:__disabled__}
+            client-secret: ${GITHUB_CLIENT_SECRET:__disabled__}
+            scope:
+              - read:user
+              - user:email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+
   # Neo4j connection
   neo4j:
     uri: ${NEO4J_URI:bolt://localhost:7687}
@@ -81,13 +101,17 @@ server:
 # VibeGraph custom properties
 vibegraph:
   # ── Auth (Phase 1) ──────────────────────────────────────────────────────────
-  # JWT is HS256; the secret MUST be >=32 chars or the app fails fast at startup.
+  # JWT is HS512; the secret MUST be >=64 UTF-8 bytes or the app fails fast at startup.
   # realtime.demo-permit defaults false = /ws and /mcp require auth (fail closed);
   # setting it true permits those routes for demo/local only and logs a startup WARN.
   auth:
     jwt:
       secret: ${JWT_SECRET:}
       expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+    oauth:
+      frontend-url: ${FRONTEND_URL:http://localhost:5173}
+      success-path: ${OAUTH_SUCCESS_PATH:/}
+      login-path: ${OAUTH_LOGIN_PATH:/login}
     realtime:
       demo-permit: ${VIBEGRAPH_REALTIME_DEMO_PERMIT:false}
     # Explicit, opt-in admin bootstrap. Default disabled — normal startup never creates an admin.
@@ -140,6 +164,8 @@ vibegraph:
     requests-per-minute-per-ip: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP:120}
     requests-per-minute-per-user: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_USER:240}
     requests-per-minute-per-api-key: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_API_KEY:240}
+    # Only enable behind a reverse proxy that overwrites forwarded headers.
+    # trusted-proxies accepts exact IPs and CIDRs, e.g. 127.0.0.1,172.18.0.0/16.
     trust-proxy: ${VIBEGRAPH_TRUST_PROXY:false}
     trusted-proxies: ${VIBEGRAPH_TRUSTED_PROXIES:}
 

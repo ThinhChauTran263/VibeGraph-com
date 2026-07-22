@@ -166,7 +166,7 @@ const router = createRouter({
 // ─── Navigation guard ──────────────────────────────────────────────────────────
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (to.meta.requiresAuth || to.meta.guestOnly) {
+  if ((to.meta.requiresAuth || to.meta.guestOnly) && !auth.isLoggingOut) {
     await ensureSessionLoaded(auth)
   }
   const role = auth.user?.role?.toUpperCase() ?? ''

@@ -12,11 +12,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.domain.AuthProvider;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.UserIdentity;
 import com.vibegraph.auth.dto.AuthResponse;
 import com.vibegraph.auth.dto.LoginRequest;
 import com.vibegraph.auth.dto.RegisterRequest;
+import com.vibegraph.auth.oauth.OAuthAccountProfile;
+import com.vibegraph.auth.repository.UserIdentityRepository;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
@@ -34,6 +38,9 @@ class AuthServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private UserIdentityRepository userIdentityRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -59,6 +66,7 @@ class AuthServiceTest {
     void setUp() {
         authService = new AuthService(
                 userRepository,
+                userIdentityRepository,
                 passwordEncoder,
                 jwtService,
                 currentUser,
@@ -219,5 +227,92 @@ class AuthServiceTest {
         verify(passwordEncoder).matches(eq("Password123!"), any());
         verifyNoInteractions(accountSettingsService);
         verify(jwtService, never()).issue(any());
+    }
+
+    @Test
+    @DisplayName("OAuth login creates a local account and provider identity for verified email")
+    void oauthLogin_newVerifiedGoogleAccount_createsUserAndIdentity() {
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GOOGLE,
+                "google-subject",
+                "oauth@test.local",
+                true,
+                "OAuth User",
+                "https://avatar.test/user.png");
+        UUID userId = UUID.randomUUID();
+        when(userIdentityRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-subject"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("oauth@test.local")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                user.setId(userId);
+            }
+            return user;
+        });
+        when(jwtService.issue(any(User.class))).thenReturn("oauth-jwt");
+
+        AuthResponse response = authService.oauthLogin(profile);
+
+        assertEquals("oauth-jwt", response.token());
+        assertEquals("oauth@test.local", response.user().email());
+        verify(accountSettingsService).createDefaultSettings(any(User.class));
+        verify(userIdentityRepository).save(argThat(identity ->
+                identity.getProvider() == AuthProvider.GOOGLE
+                        && identity.getProviderUserId().equals("google-subject")
+                        && identity.getUserId().equals(userId)));
+        verifyNoInteractions(passwordEncoder);
+    }
+
+    @Test
+    @DisplayName("OAuth login links verified provider identity to an existing email account")
+    void oauthLogin_existingEmail_linksIdentityWithoutCreatingSettings() {
+        UUID userId = UUID.randomUUID();
+        User existing = User.builder()
+                .id(userId)
+                .email("existing@test.local")
+                .displayName("Existing")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .emailVerified(false)
+                .build();
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GITHUB,
+                "12345",
+                "existing@test.local",
+                true,
+                "GitHub Name",
+                "https://avatar.test/github.png");
+        when(userIdentityRepository.findByProviderAndProviderUserId(AuthProvider.GITHUB, "12345"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("existing@test.local")).thenReturn(Optional.of(existing));
+        when(userRepository.save(existing)).thenReturn(existing);
+        when(jwtService.issue(existing)).thenReturn("linked-jwt");
+
+        AuthResponse response = authService.oauthLogin(profile);
+
+        assertEquals("linked-jwt", response.token());
+        assertTrue(existing.isEmailVerified());
+        assertEquals("Existing", existing.getDisplayName());
+        verify(userIdentityRepository).save(any(UserIdentity.class));
+        verify(accountSettingsService, never()).createDefaultSettings(any(User.class));
+    }
+
+    @Test
+    @DisplayName("OAuth login rejects unverified provider email before linking")
+    void oauthLogin_unverifiedEmail_rejectsBeforePersistence() {
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GOOGLE,
+                "google-subject",
+                "oauth@test.local",
+                false,
+                "OAuth User",
+                null);
+
+        assertThrows(org.springframework.security.oauth2.core.OAuth2AuthenticationException.class,
+                () -> authService.oauthLogin(profile));
+
+        verifyNoInteractions(userIdentityRepository, jwtService);
+        verify(userRepository, never()).save(any());
     }
 }

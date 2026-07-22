@@ -12,33 +12,45 @@ import com.vibegraph.common.exception.ConcurrentImportLimitException;
 public class ConcurrentImportGuard {
 
     private final AbuseProperties properties;
-    private final ConcurrentHashMap<UUID, AtomicInteger> activeImports = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, AtomicInteger> activeImportsByUser = new ConcurrentHashMap<>();
 
     public ConcurrentImportGuard(AbuseProperties properties) {
         this.properties = properties;
     }
 
-    public Lease acquire(UUID userId) {
+    public synchronized Lease acquire(UUID userId) {
         if (userId == null) {
             throw new IllegalArgumentException("userId is required");
         }
-        AtomicInteger count = activeImports.computeIfAbsent(userId, ignored -> new AtomicInteger());
-        int current = count.incrementAndGet();
-        if (current > Math.max(1, properties.getConcurrentImportsPerUser())) {
-            count.decrementAndGet();
+        AtomicInteger userCount = activeImportsByUser.computeIfAbsent(userId, ignored -> new AtomicInteger());
+
+        int currentUser = userCount.incrementAndGet();
+        if (exceedsLimit(currentUser, properties.getConcurrentImportsPerUser())) {
+            releaseUser(userId, userCount);
             throw new ConcurrentImportLimitException("Concurrent active import limit reached for this account");
         }
-        return new Lease(userId, count);
+
+        return new Lease(userId, userCount);
+    }
+
+    private static boolean exceedsLimit(int current, int configuredLimit) {
+        return configuredLimit > 0 && current > configuredLimit;
+    }
+
+    private void releaseUser(UUID userId, AtomicInteger count) {
+        if (count.decrementAndGet() == 0) {
+            activeImportsByUser.remove(userId, count);
+        }
     }
 
     public final class Lease implements AutoCloseable {
         private final UUID userId;
-        private final AtomicInteger count;
+        private final AtomicInteger userCount;
         private boolean closed;
 
-        private Lease(UUID userId, AtomicInteger count) {
+        private Lease(UUID userId, AtomicInteger userCount) {
             this.userId = userId;
-            this.count = count;
+            this.userCount = userCount;
         }
 
         @Override
@@ -47,8 +59,8 @@ public class ConcurrentImportGuard {
                 return;
             }
             closed = true;
-            if (count.decrementAndGet() == 0) {
-                activeImports.remove(userId, count);
+            synchronized (ConcurrentImportGuard.this) {
+                releaseUser(userId, userCount);
             }
         }
     }
