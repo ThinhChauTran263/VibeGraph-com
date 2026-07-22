@@ -54,8 +54,8 @@ function closeMobileNav(): void {
 }
 
 function signOut(): void {
-  auth.logout()
-  void router.push('/login')
+  void auth.logout()
+  void router.replace({ name: 'login' })
 }
 </script>
 

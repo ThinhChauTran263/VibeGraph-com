@@ -9,7 +9,7 @@ import lombok.Setter;
  * Binds {@code vibegraph.auth.jwt.*}.
  *
  * <ul>
- *   <li>{@code secret} — HS256 signing secret. MUST be at least 32 characters (256 bits);
+ *   <li>{@code secret} — HS512 signing secret. MUST be at least 64 UTF-8 bytes (512 bits);
  *       {@link com.vibegraph.auth.service.JwtService} fails fast at startup otherwise.</li>
  *   <li>{@code expirationMs} — token lifetime in milliseconds (default 24h).</li>
  * </ul>
@@ -19,7 +19,7 @@ import lombok.Setter;
 @Setter
 public class JwtProperties {
 
-    /** HS256 signing secret (>=32 chars). Read from env JWT_SECRET; never logged. */
+    /** HS512 signing secret (>=64 UTF-8 bytes). Read from env JWT_SECRET; never logged. */
     private String secret;
 
     /** Token lifetime in milliseconds. */

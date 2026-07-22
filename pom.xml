@@ -68,13 +68,17 @@
 
         <!-- ── Auth / ownership control plane ────────────────────────────────────
              Spring Security (stateless JWT), Spring Data JPA + PostgreSQL for the
-             control plane (users/ownership), Flyway for schema, JJWT for tokens.
+             control plane (users/ownership), OAuth2 client login, Flyway for schema, JJWT for tokens.
              Neo4j stays the data plane. Spring Security is added HERE together with
              the explicit SecurityFilterChain (SecurityConfig) so default HTTP-Basic
-             lockdown never ships without our allow-list/JWT policy. Google OAuth deferred. -->
+             lockdown never ships without our allow-list/JWT policy. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -94,7 +98,7 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- JJWT 0.12.x — HS256 token issue/verify. api compile-time; impl+jackson runtime. -->
+        <!-- JJWT 0.12.x — HS512 token issue/verify. api compile-time; impl+jackson runtime. -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>

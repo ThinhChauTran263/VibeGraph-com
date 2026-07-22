@@ -12,9 +12,17 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.web.context.NullSecurityContextRepository;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -31,6 +39,8 @@ import com.vibegraph.auth.web.ApiKeyAuthFilter;
 import com.vibegraph.auth.web.JwtAuthFilter;
 import com.vibegraph.auth.web.RestAccessDeniedHandler;
 import com.vibegraph.auth.web.RestAuthEntryPoint;
+import com.vibegraph.auth.web.StatelessSessionCookieFilter;
+import com.vibegraph.auth.oauth.OAuthRedirectProperties;
 import com.vibegraph.common.config.CorsProperties;
 
 import lombok.RequiredArgsConstructor;
@@ -51,7 +61,11 @@ import lombok.RequiredArgsConstructor;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class, AbuseProperties.class})
+@EnableConfigurationProperties({
+        JwtProperties.class,
+        RealtimeSecurityProperties.class,
+        AbuseProperties.class,
+        OAuthRedirectProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -67,6 +81,11 @@ public class SecurityConfig {
     private final IpBlockService ipBlockService;
     private final RequestEventService requestEventService;
     private final ObjectMapper objectMapper;
+    private final AuthenticationSuccessHandler oAuth2LoginSuccessHandler;
+    private final AuthenticationFailureHandler oAuth2LoginFailureHandler;
+    private final OAuth2UserService<OAuth2UserRequest, OAuth2User> oAuth2UserService;
+    private final AuthorizationRequestRepository<OAuth2AuthorizationRequest> oAuth2AuthorizationRequestRepository;
+    private final StatelessSessionCookieFilter statelessSessionCookieFilter;
 
     @Bean
     public ClientAddressResolver clientAddressResolver() {
@@ -98,12 +117,19 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .securityContext(sc -> sc.securityContextRepository(new NullSecurityContextRepository()))
+                .requestCache(cache -> cache.disable())
                 .exceptionHandling(eh -> eh
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    auth.requestMatchers("/api/auth/**", "/actuator/health", "/ws/**").permitAll();
+                    auth.requestMatchers(
+                            "/api/auth/**",
+                            "/actuator/health",
+                            "/ws/**",
+                            "/oauth2/**",
+                            "/login/oauth2/**").permitAll();
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/mcp/**").permitAll();
@@ -112,6 +138,13 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(authorization -> authorization
+                                .authorizationRequestRepository(oAuth2AuthorizationRequestRepository))
+                        .userInfoEndpoint(userInfo -> userInfo.userService(oAuth2UserService))
+                        .successHandler(oAuth2LoginSuccessHandler)
+                        .failureHandler(oAuth2LoginFailureHandler))
+                .addFilterBefore(statelessSessionCookieFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)

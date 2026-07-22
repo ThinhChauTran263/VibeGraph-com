@@ -14,16 +14,19 @@ import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.MacAlgorithm;
 
 /**
- * Issues and verifies stateless HS256 JWTs.
+ * Issues and verifies stateless HS512 JWTs.
  *
  * <p>Token layout: {@code sub} = user id (UUID), claim {@code email}, claim {@code role}.
  * The signing key is derived from {@code vibegraph.auth.jwt.secret}; the service fails fast
- * at construction if the secret is shorter than 32 bytes (HS256 needs a 256-bit key).
+ * at construction if the secret is shorter than 64 bytes (HS512 needs a 512-bit key).
  *
  * <p>Verification is signature + expiry; any failure throws {@link JwtException}, which the
  * caller (the auth filter) treats as an unauthenticated request.
@@ -31,7 +34,9 @@ import io.jsonwebtoken.security.Keys;
 @Service
 public class JwtService {
 
-    private static final int MIN_SECRET_BYTES = 32;
+    private static final MacAlgorithm SIGNATURE_ALGORITHM = Jwts.SIG.HS512;
+    private static final String SIGNATURE_ALGORITHM_ID = SIGNATURE_ALGORITHM.getId();
+    private static final int MIN_SECRET_BYTES = 64;
 
     private final SecretKey key;
     private final long expirationMs;
@@ -41,7 +46,8 @@ public class JwtService {
         if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
             throw new IllegalStateException(
                     "vibegraph.auth.jwt.secret must be at least " + MIN_SECRET_BYTES
-                            + " characters (256-bit HS256 key). Set a longer JWT_SECRET.");
+                            + " UTF-8 bytes (512-bit HS512 key). Set JWT_SECRET to a 64+ "
+                            + "character ASCII secret or equivalent.");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = properties.getExpirationMs();
@@ -56,7 +62,7 @@ public class JwtService {
                 .claim("role", user.getRole() != null ? user.getRole().name() : Role.USER.name())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expirationMs)))
-                .signWith(key)
+                .signWith(key, SIGNATURE_ALGORITHM)
                 .compact();
     }
 
@@ -66,11 +72,14 @@ public class JwtService {
      * @throws JwtException if the token is missing, malformed, expired, or has a bad signature
      */
     public AuthenticatedUser parse(String token) {
-        Claims claims = Jwts.parser()
+        Jws<Claims> jws = Jwts.parser()
                 .verifyWith(key)
                 .build()
-                .parseSignedClaims(token)
-                .getPayload();
+                .parseSignedClaims(token);
+        if (!SIGNATURE_ALGORITHM_ID.equals(jws.getHeader().getAlgorithm())) {
+            throw new UnsupportedJwtException("JWT alg must be " + SIGNATURE_ALGORITHM_ID + ".");
+        }
+        Claims claims = jws.getPayload();
         UUID id = UUID.fromString(claims.getSubject());
         String email = claims.get("email", String.class);
         Role role = parseRole(claims.get("role", String.class));
