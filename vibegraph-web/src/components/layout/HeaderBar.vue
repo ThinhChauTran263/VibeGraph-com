@@ -10,9 +10,9 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const router = useRouter()
 
-function handleLogout() {
-  auth.logout()
-  router.push({ name: 'login' })
+function handleLogout(): void {
+  void auth.logout()
+  void router.replace({ name: 'login' })
 }
 </script>
 

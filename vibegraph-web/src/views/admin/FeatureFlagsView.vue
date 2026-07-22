@@ -3,7 +3,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { featureAvailabilityContract, refreshFeatureAvailability } from '@/lib/featureAvailability'
-import type { AdminFeatureFlag, AdminFeatureFlagRequest } from '@/types/api'
+import type {
+  AdminFeatureFlag,
+  AdminFeatureFlagRequest,
+} from '@/types/api'
 
 const adminStore = useAdminStore()
 const { t } = useI18n({ useScope: 'global' })

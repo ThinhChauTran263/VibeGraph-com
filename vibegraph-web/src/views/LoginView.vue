@@ -3,13 +3,16 @@
  * LoginView — email + password authentication.
  * On success, navigates to the role-appropriate dashboard. Shows inline error on failure.
  */
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import googleLogoUrl from '@/assets/icons/google.svg'
+import githubLogoUrl from '@/assets/icons/github.svg'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiError } from '@/lib/api'
+import { API_BASE_URL } from '@/lib/constants'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +23,16 @@ const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const oauthBaseUrl = API_BASE_URL.replace(/\/$/, '')
+const oauthErrorMessage = computed(() => {
+  const code = typeof route.query.error === 'string' ? route.query.error : ''
+  if (!code) return ''
+  if (code === 'oauth_email_unavailable') return t('auth.oauthEmailUnavailable')
+  if (code === 'oauth_email_unverified') return t('auth.oauthEmailUnverified')
+  if (code === 'oauth_account_link_failed') return t('auth.oauthAccountLinkFailed')
+  return t('auth.oauthFailed')
+})
+const visibleError = computed(() => error.value || oauthErrorMessage.value)
 
 async function handleLogin() {
   error.value = ''
@@ -51,6 +64,10 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
   if (isAdmin)
     return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? rawRedirect : fallback
   return rawRedirect === '/admin' || rawRedirect.startsWith('/admin/') ? fallback : rawRedirect
+}
+
+function oauthLoginUrl(provider: 'google' | 'github'): string {
+  return `${oauthBaseUrl}/oauth2/authorization/${provider}`
 }
 </script>
 
@@ -94,13 +111,27 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
           />
         </div>
 
-        <div v-if="error" class="auth-form__error" role="alert">
-          {{ error }}
+        <div v-if="visibleError" class="auth-form__error" role="alert">
+          {{ visibleError }}
         </div>
 
         <button type="submit" class="auth-form__submit" :disabled="loading">
           {{ loading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
+
+        <div class="oauth-actions" aria-label="OAuth sign-in options">
+          <p class="oauth-actions__label">{{ t('auth.continueWith') }}</p>
+          <div class="oauth-actions__buttons">
+            <a :href="oauthLoginUrl('google')" class="oauth-button oauth-button--google">
+              <img class="oauth-button__icon" :src="googleLogoUrl" alt="" aria-hidden="true" />
+              <span class="oauth-button__text">{{ t('auth.signInWithGoogle') }}</span>
+            </a>
+            <a :href="oauthLoginUrl('github')" class="oauth-button oauth-button--github">
+              <img class="oauth-button__icon oauth-button__icon--github" :src="githubLogoUrl" alt="" aria-hidden="true" />
+              <span class="oauth-button__text">{{ t('auth.signInWithGitHub') }}</span>
+            </a>
+          </div>
+        </div>
       </form>
 
       <p class="auth-card__footer">
@@ -145,9 +176,9 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
   max-width: 400px;
   padding: var(--vg-space-8);
   background: var(--vg-surface);
-  border: 1px solid var(--vg-border);
+  border: 0;
   border-radius: var(--vg-radius);
-  box-shadow: var(--vg-shadow-lg);
+  box-shadow: none;
 }
 
 .auth-card__title {
@@ -247,6 +278,71 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
   cursor: not-allowed;
 }
 
+.oauth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+  margin-top: var(--vg-space-2);
+}
+
+.oauth-actions__label {
+  margin: 0;
+  font-size: var(--vg-text-xs);
+  font-weight: 700;
+  color: var(--vg-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.oauth-actions__buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vg-space-2);
+}
+
+.oauth-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  text-decoration: none;
+  color: var(--vg-text);
+  background: var(--vg-bg-elev);
+  transition:
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    transform var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur-fast) var(--vg-ease-out);
+}
+
+.oauth-button:hover {
+  border-color: var(--vg-blue);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.oauth-button__icon {
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.oauth-button__icon--github {
+  filter: brightness(0) invert(1);
+}
+
+.oauth-button__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .auth-card__footer {
   margin: var(--vg-space-6) 0 0;
   font-size: var(--vg-text-sm);
@@ -277,6 +373,10 @@ function resolvePostLoginRedirect(rawRedirect: string, role?: string): string {
 
   .auth-card__title {
     font-size: var(--vg-text-lg);
+  }
+
+  .oauth-actions__buttons {
+    grid-template-columns: 1fr;
   }
 }
 </style>

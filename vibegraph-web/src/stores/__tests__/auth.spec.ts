@@ -176,6 +176,43 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('vg_token')).toBeNull()
       expect(localStorage.getItem('vg_user')).toBeNull()
     })
+
+    it('returns immediately while the logout request is still settling', async () => {
+      localStorage.setItem('vg_user', JSON.stringify(fakeUser))
+      let resolveLogout!: () => void
+      mockAuthApi.logout.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveLogout = resolve
+        }),
+      )
+      setActivePinia(createPinia())
+      const store = useAuthStore()
+
+      const logoutPromise = store.logout()
+
+      await expect(logoutPromise).resolves.toBeUndefined()
+      expect(store.isAuthenticated).toBe(false)
+      expect(store.isLoggingOut).toBe(true)
+
+      resolveLogout()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(store.isLoggingOut).toBe(false)
+    })
+
+    it('clears local session immediately even if the logout request fails', async () => {
+      localStorage.setItem('vg_user', JSON.stringify(fakeUser))
+      mockAuthApi.logout.mockRejectedValue(new Error('network down'))
+      setActivePinia(createPinia())
+      const store = useAuthStore()
+
+      await store.logout()
+
+      expect(store.isAuthenticated).toBe(false)
+      expect(store.user).toBeNull()
+      expect(localStorage.getItem('vg_user')).toBeNull()
+    })
   })
 
   // ─── fetchCurrentUser ────────────────────────────────────────────────────────

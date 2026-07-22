@@ -146,9 +146,9 @@ async function refreshAccountState(): Promise<void> {
   })()
   return accountRefreshPromise
 }
-async function signOut() {
-  await auth.logout()
-  await router.push({ name: 'login' })
+function signOut(): void {
+  void auth.logout()
+  void router.replace({ name: 'login' })
 }
 </script>
 <template>

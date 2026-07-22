@@ -20,6 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
   // ─── State ───────────────────────────────────────────────────────────────────
   const token = ref<string | null>(null)
   const user = ref<User | null>(loadUser())
+  const isLoggingOut = ref(false)
 
   // ─── Getters ─────────────────────────────────────────────────────────────────
   const isAuthenticated = computed(() => !!user.value)
@@ -42,8 +43,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** Clear local session and redirect handled by the caller (router guard or interceptor). */
   async function logout(): Promise<void> {
-    await authApi.logout().catch(() => undefined)
+    isLoggingOut.value = true
     clearSession()
+    void authApi.logout()
+      .catch(() => undefined)
+      .finally(() => {
+        isLoggingOut.value = false
+      })
   }
 
   /**
@@ -65,6 +71,7 @@ export const useAuthStore = defineStore('auth', () => {
   // ─── Internal helpers ────────────────────────────────────────────────────────
 
   function setSession(response: AuthResponse): void {
+    isLoggingOut.value = false
     token.value = null
     user.value = response.user
     localStorage.removeItem(TOKEN_KEY)
@@ -92,6 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
     // state
     token,
     user,
+    isLoggingOut,
     // getters
     isAuthenticated,
     userEmail,
