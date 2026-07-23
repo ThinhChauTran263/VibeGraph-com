@@ -56,12 +56,17 @@ export function envBool(key: string, fallback: boolean): boolean {
 }
 
 // ── Graph rendering ──────────────────────────────────────────────────────────
-/** Max nodes handed to the renderer before Safe Mode caps the view. */
-export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 1500, { min: 0 })
+/**
+ * Max nodes handed to the renderer before Safe Mode caps the view.
+ *
+ * Default 0 disables client-side capping so the graph renders the full backend
+ * slice unless the operator explicitly enables a smaller budget via env.
+ */
+export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 0, { min: 0 })
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
-export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 7, { min: 1 })
+export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 6, { min: 1 })
 export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 4, { min: 1 })
 export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 26, { min: 1 })
 
@@ -70,15 +75,15 @@ export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 26, { min: 1 })
 // the deeper / more numerous it is, the smaller — so dense member nodes don't drown
 // out the architecture. Floats are allowed (e.g. 4.5) for fine-grained tuning.
 //   Project > Package > File > Type decl > Member/Endpoint > Detail/metadata
-export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 14, { min: 1 })
-export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 10, { min: 1 })
-export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 9, { min: 1 })
+export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 8, { min: 1 })
+export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 7, { min: 1 })
+export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 6, { min: 1 })
 /** Type declarations: Class / Interface / Enum / Record / DBModel. */
-export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 8, { min: 1 })
+export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 6, { min: 1 })
 /** Behavioral members: Method / Constructor. */
-export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 6, { min: 1 })
+export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 5, { min: 1 })
 /** HTTP entry points: Route / APIEndpoint (kept prominent despite shallow scope). */
-export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 6, { min: 1 })
+export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 5, { min: 1 })
 /** Focus-mode opacities for the active vs dimmed nodes (0–1). */
 export const FOCUS_OPACITY_ACTIVE = envFloat('VITE_FOCUS_OPACITY_ACTIVE', 1.0, { min: 0, max: 1 })
 export const FOCUS_OPACITY_DIMMED = envFloat('VITE_FOCUS_OPACITY_DIMMED', 0.1, { min: 0, max: 1 })
@@ -145,7 +150,7 @@ export const SIGMA_MAX_EDGE_LABEL_ZOOM_SCALE = envFloat('VITE_SIGMA_MAX_EDGE_LAB
  */
 export const SIGMA_LABEL_RENDERED_SIZE_THRESHOLD = envInt(
   'VITE_SIGMA_LABEL_RENDERED_SIZE_THRESHOLD',
-  6,
+  8,
   { min: 0 },
 )
 
@@ -180,7 +185,7 @@ export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.15, { min: 0.0
  * thin width no matter how far you zoom in (they never balloon with zoom like the
  * default size/√ratio scaling would). This is the effective edge line thickness.
  */
-export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 1.7, { min: 0.5 })
+export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 0.75, { min: 0.25 })
 
 /**
  * Camera-ratio thresholds that stage label reveal (Sigma ratio: LOWER = zoomed IN).
@@ -208,8 +213,8 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
 })
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
-export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.2, { min: 0 })
-export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 100, { min: 0 })
+export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 1.0, { min: 0 })
+export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 5.0, { min: 0 })
 /** Enable Barnes-Hut optimization once node count exceeds this. */
 export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
@@ -220,8 +225,8 @@ export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 400, { min: 1 })
 // The reference "grapuco" look is standard ForceAtlas2 (NOT LinLog) with strong
 // repulsion + dissuade-hubs: connected nodes stay close (short, local edges) while
 // unrelated nodes push far apart, so the graph spreads into organic branches
-// instead of one dense hairball. LinLog is intentionally OFF — it lengthens edges
-// and pulls the body toward the center (measured edgeToRadius 0.48 vs 0.29).
+// instead of one dense hairball. LinLog stays OFF by default because it lengthens
+// edges and pulls the body toward the center (measured edgeToRadius 0.48 vs 0.29).
 //
 // Do NOT enable adjustSizes + Noverlap together — those pack the graph into a
 // uniform square and destroy the branch structure. They default OFF.
@@ -257,8 +262,8 @@ export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD'
  * wide; gravity ~1 combined with strongGravityMode keeps disconnected nodes near
  * the body so the camera frames the main cluster instead of a distant outlier.
  */
-export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 1, { min: 0 })
-export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 60, { min: 0 })
+export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 1.0, { min: 0 })
+export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 6.0, { min: 0 })
 /** Iterations for the large-graph profile (more passes = better separated). */
 export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 900, { min: 1 })
 
@@ -279,12 +284,13 @@ export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 1000, 
 // nodes overlap on screen. `margin` is the minimum clear gap (layout units) kept
 // between node boundaries; at the normalized span it maps to a consistent pixel gap.
 export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
-export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 20, { min: 0 })
-export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.5, { min: 0 })
+export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 12, { min: 0 })
+export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.15, { min: 0 })
 export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
+export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 1600, { min: 0 })
 
 /** Auto-stop the layout worker after this long. */
-export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 5000, { min: 0 })
+export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
 /** Zoom-to-fit camera animation duration. */
 export const ZOOM_FIT_DURATION_MS = envInt('VITE_ZOOM_FIT_DURATION_MS', 300, { min: 0 })
 

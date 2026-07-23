@@ -35,11 +35,24 @@ describe('useFilterStore — edge filter state semantics', () => {
     expect(store.hasActiveFilters).toBe(false)
   })
 
-  it('flags active filters when a structural edge type is hidden', () => {
+  it('isolates a visible baseline type on first click even when detail types are hidden', () => {
     const store = useFilterStore()
 
-    store.toggleEdgeType('DEFINES', ALL_EDGE_TYPES)
+    store.toggleNodeType('Class', ['Project', 'Package', 'File', 'Class', 'Method'])
 
+    expect(store.hiddenNodeTypes.has('Class')).toBe(false)
+    expect(store.hiddenNodeTypes.has('Method')).toBe(true)
+    expect(store.hiddenNodeTypes.has('File')).toBe(true)
+    expect(store.hiddenNodeTypes.has('Package')).toBe(true)
+  })
+
+  it('flags active filters when a baseline edge type is isolated', () => {
+    const store = useFilterStore()
+
+    store.toggleEdgeType('CALLS', ALL_EDGE_TYPES)
+
+    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('IMPORTS')).toBe(true)
     expect(store.hiddenEdgeTypes.has('DEFINES')).toBe(true)
     expect(store.hasActiveFilters).toBe(true)
   })
@@ -89,7 +102,18 @@ describe('useFilterStore — edge filter state semantics', () => {
     const sortedNodes = (set: ReadonlySet<NodeType>): NodeType[] => [...set].sort()
     expect(sortedNodes(store.hiddenNodeTypes)).toEqual(sortedNodes(defaultHiddenNodeTypes()))
     expect(sortedTypes(store.hiddenEdgeTypes)).toEqual(sortedTypes(defaultHiddenEdgeTypes()))
+    expect(store.hideIsolatedNodes).toBe(true)
     expect(store.searchQuery).toBe('')
     expect(store.hasActiveFilters).toBe(false)
+  })
+
+  it('lets isolated nodes be revealed without changing the default hidden baselines', () => {
+    const store = useFilterStore()
+
+    expect(store.hideIsolatedNodes).toBe(true)
+    store.toggleIsolatedNodes()
+    expect(store.hideIsolatedNodes).toBe(false)
+    store.reset()
+    expect(store.hideIsolatedNodes).toBe(true)
   })
 })

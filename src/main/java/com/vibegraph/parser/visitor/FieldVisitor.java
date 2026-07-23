@@ -12,6 +12,7 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -49,18 +50,17 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         }
 
         // TYPE_OF edge to the field's declared type
-        String declaredType = variable.getType().asString();
-        String resolvedType = resolveTypeName(declaredType, declaration);
-        if (!isPrimitive(resolvedType)) {
-            extractedEdges.add(EdgeData.of("TYPE_OF", fieldFullName, resolvedType));
-        }
+        TypeReferenceSupport.resolveTypeReference(variable.getType(), declaration)
+                .ifPresent(resolvedType -> extractedEdges.add(EdgeData.of("TYPE_OF", fieldFullName, resolvedType)));
 
         // INJECTS edge if field has @Autowired or @Inject
         if (isInjected(declaration) && ownerFullName != null) {
             Map<String, Object> props = new HashMap<>();
             props.put("via", "field");
             props.put("fieldName", variable.getNameAsString());
-            extractedEdges.add(EdgeData.of("INJECTS", ownerFullName, resolvedType, props));
+            TypeReferenceSupport.resolveTypeReference(variable.getType(), declaration)
+                    .ifPresent(resolvedType ->
+                            extractedEdges.add(EdgeData.of("INJECTS", ownerFullName, resolvedType, props)));
         }
     }
 
@@ -76,57 +76,6 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         return variable.findAncestor(EnumDeclaration.class)
                 .flatMap(EnumDeclaration::getFullyQualifiedName)
                 .orElse(null);
-    }
-
-    private String resolveTypeName(String typeName, FieldDeclaration context) {
-        // Strip generics for resolution
-        String baseName = typeName.contains("<") ? typeName.substring(0, typeName.indexOf('<')) : typeName;
-
-        // Primitives don't need resolution
-        if (isPrimitive(baseName)) {
-            return typeName;
-        }
-
-        // Already qualified
-        if (baseName.contains(".")) {
-            return typeName;
-        }
-
-        // Try to resolve from imports
-        return context.findCompilationUnit()
-                .flatMap(cu -> cu.getImports().stream()
-                        .filter(imp -> !imp.isAsterisk())
-                        .filter(imp -> imp.getName().getIdentifier().equals(baseName))
-                        .findFirst()
-                        .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> {
-                    if (JAVA_LANG_TYPES.contains(baseName)) {
-                        return "java.lang." + baseName;
-                    }
-                    return context.findCompilationUnit()
-                            .flatMap(cu -> cu.getPackageDeclaration())
-                            .map(pkg -> pkg.getNameAsString() + "." + baseName)
-                            .orElse(baseName);
-                });
-    }
-
-    /** Implicitly-imported {@code java.lang} types that must not be mis-qualified to the
-     * current package when unqualified and not explicitly imported. */
-    private static final java.util.Set<String> JAVA_LANG_TYPES = java.util.Set.of(
-            "String", "Object", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
-            "Character", "Number", "CharSequence", "StringBuilder", "StringBuffer", "Math", "System",
-            "Thread", "Runnable", "Iterable", "Comparable", "Cloneable", "Class", "Enum", "Void",
-            "Throwable", "Exception", "RuntimeException", "Error", "IllegalArgumentException",
-            "IllegalStateException", "NullPointerException", "UnsupportedOperationException");
-
-    private boolean isPrimitive(String type) {
-        String baseName = type.contains("<") ? type.substring(0, type.indexOf('<')) : type;
-        return switch (baseName) {
-            case "int", "long", "short", "byte", "float", "double", "boolean", "char",
-                 "Integer", "Long", "Short", "Byte", "Float", "Double", "Boolean", "Character",
-                 "String", "Object" -> true;
-            default -> false;
-        };
     }
 
     private NodeData toNodeData(FieldDeclaration declaration, VariableDeclarator variable) {

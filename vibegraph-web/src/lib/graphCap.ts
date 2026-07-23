@@ -1,5 +1,6 @@
 /**
- * Graph capping ("Safe Mode") - bounds how many nodes are handed to the renderer.
+ * Graph capping ("Safe Mode") - bounds how many nodes are handed to the renderer
+ * when an operator explicitly enables it via env.
  *
  * The freeze/crash on heavy projects comes from rendering the ENTIRE graph (tens of
  * thousands of nodes) on the browser main thread + WebGL. This module keeps only the
@@ -20,7 +21,7 @@ import { GRAPH_SAFE_NODE_LIMIT } from '@/lib/runtimeConfig'
 /**
  * Default render budget. Above this many (post-filter) nodes the graph enters Safe
  * Mode and only the top-ranked nodes are rendered. Sourced from
- * `VITE_GRAPH_SAFE_NODE_LIMIT` (see runtimeConfig); tuned so a mid laptop stays smooth.
+ * `VITE_GRAPH_SAFE_NODE_LIMIT` (see runtimeConfig); default `0` disables capping.
  */
 export { GRAPH_SAFE_NODE_LIMIT }
 

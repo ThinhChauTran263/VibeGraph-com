@@ -19,6 +19,7 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSol
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 import com.vibegraph.common.util.FileUtils;
+import com.vibegraph.parser.NodeLayerClassifier;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
@@ -138,6 +139,8 @@ public class ParserServiceImpl implements ParserService {
             // Annotation nodes (annotation types used by classes/methods/fields).
             nodes.addAll(annotationVisitor.getExtractedNodes());
 
+            nodes = NodeLayerClassifier.withLayers(nodes);
+
             // Aggregate edges
             List<EdgeData> edges = new ArrayList<>();
             edges.addAll(fileDefinesEdges(fileNode, nodes));
@@ -152,6 +155,8 @@ public class ParserServiceImpl implements ParserService {
             if (importVisitor != null) {
                 edges.addAll(importVisitor.getExtractedEdges());
             }
+
+            edges = aggregateEdges(edges);
 
             return ParseResult.builder()
                     .filePath(filePath.toString())
@@ -204,6 +209,73 @@ public class ParserServiceImpl implements ParserService {
                         "lineNumber", node.lineNumber()
                 )))
                 .toList();
+    }
+
+    private List<EdgeData> aggregateEdges(List<EdgeData> rawEdges) {
+        if (rawEdges == null || rawEdges.isEmpty()) {
+            return List.of();
+        }
+        Map<String, EdgeAggregate> aggregated = new LinkedHashMap<>();
+        for (EdgeData edge : rawEdges) {
+            if (edge == null) {
+                continue;
+            }
+            String key = edge.sourceFullName() + "|" + edge.type() + "|" + edge.targetFullName();
+            aggregated.computeIfAbsent(key, ignored -> new EdgeAggregate(edge)).add(edge);
+        }
+        return aggregated.values().stream().map(EdgeAggregate::toEdgeData).toList();
+    }
+
+    private static final class EdgeAggregate {
+        private final String type;
+        private final String sourceFullName;
+        private final String targetFullName;
+        private final Map<String, Object> properties = new LinkedHashMap<>();
+        private final List<Integer> occurrences = new ArrayList<>();
+        private int weight = 0;
+        private Integer lineNumber;
+
+        private EdgeAggregate(EdgeData first) {
+            this.type = first.type();
+            this.sourceFullName = first.sourceFullName();
+            this.targetFullName = first.targetFullName();
+            if (first.properties() != null) {
+                properties.putAll(first.properties());
+            }
+        }
+
+        private void add(EdgeData edge) {
+            weight++;
+            Integer line = lineNumber(edge);
+            if (line != null) {
+                if (lineNumber == null) {
+                    lineNumber = line;
+                }
+                if (occurrences.size() < 10) {
+                    occurrences.add(line);
+                }
+            }
+        }
+
+        private EdgeData toEdgeData() {
+            Map<String, Object> props = new LinkedHashMap<>(properties);
+            props.put("weight", weight);
+            if (!occurrences.isEmpty()) {
+                props.put("occurrences", occurrences);
+            }
+            if (lineNumber != null) {
+                props.put("lineNumber", lineNumber);
+            }
+            return EdgeData.of(type, sourceFullName, targetFullName, props);
+        }
+
+        private Integer lineNumber(EdgeData edge) {
+            if (edge.properties() == null) {
+                return null;
+            }
+            Object value = edge.properties().get("lineNumber");
+            return value instanceof Number number ? number.intValue() : null;
+        }
     }
 
     private int lineCount(Path filePath) {

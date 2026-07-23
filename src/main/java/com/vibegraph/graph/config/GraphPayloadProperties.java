@@ -25,10 +25,10 @@ import lombok.Data;
 public class GraphPayloadProperties {
 
     /** Default maximum nodes returned over HTTP when no explicit limit is requested. */
-    private int nodeLimit = 1500;
+    private int nodeLimit = 2500;
 
     /** Default maximum edges returned over HTTP when no explicit limit is requested. */
-    private int edgeLimit = 4000;
+    private int edgeLimit = 6000;
 
     /** Hard ceiling on an explicitly requested node limit (protects server + browser). */
     private int maxNodeLimit = 10000;

@@ -1,5 +1,7 @@
 package com.vibegraph.graph.dto.response;
 
+import java.util.List;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,4 +18,6 @@ public class EdgeDto {
     private String type;
     private Double confidence;
     private Integer lineNumber;
+    private Integer weight;
+    private List<Integer> occurrences;
 }

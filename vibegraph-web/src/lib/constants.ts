@@ -39,9 +39,9 @@ export const NODE_COLORS: Record<NodeType, string> = {
 }
 
 // Edge colors by relationship type - matches EdgeType from graph.ts.
-// Tuned so the DEFAULT-VISIBLE structural edges (CONTAINS, DEFINES, HAS_METHOD,
-// HAS_INNER, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, CALLS, HANDLES_ROUTE) sit on
-// clearly different hues; the CPG-lite (hidden-by-default) ones fill the gaps.
+// Tuned so the DEFAULT-VISIBLE structural edges (IMPORTS, CALLS, HANDLES_ROUTE,
+// EXTENDS, IMPLEMENTS, OVERRIDES) sit on clearly different hues; the CPG-lite
+// (hidden-by-default) ones fill the gaps.
 export const EDGE_COLORS: Record<EdgeType, string> = {
   // ── Default-visible structural edges (must be unmistakable) ──
   CALLS: '#DC2626', // red
@@ -70,79 +70,72 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   OWNS: '#6366F1', // indigo
 }
 
-// CPG-lite exposure policy (Phase 1).
+// Filter baseline policy.
 //
-// The backend parser emits both high-level STRUCTURAL relationships and deeper
-// CPG-lite (type/dependency) relationships. Rather than DROPPING the CPG-lite
-// edges at the data boundary (which made them impossible to ever reveal), we keep
-// every backend-emitted edge in the store and curate VISIBILITY through the
-// filter state:
-//   - STRUCTURAL_EDGE_TYPES are visible by default (readable architecture view).
-//   - CPG_LITE_EDGE_TYPES are hidden by default but fully revealable via the Edge
-//     Types "Show all" button / advanced filter.
-//
-// Only relationship types the parser actually emits are listed. OWNS exists in
-// the schema/contract enum but is NOT currently produced by any parser visitor,
-// so it is intentionally absent from both sets (it would never have a count > 0).
-// As of Phase 2, the parser additionally emits CONTAINS (Package hierarchy),
-// OVERRIDES, ANNOTATED_BY, and INSTANTIATES.
+// The backend is the source of truth for aggregation. The frontend keeps every
+// backend-emitted node/edge in the store and curates the DEFAULT view only
+// through hidden filter sets.
 
-// Default-VISIBLE structural relationships (architecture graph).
-export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+export const BASELINE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'Project',
+  'Package',
+  'File',
+  'Class',
+  'Interface',
+  'Enum',
+  'Record',
+  'DBModel',
+  'Method',
+  'Constructor',
+  'APIEndpoint',
+])
+
+export const DETAIL_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'Field',
+  'Annotation',
+  'LocalVariable',
+  'Route',
+  'External',
+])
+
+export const BASELINE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
   'CONTAINS',
   'DEFINES',
   'HAS_METHOD',
   'HAS_INNER',
+  'IMPORTS',
+  'CALLS',
+  'INJECTS',
+  'HANDLES_ROUTE',
   'EXTENDS',
   'IMPLEMENTS',
   'OVERRIDES',
-  'IMPORTS',
-  'CALLS',
-  'HANDLES_ROUTE',
+  'STEP_IN_FLOW',
 ])
 
-// Default-HIDDEN CPG-lite relationships (type / parameter / return / throws /
-// field-ownership / injection / instantiation / annotation metadata). Emitted by
-// the backend, revealed via "Show all".
-export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+export const DETAIL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'OWNS',
   'HAS_FIELD',
   'TYPE_OF',
   'RETURNS',
   'PARAMETER_TYPE',
   'THROWS',
   'INSTANTIATES',
-  'INJECTS',
   'ANNOTATED_BY',
-  // Phase 3 deep CPG (body-level data-flow): default-hidden, revealed via "Show all".
   'READS',
   'WRITES',
   'CATCHES',
-  // Phase 4 inferred execution flow: default-hidden, revealed via "Show all".
-  'STEP_IN_FLOW',
 ])
+
+// Backwards-compatible aliases for existing callers/tests.
+export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = BASELINE_EDGE_TYPES
+export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = DETAIL_EDGE_TYPES
 
 // Edge types hidden by default. The filter store initializes `hiddenEdgeTypes`
 // from this set so the default graph stays readable while every type with a
 // count > 0 remains revealable.
-export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TYPES
-
-// Node types hidden by default so the architecture graph stays readable, matching
-// the density of comparable tools. These low-signal leaf/structural types add most
-// of the on-screen clutter (Field/External/Annotation alone are ~40% of nodes on a
-// typical project) without conveying architecture. All remain in the data and are
-// revealed via the Node Types "Show all" button or by toggling each type.
-//   - LocalVariable: deep-CPG detail (only present with the backend deep-cpg flag)
-//   - Field / Annotation: member-level noise that clutters every class
-//   - External: third-party symbols outside the project
-//   - Package / Project: structural containers (the Explorer tree already shows these)
-export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
-  'LocalVariable',
-  'Field',
-  'Annotation',
-  'External',
-  'Package',
-  'Project',
-])
+export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = DETAIL_EDGE_TYPES
+export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = DETAIL_NODE_TYPES
 
 // Default node sizes (sourced from env via runtimeConfig)
 export const NODE_SIZES = {
@@ -194,9 +187,53 @@ export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
 // Default node label color on the dark canvas.
 export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
 
+const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1'])
+
+function currentBrowserHostname(): string | null {
+  if (typeof window === 'undefined') return null
+  return window.location.hostname
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+/**
+ * Keep browser session cookies working in local dev regardless of whether the user
+ * opens Vite as localhost or 127.0.0.1. Cookies are host-scoped, so a page opened
+ * on 127.0.0.1 must call the backend on 127.0.0.1 too; calling localhost would
+ * create a different cookie jar and /api/auth/me would return 401 after login.
+ */
+export function resolveLocalhostAwareUrl(
+  configuredUrl: string | undefined,
+  fallbackUrl: string,
+  browserHostname = currentBrowserHostname(),
+): string {
+  const raw = configuredUrl?.trim() || fallbackUrl
+  if (!browserHostname || !LOCAL_DEV_HOSTS.has(browserHostname)) {
+    return trimTrailingSlash(raw)
+  }
+
+  try {
+    const url = new URL(raw)
+    if (LOCAL_DEV_HOSTS.has(url.hostname)) {
+      url.hostname = browserHostname
+    }
+    return trimTrailingSlash(url.toString())
+  } catch {
+    return trimTrailingSlash(raw)
+  }
+}
+
 // API base URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export const API_BASE_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_API_URL,
+  'http://localhost:8080',
+)
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws/graph-updates'
+export const WS_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_WS_URL,
+  'http://localhost:8080/ws/graph-updates',
+)

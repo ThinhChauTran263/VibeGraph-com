@@ -18,16 +18,40 @@ const cloneSet = <T>(values: Set<T>): Set<T> => new Set(values)
  *  - Already isolating, clicking the ONLY visible type: RESTORE — show everything
  *    again.
  */
-function nextIsolateHiddenSet<T>(hidden: Set<T>, type: T, available: readonly T[]): Set<T> {
+function setEquals<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
+}
+
+function intersection<T>(values: ReadonlySet<T>, allowed: ReadonlySet<T>): Set<T> {
+  const result = new Set<T>()
+  for (const value of values) {
+    if (allowed.has(value)) result.add(value)
+  }
+  return result
+}
+
+function nextIsolateHiddenSet<T>(
+  hidden: Set<T>,
+  type: T,
+  available: readonly T[],
+  defaultHidden: ReadonlySet<T> = new Set<T>(),
+): Set<T> {
   const all = new Set<T>(available)
   all.add(type)
 
   const visibleCount = [...all].reduce((count, t) => count + (hidden.has(t) ? 0 : 1), 0)
   const allVisible = visibleCount === all.size
+  const atDefaultHiddenState = setEquals(intersection(hidden, all), intersection(defaultHidden, all))
 
-  // All visible -> isolate the clicked type (hide every other available type).
-  if (allVisible) {
-    const next = new Set<T>(all)
+  // Default baseline, or all visible after Show all -> isolate the clicked type.
+  // Preserve hidden types outside the current inventory so project switches do not leak state.
+  if ((atDefaultHiddenState && !hidden.has(type)) || allVisible) {
+    const next = cloneSet(hidden)
+    for (const value of all) next.add(value)
     next.delete(type)
     return next
   }
@@ -41,7 +65,7 @@ function nextIsolateHiddenSet<T>(hidden: Set<T>, type: T, available: readonly T[
 
   // Clicked type is the only visible one -> restore all.
   if (visibleCount === 1) {
-    return new Set<T>()
+    return cloneSet(new Set(defaultHidden))
   }
 
   // Clicked type is visible alongside others -> hide just this one.
@@ -51,11 +75,14 @@ function nextIsolateHiddenSet<T>(hidden: Set<T>, type: T, available: readonly T[
 }
 
 export const useFilterStore = defineStore('filter', () => {
-  // LocalVariable (deep CPG) starts HIDDEN so the default graph stays readable.
+  // Detail node types start HIDDEN so the default graph stays readable.
   const hiddenNodeTypes = ref<Set<NodeType>>(defaultHiddenNodeTypes())
-  // CPG-lite edge types start HIDDEN so the default architecture graph stays
+  // Detail edge types start HIDDEN so the default architecture graph stays
   // readable. They remain in the data and are revealed via "Show all".
   const hiddenEdgeTypes = ref<Set<EdgeType>>(defaultHiddenEdgeTypes())
+  // Isolated nodes stay hidden by default so the canvas does not fill up with
+  // degree-zero leaves; the user can reveal them explicitly in the filter panel.
+  const hideIsolatedNodes = ref(true)
   const searchQuery = ref('')
 
   /** True when a hidden set deviates from its default-hidden baseline. */
@@ -68,20 +95,31 @@ export const useFilterStore = defineStore('filter', () => {
   }
 
   // "Active filters" means the user deviated from the defaults (node or edge
-  // visibility). The default-hidden deep-CPG types alone do NOT count as active
+  // visibility). The default-hidden detail types alone do NOT count as active
   // (otherwise Reset would always appear enabled).
   const hasActiveFilters = computed(
     () =>
       deviatesFromDefault(hiddenNodeTypes.value, defaultHiddenNodeTypes()) ||
-      deviatesFromDefault(hiddenEdgeTypes.value, defaultHiddenEdgeTypes()),
+      deviatesFromDefault(hiddenEdgeTypes.value, defaultHiddenEdgeTypes()) ||
+      !hideIsolatedNodes.value,
   )
 
   function toggleNodeType(type: NodeType, available: readonly NodeType[] = []): void {
-    hiddenNodeTypes.value = nextIsolateHiddenSet(hiddenNodeTypes.value, type, available)
+    hiddenNodeTypes.value = nextIsolateHiddenSet(
+      hiddenNodeTypes.value,
+      type,
+      available,
+      defaultHiddenNodeTypes(),
+    )
   }
 
   function toggleEdgeType(type: EdgeType, available: readonly EdgeType[] = []): void {
-    hiddenEdgeTypes.value = nextIsolateHiddenSet(hiddenEdgeTypes.value, type, available)
+    hiddenEdgeTypes.value = nextIsolateHiddenSet(
+      hiddenEdgeTypes.value,
+      type,
+      available,
+      defaultHiddenEdgeTypes(),
+    )
   }
 
   function showAllNodeTypes(): void {
@@ -92,20 +130,27 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenEdgeTypes.value = new Set()
   }
 
+  function toggleIsolatedNodes(): void {
+    hideIsolatedNodes.value = !hideIsolatedNodes.value
+  }
+
   function reset(): void {
     hiddenNodeTypes.value = defaultHiddenNodeTypes()
     // Reset returns to the readable DEFAULT (deep-CPG hidden), not "show all".
     hiddenEdgeTypes.value = defaultHiddenEdgeTypes()
+    hideIsolatedNodes.value = true
     searchQuery.value = ''
   }
 
   return {
     hiddenNodeTypes,
     hiddenEdgeTypes,
+    hideIsolatedNodes,
     hasActiveFilters,
     searchQuery,
     toggleNodeType,
     toggleEdgeType,
+    toggleIsolatedNodes,
     showAllNodeTypes,
     showAllEdgeTypes,
     reset,

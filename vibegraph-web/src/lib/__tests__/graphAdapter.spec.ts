@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import Graph from 'graphology'
+import { describe, it, expect, vi } from 'vitest'
 import { apiToGraphology } from '../graphAdapter'
 import {
   NODE_COLORS,
@@ -12,8 +13,7 @@ import type { EdgeType, GraphData } from '@/types/graph'
 /**
  * Edge types the backend parser actually emits (EdgeData.of in the visitors +
  * ParserServiceImpl). The frontend MUST support (color + render) every one of
- * these. OWNS / CONTAINS / OVERRIDES / ANNOTATED_BY exist in the schema enum but
- * are not currently emitted, so they are intentionally excluded here.
+ * these.
  */
 const BACKEND_EMITTED_EDGE_TYPES: EdgeType[] = [
   'CONTAINS',
@@ -48,16 +48,25 @@ function baseData(): GraphData {
         type: 'Class',
         name: 'UserController',
         fullName: 'com.example.UserController',
-        filePath: 'UserController.java',
+        filePath: 'src/main/java/com/example/UserController.java',
         lineNumber: 1,
-        properties: {},
+        properties: { springLayer: 'Controller' },
       },
       {
         id: 'com.example.UserService',
         type: 'Class',
         name: 'UserService',
         fullName: 'com.example.UserService',
-        filePath: 'UserService.java',
+        filePath: 'src/main/java/com/example/UserService.java',
+        lineNumber: 1,
+        properties: { springLayer: 'Service' },
+      },
+      {
+        id: 'src/main/java/com/example/UserService.java',
+        type: 'File',
+        name: 'UserService.java',
+        fullName: 'UserService.java',
+        filePath: 'src/main/java/com/example/UserService.java',
         lineNumber: 1,
         properties: {},
       },
@@ -68,85 +77,146 @@ function baseData(): GraphData {
         source: 'com.example.UserController',
         target: 'com.example.UserService',
         type: 'INJECTS',
+        weight: 3,
+        occurrences: 7,
+      },
+      {
+        id: 'com.example.UserService|CALLS|com.example.UserController',
+        source: 'com.example.UserService',
+        target: 'com.example.UserController',
+        type: 'CALLS',
+      },
+      {
+        id: 'com.example.UserController|PARAMETER_TYPE|com.example.UserService',
+        source: 'com.example.UserController',
+        target: 'com.example.UserService',
+        type: 'PARAMETER_TYPE',
+      },
+      {
+        id: 'com.example.UserController|CALLS|com.example.Ghost',
+        source: 'com.example.UserController',
+        target: 'com.example.Ghost',
+        type: 'CALLS',
       },
     ],
-    nodeStats: { Class: 2 } as GraphData['nodeStats'],
-    edgeStats: { INJECTS: 1 } as GraphData['edgeStats'],
+    nodeStats: { Class: 2, File: 1 } as GraphData['nodeStats'],
+    edgeStats: { INJECTS: 1, CALLS: 2, PARAMETER_TYPE: 1 } as GraphData['edgeStats'],
   }
 }
 
 describe('apiToGraphology', () => {
-  it('keys nodes by stable fullName-based id', () => {
-    const graph = apiToGraphology(baseData())
-    expect(graph.hasNode('com.example.UserController')).toBe(true)
-    expect(graph.hasNode('com.example.UserService')).toBe(true)
-    expect(graph.order).toBe(2)
+  it('imports nodes and edges through Graphology serialized format', () => {
+    const spy = vi.spyOn(Graph.prototype, 'import')
+    try {
+      apiToGraphology(baseData())
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodes: expect.arrayContaining([
+            expect.objectContaining({
+              key: 'com.example.UserController',
+              attributes: expect.objectContaining({
+                label: 'UserController',
+                packageName: 'com.example',
+                community: 'com.example',
+                layer: 'Controller',
+              }),
+            }),
+          ]),
+          edges: expect.arrayContaining([
+            expect.objectContaining({
+              key: 'com.example.UserController|INJECTS|com.example.UserService',
+              source: 'com.example.UserController',
+              target: 'com.example.UserService',
+              attributes: expect.objectContaining({
+                label: 'INJECTS',
+                weight: 3,
+                occurrences: 7,
+              }),
+            }),
+          ]),
+        }),
+      )
+    } finally {
+      spy.mockRestore()
+    }
   })
 
-  it('keys edges by deterministic source|type|target id', () => {
+  it('preserves directed backend edges 1:1, even for the same source-target pair', () => {
     const graph = apiToGraphology(baseData())
+
     expect(graph.hasEdge('com.example.UserController|INJECTS|com.example.UserService')).toBe(true)
-    expect(graph.size).toBe(1)
+    expect(graph.hasEdge('com.example.UserService|CALLS|com.example.UserController')).toBe(true)
+    expect(graph.hasEdge('com.example.UserController|PARAMETER_TYPE|com.example.UserService')).toBe(
+      true,
+    )
+    expect(graph.size).toBe(3)
+    expect(graph.source('com.example.UserController|INJECTS|com.example.UserService')).toBe(
+      'com.example.UserController',
+    )
+    expect(graph.target('com.example.UserController|INJECTS|com.example.UserService')).toBe(
+      'com.example.UserService',
+    )
   })
 
-  it('sets each edge label color to its edge-type color so labels match the legend', () => {
-    const graph = apiToGraphology(baseData())
-    const key = 'com.example.UserController|INJECTS|com.example.UserService'
-    expect(graph.getEdgeAttribute(key, 'color')).toBe(EDGE_COLORS.INJECTS)
-    expect(graph.getEdgeAttribute(key, 'labelColor')).toBe(EDGE_COLORS.INJECTS)
+  it('imports every edge whose endpoints exist in the graph', () => {
+    const data = baseData()
+    const importableEdges = data.edges.filter((edge) => {
+      const nodeIds = new Set(data.nodes.map((node) => node.id))
+      return nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    })
+
+    const graph = apiToGraphology(data)
+
+    expect(graph.size).toBe(importableEdges.length)
+    for (const edge of importableEdges) {
+      expect(graph.hasEdge(edge.id)).toBe(true)
+    }
   })
 
   it('skips edges that reference missing nodes', () => {
-    const data = baseData()
-    data.edges.push({
-      id: 'com.example.UserController|CALLS|com.example.Ghost',
-      source: 'com.example.UserController',
-      target: 'com.example.Ghost',
-      type: 'CALLS',
+    const graph = apiToGraphology(baseData())
+    expect(graph.size).toBe(3)
+    expect(graph.hasEdge('com.example.UserController|CALLS|com.example.Ghost')).toBe(false)
+  })
+
+  it('maps metadata attributes and edge payload fields', () => {
+    const graph = apiToGraphology(baseData())
+
+    expect(graph.getNodeAttribute('com.example.UserController', 'packageName')).toBe('com.example')
+    expect(graph.getNodeAttribute('com.example.UserController', 'community')).toBe('com.example')
+    expect(graph.getNodeAttribute('com.example.UserController', 'layer')).toBe('Controller')
+    expect(
+      graph.getNodeAttribute('src/main/java/com/example/UserService.java', 'packageName'),
+    ).toBe('com.example')
+    expect(
+      graph.getEdgeAttribute(
+        'com.example.UserController|INJECTS|com.example.UserService',
+        'weight',
+      ),
+    ).toBe(3)
+    expect(
+      graph.getEdgeAttribute(
+        'com.example.UserController|INJECTS|com.example.UserService',
+        'occurrences',
+      ),
+    ).toBe(7)
+  })
+
+  it('seeds initial node positions in a wider 2D cloud before ForceAtlas2 runs', () => {
+    const graph = apiToGraphology(baseData())
+
+    graph.forEachNode((node) => {
+      const x = graph.getNodeAttribute(node, 'x') as number
+      const y = graph.getNodeAttribute(node, 'y') as number
+      expect(Number.isFinite(x)).toBe(true)
+      expect(Number.isFinite(y)).toBe(true)
+      expect(x).toBeGreaterThanOrEqual(-400)
+      expect(x).toBeLessThanOrEqual(400)
+      expect(y).toBeGreaterThanOrEqual(-400)
+      expect(y).toBeLessThanOrEqual(400)
+      expect(Math.hypot(x, y)).toBeGreaterThan(20)
     })
-    const graph = apiToGraphology(data)
-    expect(graph.size).toBe(1)
-  })
-
-  it('collapses every relationship between a pair of nodes to a single edge', () => {
-    const data = baseData()
-    // The base data already has UserController -> UserService (INJECTS). Adding
-    // PARAMETER_TYPE edges on the same pair must NOT create extra lines: two nodes
-    // are connected by exactly one edge on the canvas.
-    const dup = {
-      id: 'com.example.UserController|PARAMETER_TYPE|com.example.UserService',
-      source: 'com.example.UserController',
-      target: 'com.example.UserService',
-      type: 'PARAMETER_TYPE' as const,
-    }
-    data.edges.push({ ...dup }, { ...dup })
-    const graph = apiToGraphology(data)
-    // Only one edge for the pair.
-    expect(graph.size).toBe(1)
-  })
-
-  it('keeps the highest-priority relationship type when a pair has several', () => {
-    const data = baseData()
-    // Same pair as the base INJECTS edge, plus IMPORTS and EXTENDS. EXTENDS has the
-    // highest structural priority, so it defines the single rendered line.
-    data.edges.push(
-      {
-        id: 'com.example.UserController|IMPORTS|com.example.UserService',
-        source: 'com.example.UserController',
-        target: 'com.example.UserService',
-        type: 'IMPORTS' as const,
-      },
-      {
-        id: 'com.example.UserController|EXTENDS|com.example.UserService',
-        source: 'com.example.UserController',
-        target: 'com.example.UserService',
-        type: 'EXTENDS' as const,
-      },
-    )
-    const graph = apiToGraphology(data)
-    expect(graph.size).toBe(1)
-    const edgeId = graph.edges()[0]
-    expect(graph.getEdgeAttribute(edgeId, 'edgeType')).toBe('EXTENDS')
   })
 
   it('maps extended node types to explicit colors and sizes', () => {
@@ -219,10 +289,6 @@ describe('apiToGraphology', () => {
   })
 
   it('labels the Project node with its readable name while keying it by the stable id', () => {
-    // Regression guard: the root Project node's stable id is an opaque value
-    // (e.g. a numeric id), but the canvas label/title must show the readable
-    // project/repository name. The Sigma label is driven by node.name; the node
-    // key stays node.id so graph identity, edges, and stats are unaffected.
     const data = baseData()
     data.nodes = [
       {
@@ -248,8 +314,6 @@ describe('apiToGraphology', () => {
 
 describe('graphAdapter supports every backend-emitted edge type', () => {
   it('renders each emitted edge type with its own EDGE_COLORS color', () => {
-    // One distinct node pair per edge type so the pair-collapse logic does not
-    // merge them — each emitted type must produce a rendered, colored edge.
     const nodes: GraphData['nodes'] = []
     const edges: GraphData['edges'] = []
     BACKEND_EMITTED_EDGE_TYPES.forEach((type, index) => {
@@ -291,18 +355,17 @@ describe('graphAdapter supports every backend-emitted edge type', () => {
       expect(edgeId).toBeDefined()
       expect(graph.getEdgeAttribute(edgeId as string, 'color')).toBe(EDGE_COLORS[type])
       expect(graph.getEdgeAttribute(edgeId as string, 'labelColor')).toBe(EDGE_COLORS[type])
-      // No emitted type may fall through to the generic gray fallback color.
       expect(graph.getEdgeAttribute(edgeId as string, 'color')).not.toBe('#666666')
     }
   })
 
-  it('has a color for every supported (structural + CPG-lite) edge type', () => {
+  it('has a color for every supported edge type', () => {
     for (const type of [...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES]) {
       expect(EDGE_COLORS[type]).toBeDefined()
     }
   })
 
-  it('covers every backend-emitted type across the structural and CPG-lite sets', () => {
+  it('covers every backend-emitted type across the baseline and detail sets', () => {
     const partitioned = new Set<EdgeType>([...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES])
     for (const type of BACKEND_EMITTED_EDGE_TYPES) {
       expect(partitioned.has(type)).toBe(true)

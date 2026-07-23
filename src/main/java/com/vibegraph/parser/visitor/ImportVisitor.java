@@ -2,6 +2,7 @@ package com.vibegraph.parser.visitor;
 
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 
 import java.util.ArrayList;
@@ -44,6 +45,7 @@ public class ImportVisitor extends VoidVisitorAdapter<Object> {
     }
 
     private boolean shouldSkip(String importedName) {
-        return importedName.startsWith("java.lang.");
+        return importedName.startsWith("java.lang.")
+                || TypeReferenceSupport.shouldSkipImportedType(importedName);
     }
 }

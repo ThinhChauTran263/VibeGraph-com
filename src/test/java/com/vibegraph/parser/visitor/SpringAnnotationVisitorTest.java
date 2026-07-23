@@ -296,6 +296,27 @@ class SpringAnnotationVisitorTest {
         }
 
         @Test
+        @DisplayName("generic constructor params unwrap to injected domain beans")
+        void genericConstructorParamsUnwrapToInjectedBean() {
+            SpringAnnotationVisitor visitor = visit("""
+                package com.example;
+                import java.util.List;
+                import java.util.Optional;
+                import org.springframework.stereotype.Service;
+
+                @Service
+                public class BillingService {
+                    public BillingService(Optional<PaymentGateway> gateway, List<String> labels) { }
+                }
+                """);
+
+            assertThat(visitor.getExtractedEdges())
+                    .filteredOn(e -> e.type().equals("INJECTS"))
+                    .extracting(EdgeData::targetFullName)
+                    .containsExactly("com.example.PaymentGateway");
+        }
+
+        @Test
         @DisplayName("a plain (non-Spring) class constructor produces no INJECTS edges")
         void plainClassConstructorNotInjected() {
             SpringAnnotationVisitor visitor = visit("""

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { graphApi, ApiError, type ImpactAnalysisResponse } from '../api'
+import { fetchFullGraph, graphApi, ApiError, type ImpactAnalysisResponse } from '../api'
 
 /**
  * Exercises `graphApi.getImpact` against a mocked global `fetch`, verifying
@@ -101,5 +101,18 @@ describe('graphApi.getImpact', () => {
     } as unknown as Response)
 
     await expect(graphApi.getImpact('p1', 'n1', 99)).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('fetchFullGraph', () => {
+  it('requests the baseline graph view by default', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ nodes: [], edges: [], nodeStats: {}, edgeStats: {} }))
+
+    await fetchFullGraph('p1')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const url = String(fetchMock.mock.calls[0]![0])
+    expect(url).toContain('/api/projects/p1/graph?')
+    expect(url).toContain('mode=baseline')
   })
 })

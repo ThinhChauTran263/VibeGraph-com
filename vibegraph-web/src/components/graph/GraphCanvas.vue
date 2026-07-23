@@ -136,7 +136,7 @@ function updateHighlightedTypes(nodeIds: Set<string> | null): void {
 
 // User toggle for showing edge type labels at all. When off, edge labels never
 // render regardless of zoom/selection. Driven by the "Edge labels" button.
-const edgeLabelsEnabled = ref(true)
+const edgeLabelsEnabled = ref(false)
 
 function toggleEdgeLabels(): void {
   edgeLabelsEnabled.value = !edgeLabelsEnabled.value
@@ -145,7 +145,7 @@ function toggleEdgeLabels(): void {
 
 // User toggle for appending the target node's kind to edge labels (e.g. "IMPORTS
 // Class", kind tinted to the node color). Independent of the edge-label toggle.
-const edgeKindEnabled = ref(true)
+const edgeKindEnabled = ref(false)
 
 function toggleEdgeKind(): void {
   edgeKindEnabled.value = !edgeKindEnabled.value
@@ -504,6 +504,7 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
         size: getNodeSize(node.type),
         color: getNodeColor(node.type),
         nodeType: node.type,
+        layer: getNodeLayer(node),
         fullName: node.fullName,
         filePath: node.filePath,
         lineNumber: node.lineNumber,
@@ -519,18 +520,20 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
       color: getNodeColor(node.type),
       type: 'circle',
       nodeType: node.type,
+      layer: getNodeLayer(node),
       fullName: node.fullName,
       filePath: node.filePath,
       lineNumber: node.lineNumber,
     })
   }
 
-  // Added edges: respect hidden types, present endpoints, and the one-line-per-pair rule.
+  // Added edges: respect hidden types and present endpoints. Preserve every
+  // backend edge key so directed edges and multiple edge types between the same
+  // node pair are not silently dropped.
   for (const edge of addedEdges) {
     if (hiddenEdges.has(edge.type)) continue
     if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
     if (graph.hasEdge(edge.id)) continue
-    if (graph.hasEdge(edge.source, edge.target) || graph.hasEdge(edge.target, edge.source)) continue
     graph.addEdgeWithKey(edge.id, edge.source, edge.target, getEdgeAttributes(edge))
   }
 
@@ -556,6 +559,11 @@ function spawnPosition(
     }
   }
   return { x: Math.random() * 200 - 100, y: Math.random() * 200 - 100 }
+}
+
+function getNodeLayer(node: GraphNode): string {
+  const value = node.properties?.layer ?? node.properties?.springLayer
+  return typeof value === 'string' && value ? value : ''
 }
 
 // Rebuilding + re-rendering the whole Sigma graph is expensive. Filter toggles can
@@ -742,31 +750,31 @@ onUnmounted(() => {
         <p class="error-message">{{ error }}</p>
         <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
       </div>
+
+      <aside v-if="!loading && !error && activeFlowDetail" class="graph-canvas__detail">
+        <DataFlowDetailPanel
+          :item="activeFlowDetail"
+          :selected-node-id="activeFlow?.primaryNodeId ?? null"
+          @focus-step="onFlowStep"
+          @close="onFlowClear"
+        />
+      </aside>
+
+      <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
+        <NodeDetailPanel
+          :pinned-edge-id="pinnedRelation?.edgeId ?? null"
+          :project-id="props.projectId"
+          @close="onDetailClose"
+          @relation-hover="onRelationHover"
+          @relation-select="onRelationSelect"
+        />
+        <ImpactAnalysisPanel
+          :project-id="props.projectId"
+          :node="selectedNode"
+          @select="onImpactSelect"
+        />
+      </aside>
     </div>
-
-    <aside v-if="!loading && !error && activeFlowDetail" class="graph-canvas__detail">
-      <DataFlowDetailPanel
-        :item="activeFlowDetail"
-        :selected-node-id="activeFlow?.primaryNodeId ?? null"
-        @focus-step="onFlowStep"
-        @close="onFlowClear"
-      />
-    </aside>
-
-    <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
-      <NodeDetailPanel
-        :pinned-edge-id="pinnedRelation?.edgeId ?? null"
-        :project-id="props.projectId"
-        @close="onDetailClose"
-        @relation-hover="onRelationHover"
-        @relation-select="onRelationSelect"
-      />
-      <ImpactAnalysisPanel
-        :project-id="props.projectId"
-        :node="selectedNode"
-        @select="onImpactSelect"
-      />
-    </aside>
   </div>
 </template>
 
@@ -785,7 +793,7 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--detail-open {
-  grid-template-columns: var(--sidebar-width, 18rem) 1fr 23rem;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr;
 }
 
 /* When the sidebar is collapsed it is removed from the grid flow (display:none),
@@ -796,7 +804,7 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
-  grid-template-columns: 1fr 23rem;
+  grid-template-columns: 1fr;
 }
 
 /* While loading or in an error state the sidebar/detail are hidden, but the grid
@@ -978,17 +986,26 @@ onUnmounted(() => {
 }
 
 .graph-canvas__detail {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 7;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  width: min(23rem, calc(100% - 2rem));
   padding: 1rem;
   /* The whole column scrolls as one. Panels size to their content so the Impact
      Analysis results are never crushed to a zero-height (previously the panel was
      capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
   overflow-y: auto;
-  border-left: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(12px);
 }
 
 /* Node Detail caps its height and scrolls internally so a node with many
@@ -1030,7 +1047,7 @@ onUnmounted(() => {
   }
 
   .graph-canvas-wrapper--detail-open {
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
   }
 
   .graph-canvas-wrapper--collapsed {
@@ -1038,12 +1055,15 @@ onUnmounted(() => {
   }
 
   .graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .graph-canvas__detail {
-    border-left: none;
-    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
     max-height: 50vh;
   }
 }

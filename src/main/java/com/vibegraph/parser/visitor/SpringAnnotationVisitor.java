@@ -21,6 +21,7 @@ import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.Signatures;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -153,14 +154,13 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             return;
         }
 
-        String rawType = field.getElementType().asString();
-        String resolvedType = resolveTypeName(rawType, owner);
         String injectionKind = isAnnotated ? annotationName : "RequiredArgsConstructor";
 
-        extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
-                "annotation", injectionKind,
-                "lineNumber", field.getBegin().map(p -> p.line).orElse(0)
-        )));
+        TypeReferenceSupport.resolveTypeReference(field.getElementType(), owner)
+                .ifPresent(resolvedType -> extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
+                        "annotation", injectionKind,
+                        "lineNumber", field.getBegin().map(p -> p.line).orElse(0)
+                ))));
     }
 
     private boolean hasLombokConstructorInjection(ClassOrInterfaceDeclaration n) {
@@ -173,11 +173,6 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
     private static final Set<String> SPRING_STEREOTYPES = Set.of(
             "Component", "Service", "Repository", "Controller", "RestController",
             "Configuration", "RestControllerAdvice", "ControllerAdvice");
-    /** Simple type names that are values/framework objects, never injected business beans. */
-    private static final Set<String> NON_BEAN_TYPES = Set.of(
-            "String", "Integer", "Long", "Short", "Byte", "Double", "Float", "Boolean",
-            "Character", "Object", "BigDecimal", "BigInteger");
-
     private boolean isSpringBean(ClassOrInterfaceDeclaration n) {
         return n.getAnnotations().stream()
                 .anyMatch(a -> SPRING_STEREOTYPES.contains(a.getName().getIdentifier()));
@@ -219,16 +214,11 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             if (param.getType().isPrimitiveType()) {
                 continue;
             }
-            String rawType = param.getType().asString();
-            String baseName = rawType.contains("<") ? rawType.substring(0, rawType.indexOf('<')) : rawType;
-            if (NON_BEAN_TYPES.contains(baseName)) {
-                continue;
-            }
-            String resolvedType = resolveTypeName(rawType, owner);
-            extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
-                    "annotation", "Constructor",
-                    "lineNumber", injectable.getBegin().map(p -> p.line).orElse(0)
-            )));
+            TypeReferenceSupport.resolveTypeReference(param.getType(), owner)
+                    .ifPresent(resolvedType -> extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
+                            "annotation", "Constructor",
+                            "lineNumber", injectable.getBegin().map(p -> p.line).orElse(0)
+                    ))));
         }
     }
 
@@ -254,24 +244,6 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             case "String", "ModelAndView", "View", "RedirectView", "CharSequence" -> true;
             default -> false;
         };
-    }
-
-    private String resolveTypeName(String typeName, ClassOrInterfaceDeclaration context) {
-        // Strip generics
-        String baseName = typeName.contains("<") ? typeName.substring(0, typeName.indexOf('<')) : typeName;
-        if (baseName.contains(".")) {
-            return baseName;
-        }
-        return context.findCompilationUnit()
-                .flatMap(cu -> cu.getImports().stream()
-                        .filter(imp -> !imp.isAsterisk())
-                        .filter(imp -> imp.getName().getIdentifier().equals(baseName))
-                        .findFirst()
-                        .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> context.findCompilationUnit()
-                        .flatMap(cu -> cu.getPackageDeclaration())
-                        .map(pkg -> pkg.getNameAsString() + "." + baseName)
-                        .orElse(baseName));
     }
 
     private String httpMethodFor(String annotationName) {

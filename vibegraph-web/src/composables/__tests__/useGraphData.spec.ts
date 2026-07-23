@@ -3,7 +3,6 @@ import { beforeEach, describe, it, expect } from 'vitest'
 
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphStore } from '@/stores/graph'
-import { GRAPH_SAFE_NODE_LIMIT } from '@/lib/graphCap'
 import type { GraphData, GraphNode } from '@/types/graph'
 
 function node(id: string): GraphNode {
@@ -54,16 +53,16 @@ describe('useGraphData - Safe Mode render info', () => {
     expect(store.renderInfo?.totalEdges).toBe(12000)
   })
 
-  it('flags truncation from the frontend cap even when the backend did not truncate', () => {
+  it('keeps the full filtered graph when the frontend cap is disabled by default', () => {
     const store = useGraphStore()
     store.payloadMeta = null
     const { buildGraph } = useGraphData()
 
-    buildGraph(graph(GRAPH_SAFE_NODE_LIMIT + 500))
+    buildGraph(graph(2000))
 
-    expect(store.renderInfo?.truncated).toBe(true)
-    expect(store.renderInfo?.renderedNodes).toBe(GRAPH_SAFE_NODE_LIMIT)
-    expect(store.renderInfo?.totalNodes).toBe(GRAPH_SAFE_NODE_LIMIT + 500)
+    expect(store.renderInfo?.truncated).toBe(false)
+    expect(store.renderInfo?.renderedNodes).toBe(2000)
+    expect(store.renderInfo?.totalNodes).toBe(2000)
   })
 
   it('reports no truncation when both layers are under their limits', () => {

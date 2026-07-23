@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
 /**
@@ -141,6 +142,49 @@ class MethodVisitorTest {
             assertEquals(2, throwsTypes.size());
             assertTrue(throwsTypes.contains("IOException"));
             assertTrue(throwsTypes.contains("ParseException"));
+        }
+
+        @Test
+        @DisplayName("should unwrap generic return and parameter edges to inner domain types")
+        void shouldUnwrapGenericReturnAndParameterEdges() {
+            String code = """
+                package com.example;
+                import java.util.List;
+                import java.util.Optional;
+                import org.springframework.http.HttpStatus;
+                import org.springframework.http.ResponseEntity;
+
+                public class ApiController {
+                    public ResponseEntity<OrderResponse> find(
+                            List<UserDto> users,
+                            Optional<Customer> customer,
+                            String label,
+                            HttpStatus status) throws Throwable {
+                        return null;
+                    }
+                }
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+            List<EdgeData> edges = visitor.getExtractedEdges();
+
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("RETURNS")
+                    && e.targetFullName().equals("com.example.OrderResponse")));
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("PARAMETER_TYPE")
+                    && e.targetFullName().equals("com.example.UserDto")));
+            assertTrue(edges.stream().anyMatch(e -> e.type().equals("PARAMETER_TYPE")
+                    && e.targetFullName().equals("com.example.Customer")));
+            assertTrue(edges.stream()
+                    .filter(e -> e.type().equals("RETURNS")
+                            || e.type().equals("PARAMETER_TYPE")
+                            || e.type().equals("THROWS"))
+                    .noneMatch(e -> e.targetFullName().contains("ResponseEntity")
+                    || e.targetFullName().contains("Optional")
+                    || e.targetFullName().contains("List")
+                    || e.targetFullName().contains("HttpStatus")
+                    || e.targetFullName().endsWith("String")
+                    || e.targetFullName().endsWith("Throwable")));
         }
     }
 
@@ -383,24 +427,27 @@ class MethodVisitorTest {
                     public void risky() {
                         try {
                             work();
-                        } catch (IllegalStateException e) {
+                        } catch (ProblemException e) {
                             try {
                                 work();
-                            } catch (IllegalArgumentException | NullPointerException ex) {
+                            } catch (RetryException | FatalException ex) {
                             }
                         }
                     }
                     void work() {}
                 }
+                class ProblemException extends RuntimeException {}
+                class RetryException extends RuntimeException {}
+                class FatalException extends RuntimeException {}
                 """);
             String m = "com.example.C.risky()";
             long catches = es.stream().filter(e -> e.type().equals("CATCHES")
                     && e.sourceFullName().equals(m)).count();
             assertEquals(3, catches, "one CATCHES per caught type (incl. nested + multi-catch)");
             assertTrue(es.stream().anyMatch(e -> e.type().equals("CATCHES")
-                    && e.targetFullName().endsWith("IllegalArgumentException")));
+                    && e.targetFullName().equals("com.example.RetryException")));
             assertTrue(es.stream().anyMatch(e -> e.type().equals("CATCHES")
-                    && e.targetFullName().endsWith("NullPointerException")));
+                    && e.targetFullName().equals("com.example.FatalException")));
         }
 
         @Test

@@ -25,6 +25,8 @@ const selectNode = vi.fn<(node: GraphNode | null) => void>((node) => {
   selectedNode.value = node
 })
 
+let capturedRealtimePatched: ((event: unknown) => void) | undefined
+
 vi.mock('@/composables/useGraphData', () => ({
   useGraphData: () => ({
     graphData: computed(() => emptyGraphData),
@@ -67,6 +69,10 @@ vi.mock('@/composables/useSigma', () => ({
       setReducers: vi.fn<() => void>(),
       setEdgeLabelsVisible,
       setGhostPartition: vi.fn<() => void>(),
+      refresh: vi.fn<() => void>(),
+      resetLayout: vi.fn<() => void>(),
+      zoomToFit: vi.fn<() => void>(),
+      focusNode: vi.fn<() => void>(),
     }
   },
 }))
@@ -74,12 +80,15 @@ vi.mock('@/composables/useSigma', () => ({
 // T60: GraphCanvas now wires the realtime consumer. Stub it so this test stays
 // focused on canvas/search behavior and avoids pulling in Pinia + a socket.
 vi.mock('@/composables/useGraphRealtime', () => ({
-  useGraphRealtime: () => ({
-    status: ref('disconnected'),
-    error: ref(null),
-    lastError: ref(null),
-    stop: () => {},
-  }),
+  useGraphRealtime: (_projectId: () => string, options?: { onPatched?: (event: unknown) => void }) => {
+    capturedRealtimePatched = options?.onPatched
+    return {
+      status: ref('disconnected'),
+      error: ref(null),
+      lastError: ref(null),
+      stop: () => {},
+    }
+  },
 }))
 
 vi.mock('@/components/panels/FilterPanel.vue', () => ({
@@ -167,6 +176,60 @@ describe('GraphCanvas', () => {
     const nodeSelectedEvents = wrapper.emitted('nodeSelected')
     expect(nodeSelectedEvents?.[nodeSelectedEvents.length - 1]).toEqual([null])
   })
+
+  it('keeps realtime edges with the same node pair but different direction or type', async () => {
+    const graph = new Graph({ type: 'directed', multi: true })
+    graph.addNode('a', {
+      label: 'A',
+      x: 0,
+      y: 0,
+      size: 1,
+      color: '#fff',
+      type: 'circle',
+      nodeType: 'Class',
+      fullName: 'a',
+      filePath: '',
+      lineNumber: 1,
+      properties: {},
+    })
+    graph.addNode('b', {
+      label: 'B',
+      x: 10,
+      y: 10,
+      size: 1,
+      color: '#fff',
+      type: 'circle',
+      nodeType: 'Class',
+      fullName: 'b',
+      filePath: '',
+      lineNumber: 1,
+      properties: {},
+    })
+    graph.addEdgeWithKey('a|CALLS|b', 'a', 'b', { color: '#93c5fd' })
+    graphInstanceRef.value = graph
+
+    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    await flushPromises()
+
+    capturedRealtimePatched?.({
+      type: 'INCREMENTAL',
+      added: {
+        nodes: [],
+        edges: [
+          { id: 'a|INJECTS|b', source: 'a', target: 'b', type: 'INJECTS' },
+          { id: 'b|CALLS|a', source: 'b', target: 'a', type: 'CALLS' },
+        ],
+      },
+      removed: { nodeIds: [], edgeIds: [] },
+      modified: { nodes: [], edges: [] },
+    })
+
+    expect(graph.hasEdge('a|CALLS|b')).toBe(true)
+    expect(graph.hasEdge('a|INJECTS|b')).toBe(true)
+    expect(graph.hasEdge('b|CALLS|a')).toBe(true)
+
+    wrapper.unmount()
+  })
 })
 
 /**
@@ -196,22 +259,22 @@ describe('GraphCanvas edge label toggle', () => {
     expect(capturedCameraRatioChange).toBeTypeOf('function')
 
     // Zoom in past the edge-label ratio (0.45) -> density 'edges'. Toggle defaults
-    // ON, so edge labels become visible immediately.
+    // OFF, so edge labels stay hidden until the user explicitly enables them.
     capturedCameraRatioChange?.(0.3)
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
 
-    // Toggle OFF -> edge labels forced off even though we are still zoomed in.
+    // Toggle ON -> edge labels become visible because we are already zoomed in.
     const toggle = wrapper.get('.graph-edge-label-toggle')
     await toggle.trigger('click')
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
-    expect(toggle.attributes('aria-pressed')).toBe('false')
-    expect(toggle.text()).toBe('Edge labels: Off')
-
-    // Toggle back ON -> visible again at edges density.
-    await toggle.trigger('click')
     expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(toggle.text()).toBe('Edge labels: On')
 
-    // AND-gate: zoom back out to 'nodes' density. Even with the toggle ON, edge
+    // Toggle back OFF -> hidden again at edges density.
+    await toggle.trigger('click')
+    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
+
+    // AND-gate: zoom back out to 'nodes' density. Even with the toggle OFF, edge
     // labels stay off because the density half of the gate is false.
     capturedCameraRatioChange?.(0.9)
     expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)

@@ -42,6 +42,7 @@ import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclar
 import com.github.javaparser.resolution.types.ResolvedReferenceType;
 import com.github.javaparser.symbolsolver.javaparsermodel.declarations.JavaParserMethodDeclaration;
 import com.vibegraph.parser.Signatures;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -115,25 +116,22 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private void extractMethodEdges(MethodDeclaration declaration, String methodFullName) {
         // RETURNS edge
-        String returnType = declaration.getType().asString();
-        if (!returnType.equals("void")) {
-            String resolvedReturn = resolveTypeName(returnType, declaration);
-            extractedEdges.add(EdgeData.of("RETURNS", methodFullName, resolvedReturn));
-        }
+        TypeReferenceSupport.resolveTypeReference(declaration.getType(), declaration)
+                .ifPresent(resolvedReturn -> extractedEdges.add(EdgeData.of("RETURNS", methodFullName, resolvedReturn)));
 
         // PARAMETER_TYPE edges
         for (int i = 0; i < declaration.getParameters().size(); i++) {
-            String paramType = declaration.getParameter(i).getType().asString();
-            String resolvedParam = resolveTypeName(paramType, declaration);
-            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
-                    "position", i
-            )));
+            int position = i;
+            TypeReferenceSupport.resolveTypeReference(declaration.getParameter(i).getType(), declaration)
+                    .ifPresent(resolvedParam -> extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
+                            "position", position
+                    ))));
         }
 
         // THROWS edges
         for (var thrownType : declaration.getThrownExceptions()) {
-            String resolvedThrown = resolveTypeName(thrownType.asString(), declaration);
-            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown));
+            TypeReferenceSupport.resolveTypeReference(thrownType, declaration)
+                    .ifPresent(resolvedThrown -> extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown)));
         }
 
         // HAS_METHOD edge from owner class
@@ -146,17 +144,17 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
     private void extractConstructorEdges(ConstructorDeclaration declaration, String methodFullName) {
         // PARAMETER_TYPE edges
         for (int i = 0; i < declaration.getParameters().size(); i++) {
-            String paramType = declaration.getParameter(i).getType().asString();
-            String resolvedParam = resolveTypeName(paramType, declaration);
-            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
-                    "position", i
-            )));
+            int position = i;
+            TypeReferenceSupport.resolveTypeReference(declaration.getParameter(i).getType(), declaration)
+                    .ifPresent(resolvedParam -> extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
+                            "position", position
+                    ))));
         }
 
         // THROWS edges
         for (var thrownType : declaration.getThrownExceptions()) {
-            String resolvedThrown = resolveTypeName(thrownType.asString(), declaration);
-            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown));
+            TypeReferenceSupport.resolveTypeReference(thrownType, declaration)
+                    .ifPresent(resolvedThrown -> extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown)));
         }
 
         // HAS_METHOD edge from owner class
@@ -313,12 +311,13 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         try {
             var resolved = creation.getType().resolve();
             if (resolved.isReferenceType()) {
-                return resolved.asReferenceType().getQualifiedName();
+                String qualifiedName = resolved.asReferenceType().getQualifiedName();
+                return TypeReferenceSupport.shouldSkipImportedType(qualifiedName) ? null : qualifiedName;
             }
         } catch (Exception e) {
             // Unresolvable — fall back to lexical resolution below.
         }
-        return resolveTypeName(creation.getType().getNameAsString(), creation);
+        return TypeReferenceSupport.resolveTypeReference(creation.getType(), creation).orElse(null);
     }
 
     /**
@@ -493,10 +492,11 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                 types.add(type);
             }
             for (Type exceptionType : types) {
-                String resolved = resolveTypeName(exceptionType.asString(), catchClause);
-                extractedEdges.add(EdgeData.of("CATCHES", ownerFullName, resolved, Map.of(
-                        "lineNumber", line
-                )));
+                TypeReferenceSupport.resolveTypeReference(exceptionType, catchClause)
+                        .ifPresent(resolved ->
+                                extractedEdges.add(EdgeData.of("CATCHES", ownerFullName, resolved, Map.of(
+                                        "lineNumber", line
+                                ))));
             }
         }
     }

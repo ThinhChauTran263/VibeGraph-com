@@ -67,6 +67,8 @@ export interface GraphEdge {
   source: string
   target: string
   type: EdgeType
+  weight?: number
+  occurrences?: number
   confidence?: number
   lineNumber?: number
 }

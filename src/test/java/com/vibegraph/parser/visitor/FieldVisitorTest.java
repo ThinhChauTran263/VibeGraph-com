@@ -3,6 +3,7 @@ package com.vibegraph.parser.visitor;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -144,7 +145,7 @@ class FieldVisitorTest {
     }
 
     @Test
-    @DisplayName("should handle generic types")
+    @DisplayName("should unwrap generic field types to inner domain types")
     void shouldHandleGenericTypes() {
         String code = """
             package com.example;
@@ -152,19 +153,29 @@ class FieldVisitorTest {
             import java.util.Map;
 
             public class Container {
-                private List<String> items;
-                private Map<String, Object> properties;
+                private List<UserDto> users;
+                private Map<String, Product> productsById;
+                private List<String> labels;
             }
             """;
         CompilationUnit cu = parse(code);
 
         visitor.visit(cu, null);
         List<NodeData> fields = visitor.getExtractedFields();
+        List<EdgeData> edges = visitor.getExtractedEdges();
 
-        NodeData items = fields.stream().filter(field -> field.name().equals("items")).findFirst().orElseThrow();
-        assertTrue(((String) property(items, "declaredType")).contains("List"));
+        NodeData users = fields.stream().filter(field -> field.name().equals("users")).findFirst().orElseThrow();
+        assertTrue(((String) property(users, "declaredType")).contains("List"));
 
-        NodeData props = fields.stream().filter(field -> field.name().equals("properties")).findFirst().orElseThrow();
+        NodeData props = fields.stream().filter(field -> field.name().equals("productsById")).findFirst().orElseThrow();
         assertTrue(((String) property(props, "declaredType")).contains("Map"));
+
+        assertTrue(edges.stream().anyMatch(e -> e.type().equals("TYPE_OF")
+                && e.targetFullName().equals("com.example.UserDto")));
+        assertTrue(edges.stream().anyMatch(e -> e.type().equals("TYPE_OF")
+                && e.targetFullName().equals("com.example.Product")));
+        assertTrue(edges.stream().noneMatch(e -> e.targetFullName().contains("List")
+                || e.targetFullName().contains("Map")
+                || e.targetFullName().endsWith("String")));
     }
 }

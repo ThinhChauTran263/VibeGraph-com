@@ -22,6 +22,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.util.HashUtils;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -169,6 +170,32 @@ class Neo4jGraphRepositoryIT {
                 .orElseThrow(() -> new AssertionError("CALLS edge not persisted"));
         assertThat(edge.getSource()).isEqualTo("com.example.UserService.save(User)");
         assertThat(edge.getTarget()).isEqualTo("org.example.Repository.persist(User)");
+    }
+
+    @Test
+    @DisplayName("getFullGraph returns hashed edge ids and aggregate metadata")
+    void shouldReturnAggregatedEdgeMetadata() {
+        String source = "com.example.UserService.save(User)";
+        String target = "com.example.UserRepository.persist(User)";
+
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Method", "save", source, "src/UserService.java", 10, 12, Map.of()),
+                NodeData.of("Method", "persist", target, "src/UserRepository.java", 20, 22, Map.of())));
+        repository.upsertEdges(projectId, List.of(EdgeData.of("CALLS", source, target, Map.of(
+                "lineNumber", 11,
+                "weight", 3,
+                "occurrences", List.of(11, 15, 18)))));
+
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+
+        EdgeDto edge = graph.getEdges().stream()
+                .filter(e -> "CALLS".equals(e.getType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("CALLS edge not persisted"));
+        assertThat(edge.getId()).isEqualTo(HashUtils.sha256(source + "|CALLS|" + target));
+        assertThat(edge.getWeight()).isEqualTo(3);
+        assertThat(edge.getOccurrences()).containsExactly(11, 15, 18);
     }
 
     @Test

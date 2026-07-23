@@ -21,6 +21,9 @@ export interface SigmaNodeAttributes {
   fullName: string
   filePath: string
   lineNumber: number
+  layer: string
+  packageName: string
+  community: string
 }
 
 export interface SigmaEdgeAttributes {
@@ -32,47 +35,13 @@ export interface SigmaEdgeAttributes {
   labelColor: string
   size: number
   edgeType: EdgeType
+  weight?: number
+  occurrences?: number
 }
 
 /**
- * Priority used to pick the single representative edge type when several
- * relationships connect the SAME pair of nodes. Between any two nodes the graph
- * draws exactly ONE line in exactly ONE color, so when both (say) IMPORTS and
- * EXTENDS exist we keep the more meaningful structural relationship. Types not
- * listed here default to 0 (lowest). The Node Detail panel still lists every
- * individual relationship — only the on-canvas line is collapsed.
- */
-const EDGE_TYPE_PRIORITY: Partial<Record<EdgeType, number>> = {
-  // STEP_IN_FLOW shares (caller->callee) pairs with CALLS. It is hidden by default
-  // (filtered out before this adapter), so the default canvas shows CALLS. When the
-  // user reveals it via "Show all", the higher priority makes the pair render as the
-  // inferred flow step rather than the raw call.
-  STEP_IN_FLOW: 10,
-  CONTAINS: 9,
-  EXTENDS: 8,
-  IMPLEMENTS: 7,
-  OVERRIDES: 6,
-  DEFINES: 5,
-  HANDLES_ROUTE: 4,
-  HAS_METHOD: 3,
-  CALLS: 2,
-  IMPORTS: 1,
-}
-
-function edgeTypePriority(type: EdgeType): number {
-  return EDGE_TYPE_PRIORITY[type] ?? 0
-}
-
-/** Order-independent key for the pair of nodes an edge connects. */
-function nodePairKey(source: string, target: string): string {
-  return source < target ? `${source}\u0000${target}` : `${target}\u0000${source}`
-}
-
-/**
- * Deterministic 32-bit FNV-1a hash → float in [0, 1). Used to seed a node's
- * initial position from its stable id so the layout is REPRODUCIBLE: the same
- * project always converges to the same picture instead of a different random
- * hairball on every load (ForceAtlas2 is sensitive to its starting positions).
+ * Deterministic 32-bit FNV-1a hash -> float in [0, 1). Used to seed a node's
+ * initial position from its stable id so the layout is reproducible.
  */
 function seededUnit(str: string): number {
   let h = 2166136261
@@ -84,13 +53,15 @@ function seededUnit(str: string): number {
 }
 
 /**
- * Deterministic initial position on a disc, derived from the node id. Replaces
- * random seeding so ForceAtlas2 starts from the same layout every time.
+ * Deterministic initial position in a wider square, derived from the node id.
+ * Spreads nodes out enough that ForceAtlas2 gets an initial 2D cloud instead of
+ * starting from a pile around the origin.
  */
 function seededPosition(id: string): { x: number; y: number } {
-  const angle = seededUnit(id) * 2 * Math.PI
-  const radius = seededUnit(`${id}#r`) * 500
-  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+  return {
+    x: seededUnit(`${id}#x`) * 800 - 400,
+    y: seededUnit(`${id}#y`) * 800 - 400,
+  }
 }
 
 /**
@@ -99,32 +70,23 @@ function seededPosition(id: string): { x: number; y: number } {
  * converges to the same layout on every load.
  */
 export function apiToGraphology(data: GraphData): Graph {
-  const graph = new Graph({ multi: false, type: 'directed' })
+  const graph = new Graph({ multi: true, type: 'directed' })
+  const nodeKeys = new Set(data.nodes.map((node) => node.id))
 
-  for (const node of data.nodes) {
-    const attrs = getNodeAttributes(node)
-    graph.addNode(node.id, attrs)
-  }
-
-  // Collapse every relationship between a pair of nodes to a SINGLE edge. Two
-  // nodes are connected by at most one straight line; when multiple relationship
-  // types exist between the same pair (e.g. IMPORTS + EXTENDS, or A->B and B->A),
-  // the highest-priority type wins and defines the line's color/label. This keeps
-  // the canvas readable (no overlapping parallel labels) while the Node Detail
-  // panel still shows the full relationship list.
-  const bestByPair = new Map<string, GraphEdge>()
-  for (const edge of data.edges) {
-    if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
-    const key = nodePairKey(edge.source, edge.target)
-    const existing = bestByPair.get(key)
-    if (!existing || edgeTypePriority(edge.type) > edgeTypePriority(existing.type)) {
-      bestByPair.set(key, edge)
-    }
-  }
-
-  for (const edge of bestByPair.values()) {
-    graph.addEdgeWithKey(edge.id, edge.source, edge.target, getEdgeAttributes(edge))
-  }
+  graph.import({
+    nodes: data.nodes.map((node) => ({
+      key: node.id,
+      attributes: getNodeAttributes(node),
+    })),
+    edges: data.edges
+      .filter((edge) => nodeKeys.has(edge.source) && nodeKeys.has(edge.target))
+      .map((edge) => ({
+        key: edge.id,
+        source: edge.source,
+        target: edge.target,
+        attributes: getEdgeAttributes(edge),
+      })),
+  })
 
   return graph
 }
@@ -134,6 +96,7 @@ export function apiToGraphology(data: GraphData): Graph {
  */
 function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
   const { x, y } = seededPosition(node.id)
+  const packageName = extractPackageName(node)
   return {
     label: node.name,
     x,
@@ -145,6 +108,9 @@ function getNodeAttributes(node: GraphNode): SigmaNodeAttributes {
     fullName: node.fullName,
     filePath: node.filePath,
     lineNumber: node.lineNumber,
+    layer: getLayer(node),
+    packageName,
+    community: packageName,
   }
 }
 
@@ -159,7 +125,56 @@ export function getEdgeAttributes(edge: GraphEdge): SigmaEdgeAttributes {
     labelColor: color,
     size: SIGMA_EDGE_SIZE,
     edgeType: edge.type,
+    weight: edge.weight,
+    occurrences: edge.occurrences,
   }
+}
+
+function stringProperty(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function getLayer(node: GraphNode): string {
+  return stringProperty(node.properties.layer) ?? stringProperty(node.properties.springLayer) ?? ''
+}
+
+function extractPackageName(node: GraphNode): string {
+  const explicit = stringProperty(node.properties.packageName)
+  if (explicit) return explicit
+
+  const fromFullName = packageNameFromFullName(node.fullName, node.type)
+  if (fromFullName) return fromFullName
+
+  return packageNameFromFilePath(node.filePath) ?? ''
+}
+
+function packageNameFromFullName(fullName: string, nodeType: NodeType): string | undefined {
+  if (!fullName || fullName.includes('/') || fullName.includes(' ')) return undefined
+  if (nodeType === 'File') return undefined
+  const withoutParams = fullName.replace(/\(.*/, '')
+  const parts = withoutParams.split('.').filter(Boolean)
+  if (parts.length < 2) return undefined
+
+  if (nodeType === 'Package') return withoutParams
+  if (
+    nodeType === 'Method' ||
+    nodeType === 'Constructor' ||
+    nodeType === 'Field' ||
+    nodeType === 'LocalVariable'
+  ) {
+    return parts.length > 2 ? parts.slice(0, -2).join('.') : undefined
+  }
+  return parts.slice(0, -1).join('.')
+}
+
+function packageNameFromFilePath(filePath: string): string | undefined {
+  if (!filePath) return undefined
+  const normalized = filePath.replace(/\\/g, '/')
+  const sourceRoot = normalized.match(/(?:^|\/)src\/(?:main|test)\/(?:java|kotlin)\/(.+)\/[^/]+$/)
+  if (sourceRoot?.[1]) return sourceRoot[1].replace(/\//g, '.')
+
+  const dirs = normalized.split('/').slice(0, -1).filter(Boolean)
+  return dirs.length > 0 ? dirs.join('.') : undefined
 }
 
 /**

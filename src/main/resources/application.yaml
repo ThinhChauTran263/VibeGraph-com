@@ -209,8 +209,8 @@ vibegraph:
   # browser receives by default so a huge project cannot freeze the tab during transfer
   # /JSON.parse. Internal Java consumers still read the full graph directly.
   graph:
-    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:1500}
-    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:4000}
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:2500}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:6000}
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 

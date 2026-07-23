@@ -157,6 +157,86 @@ class ParserServiceTest {
         }
 
         @Test
+        @DisplayName("should assign coarse architectural layers to parsed nodes")
+        void shouldAssignNodeLayers() throws IOException {
+            Path javaFile = tempDir.resolve("Layers.java");
+            Files.writeString(javaFile, """
+                package com.example;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class UserController {
+                    public void handle() {}
+                }
+                class UserServiceImpl {}
+                interface UserRepository {}
+                record UserRecord(String id) {}
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            assertThat(result.getNodes())
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserController");
+                        assertThat(n.properties()).containsEntry("layer", "PRESENTATION");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserController.handle()");
+                        assertThat(n.properties()).containsEntry("layer", "PRESENTATION");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserServiceImpl");
+                        assertThat(n.properties()).containsEntry("layer", "SERVICE");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserRepository");
+                        assertThat(n.properties()).containsEntry("layer", "DATA_ACCESS");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserRecord");
+                        assertThat(n.properties()).containsEntry("layer", "DOMAIN");
+                    });
+        }
+
+        @Test
+        @DisplayName("should aggregate duplicate edges with weight and bounded occurrences")
+        void shouldAggregateDuplicateEdges() throws IOException {
+            Path javaFile = tempDir.resolve("Caller.java");
+            Files.writeString(javaFile, """
+                package com.example;
+                public class Caller {
+                    public void run() {
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                    }
+                    void helper() {}
+                }
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            var calls = result.getEdges().stream()
+                    .filter(edge -> edge.type().equals("CALLS"))
+                    .filter(edge -> edge.sourceFullName().equals("com.example.Caller.run()"))
+                    .filter(edge -> edge.targetFullName().equals("com.example.Caller.helper()"))
+                    .toList();
+
+            assertThat(calls).hasSize(1);
+            assertThat(calls.get(0).properties()).containsEntry("weight", 12);
+            assertThat((List<?>) calls.get(0).properties().get("occurrences")).hasSize(10);
+        }
+
+        @Test
         @DisplayName("deep CPG is OFF by default: no LocalVariable nodes or READS/WRITES/CATCHES edges")
         void deepCpgOffByDefault() throws IOException {
             Path javaFile = tempDir.resolve("Calc.java");
