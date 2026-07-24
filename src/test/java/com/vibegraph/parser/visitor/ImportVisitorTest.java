@@ -43,16 +43,19 @@ class ImportVisitorTest {
     }
 
     @Test
-    @DisplayName("should skip java.lang.* imports")
+    @DisplayName("should skip JDK and Spring framework imports")
     void shouldSkipJavaLangImports() {
         List<EdgeData> edges = importsOf("""
                 package com.example;
                 import java.lang.Runnable;
+                import java.util.List;
+                import org.springframework.stereotype.Service;
                 import com.other.UserService;
                 public class Foo {}
                 """);
 
-        assertThat(edges).noneMatch(e -> e.targetFullName().startsWith("java.lang."));
+        assertThat(edges).noneMatch(e -> e.targetFullName().startsWith("java.")
+                || e.targetFullName().startsWith("org.springframework."));
         // The non-java.lang import is still captured.
         assertThat(edges).anyMatch(e -> e.targetFullName().equals("com.other.UserService"));
     }

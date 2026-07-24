@@ -11,9 +11,11 @@ const props = defineProps<{
 const {
   hiddenNodeTypes,
   hiddenEdgeTypes,
+  hideIsolatedNodes,
   hasActiveFilters,
   toggleNodeType,
   toggleEdgeType,
+  toggleIsolatedNodes,
   showAllNodeTypes,
   showAllEdgeTypes,
   reset,
@@ -37,6 +39,15 @@ const edgeTypeItems = computed(() => {
 // knows which other types to close/restore.
 const nodeTypeList = computed(() => nodeTypeItems.value.map((item) => item.type))
 const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type))
+
+const isolatedNodeCount = computed(() => {
+  const connected = new Set<string>()
+  for (const edge of props.graphData.edges) {
+    connected.add(edge.source)
+    connected.add(edge.target)
+  }
+  return props.graphData.nodes.reduce((count, node) => count + (connected.has(node.id) ? 0 : 1), 0)
+})
 </script>
 
 <template>
@@ -63,6 +74,21 @@ const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type)
       </div>
 
       <ul class="filter-panel__list">
+        <li v-if="isolatedNodeCount > 0">
+          <button
+            class="filter-panel__toggle"
+            :class="{ 'filter-panel__toggle--muted': hideIsolatedNodes }"
+            type="button"
+            :aria-label="`Isolated nodes ${hideIsolatedNodes ? 'hidden' : 'visible'}, ${isolatedNodeCount}`"
+            :aria-pressed="!hideIsolatedNodes"
+            @click="toggleIsolatedNodes"
+          >
+            <span class="filter-panel__swatch filter-panel__swatch--isolated" />
+            <span class="filter-panel__name">Isolated</span>
+            <span class="filter-panel__count">{{ isolatedNodeCount }}</span>
+          </button>
+        </li>
+
         <li v-for="item in nodeTypeItems" :key="item.type">
           <button
             class="filter-panel__toggle"
@@ -225,6 +251,11 @@ const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type)
   height: 0.75rem;
   border-radius: 999px;
   flex: 0 0 auto;
+}
+
+.filter-panel__swatch--isolated {
+  background: transparent;
+  border: 2px solid #94a3b8;
 }
 
 .filter-panel__edge-swatch {

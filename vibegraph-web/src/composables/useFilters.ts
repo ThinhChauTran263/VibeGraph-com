@@ -10,16 +10,19 @@ export function useFilters() {
     return filterGraphData(data, {
       hiddenNodeTypes: store.hiddenNodeTypes,
       hiddenEdgeTypes: store.hiddenEdgeTypes,
+      hideIsolatedNodes: store.hideIsolatedNodes,
     })
   }
 
   return {
     hiddenNodeTypes: computed(() => store.hiddenNodeTypes),
     hiddenEdgeTypes: computed(() => store.hiddenEdgeTypes),
+    hideIsolatedNodes: computed(() => store.hideIsolatedNodes),
     searchQuery: computed(() => store.searchQuery),
     hasActiveFilters: computed(() => store.hasActiveFilters),
     toggleNodeType: store.toggleNodeType,
     toggleEdgeType: store.toggleEdgeType,
+    toggleIsolatedNodes: store.toggleIsolatedNodes,
     showAllNodeTypes: store.showAllNodeTypes,
     showAllEdgeTypes: store.showAllEdgeTypes,
     reset: store.reset,
