@@ -43,6 +43,15 @@ class MethodVisitorTest {
         return node.properties().get(key);
     }
 
+    private CompilationUnit parseWithSolver(String code) {
+        JavaParser solverParser = new JavaParser(new com.github.javaparser.ParserConfiguration()
+                .setSymbolResolver(new com.github.javaparser.symbolsolver.JavaSymbolSolver(
+                        new com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver())));
+        ParseResult<CompilationUnit> result = solverParser.parse(code);
+        assertTrue(result.isSuccessful());
+        return result.getResult().orElseThrow();
+    }
+
     @Nested
     @DisplayName("Basic method extraction")
     class BasicExtraction {
@@ -121,6 +130,60 @@ class MethodVisitorTest {
             List<NodeData> methods = visitor.getExtractedMethods();
 
             assertTrue((boolean) property(methods.get(0), "abstract"));
+        }
+
+        @Test
+        @DisplayName("should skip routine getters, setters, and Object methods")
+        void shouldSkipRoutineMethods() {
+            String code = """
+                package com.example;
+                public class User {
+                    private String name;
+                    private boolean active;
+
+                    public String getName() { return name; }
+                    public boolean isActive() { return this.active; }
+                    public void setName(String name) { this.name = name; }
+                    public String toString() { return name; }
+                    public int hashCode() { return 31; }
+                    public boolean equals(Object other) { return this == other; }
+                    public UserDto getUser() { return service.findUser(); }
+                    public void process() { service.process(); }
+                }
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+            List<String> methodNames = visitor.getExtractedMethods().stream()
+                    .map(NodeData::name)
+                    .toList();
+
+            assertEquals(List.of("getUser", "process"), methodNames);
+        }
+
+        @Test
+        @DisplayName("should not emit CALLS edges to skipped getter targets")
+        void shouldSkipGetterCallTargets() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                public class User {
+                    private String name;
+
+                    public String getName() { return name; }
+
+                    public void process() {
+                        getName();
+                    }
+                }
+                """);
+
+            visitor.visit(cu, null);
+
+            assertTrue(visitor.getExtractedMethods().stream()
+                    .noneMatch(method -> method.fullName().equals("com.example.User.getName()")));
+            assertTrue(visitor.getExtractedEdges().stream()
+                    .noneMatch(edge -> edge.type().equals("CALLS")
+                            && edge.targetFullName().equals("com.example.User.getName()")));
         }
 
         @Test
@@ -259,6 +322,35 @@ class MethodVisitorTest {
             List<NodeData> methods = visitor.getExtractedMethods();
 
             assertTrue(methods.stream().anyMatch(method -> method.name().equals("<init>") && method.type().equals("Constructor")));
+        }
+
+        @Test
+        @DisplayName("should skip explicit no-op constructors")
+        void shouldSkipNoOpConstructors() {
+            String code = """
+                package com.example;
+                public class Empty {
+                    public Empty() {}
+                }
+                class SuperOnly {
+                    public SuperOnly() { super(); }
+                }
+                class RealConstructor {
+                    private final Repository repo;
+                    public RealConstructor(Repository repo) {
+                        this.repo = repo;
+                    }
+                }
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+
+            assertEquals(1, visitor.getExtractedMethods().stream()
+                    .filter(method -> method.type().equals("Constructor"))
+                    .count());
+            assertTrue(visitor.getExtractedMethods().stream()
+                    .anyMatch(method -> method.fullName().equals("com.example.RealConstructor.<init>(Repository)")));
         }
     }
 
@@ -580,7 +672,7 @@ class MethodVisitorTest {
         }
 
         @Test
-        @DisplayName("should parse method references and extract resolved/unresolved calls")
+        @DisplayName("should parse method references and suppress unresolved stubs by default")
         void shouldParseMethodReferences() {
             CompilationUnit cu = parseWithSolver("""
                 package com.example;
@@ -602,16 +694,14 @@ class MethodVisitorTest {
                     && "resolved".equals(e.properties().get("targetType"))
                     && "method".equals(e.properties().get("callKind"))));
 
-            // 2. Unresolved method reference should emit unresolved stub
-            assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
-                    && e.targetFullName().contains("unknownMethod")
-                    && "unresolved".equals(e.properties().get("targetType"))
-                    && "method".equals(e.properties().get("callKind"))));
+            // 2. Unresolved method references are low-confidence and suppressed by default.
+            assertTrue(edges.stream().noneMatch(e -> e.type().equals("CALLS")
+                    && "unresolved".equals(e.properties().get("targetType"))));
         }
 
         @Test
-        @DisplayName("should emit low-confidence CALLS edge for unresolved method calls")
-        void shouldEmitStubForUnresolvedCall() {
+        @DisplayName("should suppress low-confidence CALLS edge for unresolved method calls by default")
+        void shouldSuppressStubForUnresolvedCallByDefault() {
             CompilationUnit cu = parseWithSolver("""
                 package com.example;
                 public class C {
@@ -622,11 +712,68 @@ class MethodVisitorTest {
                 """);
             visitor.visit(cu, null);
             List<com.vibegraph.parser.node.EdgeData> edges = visitor.getExtractedEdges();
+            assertTrue(edges.stream().noneMatch(e -> e.type().equals("CALLS")
+                    && "unresolved".equals(e.properties().get("targetType"))
+                    && e.targetFullName().contains("doSomething")));
+        }
+
+        @Test
+        @DisplayName("debug mode can still emit low-confidence unresolved CALLS edges")
+        void shouldEmitStubForUnresolvedCallWhenDebugEnabled() {
+            MethodVisitor debugVisitor = new MethodVisitor(false, true);
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                public class C {
+                    public void process() {
+                        unknownService.doSomething("hello", 123);
+                    }
+                }
+                """);
+            debugVisitor.visit(cu, null);
+            List<com.vibegraph.parser.node.EdgeData> edges = debugVisitor.getExtractedEdges();
             assertTrue(edges.stream().anyMatch(e -> e.type().equals("CALLS")
                     && "unresolved".equals(e.properties().get("targetType"))
                     && Double.valueOf(0.3).equals(e.properties().get("confidence"))
                     && "unknownService.doSomething".equals(e.properties().get("rawTarget"))
                     && e.targetFullName().contains("doSomething")));
+        }
+
+        @Test
+        @DisplayName("should not attribute lambda or anonymous-class body calls to the parent method")
+        void shouldNotAttributeNestedExecutableBodiesToParentMethod() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                public class C {
+                    public void process() {
+                        Runnable task = () -> helper();
+                        Object anonymous = new Object() {
+                            void inside() {
+                                helper();
+                                new Helper();
+                            }
+                        };
+                        helper();
+                        new Helper();
+                    }
+                    public void helper() {}
+                }
+                class Helper {}
+                """);
+            visitor.visit(cu, null);
+
+            List<com.vibegraph.parser.node.EdgeData> edges = visitor.getExtractedEdges();
+            assertEquals(1, edges.stream()
+                    .filter(e -> e.type().equals("CALLS"))
+                    .filter(e -> e.sourceFullName().equals("com.example.C.process()"))
+                    .filter(e -> e.targetFullName().equals("com.example.C.helper()"))
+                    .count());
+            assertEquals(1, edges.stream()
+                    .filter(e -> e.type().equals("INSTANTIATES"))
+                    .filter(e -> e.sourceFullName().equals("com.example.C.process()"))
+                    .filter(e -> e.targetFullName().equals("com.example.Helper"))
+                    .count());
+            assertTrue(visitor.getExtractedMethods().stream()
+                    .noneMatch(method -> method.name().equals("inside")));
         }
     }
 }

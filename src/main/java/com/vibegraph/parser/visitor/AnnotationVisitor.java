@@ -17,6 +17,7 @@ import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.MethodSkipPolicy;
 import com.vibegraph.parser.Signatures;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -27,9 +28,9 @@ import com.vibegraph.parser.node.NodeData;
  * <p>Canonical direction: {@code (annotated element)-[:ANNOTATED_BY]->(:Annotation)}.
  * The annotated element is a Class/Interface/Enum/Record/DBModel, Method,
  * Constructor, or Field; the target is the annotation TYPE (one node per distinct
- * fully-qualified annotation type). Spring/JPA annotation types resolved outside
- * the project become {@code External} stubs on persistence, then are enriched to
- * {@code Annotation} because this visitor also emits an Annotation node for them.
+ * fully-qualified annotation type). Routine methods and no-op constructors obey
+ * {@link MethodSkipPolicy}; they do not receive annotation edges because their
+ * Method/Constructor nodes are not emitted.
  *
  * <p>Annotation type resolution is best-effort (imports → same package → java.lang
  * for the well-known built-ins → simple name). Unresolved names fall back to the
@@ -66,6 +67,10 @@ public class AnnotationVisitor extends VoidVisitorAdapter<Object> {
 
     @Override
     public void visit(MethodDeclaration n, Object arg) {
+        if (MethodSkipPolicy.shouldSkip(n)) {
+            super.visit(n, arg);
+            return;
+        }
         ownerFqcn(n).ifPresent(owner -> {
             List<String> paramTypes = n.getParameters().stream()
                     .map(p -> p.getType().asString())
@@ -77,6 +82,10 @@ public class AnnotationVisitor extends VoidVisitorAdapter<Object> {
 
     @Override
     public void visit(ConstructorDeclaration n, Object arg) {
+        if (MethodSkipPolicy.shouldSkip(n)) {
+            super.visit(n, arg);
+            return;
+        }
         ownerFqcn(n).ifPresent(owner -> {
             List<String> paramTypes = n.getParameters().stream()
                     .map(p -> p.getType().asString())

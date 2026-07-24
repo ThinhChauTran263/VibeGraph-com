@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  */
 public final class GraphSchema {
 
-    /** Stub label applied to on-demand target nodes (library/JDK types, unresolved refs). */
+    /** Legacy placeholder label kept for migration cleanup; parser no longer emits it. */
     public static final String EXTERNAL_LABEL = "External";
 
     private static final Set<String> NODE_LABELS = Set.of(

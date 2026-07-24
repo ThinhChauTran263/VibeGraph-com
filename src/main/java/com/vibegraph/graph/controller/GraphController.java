@@ -10,11 +10,13 @@ import org.springframework.web.bind.annotation.RestController;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.graph.config.GraphPayloadProperties;
+import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 public class GraphController {
 
     private final GraphService graphService;
+    private final GraphArchitectureProjector architectureProjector;
     private final GraphPayloadGuard payloadGuard;
     private final GraphPayloadProperties payloadProperties;
     private final ProjectOwnershipGuard ownershipGuard;
@@ -38,6 +41,8 @@ public class GraphController {
     @GetMapping
     public ResponseEntity<ApiResponse<GraphDataResponse>> getFullGraph(
             @PathVariable String projectId,
+            @RequestParam(required = false) String mode,
+            @RequestParam(defaultValue = "false") boolean includeDeep,
             @RequestParam(required = false) Integer nodeLimit,
             @RequestParam(required = false) Integer edgeLimit) {
         ownershipGuard.assertOwner(projectId);
@@ -46,7 +51,8 @@ public class GraphController {
         int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
                 payloadProperties.getMaxEdgeLimit());
         GraphDataResponse full = graphService.getFullGraph(projectId);
-        GraphDataResponse capped = payloadGuard.cap(full, effectiveNodeLimit, effectiveEdgeLimit);
+        GraphDataResponse view = selectView(full, mode, includeDeep);
+        GraphDataResponse capped = payloadGuard.cap(view, effectiveNodeLimit, effectiveEdgeLimit);
         return ResponseEntity.ok(ApiResponse.success(capped));
     }
 
@@ -59,6 +65,24 @@ public class GraphController {
             return Math.min(defaultValue, max);
         }
         return Math.min(requested, max);
+    }
+
+    private GraphDataResponse selectView(GraphDataResponse graph, String mode, boolean includeDeep) {
+        if (includeDeep || isDeepMode(mode)) {
+            return graph;
+        }
+        if (mode == null || mode.isBlank() || isBaselineMode(mode)) {
+            return architectureProjector.project(graph);
+        }
+        throw new IllegalArgumentException("mode must be baseline or deep");
+    }
+
+    private boolean isDeepMode(String mode) {
+        return mode != null && "deep".equalsIgnoreCase(mode.trim());
+    }
+
+    private boolean isBaselineMode(String mode) {
+        return mode != null && "baseline".equalsIgnoreCase(mode.trim());
     }
 
     @GetMapping("/impact")

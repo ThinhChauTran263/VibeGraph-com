@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,9 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSol
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 import com.vibegraph.common.util.FileUtils;
+import com.vibegraph.parser.NodeLayerClassifier;
+import com.vibegraph.parser.ProjectSymbolRegistry;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
@@ -41,6 +45,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ParserServiceImpl implements ParserService {
 
+    private static final Set<String> FILE_DEFINED_NODE_TYPES = Set.of(
+            "Class", "Interface", "Enum", "Record", "DBModel");
+
     /**
      * Phase 3 deep CPG toggle. Default false: LocalVariable nodes + READS/WRITES/CATCHES
      * are opt-in (body-level data-flow can multiply graph size). Bound from
@@ -53,10 +60,10 @@ public class ParserServiceImpl implements ParserService {
     @Override
     public ParseResult parseFile(Path filePath) {
         // Single-file parsing without project context - limited symbol resolution
-        return parseFileInternal(filePath, null);
+        return parseFileInternal(filePath, null, null);
     }
 
-    private ParseResult parseFileInternal(Path filePath, JavaParser parser) {
+    private ParseResult parseFileInternal(Path filePath, JavaParser parser, ProjectSymbolRegistry projectSymbols) {
         List<String> warnings = new ArrayList<>();
 
         if (!Files.exists(filePath) || !FileUtils.isJavaFile(filePath)) {
@@ -91,74 +98,84 @@ public class ParserServiceImpl implements ParserService {
                         .build();
             }
 
+            ProjectSymbolRegistry activeSymbols = projectSymbols != null
+                    ? projectSymbols
+                    : ProjectSymbolRegistry.fromCompilationUnits(List.of(cu));
+
             // Apply visitors
-            ClassVisitor classVisitor = new ClassVisitor();
-            MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
-            FieldVisitor fieldVisitor = new FieldVisitor();
-            SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
-            AnnotationVisitor annotationVisitor = new AnnotationVisitor();
+            try (ProjectSymbolRegistry.Scope ignored = ProjectSymbolRegistry.open(activeSymbols)) {
+                ClassVisitor classVisitor = new ClassVisitor();
+                MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
+                FieldVisitor fieldVisitor = new FieldVisitor();
+                SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
+                AnnotationVisitor annotationVisitor = new AnnotationVisitor();
 
-            classVisitor.visit(cu, null);
-            methodVisitor.visit(cu, null);
-            fieldVisitor.visit(cu, null);
-            springVisitor.visit(cu, null);
-            annotationVisitor.visit(cu, null);
+                classVisitor.visit(cu, null);
+                methodVisitor.visit(cu, null);
+                fieldVisitor.visit(cu, null);
+                springVisitor.visit(cu, null);
+                annotationVisitor.visit(cu, null);
 
-            // ImportVisitor needs the source file's full name - use primary class FQCN
-            String primaryFqcn = cu.getPrimaryTypeName().orElse("");
-            String packageName = cu.getPackageDeclaration()
-                    .map(p -> p.getNameAsString())
-                    .orElse("");
-            String sourceFullName = packageName.isEmpty() ? primaryFqcn : packageName + "." + primaryFqcn;
-            ImportVisitor importVisitor = null;
-            if (!sourceFullName.isEmpty()) {
-                importVisitor = new ImportVisitor(sourceFullName);
-                importVisitor.visit(cu, null);
+                // ImportVisitor needs the source file's full name - use primary class FQCN
+                String primaryFqcn = cu.getPrimaryTypeName().orElse("");
+                String packageName = cu.getPackageDeclaration()
+                        .map(p -> p.getNameAsString())
+                        .orElse("");
+                String sourceFullName = packageName.isEmpty() ? primaryFqcn : packageName + "." + primaryFqcn;
+                ImportVisitor importVisitor = null;
+                if (!sourceFullName.isEmpty()) {
+                    importVisitor = new ImportVisitor(sourceFullName);
+                    importVisitor.visit(cu, null);
+                }
+
+                // Aggregate nodes
+                List<NodeData> nodes = new ArrayList<>();
+                NodeData fileNode = fileNode(filePath);
+                nodes.add(fileNode);
+                // Package node + CONTAINS edge (Package -> File). Default-package files
+                // (no package declaration) get no Package node. Deduped across files by
+                // {projectId, fullName} at MERGE time.
+                NodeData packageNode = packageName.isEmpty() ? null : packageNode(packageName);
+                if (packageNode != null) {
+                    nodes.add(packageNode);
+                }
+                nodes.addAll(classVisitor.getExtractedNodes());
+                nodes.addAll(methodVisitor.getExtractedMethods());
+                // LocalVariable nodes (deep CPG only; empty list otherwise).
+                nodes.addAll(methodVisitor.getExtractedVariables());
+                nodes.addAll(fieldVisitor.getExtractedFields());
+                // Route nodes must be aggregated too - otherwise HANDLES_ROUTE edges below
+                // reference a target node that was never persisted and get silently dropped.
+                nodes.addAll(springVisitor.getExtractedNodes());
+                // Annotation nodes (annotation types used by classes/methods/fields).
+                nodes.addAll(annotationVisitor.getExtractedNodes());
+
+                nodes = NodeLayerClassifier.withLayers(nodes);
+
+                // Aggregate edges
+                List<EdgeData> edges = new ArrayList<>();
+                edges.addAll(fileDefinesEdges(fileNode, nodes));
+                if (packageNode != null) {
+                    edges.add(EdgeData.of("CONTAINS", packageNode.fullName(), fileNode.fullName()));
+                }
+                edges.addAll(classVisitor.getExtractedEdges());
+                edges.addAll(methodVisitor.getExtractedEdges());
+                edges.addAll(fieldVisitor.getExtractedEdges());
+                edges.addAll(springVisitor.getExtractedEdges());
+                edges.addAll(annotationVisitor.getExtractedEdges());
+                if (importVisitor != null) {
+                    edges.addAll(importVisitor.getExtractedEdges());
+                }
+
+                edges = aggregateEdges(edges);
+
+                return ParseResult.builder()
+                        .filePath(filePath.toString())
+                        .nodes(nodes)
+                        .edges(edges)
+                        .warnings(warnings)
+                        .build();
             }
-
-            // Aggregate nodes
-            List<NodeData> nodes = new ArrayList<>();
-            NodeData fileNode = fileNode(filePath);
-            nodes.add(fileNode);
-            // Package node + CONTAINS edge (Package -> File). Default-package files
-            // (no package declaration) get no Package node. Deduped across files by
-            // {projectId, fullName} at MERGE time.
-            NodeData packageNode = packageName.isEmpty() ? null : packageNode(packageName);
-            if (packageNode != null) {
-                nodes.add(packageNode);
-            }
-            nodes.addAll(classVisitor.getExtractedNodes());
-            nodes.addAll(methodVisitor.getExtractedMethods());
-            // LocalVariable nodes (deep CPG only; empty list otherwise).
-            nodes.addAll(methodVisitor.getExtractedVariables());
-            nodes.addAll(fieldVisitor.getExtractedFields());
-            // Route nodes must be aggregated too - otherwise HANDLES_ROUTE edges below
-            // reference a target node that was never persisted and get silently dropped.
-            nodes.addAll(springVisitor.getExtractedNodes());
-            // Annotation nodes (annotation types used by classes/methods/fields).
-            nodes.addAll(annotationVisitor.getExtractedNodes());
-
-            // Aggregate edges
-            List<EdgeData> edges = new ArrayList<>();
-            edges.addAll(fileDefinesEdges(fileNode, nodes));
-            if (packageNode != null) {
-                edges.add(EdgeData.of("CONTAINS", packageNode.fullName(), fileNode.fullName()));
-            }
-            edges.addAll(classVisitor.getExtractedEdges());
-            edges.addAll(methodVisitor.getExtractedEdges());
-            edges.addAll(fieldVisitor.getExtractedEdges());
-            edges.addAll(springVisitor.getExtractedEdges());
-            edges.addAll(annotationVisitor.getExtractedEdges());
-            if (importVisitor != null) {
-                edges.addAll(importVisitor.getExtractedEdges());
-            }
-
-            return ParseResult.builder()
-                    .filePath(filePath.toString())
-                    .nodes(nodes)
-                    .edges(edges)
-                    .warnings(warnings)
-                    .build();
 
         } catch (IOException e) {
             log.error("Failed to parse file: {}", filePath, e);
@@ -198,12 +215,79 @@ public class ParserServiceImpl implements ParserService {
 
     private List<EdgeData> fileDefinesEdges(NodeData fileNode, List<NodeData> nodes) {
         return nodes.stream()
-                .filter(node -> !"File".equals(node.type()))
+                .filter(node -> FILE_DEFINED_NODE_TYPES.contains(node.type()))
                 .filter(node -> fileNode.filePath().equals(node.filePath()))
                 .map(node -> EdgeData.of("DEFINES", fileNode.fullName(), node.fullName(), Map.of(
                         "lineNumber", node.lineNumber()
                 )))
                 .toList();
+    }
+
+    private List<EdgeData> aggregateEdges(List<EdgeData> rawEdges) {
+        if (rawEdges == null || rawEdges.isEmpty()) {
+            return List.of();
+        }
+        Map<String, EdgeAggregate> aggregated = new LinkedHashMap<>();
+        for (EdgeData edge : rawEdges) {
+            if (edge == null) {
+                continue;
+            }
+            String key = edge.sourceFullName() + "|" + edge.type() + "|" + edge.targetFullName();
+            aggregated.computeIfAbsent(key, ignored -> new EdgeAggregate(edge)).add(edge);
+        }
+        return aggregated.values().stream().map(EdgeAggregate::toEdgeData).toList();
+    }
+
+    private static final class EdgeAggregate {
+        private final String type;
+        private final String sourceFullName;
+        private final String targetFullName;
+        private final Map<String, Object> properties = new LinkedHashMap<>();
+        private final List<Integer> occurrences = new ArrayList<>();
+        private int weight = 0;
+        private Integer lineNumber;
+
+        private EdgeAggregate(EdgeData first) {
+            this.type = first.type();
+            this.sourceFullName = first.sourceFullName();
+            this.targetFullName = first.targetFullName();
+            if (first.properties() != null) {
+                properties.putAll(first.properties());
+            }
+        }
+
+        private void add(EdgeData edge) {
+            weight++;
+            Integer line = lineNumber(edge);
+            if (line != null) {
+                if (lineNumber == null) {
+                    lineNumber = line;
+                }
+                if (occurrences.size() < 10) {
+                    occurrences.add(line);
+                }
+            }
+        }
+
+        private EdgeData toEdgeData() {
+            Map<String, Object> props = new LinkedHashMap<>(properties);
+            props.put("weight", weight);
+            if (!occurrences.isEmpty()) {
+                props.put("occurrences", occurrences);
+            }
+            if (lineNumber != null) {
+                props.put("lineNumber", lineNumber);
+            }
+            return EdgeData.of(type, sourceFullName, targetFullName, props);
+        }
+
+        private Integer lineNumber(EdgeData edge) {
+            if (edge.properties() == null) {
+                return null;
+            }
+            Object value = edge.properties().get("lineNumber");
+            return value instanceof Number number ? number.intValue() : null;
+        }
     }
 
     private int lineCount(Path filePath) {
@@ -229,12 +313,13 @@ public class ParserServiceImpl implements ParserService {
             // Build a single project-wide parser whose type solver indexes all source roots.
             // This lets MethodCallExpr.resolve() resolve cross-package, cross-class calls
             // (CALLS edges) instead of only same-directory ones.
+            ProjectSymbolRegistry projectSymbols = ProjectSymbolRegistry.fromFiles(javaFiles);
             JavaParser parser = createProjectParser(projectRoot, javaFiles);
 
             int parsed = 0;
             for (Path javaFile : javaFiles) {
                 try {
-                    ParseResult result = parseFileInternal(javaFile, parser);
+                    ParseResult result = parseFileInternal(javaFile, parser, projectSymbols);
                     results.add(result);
                 } catch (Exception e) {
                     log.warn("Failed to parse file: {}", javaFile, e);

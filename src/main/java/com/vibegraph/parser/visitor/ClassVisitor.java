@@ -6,6 +6,7 @@ import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -60,19 +61,19 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     private void extractInheritanceEdges(ClassOrInterfaceDeclaration declaration, String sourceFullName) {
         // EXTENDS edges
         for (ClassOrInterfaceType extendedType : declaration.getExtendedTypes()) {
-            String targetFullName = resolveTypeName(extendedType, declaration);
-            extractedEdges.add(EdgeData.of("EXTENDS", sourceFullName, targetFullName, Map.of(
-                    "lineNumber", extendedType.getBegin().map(p -> p.line).orElse(0)
-            )));
+            TypeReferenceSupport.resolveTypeReference(extendedType, declaration)
+                    .ifPresent(targetFullName -> extractedEdges.add(EdgeData.of("EXTENDS", sourceFullName, targetFullName, Map.of(
+                            "lineNumber", extendedType.getBegin().map(p -> p.line).orElse(0)
+                    ))));
         }
 
         // IMPLEMENTS edges (only for classes)
         if (!declaration.isInterface()) {
             for (ClassOrInterfaceType implementedType : declaration.getImplementedTypes()) {
-                String targetFullName = resolveTypeName(implementedType, declaration);
-                extractedEdges.add(EdgeData.of("IMPLEMENTS", sourceFullName, targetFullName, Map.of(
-                        "lineNumber", implementedType.getBegin().map(p -> p.line).orElse(0)
-                )));
+                TypeReferenceSupport.resolveTypeReference(implementedType, declaration)
+                        .ifPresent(targetFullName -> extractedEdges.add(EdgeData.of("IMPLEMENTS", sourceFullName, targetFullName, Map.of(
+                                "lineNumber", implementedType.getBegin().map(p -> p.line).orElse(0)
+                        ))));
             }
         }
 
@@ -84,31 +85,6 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
                 extractedEdges.add(EdgeData.of("HAS_INNER", parentFullName.get(), sourceFullName));
             }
         }
-    }
-
-    private String resolveTypeName(ClassOrInterfaceType type, ClassOrInterfaceDeclaration context) {
-        // Try to resolve fully qualified name from imports or same package
-        String simpleName = type.getNameAsString();
-
-        // Check if it's already qualified
-        if (simpleName.contains(".")) {
-            return simpleName;
-        }
-
-        // Try to find from imports in the compilation unit
-        return context.findCompilationUnit()
-                .flatMap(cu -> cu.getImports().stream()
-                        .filter(imp -> !imp.isAsterisk())
-                        .filter(imp -> imp.getName().getIdentifier().equals(simpleName))
-                        .findFirst()
-                        .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> {
-                    // Fallback: use package name + simple name if in same package
-                    return context.findCompilationUnit()
-                            .flatMap(cu -> cu.getPackageDeclaration())
-                            .map(pkg -> pkg.getNameAsString() + "." + simpleName)
-                            .orElse(simpleName);
-                });
     }
 
     private NodeData toNodeData(ClassOrInterfaceDeclaration declaration) {

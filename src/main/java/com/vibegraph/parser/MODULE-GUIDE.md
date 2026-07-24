@@ -74,7 +74,7 @@ parser/
 Việc resolve type/method-call và dựng CALLS edges được làm **trực tiếp trong** `ParserServiceImpl`
 (qua JavaParser Symbol Solver) thay vì tách thành service riêng. Phạm vi:
 - [x] Resolve method call targets + type references (field/return/param types) trong khả năng Symbol Solver
-- [x] CALLS edges từ method invocation; symbol chưa resolve → gắn confidence thấp / External stub
+- [x] CALLS edges từ method invocation; symbol chưa resolve → mặc định suppress, debug mode mới cho low-confidence stub
 - [x] STEP_IN_FLOW (call chain từ route handler) do `flow/FlowAnalyzer` suy luận
 
 ### Relationship Extraction

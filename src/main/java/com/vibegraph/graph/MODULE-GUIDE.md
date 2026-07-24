@@ -110,7 +110,7 @@ Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph man
 - Parser xuất `NodeData` / `EdgeData` / `ParseResult` (parser-neutral, xem `parser/node/`).
 - `GraphRepository` là storage abstraction; impl duy nhất `Neo4jGraphRepository` ghi xuống bằng **raw Neo4j Java Driver + parameterized Cypher**.
 - Label node và relationship type được validate qua `GraphSchema` (allow-list), không phải class entity Java.
-- Node labels: Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route (+ `External` stub cho ref chưa resolve).
+- Node labels: Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route. `External` is legacy-only for persisted cleanup/migration; the parser no longer creates new unresolved-reference stubs.
 - Relationship types: OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, HAS_INNER, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, THROWS, CALLS, INJECTS, HANDLES_ROUTE, ANNOTATED_BY.
 - Edge properties: type, confidence, lineNumber (where applicable).
 

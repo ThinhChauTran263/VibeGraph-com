@@ -98,9 +98,9 @@ public class AnalyzeServiceImpl implements AnalyzeService {
 
         progress.onProgress(94, "Saving relationships");
 
-        // upsertEdges returns the number of edges actually persisted (including
-        // any that required an External stub target). This is the truthful count
-        // to report — allEdges.size() would over-report if anything were dropped.
+        // upsertEdges returns the number of edges actually persisted after
+        // missing endpoints are skipped. This is the truthful count to report —
+        // allEdges.size() would over-report if anything were dropped.
         int edgesPersisted = graphRepository.upsertEdges(projectId, allEdges);
 
         progress.onProgress(98, "Finalizing");

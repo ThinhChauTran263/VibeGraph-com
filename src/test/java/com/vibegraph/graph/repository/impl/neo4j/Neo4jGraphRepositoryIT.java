@@ -22,6 +22,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.util.HashUtils;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -143,8 +144,8 @@ class Neo4jGraphRepositoryIT {
     }
 
     @Test
-    @DisplayName("upsertEdges returns a truthful persisted count and creates an External stub target")
-    void shouldPersistEdgesWithExternalStub() {
+    @DisplayName("upsertEdges skips edges with missing endpoints instead of creating placeholders")
+    void shouldSkipEdgesWithMissingEndpoint() {
         NodeData caller = NodeData.of(
                 "Method", "save", "com.example.UserService.save(User)",
                 "src/UserService.java", 10, 12, Map.of("paramTypes", List.of("User")));
@@ -152,7 +153,7 @@ class Neo4jGraphRepositoryIT {
         repository.upsertProject(projectId, projectId, "/tmp/demo");
         repository.upsertNodes(projectId, List.of(caller));
 
-        // Target points at an unparsed library type — repository must MERGE an External stub.
+        // Target points at an unparsed library type; repository should skip it.
         EdgeData call = EdgeData.of("CALLS",
                 "com.example.UserService.save(User)",
                 "org.example.Repository.persist(User)",
@@ -160,28 +161,58 @@ class Neo4jGraphRepositoryIT {
 
         int persisted = repository.upsertEdges(projectId, List.of(call));
 
-        assertThat(persisted).isEqualTo(1);
+        assertThat(persisted).isZero();
 
         GraphDataResponse graph = repository.getFullGraph(projectId);
+        assertThat(graph.getEdges()).isEmpty();
+        assertThat(graph.getNodes())
+                .extracting(NodeDto::getType)
+                .doesNotContain("External");
+    }
+
+    @Test
+    @DisplayName("getFullGraph returns hashed edge ids and aggregate metadata")
+    void shouldReturnAggregatedEdgeMetadata() {
+        String source = "com.example.UserService.save(User)";
+        String target = "com.example.UserRepository.persist(User)";
+
+        repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(
+                NodeData.of("Method", "save", source, "src/UserService.java", 10, 12, Map.of()),
+                NodeData.of("Method", "persist", target, "src/UserRepository.java", 20, 22, Map.of())));
+        repository.upsertEdges(projectId, List.of(EdgeData.of("CALLS", source, target, Map.of(
+                "lineNumber", 11,
+                "weight", 3,
+                "occurrences", List.of(11, 15, 18)))));
+
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+
         EdgeDto edge = graph.getEdges().stream()
                 .filter(e -> "CALLS".equals(e.getType()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("CALLS edge not persisted"));
-        assertThat(edge.getSource()).isEqualTo("com.example.UserService.save(User)");
-        assertThat(edge.getTarget()).isEqualTo("org.example.Repository.persist(User)");
+        assertThat(edge.getId()).isEqualTo(HashUtils.sha256(source + "|CALLS|" + target));
+        assertThat(edge.getWeight()).isEqualTo(3);
+        assertThat(edge.getOccurrences()).containsExactly(11, 15, 18);
     }
 
     @Test
-    @DisplayName("upsertNodes enriches a pre-existing External stub in place — no duplicate, edge re-points to the real node")
-    void shouldEnrichExternalStubWithoutDuplicate() {
+    @DisplayName("skipped missing-target edges are not resurrected when the real node arrives later")
+    void shouldNotResurrectSkippedMissingTargetEdge() {
+        String sourceFullName = "com.example.UserService.save(User)";
         String targetFullName = "com.example.UserRepository.persist(User)";
         repository.upsertProject(projectId, projectId, "/tmp/demo");
+        repository.upsertNodes(projectId, List.of(NodeData.of(
+                "Method", "save", sourceFullName,
+                "src/UserService.java", 10, 12, Map.of("paramTypes", List.of("User")))));
 
-        // 1. An edge whose target isn't parsed yet → upsertEdges MERGEs an External stub.
-        repository.upsertEdges(projectId, List.of(EdgeData.of("CALLS",
-                "com.example.UserService.save(User)", targetFullName, Map.of("lineNumber", 11))));
+        // 1. The missing-target edge is skipped by upsertEdges.
+        int skipped = repository.upsertEdges(projectId, List.of(EdgeData.of("CALLS",
+                sourceFullName, targetFullName, Map.of("lineNumber", 11))));
 
-        // 2. Later the real Method node arrives with the SAME fullName as the stub.
+        assertThat(skipped).isZero();
+
+        // 2. Later the real Method node arrives with the same fullName.
         repository.upsertNodes(projectId, List.of(NodeData.of(
                 "Method", "persist", targetFullName,
                 "src/UserRepository.java", 20, 22, Map.of("paramTypes", List.of("User")))));
@@ -194,19 +225,19 @@ class Neo4jGraphRepositoryIT {
                     .single().get("c").asLong();
             assertThat(count).isEqualTo(1L);
 
-            // The node is now the real label and no longer an External stub.
+            // The node is now the real label and no longer legacy placeholder data.
             List<String> labels = session.run(
                     "MATCH (n {projectId: $projectId, fullName: $fullName}) RETURN labels(n) AS labels",
                     Map.of("projectId", projectId, "fullName", targetFullName))
                     .single().get("labels").asList(org.neo4j.driver.Value::asString);
             assertThat(labels).contains("Method").doesNotContain("External");
 
-            // The old CALLS edge is attached to the real (now Method) node, not stuck on a stub.
+            // The skipped CALLS edge does not reappear automatically.
             long callsIntoMethod = session.run(
                     "MATCH (:Method {projectId: $projectId, fullName: $fullName})<-[r:CALLS]-() RETURN count(r) AS c",
                     Map.of("projectId", projectId, "fullName", targetFullName))
                     .single().get("c").asLong();
-            assertThat(callsIntoMethod).isEqualTo(1L);
+            assertThat(callsIntoMethod).isZero();
         }
     }
 
@@ -253,14 +284,18 @@ class Neo4jGraphRepositoryIT {
     }
 
     @Test
-    @DisplayName("deleteFile removes file nodes and orphan External stubs while preserving shared stubs")
+    @DisplayName("deleteFile removes file nodes and prunes legacy placeholder nodes")
     void shouldDeleteFileGraphAndPruneOnlyOrphanExternalStubs() {
         repository.upsertProject(projectId, projectId, "/tmp/demo");
         repository.upsertNodes(projectId, List.of(
                 NodeData.of("Method", "changed", "com.example.Changed.changed()",
                         "src/Changed.java", 1, 5, Map.of()),
                 NodeData.of("Method", "other", "com.example.Other.other()",
-                        "src/Other.java", 1, 5, Map.of())));
+                        "src/Other.java", 1, 5, Map.of()),
+                NodeData.of("External", "lib.Orphan.call()", "lib.Orphan.call()",
+                        "", 0, 0, Map.of()),
+                NodeData.of("External", "lib.Shared.call()", "lib.Shared.call()",
+                        "", 0, 0, Map.of())));
         repository.upsertEdges(projectId, List.of(
                 EdgeData.of("CALLS", "com.example.Changed.changed()", "lib.Orphan.call()", Map.of()),
                 EdgeData.of("CALLS", "com.example.Changed.changed()", "lib.Shared.call()", Map.of()),

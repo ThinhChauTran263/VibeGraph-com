@@ -128,12 +128,11 @@ public class Neo4jGraphRepository implements GraphRepository {
     public void upsertNodes(String projectId, List<NodeData> nodes) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        // Identity is {projectId, fullName} — label-agnostic — so upserting a node
-        // ENRICHES any pre-existing `External` stub with the same fullName (created
-        // on demand by upsertEdges for unparsed targets) instead of creating a
-        // duplicate: MERGE without a label, then SET the real label and REMOVE
-        // :External. Neo4j cannot parameterize labels, so we group by label and run
-        // one UNWIND batch per label; the validated label is interpolated into SET n:%s.
+        // Identity is {projectId, fullName} - label-agnostic - so upserting a
+        // real parsed node can enrich any pre-existing placeholder node with
+        // the same fullName instead of creating a duplicate. Neo4j cannot
+        // parameterize labels, so we group by label and run one UNWIND batch
+        // per label; the validated label is interpolated into SET n:%s.
         // Dynamic properties are bulk-applied with `SET n += item.props`.
         Map<String, List<Map<String, Object>>> byLabel = new LinkedHashMap<>();
         for (NodeData node : nodes) {
@@ -163,11 +162,12 @@ public class Neo4jGraphRepository implements GraphRepository {
                         "UNWIND $batch AS item " +
                         "MERGE (n {projectId: $projectId, fullName: item.fullName}) " +
                         "SET n:%s " +
-                        "REMOVE n:External " +
+                        "%s" +
                         "SET n.name = item.name, n.filePath = item.filePath, " +
                         "n.lineNumber = item.lineNumber, n.endLine = item.endLine " +
                         "SET n += item.props",
-                        group.getKey()
+                        group.getKey(),
+                        GraphSchema.EXTERNAL_LABEL.equals(group.getKey()) ? "" : "REMOVE n:External "
                 );
                 session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
             }
@@ -179,9 +179,8 @@ public class Neo4jGraphRepository implements GraphRepository {
         if (edges == null || edges.isEmpty()) return 0;
 
         // Group by relationship type — Neo4j cannot parameterize rel types, so
-        // we run one UNWIND batch per type. Endpoints get an External stub on
-        // creation if they don't exist yet (library/JDK refs, unresolved targets),
-        // so edges are never silently dropped.
+        // we run one UNWIND batch per type. Missing endpoints are skipped in
+        // baseline mode instead of creating placeholder nodes.
         Map<String, List<Map<String, Object>>> byRelType = new LinkedHashMap<>();
         for (EdgeData edge : edges) {
             String relType = GraphSchema.relationshipType(edge.type());
@@ -206,16 +205,17 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byRelType.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (a {projectId: $projectId, fullName: item.sourceFullName}) " +
-                        "ON CREATE SET a:%s, a.name = item.sourceFullName " +
-                        "MERGE (b {projectId: $projectId, fullName: item.targetFullName}) " +
-                        "ON CREATE SET b:%s, b.name = item.targetFullName " +
+                        "MATCH (a {projectId: $projectId, fullName: item.sourceFullName}) " +
+                        "MATCH (b {projectId: $projectId, fullName: item.targetFullName}) " +
                         "MERGE (a)-[r:%s]->(b) " +
-                        "SET r += item.props",
-                        GraphSchema.EXTERNAL_LABEL, GraphSchema.EXTERNAL_LABEL, group.getKey()
+                        "SET r += item.props " +
+                        "RETURN count(r) AS persisted",
+                        group.getKey()
                 );
-                session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
-                persisted += group.getValue().size();
+                persisted += session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()))
+                        .single()
+                        .get("persisted")
+                        .asInt();
             }
         }
         return persisted;
@@ -536,7 +536,11 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     private NodeDto mapNodeToDto(Node node) {
-        String type = node.labels().iterator().next();
+        String type = "Unknown";
+        for (String label : node.labels()) {
+            type = label;
+            break;
+        }
         Map<String, Object> properties = new HashMap<>(node.asMap());
         properties.remove("projectId");
         properties.remove("fullName");

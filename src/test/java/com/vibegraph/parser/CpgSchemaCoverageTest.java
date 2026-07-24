@@ -72,8 +72,8 @@ class CpgSchemaCoverageTest {
         List<String> expected = List.of(
                 "DEFINES", "CONTAINS", "HAS_METHOD", "HAS_FIELD", "ANNOTATED_BY",
                 "EXTENDS", "IMPLEMENTS", "OVERRIDES", "TYPE_OF", "PARAMETER_TYPE",
-                "RETURNS", "IMPORTS", "CALLS", "INSTANTIATES", "INJECTS",
-                "STEP_IN_FLOW", "READS", "WRITES", "THROWS", "CATCHES", "HANDLES_ROUTE");
+                "RETURNS", "IMPORTS", "CALLS", "INSTANTIATES", "INJECTS", "STEP_IN_FLOW",
+                "READS", "WRITES", "THROWS", "CATCHES", "HANDLES_ROUTE");
 
         assertThat(edgeTypes).as("edge types emitted: " + edgeTypes).containsAll(expected);
     }

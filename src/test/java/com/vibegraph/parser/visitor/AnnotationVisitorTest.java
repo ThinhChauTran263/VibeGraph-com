@@ -113,6 +113,37 @@ class AnnotationVisitorTest {
     }
 
     @Test
+    @DisplayName("routine methods and no-op constructors do not emit ANNOTATED_BY edges")
+    void skippedRoutineMembersDoNotEmitAnnotationEdges() {
+        CompilationUnit cu = parse("""
+            package com.example;
+            import java.lang.Deprecated;
+            public class User {
+                @Deprecated
+                public User() {}
+
+                @Deprecated
+                public String getName() { return name; }
+
+                @Deprecated
+                public void run() {}
+
+                private String name;
+            }
+            """);
+
+        visitor.visit(cu, null);
+        List<EdgeData> edges = visitor.getExtractedEdges();
+
+        assertThat(edges).noneMatch(e -> e.type().equals("ANNOTATED_BY")
+                && e.sourceFullName().equals("com.example.User.<init>()"));
+        assertThat(edges).noneMatch(e -> e.type().equals("ANNOTATED_BY")
+                && e.sourceFullName().equals("com.example.User.getName()"));
+        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
+                && e.sourceFullName().equals("com.example.User.run()"));
+    }
+
+    @Test
     @DisplayName("java.lang built-in annotations resolve to java.lang.* and dedupe by type")
     void javaLangAnnotationsResolveAndDedupe() {
         CompilationUnit cu = parse("""

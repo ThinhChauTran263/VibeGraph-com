@@ -14,7 +14,7 @@ class GraphSchemaTest {
     class NodeLabels {
 
         @Test
-        @DisplayName("accepts known labels including the External stub")
+    @DisplayName("accepts known labels including the legacy placeholder label")
         void acceptsKnownLabels() {
             assertThat(GraphSchema.nodeLabel("Class")).isEqualTo("Class");
             assertThat(GraphSchema.nodeLabel("Record")).isEqualTo("Record");

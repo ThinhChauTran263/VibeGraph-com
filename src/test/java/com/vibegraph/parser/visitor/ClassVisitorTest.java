@@ -121,6 +121,29 @@ class ClassVisitorTest {
 
             assertTrue(nodes.size() >= 2, "Should extract multiple classes");
         }
+
+        @Test
+        @DisplayName("should skip JDK/framework inheritance edges and keep only project types")
+        void shouldSkipJdkAndFrameworkInheritanceTypes() {
+            String code = """
+                package com.example;
+                import java.io.Serializable;
+                import java.lang.Comparable;
+
+                public class Sub extends Base implements Serializable, Comparable<Sub> {
+                }
+
+                class Base {}
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+
+            assertEquals(2, visitor.getExtractedNodes().size());
+            assertEquals(1, visitor.getExtractedEdges().size());
+            assertEquals("EXTENDS", visitor.getExtractedEdges().get(0).type());
+            assertEquals("com.example.Base", visitor.getExtractedEdges().get(0).targetFullName());
+        }
     }
 
     @Nested

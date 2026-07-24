@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.vibegraph.parser.node.EdgeData;
+import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
 import com.vibegraph.parser.service.impl.ParserServiceImpl;
 
@@ -157,6 +160,154 @@ class ParserServiceTest {
         }
 
         @Test
+        @DisplayName("should restrict File-DEFINES to top-level architectural types only")
+        void shouldRestrictFileDefinesToTopLevelTypesOnly() throws IOException {
+            Path javaFile = tempDir.resolve("Mixed.java");
+            Files.writeString(javaFile, """
+                package com.example;
+
+                import org.springframework.stereotype.Service;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                @Service
+                public class MixedController {
+                    private String name;
+
+                    @GetMapping("/ping")
+                    public String ping() { return "ok"; }
+
+                    public static class Nested {}
+                }
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            assertThat(result.getEdges())
+                    .filteredOn(e -> e.type().equals("DEFINES"))
+                    .extracting(e -> e.targetFullName())
+                    .contains("com.example.MixedController")
+                    .doesNotContain(
+                            "com.example.MixedController.ping()",
+                            "com.example.MixedController.name",
+                            "GET /ping",
+                            "org.springframework.stereotype.Service");
+        }
+
+        @Test
+        @DisplayName("should assign coarse architectural layers to parsed nodes")
+        void shouldAssignNodeLayers() throws IOException {
+            Path javaFile = tempDir.resolve("Layers.java");
+            Files.writeString(javaFile, """
+                package com.example;
+                import org.springframework.web.bind.annotation.RestController;
+                import jakarta.persistence.Entity;
+
+                @RestController
+                public class UserController {
+                    public void handle() {}
+                }
+                class UserServiceImpl {}
+                interface UserRepository {}
+                @Entity
+                class UserEntity {}
+                record UserRecord(String id) {}
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            assertThat(result.getNodes())
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserController");
+                        assertThat(n.properties()).containsEntry("layer", "PRESENTATION");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserController.handle()");
+                        assertThat(n.properties()).containsEntry("layer", "PRESENTATION");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserServiceImpl");
+                        assertThat(n.properties()).containsEntry("layer", "SERVICE");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserRepository");
+                        assertThat(n.properties()).containsEntry("layer", "DATA_ACCESS");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserEntity");
+                        assertThat(n.type()).isEqualTo("DBModel");
+                        assertThat(n.properties()).containsEntry("layer", "DOMAIN");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserRecord");
+                        assertThat(n.properties()).containsEntry("layer", "DOMAIN");
+                    })
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo(javaFile.toString());
+                        assertThat(n.type()).isEqualTo("File");
+                        assertThat(n.properties()).containsEntry("layer", "PRESENTATION");
+                    });
+        }
+
+        @Test
+        @DisplayName("should aggregate duplicate edges with weight and bounded occurrences")
+        void shouldAggregateDuplicateEdges() throws IOException {
+            Path javaFile = tempDir.resolve("Caller.java");
+            Files.writeString(javaFile, """
+                package com.example;
+                public class Caller {
+                    public void run() {
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                        helper();
+                    }
+                    void helper() {}
+                }
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            var calls = result.getEdges().stream()
+                    .filter(edge -> edge.type().equals("CALLS"))
+                    .filter(edge -> edge.sourceFullName().equals("com.example.Caller.run()"))
+                    .filter(edge -> edge.targetFullName().equals("com.example.Caller.helper()"))
+                    .toList();
+
+            assertThat(calls).hasSize(1);
+            assertThat(calls.get(0).properties()).containsEntry("weight", 12);
+            assertThat((List<?>) calls.get(0).properties().get("occurrences")).hasSize(10);
+        }
+
+        @Test
+        @DisplayName("should not emit guessed edges for unverified project types")
+        void shouldSkipGuessedTypeReferencesWhenNotInProjectRegistry() throws IOException {
+            Path javaFile = tempDir.resolve("UnknownRef.java");
+            Files.writeString(javaFile, """
+                package com.example;
+                public class UnknownRef {
+                    private MissingType value;
+                    public MissingType find() { return null; }
+                }
+                """);
+
+            ParseResult result = parserService.parseFile(javaFile);
+
+            assertThat(result.getEdges())
+                    .noneMatch(edge -> edge.targetFullName().equals("com.example.MissingType")
+                            || edge.targetFullName().equals("MissingType"));
+        }
+
+        @Test
         @DisplayName("deep CPG is OFF by default: no LocalVariable nodes or READS/WRITES/CATCHES edges")
         void deepCpgOffByDefault() throws IOException {
             Path javaFile = tempDir.resolve("Calc.java");
@@ -253,6 +404,167 @@ class ParserServiceTest {
                     .anyMatch(n -> n.name().equals("User"))
                     .anyMatch(n -> n.name().equals("UserService"))
                     .anyMatch(n -> n.name().equals("UserController"));
+        }
+
+        @Test
+        @DisplayName("should keep type-reference edges to known project symbols")
+        void shouldKeepProjectScopedTypeReferences() throws IOException {
+            Path domainDir = tempDir.resolve("src/main/java/com/example/domain");
+            Path serviceDir = tempDir.resolve("src/main/java/com/example/service");
+            Files.createDirectories(domainDir);
+            Files.createDirectories(serviceDir);
+
+            Files.writeString(domainDir.resolve("User.java"), """
+                package com.example.domain;
+                public class User {}
+                """);
+
+            Files.writeString(serviceDir.resolve("UserService.java"), """
+                package com.example.service;
+                import com.example.domain.User;
+
+                public class UserService {
+                    private User user;
+                    public User find() { return user; }
+                }
+                """);
+
+            List<ParseResult> results = parserService.parseProject(tempDir);
+
+            assertThat(results).flatExtracting(ParseResult::getEdges)
+                    .anyMatch(e -> e.type().equals("IMPORTS")
+                            && e.sourceFullName().equals("com.example.service.UserService")
+                            && e.targetFullName().equals("com.example.domain.User"))
+                    .anyMatch(e -> e.type().equals("TYPE_OF")
+                            && e.targetFullName().equals("com.example.domain.User"))
+                    .anyMatch(e -> e.type().equals("RETURNS")
+                            && e.targetFullName().equals("com.example.domain.User"));
+        }
+
+        @Test
+        @DisplayName("strict payload leakage test excludes legacy parser artifacts")
+        void strictPayloadLeakageTest() throws IOException {
+            Path srcDir = tempDir.resolve("src/main/java/com/example");
+            Files.createDirectories(srcDir);
+
+            Files.writeString(srcDir.resolve("CleanPayload.java"), """
+                package com.example;
+
+                import com.nonexistent.library.PhantomDependency;
+                import org.springframework.beans.factory.annotation.Autowired;
+                import jakarta.validation.constraints.NotNull;
+
+                public class CleanPayload {
+                    private String name;
+                    private PhantomDependency dependency;
+                    private MissingExternal missing;
+
+                    @Autowired
+                    public CleanPayload() {}
+
+                    @NotNull
+                    public String getName() { return name; }
+
+                    public void setName(String name) { this.name = name; }
+
+                    @Override
+                    public String toString() { return name; }
+
+                    @Override
+                    public int hashCode() { return 31; }
+
+                    public MissingExternal loadMissing(PhantomDependency input)
+                            throws MissingExternalException { return missing; }
+
+                    public void process() {
+                        this.getName();
+                        this.setName("updated");
+                        this.toString();
+                        this.hashCode();
+                        helper();
+                    }
+
+                    void helper() {}
+                }
+                """);
+
+            List<ParseResult> results = parserService.parseProject(tempDir);
+            List<NodeData> nodes = results.stream().flatMap(result -> result.getNodes().stream()).toList();
+            List<EdgeData> edges = results.stream().flatMap(result -> result.getEdges().stream()).toList();
+
+            assertThat(nodes)
+                    .as("routine methods and no-op constructors must not be materialized")
+                    .noneMatch(n -> isRoutineMethod(n));
+
+            assertThat(edges)
+                    .as("no edge may point to or originate from a skipped routine member")
+                    .noneMatch(e -> pointsToSkippedMethod(e));
+
+            assertThat(edges)
+                    .as("annotations on skipped members must not leak into the payload")
+                    .noneMatch(e -> isAnnotatedByOnSkippedMember(e));
+
+            assertThat(nodes)
+                    .as("annotations used only on skipped members must not be materialized")
+                    .noneMatch(node -> node.type().equals("Annotation")
+                            && (node.fullName().equals("org.springframework.beans.factory.annotation.Autowired")
+                            || node.fullName().equals("jakarta.validation.constraints.NotNull")));
+
+            assertThat(edges)
+                    .as("unknown external types and unresolved fallback stubs must not leak")
+                    .noneMatch(e -> isGuessedExternalTypeEdge(e)
+                            || "unresolved".equals(e.properties().get("targetType")));
+
+            Set<String> nodeNames = nodes.stream().map(NodeData::fullName).collect(java.util.stream.Collectors.toSet());
+            assertThat(edges)
+                    .as("every payload edge must have materialized endpoints")
+                    .allSatisfy(edge -> {
+                        assertThat(nodeNames).contains(edge.sourceFullName());
+                        assertThat(nodeNames).contains(edge.targetFullName());
+                    });
+
+            assertThat(edges)
+                    .as("non-routine domain calls should survive the cleanup")
+                    .anyMatch(edge -> edge.type().equals("CALLS")
+                            && edge.sourceFullName().equals("com.example.CleanPayload.process()")
+                            && edge.targetFullName().equals("com.example.CleanPayload.helper()"));
+
+            System.out.println("VERIFICATION COMPLETE: NO DUST/LEGACY CODE LEAKS IN PARSER PAYLOAD.");
+        }
+
+        private boolean isRoutineMethod(NodeData node) {
+            return node.type().equals("Method") || node.type().equals("Constructor")
+                    ? isSkippedMember(node.fullName())
+                    : false;
+        }
+
+        private boolean pointsToSkippedMethod(EdgeData edge) {
+            return isSkippedMember(edge.sourceFullName()) || isSkippedMember(edge.targetFullName());
+        }
+
+        private boolean isAnnotatedByOnSkippedMember(EdgeData edge) {
+            return edge.type().equals("ANNOTATED_BY") && isSkippedMember(edge.sourceFullName());
+        }
+
+        private boolean isGuessedExternalTypeEdge(EdgeData edge) {
+            Set<String> typeEdges = Set.of(
+                    "IMPORTS", "TYPE_OF", "RETURNS", "PARAMETER_TYPE", "THROWS",
+                    "INJECTS", "INSTANTIATES", "CATCHES", "EXTENDS", "IMPLEMENTS");
+            String target = edge.targetFullName();
+            return typeEdges.contains(edge.type())
+                    && (target.equals("MissingExternal")
+                    || target.equals("MissingExternalException")
+                    || target.startsWith("com.example.MissingExternal")
+                    || target.startsWith("com.nonexistent.library."));
+        }
+
+        private boolean isSkippedMember(String fullName) {
+            return fullName != null
+                    && (fullName.endsWith(".getName()")
+                    || fullName.endsWith(".setName(String)")
+                    || fullName.endsWith(".toString()")
+                    || fullName.endsWith(".hashCode()")
+                    || fullName.endsWith(".<init>()"));
         }
 
         @Test

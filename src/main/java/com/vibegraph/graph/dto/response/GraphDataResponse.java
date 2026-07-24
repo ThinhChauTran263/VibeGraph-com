@@ -1,5 +1,6 @@
 package com.vibegraph.graph.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Map;
 
@@ -16,10 +17,15 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class GraphDataResponse {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<NodeDto> nodes;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<EdgeDto> edges;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, Integer> nodeStats;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, Integer> edgeStats;
 
     /**
@@ -35,6 +41,7 @@ public class GraphDataResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class Meta {
         /** True when nodes and/or edges were dropped to fit the limits. */
         private boolean truncated;
