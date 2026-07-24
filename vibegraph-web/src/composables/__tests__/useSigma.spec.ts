@@ -172,9 +172,10 @@ describe('useSigma', () => {
     expect(layoutState.instances[0]!.start).toHaveBeenCalledTimes(1)
     expect(layoutState.instances[0]!.params).toMatchObject({
       settings: expect.objectContaining({
-        gravity: 1,
-        scalingRatio: 5,
+        gravity: 0.001,
+        scalingRatio: 1500,
         linLogMode: false,
+        outboundAttractionDistribution: true,
       }),
     })
 

@@ -4,6 +4,7 @@ import { DEFAULT_HIDDEN_EDGE_TYPES, DEFAULT_HIDDEN_NODE_TYPES } from './constant
 export interface GraphFilterState {
   hiddenNodeTypes: ReadonlySet<NodeType>
   hiddenEdgeTypes: ReadonlySet<EdgeType>
+  hideIsolatedNodes?: boolean
 }
 
 function countByType<T extends string>(values: T[]): Record<T, number> {
@@ -39,8 +40,8 @@ export function defaultHiddenNodeTypes(): Set<NodeType> {
 }
 
 export function filterGraphData(data: GraphData, filters: GraphFilterState): GraphData {
-  const nodes = data.nodes.filter((node) => !filters.hiddenNodeTypes.has(node.type))
-  const visibleNodeIds = new Set(nodes.map((node) => node.id))
+  const typeVisibleNodes = data.nodes.filter((node) => !filters.hiddenNodeTypes.has(node.type))
+  const visibleNodeIds = new Set(typeVisibleNodes.map((node) => node.id))
   const edges = data.edges.filter((edge) => {
     return (
       !filters.hiddenEdgeTypes.has(edge.type) &&
@@ -48,6 +49,15 @@ export function filterGraphData(data: GraphData, filters: GraphFilterState): Gra
       visibleNodeIds.has(edge.target)
     )
   })
+  const connectedNodeIds = new Set<string>()
+  for (const edge of edges) {
+    connectedNodeIds.add(edge.source)
+    connectedNodeIds.add(edge.target)
+  }
+  const nodes =
+    filters.hideIsolatedNodes && edges.length > 0
+      ? typeVisibleNodes.filter((node) => connectedNodeIds.has(node.id))
+      : typeVisibleNodes
 
   return {
     nodes,

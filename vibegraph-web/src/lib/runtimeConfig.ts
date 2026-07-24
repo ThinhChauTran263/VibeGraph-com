@@ -282,6 +282,7 @@ export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
 export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 20, { min: 0 })
 export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.5, { min: 0 })
 export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
+export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 1600, { min: 0 })
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 5000, { min: 0 })

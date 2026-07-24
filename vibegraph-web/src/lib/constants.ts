@@ -303,9 +303,25 @@ export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
 // Default node label color on the dark canvas.
 export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
 
+export function resolveLocalhostAwareUrl(
+  value: string | undefined,
+  fallback: string,
+  browserHost = globalThis.location?.hostname,
+): string {
+  const url = value || fallback
+  if (browserHost !== '127.0.0.1') return url
+  return url.replace(/^http:\/\/localhost(?=[:/]|$)/, 'http://127.0.0.1')
+}
+
 // API base URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export const API_BASE_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_API_URL,
+  'http://localhost:8080',
+)
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws/graph-updates'
+export const WS_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_WS_URL,
+  'http://localhost:8080/ws/graph-updates',
+)
