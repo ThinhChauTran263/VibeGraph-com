@@ -369,7 +369,7 @@ async function load(projectId: string) {
     requestAnimationFrame(() => {
       if (seq === loadSeq) zoomToFit()
     })
-    loadDeepGraphIfNeeded()
+    loadDeepGraphIfNeeded({ force: true })
   }
 }
 
@@ -395,8 +395,9 @@ function needsDeepGraphForVisibleFilters(): boolean {
 
 let pendingDeepLoad: Promise<void> | null = null
 
-function loadDeepGraphIfNeeded(): void {
-  if (!props.projectId || !needsDeepGraphForVisibleFilters() || pendingDeepLoad) return
+function loadDeepGraphIfNeeded(options: { force?: boolean } = {}): void {
+  if (!props.projectId || pendingDeepLoad) return
+  if (!options.force && !needsDeepGraphForVisibleFilters()) return
   pendingDeepLoad = ensureDeepGraph(props.projectId).finally(() => {
     pendingDeepLoad = null
   })

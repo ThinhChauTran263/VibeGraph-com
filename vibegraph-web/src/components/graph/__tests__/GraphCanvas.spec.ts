@@ -13,6 +13,10 @@ const error = ref<string | null>(null)
 const clearSelection = vi.fn<() => void>(() => {
   selectedNode.value = null
 })
+const loadGraph = vi.hoisted(() => vi.fn<() => Promise<Graph | null>>(() => Promise.resolve(null)))
+const ensureDeepGraph = vi.hoisted(() =>
+  vi.fn<() => Promise<void>>(() => Promise.resolve()),
+)
 
 const emptyGraphData: GraphData = {
   nodes: [],
@@ -31,8 +35,8 @@ vi.mock('@/composables/useGraphData', () => ({
     filteredGraphData: computed(() => emptyGraphData),
     loading: computed(() => loading.value),
     error: computed(() => error.value),
-    loadGraph: vi.fn<() => Promise<null>>(() => Promise.resolve(null)),
-    ensureDeepGraph: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+    loadGraph,
+    ensureDeepGraph,
     buildGraph: vi.fn<() => null>(() => null),
     selectNode,
     clearSelection,
@@ -68,7 +72,12 @@ vi.mock('@/composables/useSigma', () => ({
       graphInstance: graphInstanceRef,
       setReducers: vi.fn<() => void>(),
       setEdgeLabelsVisible,
+      setEdgeKindVisible: vi.fn<() => void>(),
       setGhostPartition: vi.fn<() => void>(),
+      refresh: vi.fn<() => void>(),
+      resetLayout: vi.fn<() => void>(),
+      zoomToFit: vi.fn<() => void>(),
+      focusNode: vi.fn<() => void>(),
     }
   },
 }))
@@ -98,6 +107,17 @@ vi.mock('@/composables/useFilters', () => ({
 }))
 
 describe('GraphCanvas', () => {
+  it('preloads deep graph inventory after the baseline graph loads without requiring Show all', async () => {
+    const graph = new Graph({ type: 'directed', multi: true })
+    loadGraph.mockResolvedValueOnce(graph)
+    ensureDeepGraph.mockClear()
+
+    mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    await flushPromises()
+
+    expect(ensureDeepGraph).toHaveBeenCalledWith('project-1')
+  })
+
   it('emits null when search selection is cleared', async () => {
     const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
 
