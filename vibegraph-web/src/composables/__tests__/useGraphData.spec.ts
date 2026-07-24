@@ -1,10 +1,17 @@
 import { setActivePinia, createPinia } from 'pinia'
-import { beforeEach, describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 
+import { fetchFullGraph } from '@/lib/api'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphStore } from '@/stores/graph'
 import { GRAPH_SAFE_NODE_LIMIT } from '@/lib/graphCap'
-import type { GraphData, GraphNode } from '@/types/graph'
+import type { GraphData, GraphEdge, GraphNode } from '@/types/graph'
+
+vi.mock('@/lib/api', () => ({
+  fetchFullGraph: vi.fn(),
+}))
+
+const fetchFullGraphMock = vi.mocked(fetchFullGraph)
 
 function node(id: string): GraphNode {
   return {
@@ -27,8 +34,15 @@ function graph(count: number): GraphData {
   }
 }
 
+function edge(id: string, source: string, target: string, type: GraphEdge['type']): GraphEdge {
+  return { id, source, target, type }
+}
+
 describe('useGraphData - Safe Mode render info', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    fetchFullGraphMock.mockReset()
+  })
 
   it('merges backend payload meta into renderInfo totals (backend truncation surfaced)', () => {
     const store = useGraphStore()
@@ -76,5 +90,49 @@ describe('useGraphData - Safe Mode render info', () => {
     expect(store.renderInfo?.truncated).toBe(false)
     expect(store.renderInfo?.renderedNodes).toBe(50)
     expect(store.renderInfo?.totalNodes).toBe(50)
+  })
+})
+
+describe('useGraphData - baseline plus lazy deep graph', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    fetchFullGraphMock.mockReset()
+  })
+
+  it('loads baseline by default and merges deep details without dropping baseline projections', async () => {
+    const fileA = { ...node('A.java'), type: 'File' as const, filePath: 'A.java' }
+    const fileB = { ...node('B.java'), type: 'File' as const, filePath: 'B.java' }
+    const classA = { ...node('A'), type: 'Class' as const, filePath: 'A.java' }
+    const fieldA = { ...node('A.id'), type: 'Field' as const, filePath: 'A.java' }
+    const baseline: GraphData = {
+      nodes: [fileA, fileB, classA],
+      edges: [edge('A.java|IMPORTS|B.java', 'A.java', 'B.java', 'IMPORTS')],
+      nodeStats: { File: 2, Class: 1 } as GraphData['nodeStats'],
+      edgeStats: { IMPORTS: 1 } as GraphData['edgeStats'],
+    }
+    const deep: GraphData = {
+      nodes: [fileA, fileB, classA, fieldA],
+      edges: [edge('A|HAS_FIELD|A.id', 'A', 'A.id', 'HAS_FIELD')],
+      nodeStats: { File: 2, Class: 1, Field: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_FIELD: 1 } as GraphData['edgeStats'],
+    }
+    fetchFullGraphMock.mockResolvedValueOnce(baseline).mockResolvedValueOnce(deep)
+
+    const store = useGraphStore()
+    const { ensureDeepGraph, loadGraph } = useGraphData()
+
+    await loadGraph('project-1')
+    expect(fetchFullGraphMock).toHaveBeenLastCalledWith('project-1', { mode: 'baseline' })
+    expect(store.payloadMode).toBe('baseline')
+
+    await ensureDeepGraph('project-1')
+    expect(fetchFullGraphMock).toHaveBeenLastCalledWith('project-1', { mode: 'deep' })
+    expect(store.payloadMode).toBe('baseline+deep')
+    expect(store.graphData.edgeStats.IMPORTS).toBe(1)
+    expect(store.graphData.edgeStats.HAS_FIELD).toBe(1)
+    expect(store.graphData.edges.map((graphEdge) => graphEdge.id).sort()).toEqual([
+      'A.java|IMPORTS|B.java',
+      'A|HAS_FIELD|A.id',
+    ])
   })
 })

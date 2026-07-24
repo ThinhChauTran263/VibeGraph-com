@@ -16,6 +16,84 @@ import {
   FOCUS_OPACITY_ACTIVE,
   FOCUS_OPACITY_DIMMED,
 } from '@/lib/runtimeConfig'
+
+export const ALL_NODE_TYPES: readonly NodeType[] = Object.freeze([
+  'Project',
+  'Package',
+  'File',
+  'Class',
+  'Interface',
+  'Enum',
+  'Record',
+  'DBModel',
+  'Method',
+  'Constructor',
+  'Field',
+  'Annotation',
+  'LocalVariable',
+  'Route',
+  'APIEndpoint',
+  'External',
+])
+
+export const ALL_EDGE_TYPES: readonly EdgeType[] = Object.freeze([
+  'OWNS',
+  'CONTAINS',
+  'DEFINES',
+  'HAS_METHOD',
+  'HAS_FIELD',
+  'HAS_INNER',
+  'HAS_RELATION',
+  'EXTENDS',
+  'IMPLEMENTS',
+  'OVERRIDES',
+  'IMPORTS',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'CALLS',
+  'INSTANTIATES',
+  'INJECTS',
+  'HANDLES_ROUTE',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'STEP_IN_FLOW',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'RESOLVES_TO',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
+
+export const DEEP_LOAD_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'Project',
+  'Package',
+  'Field',
+  'Annotation',
+  'LocalVariable',
+  'External',
+])
+
+export const DEEP_LOAD_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'HAS_FIELD',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'INSTANTIATES',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
 // Node colors by type - matches NodeType from graph.ts.
 // Chosen for MAXIMUM distinctness: each type sits on a clearly different hue (and
 // the frequent types are spread far apart) so they're recognizable at a glance.
@@ -139,7 +217,23 @@ export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
 // Edge types hidden by default. The filter store initializes `hiddenEdgeTypes`
 // from this set so the default graph stays readable while every type with a
 // count > 0 remains revealable.
-export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TYPES
+export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'HAS_FIELD',
+  'RETURNS',
+  'TYPE_OF',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'INSTANTIATES',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
 
 // Node types hidden by default so the architecture graph stays readable, matching
 // the density of comparable tools. These low-signal leaf/structural types add most
@@ -151,12 +245,12 @@ export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TY
 //   - External: third-party symbols outside the project
 //   - Package / Project: structural containers (the Explorer tree already shows these)
 export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
-  'LocalVariable',
   'Field',
-  'Annotation',
-  'External',
+  'LocalVariable',
   'Package',
+  'Annotation',
   'Project',
+  'External',
 ])
 
 // Default node sizes (sourced from env via runtimeConfig)

@@ -14,17 +14,18 @@ describe('useFilterStore — edge filter state semantics', () => {
     setActivePinia(createPinia())
   })
 
-  it('initializes with the CPG-lite edge types hidden by default', () => {
+  it('initializes with the curated edge types hidden by default', () => {
     const store = useFilterStore()
 
     expect(sortedTypes(store.hiddenEdgeTypes)).toEqual(sortedTypes(defaultHiddenEdgeTypes()))
-    // Every CPG-lite type is hidden; no structural type is hidden.
-    for (const type of CPG_LITE_EDGE_TYPES) {
-      expect(store.hiddenEdgeTypes.has(type)).toBe(true)
-    }
-    for (const type of STRUCTURAL_EDGE_TYPES) {
-      expect(store.hiddenEdgeTypes.has(type)).toBe(false)
-    }
+    expect(store.hiddenEdgeTypes.has('HAS_FIELD')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('TYPE_OF')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('IMPORTS')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('INJECTS')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('STEP_IN_FLOW')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('RESOLVES_TO')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('HAS_RELATION')).toBe(false)
   })
 
   it('reports no active filters at the default baseline', () => {

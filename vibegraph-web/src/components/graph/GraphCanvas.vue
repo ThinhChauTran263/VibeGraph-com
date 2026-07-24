@@ -15,6 +15,7 @@ import { useFilters } from '@/composables/useFilters'
 import { useSigma } from '@/composables/useSigma'
 import { debounce } from '@/lib/debounce'
 import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
+import { DEEP_LOAD_EDGE_TYPES, DEEP_LOAD_NODE_TYPES } from '@/lib/constants'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import ExplorerPanel from '@/components/panels/ExplorerPanel.vue'
@@ -169,10 +170,12 @@ const {
   loading,
   error,
   loadGraph,
+  ensureDeepGraph,
   buildGraph,
   selectNode,
   clearSelection,
   selectedNode,
+  payloadMode,
   nodes,
 } = useGraphData()
 
@@ -366,7 +369,37 @@ async function load(projectId: string) {
     requestAnimationFrame(() => {
       if (seq === loadSeq) zoomToFit()
     })
+    loadDeepGraphIfNeeded()
   }
+}
+
+function needsDeepGraphForVisibleFilters(): boolean {
+  if (payloadMode.value === 'baseline+deep') return false
+  const nodeStats = graphData.value.nodeStats
+  const edgeStats = graphData.value.edgeStats
+  const hiddenNodes = filters.hiddenNodeTypes.value
+  const hiddenEdges = filters.hiddenEdgeTypes.value
+
+  for (const type of DEEP_LOAD_NODE_TYPES) {
+    if (!hiddenNodes.has(type) && (nodeStats[type] ?? 0) === 0) {
+      return true
+    }
+  }
+  for (const type of DEEP_LOAD_EDGE_TYPES) {
+    if (!hiddenEdges.has(type) && (edgeStats[type] ?? 0) === 0) {
+      return true
+    }
+  }
+  return false
+}
+
+let pendingDeepLoad: Promise<void> | null = null
+
+function loadDeepGraphIfNeeded(): void {
+  if (!props.projectId || !needsDeepGraphForVisibleFilters() || pendingDeepLoad) return
+  pendingDeepLoad = ensureDeepGraph(props.projectId).finally(() => {
+    pendingDeepLoad = null
+  })
 }
 
 function onSearchSelect(node: GraphNode): void {
@@ -453,6 +486,10 @@ watch(
     if (newId) load(newId)
   },
 )
+
+watch([filters.hiddenNodeTypes, filters.hiddenEdgeTypes], () => {
+  loadDeepGraphIfNeeded()
+})
 
 watch(selectedNode, () => {
   applyFocusReducers()

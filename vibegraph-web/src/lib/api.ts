@@ -312,12 +312,27 @@ export const api = {
   },
 }
 
+export type GraphFetchMode = 'baseline' | 'deep'
+
+export interface FetchGraphOptions {
+  mode?: GraphFetchMode
+}
+
 /**
- * Fetch the full graph for a project.
+ * Fetch the graph for a project.
  * GET /api/projects/{projectId}/graph
  */
-export async function fetchFullGraph(projectId: string): Promise<GraphData> {
-  const query = new URLSearchParams({ mode: 'baseline' })
+export async function fetchFullGraph(
+  projectId: string,
+  options: FetchGraphOptions = {},
+): Promise<GraphData> {
+  // Default to the architecture view so the backend projector can emit the
+  // file-level dependency projection used by the main graph canvas.
+  const query = new URLSearchParams({
+    mode: options.mode ?? 'baseline',
+    nodeLimit: '0',
+    edgeLimit: '0',
+  })
   return api.get<GraphData>(`/api/projects/${projectId}/graph?${query}`)
 }
 

@@ -32,11 +32,13 @@ vi.mock('@/composables/useGraphData', () => ({
     loading: computed(() => loading.value),
     error: computed(() => error.value),
     loadGraph: vi.fn<() => Promise<null>>(() => Promise.resolve(null)),
+    ensureDeepGraph: vi.fn<() => Promise<void>>(() => Promise.resolve()),
     buildGraph: vi.fn<() => null>(() => null),
     selectNode,
     clearSelection,
     selectedNode: computed(() => selectedNode.value),
     renderInfo: computed(() => null),
+    payloadMode: computed(() => 'baseline'),
     nodes: computed(() => nodes.value),
   }),
 }))
