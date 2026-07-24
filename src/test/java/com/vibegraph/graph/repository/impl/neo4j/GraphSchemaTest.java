@@ -44,6 +44,7 @@ class GraphSchemaTest {
         void acceptsKnownTypes() {
             assertThat(GraphSchema.relationshipType("HANDLES_ROUTE")).isEqualTo("HANDLES_ROUTE");
             assertThat(GraphSchema.relationshipType("CALLS")).isEqualTo("CALLS");
+            assertThat(GraphSchema.relationshipType("HAS_RELATION")).isEqualTo("HAS_RELATION");
             assertThat(GraphSchema.relationshipType("PUBLISHES_EVENT")).isEqualTo("PUBLISHES_EVENT");
             assertThat(GraphSchema.relationshipType("LISTENS_EVENT")).isEqualTo("LISTENS_EVENT");
             assertThat(GraphSchema.relationshipType("TRIGGERS")).isEqualTo("TRIGGERS");

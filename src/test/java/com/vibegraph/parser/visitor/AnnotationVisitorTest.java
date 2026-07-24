@@ -1,9 +1,8 @@
 package com.vibegraph.parser.visitor;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,13 +10,13 @@ import org.junit.jupiter.api.Test;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
-import com.vibegraph.parser.node.EdgeData;
-import com.vibegraph.parser.node.NodeData;
 
 /**
- * Tests for AnnotationVisitor — Annotation nodes + ANNOTATED_BY edges.
+ * Compatibility tests for the deprecated AnnotationVisitor.
  *
- * Canonical direction: (annotated element) -[:ANNOTATED_BY]-> (:Annotation).
+ * Annotation usages are stored on owning node properties instead of emitted as
+ * Annotation nodes or ANNOTATED_BY edges. Project @interface declarations are
+ * emitted by ClassVisitor.
  */
 @DisplayName("AnnotationVisitor")
 class AnnotationVisitorTest {
@@ -38,130 +37,40 @@ class AnnotationVisitorTest {
     }
 
     @Test
-    @DisplayName("class annotation produces an Annotation node and ANNOTATED_BY edge (element -> annotation)")
-    void classAnnotation() {
-        CompilationUnit cu = parse("""
-            package com.example;
-            import org.springframework.stereotype.Service;
-            @Service
-            public class UserService {}
-            """);
-
-        visitor.visit(cu, null);
-        List<NodeData> nodes = visitor.getExtractedNodes();
-        List<EdgeData> edges = visitor.getExtractedEdges();
-
-        assertThat(nodes)
-                .anyMatch(n -> n.type().equals("Annotation")
-                        && n.fullName().equals("org.springframework.stereotype.Service"));
-        assertThat(edges)
-                .anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                        && e.sourceFullName().equals("com.example.UserService")
-                        && e.targetFullName().equals("org.springframework.stereotype.Service"));
-    }
-
-    @Test
-    @DisplayName("method and field annotations are linked to the correct element full names")
-    void methodAndFieldAnnotations() {
-        CompilationUnit cu = parse("""
-            package com.example;
-            import org.springframework.beans.factory.annotation.Autowired;
-            import org.springframework.web.bind.annotation.GetMapping;
-            public class UserController {
-                @Autowired
-                private UserService service;
-
-                @GetMapping("/users")
-                public String list() { return null; }
-            }
-            """);
-
-        visitor.visit(cu, null);
-        List<EdgeData> edges = visitor.getExtractedEdges();
-
-        // Field-level annotation: element full name is owner + "." + field name.
-        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.UserController.service")
-                && e.targetFullName().equals("org.springframework.beans.factory.annotation.Autowired"));
-
-        // Method-level annotation: element full name is the method signature.
-        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.UserController.list()")
-                && e.targetFullName().equals("org.springframework.web.bind.annotation.GetMapping"));
-    }
-
-    @Test
-    @DisplayName("JPA @Entity annotation on a class is captured")
-    void jpaEntityAnnotation() {
+    @DisplayName("does not emit usage annotation nodes or ANNOTATED_BY edges")
+    void doesNotEmitAnnotationUsageGraph() {
         CompilationUnit cu = parse("""
             package com.example;
             import jakarta.persistence.Entity;
-            import jakarta.persistence.Table;
+            import org.springframework.stereotype.Service;
+
+            @Service
             @Entity
-            @Table(name = "users")
-            public class User {}
-            """);
-
-        visitor.visit(cu, null);
-        List<EdgeData> edges = visitor.getExtractedEdges();
-
-        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.User")
-                && e.targetFullName().equals("jakarta.persistence.Entity"));
-        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.targetFullName().equals("jakarta.persistence.Table"));
-    }
-
-    @Test
-    @DisplayName("routine methods and no-op constructors do not emit ANNOTATED_BY edges")
-    void skippedRoutineMembersDoNotEmitAnnotationEdges() {
-        CompilationUnit cu = parse("""
-            package com.example;
-            import java.lang.Deprecated;
-            public class User {
-                @Deprecated
-                public User() {}
-
-                @Deprecated
-                public String getName() { return name; }
-
+            public class UserService {
                 @Deprecated
                 public void run() {}
-
-                private String name;
             }
             """);
 
         visitor.visit(cu, null);
-        List<EdgeData> edges = visitor.getExtractedEdges();
 
-        assertThat(edges).noneMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.User.<init>()"));
-        assertThat(edges).noneMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.User.getName()"));
-        assertThat(edges).anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                && e.sourceFullName().equals("com.example.User.run()"));
+        assertThat(visitor.getExtractedNodes()).isEmpty();
+        assertThat(visitor.getExtractedEdges()).isEmpty();
     }
 
     @Test
-    @DisplayName("java.lang built-in annotations resolve to java.lang.* and dedupe by type")
-    void javaLangAnnotationsResolveAndDedupe() {
+    @DisplayName("ClassVisitor owns project annotation declaration extraction")
+    void classVisitorOwnsAnnotationDeclarations() {
         CompilationUnit cu = parse("""
             package com.example;
-            public class Base {
-                @Deprecated
-                public void a() {}
-                @Deprecated
-                public void b() {}
-            }
+            public @interface Auditable {}
             """);
+        ClassVisitor classVisitor = new ClassVisitor();
 
-        visitor.visit(cu, null);
-        List<NodeData> nodes = visitor.getExtractedNodes();
+        classVisitor.visit(cu, null);
 
-        // One Annotation node per distinct type, even when used twice.
-        assertThat(nodes.stream()
-                .filter(n -> n.fullName().equals("java.lang.Deprecated"))
-                .count()).isEqualTo(1);
+        assertThat(classVisitor.getExtractedNodes())
+                .anyMatch(node -> node.type().equals("Annotation")
+                        && node.fullName().equals("com.example.Auditable"));
     }
 }

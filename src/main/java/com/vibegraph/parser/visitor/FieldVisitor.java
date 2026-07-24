@@ -2,6 +2,7 @@ package com.vibegraph.parser.visitor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +12,7 @@ import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
@@ -20,6 +22,12 @@ import com.vibegraph.parser.node.NodeData;
  * Extracts Field nodes and field-related edges (HAS_FIELD, TYPE_OF, INJECTS) from AST.
  */
 public class FieldVisitor extends VoidVisitorAdapter<Object> {
+
+    private static final Map<String, String> JPA_RELATION_CARDINALITIES = Map.of(
+            "OneToMany", "ONE_TO_MANY",
+            "ManyToOne", "MANY_TO_ONE",
+            "OneToOne", "ONE_TO_ONE",
+            "ManyToMany", "MANY_TO_MANY");
 
     private final List<NodeData> extractedFields = new ArrayList<>();
     private final List<EdgeData> extractedEdges = new ArrayList<>();
@@ -52,6 +60,20 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         // TYPE_OF edge to the field's declared type
         Optional<String> resolvedType = TypeReferenceSupport.resolveTypeReference(variable.getType(), declaration);
         resolvedType.ifPresent(type -> extractedEdges.add(EdgeData.of("TYPE_OF", fieldFullName, type)));
+
+        // Direct entity/domain relationship for architecture projection. Raw field
+        // facts are retained above; this verified class-to-class edge is what the UI
+        // can show without pulling Field nodes into the baseline graph.
+        relationCardinality(declaration).ifPresent(cardinality -> {
+            if (ownerFullName != null && resolvedType.isPresent()) {
+                Map<String, Object> props = new LinkedHashMap<>();
+                props.put("cardinality", cardinality);
+                props.put("fieldName", variable.getNameAsString());
+                props.put("lineNumber", variable.getBegin().map(p -> p.line).orElseGet(() ->
+                        declaration.getBegin().map(p -> p.line).orElse(0)));
+                extractedEdges.add(EdgeData.of("HAS_RELATION", ownerFullName, resolvedType.get(), props));
+            }
+        });
 
         // INJECTS edge if field has @Autowired or @Inject
         if (isInjected(declaration) && ownerFullName != null && resolvedType.isPresent()) {
@@ -134,6 +156,7 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         properties.put("final", declaration.isFinal());
         properties.put("declaredType", variable.getType().asString());
         properties.put("injected", isInjected(declaration));
+        properties.put("annotations", annotationNames(declaration));
 
         return NodeData.of(
                 "Field",
@@ -180,5 +203,19 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         return declaration.getAnnotations().stream()
                 .map(annotation -> annotation.getName().getIdentifier())
                 .anyMatch(name -> name.equals("Autowired") || name.equals("Inject") || name.equals("Resource"));
+    }
+
+    private Optional<String> relationCardinality(FieldDeclaration declaration) {
+        return annotationNames(declaration).stream()
+                .filter(JPA_RELATION_CARDINALITIES::containsKey)
+                .findFirst()
+                .map(JPA_RELATION_CARDINALITIES::get);
+    }
+
+    private List<String> annotationNames(NodeWithAnnotations<?> declaration) {
+        return declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .distinct()
+                .toList();
     }
 }

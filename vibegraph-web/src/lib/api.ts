@@ -317,7 +317,8 @@ export const api = {
  * GET /api/projects/{projectId}/graph
  */
 export async function fetchFullGraph(projectId: string): Promise<GraphData> {
-  return api.get<GraphData>(`/api/projects/${projectId}/graph`)
+  const query = new URLSearchParams({ mode: 'baseline' })
+  return api.get<GraphData>(`/api/projects/${projectId}/graph?${query}`)
 }
 
 // Project endpoints

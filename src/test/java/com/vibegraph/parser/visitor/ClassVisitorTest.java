@@ -70,6 +70,7 @@ class ClassVisitorTest {
             assertEquals("public", property(classNode, "visibility"));
             assertFalse((boolean) property(classNode, "abstract"));
             assertFalse((boolean) property(classNode, "final"));
+            assertEquals(List.of(), property(classNode, "annotations"));
         }
 
         @Test
@@ -296,6 +297,7 @@ class ClassVisitorTest {
 
             assertEquals("DBModel", nodes.get(0).type());
             assertEquals("ENTITY", property(nodes.get(0), "springLayer"));
+            assertEquals(List.of("Entity", "Table"), property(nodes.get(0), "annotations"));
         }
         @Test
         @DisplayName("should return NONE for unannotated class")

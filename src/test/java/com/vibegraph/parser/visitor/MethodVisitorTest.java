@@ -321,7 +321,9 @@ class MethodVisitorTest {
             visitor.visit(cu, null);
             List<NodeData> methods = visitor.getExtractedMethods();
 
-            assertTrue(methods.stream().anyMatch(method -> method.name().equals("<init>") && method.type().equals("Constructor")));
+            assertTrue(methods.stream().anyMatch(method -> method.name().equals("Service")
+                    && method.type().equals("Constructor")
+                    && method.fullName().equals("com.example.Service.<init>(Repository)")));
         }
 
         @Test
@@ -351,6 +353,32 @@ class MethodVisitorTest {
                     .count());
             assertTrue(visitor.getExtractedMethods().stream()
                     .anyMatch(method -> method.fullName().equals("com.example.RealConstructor.<init>(Repository)")));
+        }
+
+        @Test
+        @DisplayName("should attach method and constructor annotations as node metadata")
+        void shouldAttachMethodAndConstructorAnnotations() {
+            CompilationUnit cu = parse("""
+                package com.example;
+                public class Service {
+                    @Deprecated
+                    public Service(Repository repo) {
+                        this.repo = repo;
+                    }
+                    @Override
+                    public void run() {}
+                    private final Repository repo;
+                }
+                """);
+
+            visitor.visit(cu, null);
+
+            assertTrue(visitor.getExtractedMethods().stream()
+                    .anyMatch(method -> method.fullName().equals("com.example.Service.<init>(Repository)")
+                            && ((List<?>) method.properties().get("annotations")).contains("Deprecated")));
+            assertTrue(visitor.getExtractedMethods().stream()
+                    .anyMatch(method -> method.fullName().equals("com.example.Service.run()")
+                            && ((List<?>) method.properties().get("annotations")).contains("Override")));
         }
     }
 
@@ -467,7 +495,7 @@ class MethodVisitorTest {
         }
 
         @Test
-        @DisplayName("catch and multi-catch produce one CATCHES edge per exception type")
+        @DisplayName("project catch and multi-catch produce one CATCHES edge per exception type")
         void catchesIncludingMultiCatch() {
             var es = edges("""
                 package com.example;
@@ -475,24 +503,27 @@ class MethodVisitorTest {
                     public void risky() {
                         try {
                             work();
-                        } catch (IllegalStateException e) {
+                        } catch (ProjectException e) {
                             try {
                                 work();
-                            } catch (IllegalArgumentException | NullPointerException ex) {
+                            } catch (DomainException | PersistenceException ex) {
                             }
                         }
                     }
                     void work() {}
                 }
+                class ProjectException extends RuntimeException {}
+                class DomainException extends RuntimeException {}
+                class PersistenceException extends RuntimeException {}
                 """);
             String m = "com.example.C.risky()";
             long catches = es.stream().filter(e -> e.type().equals("CATCHES")
                     && e.sourceFullName().equals(m)).count();
             assertEquals(3, catches, "one CATCHES per caught type (incl. nested + multi-catch)");
             assertTrue(es.stream().anyMatch(e -> e.type().equals("CATCHES")
-                    && e.targetFullName().endsWith("IllegalArgumentException")));
+                    && e.targetFullName().equals("com.example.DomainException")));
             assertTrue(es.stream().anyMatch(e -> e.type().equals("CATCHES")
-                    && e.targetFullName().endsWith("NullPointerException")));
+                    && e.targetFullName().equals("com.example.PersistenceException")));
         }
 
         @Test

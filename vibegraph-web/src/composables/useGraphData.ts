@@ -32,9 +32,9 @@ export function useGraphData() {
    * Fetch the full graph for a project and store the result.
    * Returns the Graphology instance for Sigma rendering.
    *
-   * The FULL backend graph stays in the store (legend counts, "show all"); only the
-   * subset handed to Sigma is bounded by {@link capGraphData} so a huge project cannot
-   * freeze the tab. {@code store.renderInfo} records whether Safe Mode capping happened.
+   * The backend graph stays in the store (legend counts, "show all"). If the frontend render cap
+   * is configured to a positive value, only the subset handed to Sigma is bounded by
+   * {@link capGraphData}. {@code store.renderInfo} records whether any capping happened.
    */
   async function loadGraph(projectId: string): Promise<Graph | null> {
     store.isLoading = true
@@ -57,10 +57,10 @@ export function useGraphData() {
   }
 
   /**
-   * Build a renderable Graphology instance, applying the Safe Mode cap and recording the outcome
-   * in {@code store.renderInfo}. Truncation is the union of the backend payload cap and the
-   * client render cap; the displayed totals reflect the FULL backend graph so the banner is
-   * truthful even when both layers reduce the graph.
+   * Build a renderable Graphology instance, applying the optional Safe Mode cap and recording the
+   * outcome in {@code store.renderInfo}. Truncation is the union of the backend payload cap and
+   * the client render cap; the displayed totals reflect the full backend graph so the banner is
+   * truthful even when a cap is explicitly enabled.
    */
   function buildGraph(data: GraphData = filteredGraphData.value): Graph {
     const capped = capGraphData(data)

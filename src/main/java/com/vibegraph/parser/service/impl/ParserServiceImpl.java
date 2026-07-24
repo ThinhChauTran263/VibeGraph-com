@@ -28,7 +28,6 @@ import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
 import com.vibegraph.parser.service.ParseProgressListener;
 import com.vibegraph.parser.service.ParserService;
-import com.vibegraph.parser.visitor.AnnotationVisitor;
 import com.vibegraph.parser.visitor.ClassVisitor;
 import com.vibegraph.parser.visitor.FieldVisitor;
 import com.vibegraph.parser.visitor.ImportVisitor;
@@ -110,14 +109,12 @@ public class ParserServiceImpl implements ParserService {
                 FieldVisitor fieldVisitor = new FieldVisitor();
                 SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
                 SpringImplicitFlowVisitor springImplicitFlowVisitor = new SpringImplicitFlowVisitor();
-                AnnotationVisitor annotationVisitor = new AnnotationVisitor();
 
                 classVisitor.visit(cu, null);
                 methodVisitor.visit(cu, null);
                 fieldVisitor.visit(cu, null);
                 springVisitor.visit(cu, null);
                 springImplicitFlowVisitor.visit(cu, null);
-                annotationVisitor.visit(cu, null);
 
                 // ImportVisitor needs the source file's full name - use primary class FQCN
                 String primaryFqcn = cu.getPrimaryTypeName().orElse("");
@@ -150,8 +147,6 @@ public class ParserServiceImpl implements ParserService {
                 // Route nodes must be aggregated too - otherwise HANDLES_ROUTE edges below
                 // reference a target node that was never persisted and get silently dropped.
                 nodes.addAll(springVisitor.getExtractedNodes());
-                // Annotation nodes (annotation types used by classes/methods/fields).
-                nodes.addAll(annotationVisitor.getExtractedNodes());
 
                 nodes = withMethodProperties(nodes, springImplicitFlowVisitor.getMethodProperties());
                 nodes = withPackageName(nodes, packageName, filePath);
@@ -168,7 +163,6 @@ public class ParserServiceImpl implements ParserService {
                 edges.addAll(fieldVisitor.getExtractedEdges());
                 edges.addAll(springVisitor.getExtractedEdges());
                 edges.addAll(springImplicitFlowVisitor.getExtractedEdges());
-                edges.addAll(annotationVisitor.getExtractedEdges());
                 if (importVisitor != null) {
                     edges.addAll(importVisitor.getExtractedEdges());
                 }
@@ -319,6 +313,8 @@ public class ParserServiceImpl implements ParserService {
         private final String targetFullName;
         private final Map<String, Object> properties = new LinkedHashMap<>();
         private final List<Integer> occurrences = new ArrayList<>();
+        private final List<String> relationFields = new ArrayList<>();
+        private final List<String> relationCardinalities = new ArrayList<>();
         private int weight = 0;
         private Integer lineNumber;
 
@@ -342,11 +338,18 @@ public class ParserServiceImpl implements ParserService {
                     occurrences.add(line);
                 }
             }
+            mergeHasRelationMetadata(edge);
         }
 
         private EdgeData toEdgeData() {
             Map<String, Object> props = new LinkedHashMap<>(properties);
             props.put("weight", weight);
+            if (!relationFields.isEmpty()) {
+                props.put("fields", relationFields);
+            }
+            if (!relationCardinalities.isEmpty()) {
+                props.put("cardinalities", relationCardinalities);
+            }
             if (!occurrences.isEmpty()) {
                 props.put("occurrences", occurrences);
             }
@@ -362,6 +365,24 @@ public class ParserServiceImpl implements ParserService {
             }
             Object value = edge.properties().get("lineNumber");
             return value instanceof Number number ? number.intValue() : null;
+        }
+
+        private void mergeHasRelationMetadata(EdgeData edge) {
+            if (!"HAS_RELATION".equals(type) || edge.properties() == null) {
+                return;
+            }
+            addStringProperty(edge, "fieldName", relationFields);
+            addStringProperty(edge, "cardinality", relationCardinalities);
+        }
+
+        private void addStringProperty(EdgeData edge, String key, List<String> values) {
+            if (values.size() >= 10) {
+                return;
+            }
+            Object value = edge.properties().get(key);
+            if (value instanceof String stringValue && !stringValue.isBlank() && !values.contains(stringValue)) {
+                values.add(stringValue);
+            }
         }
     }
 

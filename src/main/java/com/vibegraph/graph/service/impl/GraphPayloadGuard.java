@@ -15,18 +15,19 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 
 /**
- * Caps an HTTP full-graph payload to bounded node/edge counts and attaches truncation metadata.
+ * Optionally caps an HTTP full-graph payload to bounded node/edge counts and attaches truncation
+ * metadata.
  *
- * <p>This is the server-side safety layer that prevents the browser from ever receiving an
- * unbounded graph. It mirrors the deterministic selection used by the frontend
- * {@code lib/graphCap.ts} so both layers agree on which nodes are "most important":
+ * <p>When positive limits are configured, this server-side safety layer mirrors the deterministic
+ * selection used by the frontend {@code lib/graphCap.ts} so both layers agree on which nodes are
+ * "most important":
  * <ol>
  *   <li>node-type priority (Project/Package/File/Class first, Field/LocalVariable last);</li>
  *   <li>then node degree (more connected, more central nodes win);</li>
  *   <li>then id (deterministic, stable output — never random).</li>
  * </ol>
  * Edges whose source or target node did not survive are dropped; the surviving edges are then
- * capped (deterministically by id) to the edge limit.
+ * capped (deterministically by id) to the edge limit. A non-positive limit disables that cap.
  */
 @Component
 public class GraphPayloadGuard {

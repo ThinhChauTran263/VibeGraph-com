@@ -26,7 +26,7 @@ class GraphTypeEnumTest {
         assertThat(Arrays.stream(EdgeTypeEnum.values()).map(EdgeTypeEnum::label))
                 .containsExactly(
                         "OWNS", "CONTAINS", "DEFINES", "HAS_METHOD", "HAS_FIELD", "HAS_INNER",
-                        "EXTENDS", "IMPLEMENTS", "OVERRIDES", "IMPORTS", "TYPE_OF", "RETURNS",
+                        "HAS_RELATION", "EXTENDS", "IMPLEMENTS", "OVERRIDES", "IMPORTS", "TYPE_OF", "RETURNS",
                         "PARAMETER_TYPE", "THROWS", "CALLS", "INSTANTIATES", "INJECTS",
                         "HANDLES_ROUTE", "ANNOTATED_BY", "READS", "WRITES", "CATCHES",
                         "STEP_IN_FLOW", "PUBLISHES_EVENT", "LISTENS_EVENT", "TRIGGERS",

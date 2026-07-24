@@ -70,7 +70,7 @@ class CpgSchemaCoverageTest {
         // OWNS is contract-only (never emitted); HAS_INNER needs nested types (not in
         // this fixture). Every other implemented edge type must be present.
         List<String> expected = List.of(
-                "DEFINES", "CONTAINS", "HAS_METHOD", "HAS_FIELD", "ANNOTATED_BY",
+                "DEFINES", "CONTAINS", "HAS_METHOD", "HAS_FIELD", "HAS_RELATION",
                 "EXTENDS", "IMPLEMENTS", "OVERRIDES", "TYPE_OF", "PARAMETER_TYPE",
                 "RETURNS", "IMPORTS", "CALLS", "INSTANTIATES", "INJECTS", "STEP_IN_FLOW",
                 "READS", "WRITES", "THROWS", "CATCHES", "HANDLES_ROUTE");
@@ -87,7 +87,7 @@ class CpgSchemaCoverageTest {
         // output. Every other implemented node type must be present.
         List<String> expected = List.of(
                 "Package", "File", "Class", "Interface", "Enum", "Record", "DBModel",
-                "Method", "Constructor", "Field", "Annotation", "LocalVariable", "APIEndpoint");
+                "Method", "Constructor", "Field", "LocalVariable", "APIEndpoint");
 
         assertThat(nodeTypes).as("node types emitted: " + nodeTypes).containsAll(expected);
     }

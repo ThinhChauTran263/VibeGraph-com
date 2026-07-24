@@ -4,6 +4,7 @@ import com.github.javaparser.ast.body.AnnotationDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.TypeReferenceSupport;
@@ -95,9 +96,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("final", declaration.isFinal());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
 
         return NodeData.of(
                 type,
@@ -115,9 +116,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("visibility", declaration.getAccessSpecifier().asString());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
         properties.put("values", declaration.getEntries().stream()
                 .map(entry -> entry.getNameAsString())
                 .toList());
@@ -136,6 +137,7 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     private NodeData toNodeData(AnnotationDeclaration declaration) {
         Map<String, Object> properties = new HashMap<>();
         properties.put("visibility", declaration.getAccessSpecifier().asString());
+        properties.put("annotations", annotationNames(declaration));
 
         return NodeData.of(
                 "Annotation",
@@ -153,9 +155,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("visibility", declaration.getAccessSpecifier().asString());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
         properties.put("components", declaration.getParameters().stream()
                 .map(parameter -> parameter.getNameAsString())
                 .toList());
@@ -172,10 +174,15 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     }
 
     private String classNodeType(ClassOrInterfaceDeclaration declaration) {
-        List<String> annotations = declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList();
+        List<String> annotations = annotationNames(declaration);
         return isDbModel(annotations) ? "DBModel" : "Class";
+    }
+
+    private List<String> annotationNames(NodeWithAnnotations<?> declaration) {
+        return declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .distinct()
+                .toList();
     }
 
     private boolean isDbModel(List<String> annotations) {

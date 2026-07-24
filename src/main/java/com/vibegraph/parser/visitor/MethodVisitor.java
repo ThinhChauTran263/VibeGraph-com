@@ -31,6 +31,7 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.ThisExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.type.UnionType;
@@ -713,6 +714,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         properties.put("throwsTypes", throwsTypes);
         properties.put("httpMethod", routeMapping.httpMethod());
         properties.put("routePath", routeMapping.routePath());
+        properties.put("annotations", annotationNames(declaration));
 
         return NodeData.of(
                 "Method",
@@ -746,16 +748,27 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         properties.put("throwsTypes", declaration.getThrownExceptions().stream().map(type -> type.asString()).toList());
         properties.put("httpMethod", null);
         properties.put("routePath", null);
+        properties.put("annotations", annotationNames(declaration));
+        String displayName = declaration.findAncestor(ClassOrInterfaceDeclaration.class)
+                .map(ClassOrInterfaceDeclaration::getNameAsString)
+                .orElse(declaration.getNameAsString());
 
         return NodeData.of(
                 "Constructor",
-                "<init>",
+                displayName,
                 fullName("<init>", declaration.findAncestor(ClassOrInterfaceDeclaration.class), paramTypes),
                 filePath(declaration),
                 declaration.getBegin().map(position -> position.line).orElse(0),
                 declaration.getEnd().map(position -> position.line).orElse(0),
                 properties
         );
+    }
+
+    private List<String> annotationNames(NodeWithAnnotations<?> declaration) {
+        return declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .distinct()
+                .toList();
     }
 
     private String fullName(String methodName, Optional<ClassOrInterfaceDeclaration> owner, List<String> paramTypes) {

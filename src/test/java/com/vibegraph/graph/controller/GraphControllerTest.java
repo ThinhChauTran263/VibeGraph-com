@@ -375,6 +375,28 @@ class GraphControllerTest {
     }
 
     @Test
+    @DisplayName("GET graph treats zero limits as uncapped")
+    void shouldDisablePayloadCapWithZeroLimits() throws Exception {
+        List<NodeDto> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            nodes.add(NodeDto.builder().id("c" + i).type("Class").name("C" + i).fullName("C" + i).build());
+        }
+        when(graphService.getFullGraph("big")).thenReturn(GraphDataResponse.builder()
+                .nodes(nodes).edges(List.of()).nodeStats(Map.of("Class", 10)).edgeStats(Map.of()).build());
+
+        mockMvc.perform(get("/api/projects/big/graph")
+                        .param("mode", "deep")
+                        .param("nodeLimit", "0")
+                        .param("edgeLimit", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.nodes.length()").value(10))
+                .andExpect(jsonPath("$.data.meta.truncated").value(false))
+                .andExpect(jsonPath("$.data.meta.nodeLimit").value(0))
+                .andExpect(jsonPath("$.data.meta.edgeLimit").value(0));
+    }
+
+    @Test
     @DisplayName("GET graph returns empty arrays for a project with no data")
     void shouldReturnEmptyGraph() throws Exception {
         when(graphService.getFullGraph("empty")).thenReturn(GraphDataResponse.builder()

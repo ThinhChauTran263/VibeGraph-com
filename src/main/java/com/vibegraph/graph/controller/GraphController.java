@@ -36,10 +36,10 @@ public class GraphController {
     private final ProjectOwnershipGuard ownershipGuard;
 
     /**
-     * Full project graph, capped at the HTTP boundary so the browser never receives an
-     * unbounded payload. Defaults come from {@link GraphPayloadProperties}; callers may request
-     * higher explicit limits via {@code nodeLimit}/{@code edgeLimit}, clamped to the configured
-     * server maximums. The response carries {@code meta} describing any truncation.
+     * Full project graph. By default the HTTP payload is uncapped; deployments can configure
+     * positive defaults, and callers can request positive {@code nodeLimit}/{@code edgeLimit}
+     * values clamped to the configured server maximums. A non-positive explicit limit disables
+     * that cap. The response carries {@code meta} describing any truncation.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<GraphDataResponse>> getFullGraph(
@@ -74,12 +74,15 @@ public class GraphController {
     }
 
     /**
-     * Clamp a requested limit to {@code [1, max]}, falling back to {@code defaultValue} when the
-     * caller did not request one. A non-positive request also falls back to the default.
+     * Clamp a requested positive limit to {@code [1, max]}, falling back to {@code defaultValue}
+     * when the caller did not request one. A non-positive request disables the cap.
      */
     private int clamp(Integer requested, int defaultValue, int max) {
-        if (requested == null || requested <= 0) {
-            return Math.min(defaultValue, max);
+        if (requested == null) {
+            return defaultValue <= 0 ? 0 : Math.min(defaultValue, max);
+        }
+        if (requested <= 0) {
+            return 0;
         }
         return Math.min(requested, max);
     }

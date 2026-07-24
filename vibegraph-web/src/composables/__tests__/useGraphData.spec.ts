@@ -54,15 +54,15 @@ describe('useGraphData - Safe Mode render info', () => {
     expect(store.renderInfo?.totalEdges).toBe(12000)
   })
 
-  it('flags truncation from the frontend cap even when the backend did not truncate', () => {
+  it('does not truncate on the frontend by default when the backend returned the full graph', () => {
     const store = useGraphStore()
     store.payloadMeta = null
     const { buildGraph } = useGraphData()
 
     buildGraph(graph(GRAPH_SAFE_NODE_LIMIT + 500))
 
-    expect(store.renderInfo?.truncated).toBe(true)
-    expect(store.renderInfo?.renderedNodes).toBe(GRAPH_SAFE_NODE_LIMIT)
+    expect(store.renderInfo?.truncated).toBe(false)
+    expect(store.renderInfo?.renderedNodes).toBe(GRAPH_SAFE_NODE_LIMIT + 500)
     expect(store.renderInfo?.totalNodes).toBe(GRAPH_SAFE_NODE_LIMIT + 500)
   })
 

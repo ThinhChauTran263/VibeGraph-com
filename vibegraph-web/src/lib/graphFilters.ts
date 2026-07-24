@@ -20,7 +20,8 @@ function countByType<T extends string>(values: T[]): Record<T, number> {
 
 /**
  * The edge types hidden in the DEFAULT view. CPG-lite relationships
- * (TYPE_OF, PARAMETER_TYPE, RETURNS, THROWS, HAS_FIELD, INJECTS) are kept in the
+ * (TYPE_OF, PARAMETER_TYPE, RETURNS, THROWS, HAS_FIELD, INJECTS, event/inference
+ * facts) are kept in the
  * data but hidden by default so the architecture graph stays readable; they are
  * revealed via the Edge Types "Show all" button. Returns a fresh mutable set so
  * the filter store can own its copy.
@@ -30,9 +31,8 @@ export function defaultHiddenEdgeTypes(): Set<EdgeType> {
 }
 
 /**
- * The node types hidden in the DEFAULT view. Currently `LocalVariable` (deep CPG),
- * which is only present when the backend deep-cpg flag is enabled. Returns a fresh
- * mutable set so the filter store can own its copy.
+ * The node types hidden in the DEFAULT view. Returns a fresh mutable set so the
+ * filter store can own its copy.
  */
 export function defaultHiddenNodeTypes(): Set<NodeType> {
   return new Set<NodeType>(DEFAULT_HIDDEN_NODE_TYPES)

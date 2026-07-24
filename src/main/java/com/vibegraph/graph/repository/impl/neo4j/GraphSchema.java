@@ -29,6 +29,7 @@ public final class GraphSchema {
     private static final Set<String> RELATIONSHIP_TYPES = Set.of(
             "OWNS", "CONTAINS", "DEFINES",
             "HAS_METHOD", "HAS_FIELD", "HAS_INNER",
+            "HAS_RELATION",
             "EXTENDS", "IMPLEMENTS", "OVERRIDES",
             "IMPORTS", "TYPE_OF", "RETURNS", "PARAMETER_TYPE", "THROWS",
             "CALLS", "INSTANTIATES", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY",

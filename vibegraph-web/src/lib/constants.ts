@@ -50,6 +50,7 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   CONTAINS: '#9333EA', // purple
   HAS_METHOD: '#0891B2', // cyan
   HAS_INNER: '#DB2777', // magenta
+  HAS_RELATION: '#FACC15', // bright yellow domain relation
   EXTENDS: '#EA580C', // orange
   IMPLEMENTS: '#CA8A04', // gold
   OVERRIDES: '#7C3AED', // violet
@@ -67,6 +68,12 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   WRITES: '#FB923C', // light orange
   CATCHES: '#A78BFA', // light violet
   STEP_IN_FLOW: '#E879F9', // light fuchsia
+  PUBLISHES_EVENT: '#F97316', // orange event publish
+  LISTENS_EVENT: '#22D3EE', // cyan event listener
+  TRIGGERS: '#F43F5E', // rose inferred flow
+  RESOLVES_TO: '#A855F7', // purple dispatch resolution
+  CALLS_DYNAMIC: '#60A5FA', // blue dynamic call
+  DISPATCH_CANDIDATES: '#94A3B8', // slate ambiguous candidates
   OWNS: '#6366F1', // indigo
 }
 
@@ -84,8 +91,9 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
 // Only relationship types the parser actually emits are listed. OWNS exists in
 // the schema/contract enum but is NOT currently produced by any parser visitor,
 // so it is intentionally absent from both sets (it would never have a count > 0).
-// As of Phase 2, the parser additionally emits CONTAINS (Package hierarchy),
-// OVERRIDES, ANNOTATED_BY, and INSTANTIATES.
+// As of Phase 2+, the parser additionally emits CONTAINS (Package hierarchy),
+// OVERRIDES, INSTANTIATES, and guarded HAS_RELATION domain edges. Annotation
+// usages are node metadata, not ANNOTATED_BY graph edges.
 
 // Default-VISIBLE structural relationships (architecture graph).
 export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
@@ -93,6 +101,7 @@ export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
   'DEFINES',
   'HAS_METHOD',
   'HAS_INNER',
+  'HAS_RELATION',
   'EXTENDS',
   'IMPLEMENTS',
   'OVERRIDES',
@@ -119,6 +128,12 @@ export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
   'CATCHES',
   // Phase 4 inferred execution flow: default-hidden, revealed via "Show all".
   'STEP_IN_FLOW',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'RESOLVES_TO',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
 ])
 
 // Edge types hidden by default. The filter store initializes `hiddenEdgeTypes`

@@ -12,8 +12,8 @@ import type { EdgeType, GraphData } from '@/types/graph'
 /**
  * Edge types the backend parser actually emits (EdgeData.of in the visitors +
  * ParserServiceImpl). The frontend MUST support (color + render) every one of
- * these. OWNS / CONTAINS / OVERRIDES / ANNOTATED_BY exist in the schema enum but
- * are not currently emitted, so they are intentionally excluded here.
+ * these. OWNS / ANNOTATED_BY exist in the schema enum but are not currently
+ * emitted as parser facts, so they are intentionally excluded here.
  */
 const BACKEND_EMITTED_EDGE_TYPES: EdgeType[] = [
   'CONTAINS',
@@ -21,6 +21,7 @@ const BACKEND_EMITTED_EDGE_TYPES: EdgeType[] = [
   'HAS_METHOD',
   'HAS_FIELD',
   'HAS_INNER',
+  'HAS_RELATION',
   'EXTENDS',
   'IMPLEMENTS',
   'OVERRIDES',
@@ -33,11 +34,16 @@ const BACKEND_EMITTED_EDGE_TYPES: EdgeType[] = [
   'INSTANTIATES',
   'INJECTS',
   'HANDLES_ROUTE',
-  'ANNOTATED_BY',
   'READS',
   'WRITES',
   'CATCHES',
   'STEP_IN_FLOW',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'RESOLVES_TO',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
 ]
 
 function baseData(): GraphData {

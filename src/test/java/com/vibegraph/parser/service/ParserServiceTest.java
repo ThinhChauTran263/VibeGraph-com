@@ -111,8 +111,8 @@ class ParserServiceTest {
         }
 
         @Test
-        @DisplayName("should emit ANNOTATED_BY edge for an annotated class")
-        void shouldEmitAnnotatedByEdge() throws IOException {
+        @DisplayName("should attach annotation usages to node metadata without usage nodes/edges")
+        void shouldAttachAnnotationMetadataWithoutUsageGraph() throws IOException {
             Path javaFile = tempDir.resolve("UserService.java");
             Files.writeString(javaFile, """
                 package com.example;
@@ -126,12 +126,15 @@ class ParserServiceTest {
             ParseResult result = parserService.parseFile(javaFile);
 
             assertThat(result.getNodes())
-                    .anyMatch(n -> n.type().equals("Annotation")
+                    .anySatisfy(n -> {
+                        assertThat(n.fullName()).isEqualTo("com.example.UserService");
+                        assertThat(n.properties()).containsEntry("annotations", List.of("Service"));
+                    });
+            assertThat(result.getNodes())
+                    .noneMatch(n -> n.type().equals("Annotation")
                             && n.fullName().equals("org.springframework.stereotype.Service"));
             assertThat(result.getEdges())
-                    .anyMatch(e -> e.type().equals("ANNOTATED_BY")
-                            && e.sourceFullName().equals("com.example.UserService")
-                            && e.targetFullName().equals("org.springframework.stereotype.Service"));
+                    .noneMatch(e -> e.type().equals("ANNOTATED_BY"));
         }
 
         @Test
@@ -447,6 +450,60 @@ class ParserServiceTest {
                             && e.targetFullName().equals("com.example.domain.User"))
                     .anyMatch(e -> e.type().equals("RETURNS")
                             && e.targetFullName().equals("com.example.domain.User"));
+        }
+
+        @Test
+        @DisplayName("should emit verified aggregated HAS_RELATION edges for JPA domain fields")
+        void shouldEmitVerifiedAggregatedJpaRelations() throws IOException {
+            Path srcDir = tempDir.resolve("src/main/java/com/example/domain");
+            Files.createDirectories(srcDir);
+
+            Files.writeString(srcDir.resolve("Order.java"), """
+                package com.example.domain;
+                import jakarta.persistence.Entity;
+
+                @Entity
+                public class Order {}
+                """);
+
+            Files.writeString(srcDir.resolve("User.java"), """
+                package com.example.domain;
+                import jakarta.persistence.Entity;
+                import jakarta.persistence.OneToMany;
+                import jakarta.persistence.ManyToOne;
+                import java.util.List;
+
+                @Entity
+                public class User {
+                    @OneToMany
+                    private List<Order> orders;
+                    @ManyToOne
+                    private Order primaryOrder;
+                    @ManyToOne
+                    private MissingExternal missing;
+                }
+                """);
+
+            List<ParseResult> results = parserService.parseProject(tempDir);
+            List<EdgeData> edges = results.stream().flatMap(result -> result.getEdges().stream()).toList();
+
+            List<EdgeData> relations = edges.stream()
+                    .filter(edge -> edge.type().equals("HAS_RELATION"))
+                    .filter(edge -> edge.sourceFullName().equals("com.example.domain.User"))
+                    .filter(edge -> edge.targetFullName().equals("com.example.domain.Order"))
+                    .toList();
+
+            assertThat(relations).hasSize(1);
+            assertThat(relations.get(0).properties()).containsEntry("weight", 2);
+            assertThat(((List<?>) relations.get(0).properties().get("fields")).stream()
+                    .map(Object::toString)
+                    .toList()).containsExactlyInAnyOrder("orders", "primaryOrder");
+            assertThat(((List<?>) relations.get(0).properties().get("cardinalities")).stream()
+                    .map(Object::toString)
+                    .toList()).containsExactlyInAnyOrder("ONE_TO_MANY", "MANY_TO_ONE");
+            assertThat(edges)
+                    .noneMatch(edge -> edge.type().equals("HAS_RELATION")
+                            && edge.targetFullName().contains("MissingExternal"));
         }
 
         @Test

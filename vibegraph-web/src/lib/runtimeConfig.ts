@@ -56,8 +56,8 @@ export function envBool(key: string, fallback: boolean): boolean {
 }
 
 // ── Graph rendering ──────────────────────────────────────────────────────────
-/** Max nodes handed to the renderer before Safe Mode caps the view. */
-export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 1500, { min: 0 })
+/** Max nodes handed to the renderer before Safe Mode caps the view; 0 disables the cap. */
+export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 0, { min: 0 })
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
