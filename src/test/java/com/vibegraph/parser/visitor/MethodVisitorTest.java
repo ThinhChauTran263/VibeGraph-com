@@ -731,6 +731,58 @@ class MethodVisitorTest {
         }
 
         @Test
+        @DisplayName("should resolve Class::staticMethod references to in-project CALLS targets")
+        void shouldResolveStaticMethodReferences() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+                import java.util.function.Consumer;
+
+                public class C {
+                    public void process() {
+                        Consumer<String> consumer = C::normalize;
+                    }
+
+                    static void normalize(String value) {}
+                }
+                """);
+
+            visitor.visit(cu, null);
+
+            assertTrue(visitor.getExtractedEdges().stream()
+                    .anyMatch(e -> e.type().equals("CALLS")
+                            && e.sourceFullName().equals("com.example.C.process()")
+                            && e.targetFullName().equals("com.example.C.normalize(String)")
+                            && "resolved".equals(e.properties().get("targetType"))
+                            && "method".equals(e.properties().get("callKind"))));
+        }
+
+        @Test
+        @DisplayName("should resolve inherited project method calls to the declaring method")
+        void shouldResolveInheritedProjectMethodCalls() {
+            CompilationUnit cu = parseWithSolver("""
+                package com.example;
+
+                class Base {
+                    void inherited() {}
+                }
+
+                public class Child extends Base {
+                    public void process() {
+                        inherited();
+                    }
+                }
+                """);
+
+            visitor.visit(cu, null);
+
+            assertTrue(visitor.getExtractedEdges().stream()
+                    .anyMatch(e -> e.type().equals("CALLS")
+                            && e.sourceFullName().equals("com.example.Child.process()")
+                            && e.targetFullName().equals("com.example.Base.inherited()")
+                            && "resolved".equals(e.properties().get("targetType"))));
+        }
+
+        @Test
         @DisplayName("should suppress low-confidence CALLS edge for unresolved method calls by default")
         void shouldSuppressStubForUnresolvedCallByDefault() {
             CompilationUnit cu = parseWithSolver("""
