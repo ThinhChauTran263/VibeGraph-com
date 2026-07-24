@@ -12,6 +12,7 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -49,18 +50,15 @@ public class FieldVisitor extends VoidVisitorAdapter<Object> {
         }
 
         // TYPE_OF edge to the field's declared type
-        String declaredType = variable.getType().asString();
-        String resolvedType = resolveTypeName(declaredType, declaration);
-        if (!isPrimitive(resolvedType)) {
-            extractedEdges.add(EdgeData.of("TYPE_OF", fieldFullName, resolvedType));
-        }
+        Optional<String> resolvedType = TypeReferenceSupport.resolveTypeReference(variable.getType(), declaration);
+        resolvedType.ifPresent(type -> extractedEdges.add(EdgeData.of("TYPE_OF", fieldFullName, type)));
 
         // INJECTS edge if field has @Autowired or @Inject
-        if (isInjected(declaration) && ownerFullName != null) {
+        if (isInjected(declaration) && ownerFullName != null && resolvedType.isPresent()) {
             Map<String, Object> props = new HashMap<>();
             props.put("via", "field");
             props.put("fieldName", variable.getNameAsString());
-            extractedEdges.add(EdgeData.of("INJECTS", ownerFullName, resolvedType, props));
+            extractedEdges.add(EdgeData.of("INJECTS", ownerFullName, resolvedType.get(), props));
         }
     }
 
