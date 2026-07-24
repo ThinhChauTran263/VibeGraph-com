@@ -34,6 +34,7 @@ import com.vibegraph.parser.visitor.FieldVisitor;
 import com.vibegraph.parser.visitor.ImportVisitor;
 import com.vibegraph.parser.visitor.MethodVisitor;
 import com.vibegraph.parser.visitor.SpringAnnotationVisitor;
+import com.vibegraph.parser.visitor.SpringImplicitFlowVisitor;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -108,12 +109,14 @@ public class ParserServiceImpl implements ParserService {
                 MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
                 FieldVisitor fieldVisitor = new FieldVisitor();
                 SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
+                SpringImplicitFlowVisitor springImplicitFlowVisitor = new SpringImplicitFlowVisitor();
                 AnnotationVisitor annotationVisitor = new AnnotationVisitor();
 
                 classVisitor.visit(cu, null);
                 methodVisitor.visit(cu, null);
                 fieldVisitor.visit(cu, null);
                 springVisitor.visit(cu, null);
+                springImplicitFlowVisitor.visit(cu, null);
                 annotationVisitor.visit(cu, null);
 
                 // ImportVisitor needs the source file's full name - use primary class FQCN
@@ -130,7 +133,7 @@ public class ParserServiceImpl implements ParserService {
 
                 // Aggregate nodes
                 List<NodeData> nodes = new ArrayList<>();
-                NodeData fileNode = fileNode(filePath);
+                NodeData fileNode = fileNode(filePath, packageName);
                 nodes.add(fileNode);
                 // Package node + CONTAINS edge (Package -> File). Default-package files
                 // (no package declaration) get no Package node. Deduped across files by
@@ -150,6 +153,8 @@ public class ParserServiceImpl implements ParserService {
                 // Annotation nodes (annotation types used by classes/methods/fields).
                 nodes.addAll(annotationVisitor.getExtractedNodes());
 
+                nodes = withMethodProperties(nodes, springImplicitFlowVisitor.getMethodProperties());
+                nodes = withPackageName(nodes, packageName, filePath);
                 nodes = NodeLayerClassifier.withLayers(nodes);
 
                 // Aggregate edges
@@ -162,6 +167,7 @@ public class ParserServiceImpl implements ParserService {
                 edges.addAll(methodVisitor.getExtractedEdges());
                 edges.addAll(fieldVisitor.getExtractedEdges());
                 edges.addAll(springVisitor.getExtractedEdges());
+                edges.addAll(springImplicitFlowVisitor.getExtractedEdges());
                 edges.addAll(annotationVisitor.getExtractedEdges());
                 if (importVisitor != null) {
                     edges.addAll(importVisitor.getExtractedEdges());
@@ -186,9 +192,10 @@ public class ParserServiceImpl implements ParserService {
         }
     }
 
-    private NodeData fileNode(Path filePath) {
+    private NodeData fileNode(Path filePath, String packageName) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("extension", ".java");
+        properties.put("packageName", packageName == null ? "" : packageName);
         return NodeData.of(
                 "File",
                 filePath.getFileName().toString(),
@@ -210,7 +217,75 @@ public class ParserServiceImpl implements ParserService {
         String simpleName = packageName.contains(".")
                 ? packageName.substring(packageName.lastIndexOf('.') + 1)
                 : packageName;
-        return NodeData.of("Package", simpleName, packageName, "", 0, 0, Map.of());
+        return NodeData.of("Package", simpleName, packageName, "", 0, 0, Map.of(
+                "packageName", packageName));
+    }
+
+    private List<NodeData> withMethodProperties(List<NodeData> nodes, Map<String, Map<String, Object>> propertiesByMethod) {
+        if (nodes == null || nodes.isEmpty() || propertiesByMethod == null || propertiesByMethod.isEmpty()) {
+            return nodes == null ? List.of() : nodes;
+        }
+        List<NodeData> result = new ArrayList<>(nodes.size());
+        for (NodeData node : nodes) {
+            Map<String, Object> extra = propertiesByMethod.get(node.fullName());
+            if (extra == null || extra.isEmpty()) {
+                result.add(node);
+                continue;
+            }
+            Map<String, Object> properties = new LinkedHashMap<>();
+            if (node.properties() != null) {
+                properties.putAll(node.properties());
+            }
+            properties.putAll(extra);
+            result.add(NodeData.of(
+                    node.type(),
+                    node.name(),
+                    node.fullName(),
+                    node.filePath(),
+                    node.lineNumber(),
+                    node.endLine(),
+                    properties));
+        }
+        return result;
+    }
+
+    private List<NodeData> withPackageName(List<NodeData> nodes, String packageName, Path filePath) {
+        if (nodes == null || nodes.isEmpty()) {
+            return List.of();
+        }
+        String normalizedPackage = packageName == null ? "" : packageName;
+        String currentFilePath = filePath.toString();
+        List<NodeData> result = new ArrayList<>(nodes.size());
+        for (NodeData node : nodes) {
+            if (!shouldAssignPackageName(node, currentFilePath)) {
+                result.add(node);
+                continue;
+            }
+            Map<String, Object> properties = new LinkedHashMap<>();
+            if (node.properties() != null) {
+                properties.putAll(node.properties());
+            }
+            properties.put("packageName", normalizedPackage);
+            result.add(NodeData.of(
+                    node.type(),
+                    node.name(),
+                    node.fullName(),
+                    node.filePath(),
+                    node.lineNumber(),
+                    node.endLine(),
+                    properties));
+        }
+        return result;
+    }
+
+    private boolean shouldAssignPackageName(NodeData node, String currentFilePath) {
+        if (node == null || "Annotation".equals(node.type())) {
+            return false;
+        }
+        if ("Package".equals(node.type()) || "APIEndpoint".equals(node.type()) || "Route".equals(node.type())) {
+            return true;
+        }
+        return currentFilePath.equals(node.filePath());
     }
 
     private List<EdgeData> fileDefinesEdges(NodeData fileNode, List<NodeData> nodes) {

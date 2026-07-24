@@ -10,6 +10,8 @@ import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
+import com.vibegraph.parser.flow.DynamicDispatchResolver;
+import com.vibegraph.parser.flow.EventFlowResolver;
 import com.vibegraph.parser.flow.FlowAnalyzer;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -80,6 +82,12 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // for every distinct package so the hierarchy is Project -> Package -> File.
         // Additive only: existing nodes/edges are untouched.
         allEdges.addAll(projectContainsPackageEdges(projectId, allNodes));
+
+        // Global inference passes run only after the full project AST has been
+        // parsed. Raw parser facts remain untouched; inferred relationships carry
+        // explicit metadata and are appended as separate edge types.
+        allEdges.addAll(EventFlowResolver.inferTriggers(allNodes, allEdges));
+        allEdges.addAll(DynamicDispatchResolver.inferDispatch(allNodes, allEdges));
 
         // STEP_IN_FLOW: inferred execution-flow steps from route handlers through the
         // already-resolved in-project CALLS graph. Computed from the CALLS/HANDLES_ROUTE

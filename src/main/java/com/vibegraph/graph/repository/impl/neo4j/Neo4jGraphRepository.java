@@ -16,6 +16,7 @@ import org.neo4j.driver.types.Relationship;
 import org.springframework.stereotype.Repository;
 
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.util.HashUtils;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -277,11 +278,9 @@ public class Neo4jGraphRepository implements GraphRepository {
 
                     Relationship r = rVal.asRelationship();
                     String edgeType = r.type();
-                    // Stable, deterministic identity instead of Neo4j's internal id()
-                    // (which is reused after deletes and changes across re-analysis).
                     String sourceId = stableNodeId(n);
                     String targetId = stableNodeId(m);
-                    String edgeId = sourceId + "|" + edgeType + "|" + targetId;
+                    String edgeId = stableEdgeId(sourceId, edgeType, targetId);
 
                     EdgeDto edgeDto = EdgeDto.builder()
                             .id(edgeId)
@@ -290,6 +289,9 @@ public class Neo4jGraphRepository implements GraphRepository {
                             .type(edgeType)
                             .confidence(r.get("confidence").isNull() ? null : r.get("confidence").asDouble())
                             .lineNumber(r.get("lineNumber").isNull() ? null : r.get("lineNumber").asInt())
+                            .weight(r.get("weight").isNull() ? 1 : r.get("weight").asInt())
+                            .occurrences(readOccurrences(r))
+                            .properties(edgeProperties(r))
                             .build();
                     edges.add(edgeDto);
                     edgeStats.merge(edgeType, 1, Integer::sum);
@@ -557,5 +559,28 @@ public class Neo4jGraphRepository implements GraphRepository {
                 .lineNumber(node.get("lineNumber").isNull() ? null : node.get("lineNumber").asInt())
                 .properties(properties)
                 .build();
+    }
+
+    private String stableEdgeId(String sourceId, String edgeType, String targetId) {
+        return HashUtils.sha256(sourceId + "|" + edgeType + "|" + targetId);
+    }
+
+    private List<Integer> readOccurrences(Relationship relationship) {
+        if (relationship.get("occurrences").isNull()) {
+            if (relationship.get("lineNumber").isNull()) {
+                return List.of();
+            }
+            return List.of(relationship.get("lineNumber").asInt());
+        }
+        return relationship.get("occurrences").asList(value -> value.asInt());
+    }
+
+    private Map<String, Object> edgeProperties(Relationship relationship) {
+        Map<String, Object> properties = new HashMap<>(relationship.asMap());
+        properties.remove("confidence");
+        properties.remove("lineNumber");
+        properties.remove("weight");
+        properties.remove("occurrences");
+        return properties;
     }
 }

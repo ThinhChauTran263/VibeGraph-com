@@ -32,6 +32,7 @@ import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
+import com.vibegraph.graph.service.impl.GraphResponseFilter;
 
 /**
  * Web-layer tests for GraphController using standalone MockMvc — no Neo4j and no
@@ -52,7 +53,8 @@ class GraphControllerTest {
         graphService = Mockito.mock(GraphService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         GraphController controller = new GraphController(
-                graphService, new GraphArchitectureProjector(), new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
+                graphService, new GraphArchitectureProjector(), new GraphResponseFilter(),
+                new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -282,6 +284,74 @@ class GraphControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nodes.length()").value(4))
                 .andExpect(jsonPath("$.data.edges.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("GET graph filters by normalized packageName and whitelisted edge types")
+    void shouldFilterGraphByPackageAndEdgeTypes() throws Exception {
+        GraphDataResponse response = GraphDataResponse.builder()
+                .nodes(List.of(
+                        NodeDto.builder()
+                                .id("com.example.service.UserService")
+                                .type("Class")
+                                .name("UserService")
+                                .fullName("com.example.service.UserService")
+                                .properties(Map.of("packageName", "com.example.service"))
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.service.UserService.run()")
+                                .type("Method")
+                                .name("run")
+                                .fullName("com.example.service.UserService.run()")
+                                .properties(Map.of("packageName", "com.example.service"))
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.web.UserController")
+                                .type("Class")
+                                .name("UserController")
+                                .fullName("com.example.web.UserController")
+                                .properties(Map.of("packageName", "com.example.web"))
+                                .build()))
+                .edges(List.of(
+                        EdgeDto.builder()
+                                .id("e1")
+                                .source("com.example.service.UserService")
+                                .target("com.example.service.UserService.run()")
+                                .type("HAS_METHOD")
+                                .build(),
+                        EdgeDto.builder()
+                                .id("e2")
+                                .source("com.example.service.UserService.run()")
+                                .target("com.example.web.UserController")
+                                .type("CALLS")
+                                .build()))
+                .build();
+        when(graphService.getFullGraph("p1")).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph")
+                        .param("mode", "deep")
+                        .param("packagePath", "com.example.service")
+                        .param("edgeTypes", "HAS_METHOD"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes.length()").value(2))
+                .andExpect(jsonPath("$.data.edges.length()").value(1))
+                .andExpect(jsonPath("$.data.edges[0].type").value("HAS_METHOD"))
+                .andExpect(jsonPath("$.data.nodeStats.Class").value(1))
+                .andExpect(jsonPath("$.data.nodeStats.Method").value(1));
+    }
+
+    @Test
+    @DisplayName("GET graph rejects invalid edge type filters before returning payload")
+    void shouldRejectInvalidEdgeTypeFilter() throws Exception {
+        when(graphService.getFullGraph("p1")).thenReturn(GraphDataResponse.builder()
+                .nodes(List.of()).edges(List.of()).build());
+
+        mockMvc.perform(get("/api/projects/p1/graph")
+                        .param("mode", "deep")
+                        .param("edgeTypes", "CALLS,DELETE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
     }
 
     @Test

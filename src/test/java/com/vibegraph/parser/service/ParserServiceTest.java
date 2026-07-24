@@ -88,7 +88,15 @@ class ParserServiceTest {
             assertThat(result.getNodes())
                     .as("Package node from the package declaration")
                     .anyMatch(n -> n.type().equals("Package")
-                            && n.fullName().equals("com.example.service"));
+                            && n.fullName().equals("com.example.service")
+                            && n.properties().get("packageName").equals("com.example.service"));
+
+            assertThat(result.getNodes())
+                    .as("File/Class/Method nodes carry normalized packageName from AST package declaration")
+                    .filteredOn(n -> n.fullName().equals(javaFile.toString())
+                            || n.fullName().equals("com.example.service.UserService")
+                            || n.fullName().equals("com.example.service.UserService.run()"))
+                    .allSatisfy(n -> assertThat(n.properties()).containsEntry("packageName", "com.example.service"));
 
             assertThat(result.getEdges())
                     .as("CONTAINS edge points Package -> File")
@@ -439,6 +447,86 @@ class ParserServiceTest {
                             && e.targetFullName().equals("com.example.domain.User"))
                     .anyMatch(e -> e.type().equals("RETURNS")
                             && e.targetFullName().equals("com.example.domain.User"));
+        }
+
+        @Test
+        @DisplayName("should emit pure Spring event facts and async/scheduled method properties")
+        void shouldEmitSpringImplicitFlowFacts() throws IOException {
+            Path srcDir = tempDir.resolve("src/main/java/com/example");
+            Files.createDirectories(srcDir);
+
+            Files.writeString(srcDir.resolve("UserCreatedEvent.java"), """
+                package com.example;
+                public class UserCreatedEvent {}
+                """);
+
+            Files.writeString(srcDir.resolve("UserService.java"), """
+                package com.example;
+                import org.springframework.context.ApplicationEventPublisher;
+                import org.springframework.scheduling.annotation.Async;
+                import org.springframework.scheduling.annotation.Scheduled;
+
+                public class UserService {
+                    private final ApplicationEventPublisher publisher;
+                    public UserService(ApplicationEventPublisher publisher) {
+                        this.publisher = publisher;
+                    }
+                    @Async
+                    public void create() {
+                        publisher.publishEvent(new UserCreatedEvent());
+                    }
+                    @Scheduled(fixedRate = 1000)
+                    public void sweep() {}
+                }
+                """);
+
+            Files.writeString(srcDir.resolve("UserListener.java"), """
+                package com.example;
+                import org.springframework.context.event.EventListener;
+                import org.springframework.transaction.event.TransactionalEventListener;
+
+                public class UserListener {
+                    @EventListener(UserCreatedEvent.class)
+                    public void onUserCreated() {}
+                    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, condition = "#event != null")
+                    public void afterCommit(UserCreatedEvent event) {}
+                }
+                """);
+
+            List<ParseResult> results = parserService.parseProject(tempDir);
+            List<NodeData> nodes = results.stream().flatMap(result -> result.getNodes().stream()).toList();
+            List<EdgeData> edges = results.stream().flatMap(result -> result.getEdges().stream()).toList();
+
+            assertThat(nodes)
+                    .anySatisfy(node -> {
+                        assertThat(node.fullName()).isEqualTo("com.example.UserService.create()");
+                        assertThat(node.properties()).containsEntry("isAsync", true);
+                    })
+                    .anySatisfy(node -> {
+                        assertThat(node.fullName()).isEqualTo("com.example.UserService.sweep()");
+                        assertThat(node.properties())
+                                .containsEntry("isScheduled", true)
+                                .containsEntry("entrypoint", true)
+                                .containsEntry("entrypointKind", "SCHEDULED");
+                    });
+
+            assertThat(edges)
+                    .anySatisfy(edge -> {
+                        assertThat(edge.type()).isEqualTo("PUBLISHES_EVENT");
+                        assertThat(edge.sourceFullName()).isEqualTo("com.example.UserService.create()");
+                        assertThat(edge.targetFullName()).isEqualTo("com.example.UserCreatedEvent");
+                    })
+                    .anySatisfy(edge -> {
+                        assertThat(edge.type()).isEqualTo("LISTENS_EVENT");
+                        assertThat(edge.sourceFullName()).isEqualTo("com.example.UserListener.onUserCreated()");
+                        assertThat(edge.targetFullName()).isEqualTo("com.example.UserCreatedEvent");
+                    })
+                    .anySatisfy(edge -> {
+                        assertThat(edge.type()).isEqualTo("LISTENS_EVENT");
+                        assertThat(edge.sourceFullName()).isEqualTo("com.example.UserListener.afterCommit(UserCreatedEvent)");
+                        assertThat(edge.targetFullName()).isEqualTo("com.example.UserCreatedEvent");
+                        assertThat(edge.properties()).containsEntry("phase", "TransactionPhase.AFTER_COMMIT");
+                    });
         }
 
         @Test

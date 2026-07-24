@@ -28,11 +28,13 @@ public class GraphArchitectureProjector {
             "Method", "Constructor", "APIEndpoint");
     private static final Set<String> ARCHITECTURE_EDGE_TYPES = Set.of(
             "DEFINES", "HAS_METHOD", "HAS_INNER", "IMPORTS", "CALLS", "INJECTS",
-            "HANDLES_ROUTE", "EXTENDS", "IMPLEMENTS", "OVERRIDES", "STEP_IN_FLOW");
+            "HANDLES_ROUTE", "EXTENDS", "IMPLEMENTS", "OVERRIDES", "STEP_IN_FLOW",
+            "RESOLVES_TO", "TRIGGERS");
     private static final Set<String> FILE_DEFINED_NODE_TYPES = Set.of(
             "Class", "Interface", "Enum", "Record", "DBModel");
     private static final Set<String> FILE_DEPENDENCY_EDGE_TYPES = Set.of(
-            "IMPORTS", "CALLS", "INJECTS", "EXTENDS", "IMPLEMENTS", "OVERRIDES", "STEP_IN_FLOW");
+            "IMPORTS", "CALLS", "INJECTS", "EXTENDS", "IMPLEMENTS", "OVERRIDES",
+            "STEP_IN_FLOW", "RESOLVES_TO", "TRIGGERS");
 
     public GraphDataResponse project(GraphDataResponse graph) {
         List<NodeDto> sourceNodes = graph == null || graph.getNodes() == null ? List.of() : graph.getNodes();
@@ -117,6 +119,7 @@ public class GraphArchitectureProjector {
                     .lineNumber(edge.getLineNumber())
                     .weight(edge.getWeight())
                     .occurrences(edge.getOccurrences())
+                    .properties(edge.getProperties())
                     .build());
         }
     }
@@ -143,6 +146,7 @@ public class GraphArchitectureProjector {
         private final String target;
         private final String type;
         private final Double confidence;
+        private final Map<String, Object> properties;
         private final List<Integer> occurrences = new ArrayList<>();
         private int weight;
         private Integer lineNumber;
@@ -153,6 +157,7 @@ public class GraphArchitectureProjector {
             this.target = first.getTarget();
             this.type = first.getType();
             this.confidence = first.getConfidence();
+            this.properties = first.getProperties();
         }
 
         private void add(EdgeDto edge) {
@@ -184,6 +189,7 @@ public class GraphArchitectureProjector {
                     .lineNumber(lineNumber)
                     .weight(weight)
                     .occurrences(occurrences.isEmpty() ? null : occurrences)
+                    .properties(properties)
                     .build();
         }
     }

@@ -2,6 +2,7 @@ package com.vibegraph.graph.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,4 +22,5 @@ public class EdgeDto {
     private Integer lineNumber;
     private Integer weight;
     private List<Integer> occurrences;
+    private Map<String, Object> properties;
 }

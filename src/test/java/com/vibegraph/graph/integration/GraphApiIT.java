@@ -30,6 +30,7 @@ import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
+import com.vibegraph.graph.service.impl.GraphResponseFilter;
 
 /**
  * Web-layer tests for the Graph API using standalone MockMvc — no Neo4j and no full
@@ -49,7 +50,8 @@ class GraphApiIT {
         graphService = Mockito.mock(GraphService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         GraphController controller = new GraphController(
-                graphService, new GraphArchitectureProjector(), new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
+                graphService, new GraphArchitectureProjector(), new GraphResponseFilter(),
+                new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

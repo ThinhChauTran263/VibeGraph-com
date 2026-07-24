@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
 import com.vibegraph.parser.service.ParserService;
@@ -92,5 +93,40 @@ class AnalyzeServiceImplTest {
         // The cap fires before any persistence — nothing is written to the graph.
         verify(graphRepository, never()).upsertNodes(any(), any());
         verify(graphRepository, never()).upsertEdges(any(), any());
+    }
+
+    @Test
+    @DisplayName("runs global inference passes after parsing and before edge persistence")
+    void runsGlobalInferencePasses() {
+        ParseResult result = ParseResult.builder()
+                .nodes(List.of(
+                        NodeData.of("Method", "create", "com.example.UserService.create()", "UserService.java", 1),
+                        NodeData.of("Method", "onUserCreated", "com.example.UserListener.onUserCreated(UserCreatedEvent)", "UserListener.java", 1),
+                        NodeData.of("Class", "UserCreatedEvent", "com.example.UserCreatedEvent", "UserCreatedEvent.java", 1),
+                        NodeData.of("Interface", "PaymentPort", "com.example.PaymentPort", "PaymentPort.java", 1),
+                        NodeData.of("Method", "charge", "com.example.PaymentPort.charge(Order)", "PaymentPort.java", 1),
+                        NodeData.of("Class", "StripePayment", "com.example.StripePayment", "StripePayment.java", 1),
+                        NodeData.of("Method", "charge", "com.example.StripePayment.charge(Order)", "StripePayment.java", 1),
+                        NodeData.of("Method", "checkout", "com.example.CheckoutService.checkout(Order)", "CheckoutService.java", 1)))
+                .edges(List.of(
+                        EdgeData.of("PUBLISHES_EVENT", "com.example.UserService.create()", "com.example.UserCreatedEvent"),
+                        EdgeData.of("LISTENS_EVENT", "com.example.UserListener.onUserCreated(UserCreatedEvent)", "com.example.UserCreatedEvent"),
+                        EdgeData.of("IMPLEMENTS", "com.example.StripePayment", "com.example.PaymentPort"),
+                        EdgeData.of("CALLS", "com.example.CheckoutService.checkout(Order)", "com.example.PaymentPort.charge(Order)")))
+                .build();
+        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(result));
+        when(graphRepository.upsertEdges(anyString(), any())).thenReturn(6);
+
+        service.analyzeProject("p1", "p1", "/tmp/p1");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<EdgeData>> edgesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(graphRepository).upsertEdges(eq("p1"), edgesCaptor.capture());
+        assertThat(edgesCaptor.getValue())
+                .anyMatch(edge -> "TRIGGERS".equals(edge.type())
+                        && Boolean.TRUE.equals(edge.properties().get("inferred")))
+                .anyMatch(edge -> "RESOLVES_TO".equals(edge.type())
+                        && Boolean.TRUE.equals(edge.properties().get("inferred"))
+                        && edge.targetFullName().equals("com.example.StripePayment.charge(Order)"));
     }
 }

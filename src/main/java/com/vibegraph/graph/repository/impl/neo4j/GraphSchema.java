@@ -32,7 +32,9 @@ public final class GraphSchema {
             "EXTENDS", "IMPLEMENTS", "OVERRIDES",
             "IMPORTS", "TYPE_OF", "RETURNS", "PARAMETER_TYPE", "THROWS",
             "CALLS", "INSTANTIATES", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY",
-            "READS", "WRITES", "CATCHES", "STEP_IN_FLOW"
+            "READS", "WRITES", "CATCHES", "STEP_IN_FLOW",
+            "PUBLISHES_EVENT", "LISTENS_EVENT", "TRIGGERS",
+            "RESOLVES_TO", "CALLS_DYNAMIC", "DISPATCH_CANDIDATES"
     );
 
     /** Safe Cypher identifier for property keys: letter/underscore then word chars. */
