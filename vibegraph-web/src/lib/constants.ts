@@ -304,8 +304,35 @@ export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
 export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
 
 // API base URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export function resolveLocalhostAwareUrl(
+  value: string | undefined,
+  fallback: string,
+  browserHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost',
+): string {
+  const url = value || fallback
+  if (browserHost !== '127.0.0.1') return url
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'localhost') {
+      parsed.hostname = '127.0.0.1'
+      return parsed.toString().replace(/\/$/, '')
+    }
+  } catch {
+    return url
+  }
+
+  return url
+}
+
+export const API_BASE_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_API_URL,
+  'http://localhost:8080',
+)
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws/graph-updates'
+export const WS_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_WS_URL,
+  'http://localhost:8080/ws/graph-updates',
+)
