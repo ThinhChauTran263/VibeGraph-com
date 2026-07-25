@@ -271,6 +271,22 @@ export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 1000, { 
  * the Noverlap `margin` translate to a consistent on-screen gap. Set 0 to disable.
  */
 export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 9000, { min: 0 })
+// Shape-preserving post-layout spread. ForceAtlas2 decides the organic silhouette;
+// this pass scales each connected component around its own centroid and shifts
+// smaller islands away from the main component without rerunning physics.
+export const LAYOUT_BRANCH_ENABLED = envBool('VITE_LAYOUT_BRANCH_ENABLED', true)
+export const LAYOUT_BRANCH_MIN_NODES = envInt('VITE_LAYOUT_BRANCH_MIN_NODES', 80, { min: 1 })
+export const LAYOUT_BRANCH_STRENGTH = envFloat('VITE_LAYOUT_BRANCH_STRENGTH', 1.9, {
+  min: 0,
+  max: 2,
+})
+export const LAYOUT_BRANCH_LEVEL_GAP = envFloat('VITE_LAYOUT_BRANCH_LEVEL_GAP', 2200, {
+  min: 0,
+})
+export const LAYOUT_BRANCH_JITTER = envFloat('VITE_LAYOUT_BRANCH_JITTER', 260, { min: 0 })
+export const LAYOUT_BRANCH_COMPONENT_GAP = envFloat('VITE_LAYOUT_BRANCH_COMPONENT_GAP', 4200, {
+  min: 0,
+})
 
 // ── Overlap removal (post-pass) ──────────────────────────────────────────────
 // After ForceAtlas2 + normalization, a custom symmetric de-overlap pass separates
@@ -279,10 +295,29 @@ export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 9000, 
 // nodes overlap on screen. `margin` is the minimum clear gap (layout units) kept
 // between node boundaries; at the normalized span it maps to a consistent pixel gap.
 export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
-export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 42, { min: 0 })
-export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 1.65, { min: 0 })
+export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 40, { min: 0 })
+export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 2.7, { min: 0 })
 export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
-export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 9000, { min: 0 })
+export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 22000, { min: 0 })
+
+// Final visual cleanup for Sigma's screen-sized nodes. Graphology noverlap works
+// in graph units, while `itemSizesReference: 'screen'` renders node radii in px;
+// this bounded pass converts px radii to graph units and only pushes still-touching
+// visible nodes apart after the worker stops.
+export const LAYOUT_SCREEN_OVERLAP_ENABLED = envBool('VITE_LAYOUT_SCREEN_OVERLAP_ENABLED', true)
+export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP_GAP_PX', 3, {
+  min: 0,
+})
+export const LAYOUT_SCREEN_OVERLAP_ITERATIONS = envInt(
+  'VITE_LAYOUT_SCREEN_OVERLAP_ITERATIONS',
+  10,
+  { min: 1 },
+)
+export const LAYOUT_SCREEN_OVERLAP_STRENGTH = envFloat(
+  'VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH',
+  0.7,
+  { min: 0, max: 1 },
+)
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
