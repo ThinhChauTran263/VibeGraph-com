@@ -628,6 +628,14 @@ export function useSigma(options: UseSigmaOptions) {
     const centerX = mainCluster.centerX
     const centerY = mainCluster.centerY
     const hasMultipleClusters = clusters.length > 1
+    const mainSizeBoost = Math.log(mainCluster.nodeIds.length + 1) * 0.03
+    const mainCompactBoost =
+      mainCluster.radius > 0 ? Math.min(0.34, LAYOUT_BRANCH_LEVEL_GAP / mainCluster.radius / 10) : 0.34
+    const mainClusterScale =
+      1 + Math.min(1.08, LAYOUT_BRANCH_STRENGTH * 0.1 + mainSizeBoost + 0.28 + mainCompactBoost)
+    const expandedMainRadius = mainCluster.radius * mainClusterScale
+    const satelliteGapBase =
+      LAYOUT_BRANCH_COMPONENT_GAP * 0.32 + LAYOUT_BRANCH_LEVEL_GAP * 0.1 + expandedMainRadius * 0.14
 
     graph.updateEachNodeAttributes((nodeId, attributes) => {
       const cluster = clusterByNode.get(nodeId)
@@ -637,7 +645,9 @@ export function useSigma(options: UseSigmaOptions) {
       const baseBoost = LAYOUT_BRANCH_STRENGTH * 0.08
       const compactBoost =
         cluster.radius > 0 ? Math.min(0.24, LAYOUT_BRANCH_LEVEL_GAP / cluster.radius / 18) : 0.24
-      const intraScale = 1 + Math.min(0.72, baseBoost + sizeBoost + 0.22 + compactBoost)
+      const intraScale = cluster === mainCluster
+        ? mainClusterScale
+        : 1 + Math.min(0.72, baseBoost + sizeBoost + 0.22 + compactBoost)
 
       const offsetX = Number(attributes.x) - cluster.centerX
       const offsetY = Number(attributes.y) - cluster.centerY
@@ -663,8 +673,11 @@ export function useSigma(options: UseSigmaOptions) {
         dirY = Math.sin(angle)
       }
 
-      const shiftDistance =
-        LAYOUT_BRANCH_COMPONENT_GAP + cluster.radius * 0.36 + LAYOUT_BRANCH_JITTER * 0.65
+      const clusterCoreBuffer = Math.max(0, expandedMainRadius - mainCluster.radius)
+      const clusterSpreadBias = Math.log(cluster.nodeIds.length + 1) * 24 + cluster.radius * 0.22
+      const targetDistance =
+        satelliteGapBase + cluster.radius * 0.48 + clusterCoreBuffer * 0.9 + clusterSpreadBias
+      const shiftDistance = Math.max(0, targetDistance - distance) + LAYOUT_BRANCH_JITTER * 0.35
       nextX += dirX * shiftDistance
       nextY += dirY * shiftDistance
 
