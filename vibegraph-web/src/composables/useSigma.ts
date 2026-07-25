@@ -144,7 +144,7 @@ export function useSigma(options: UseSigmaOptions) {
       hideEdgesOnMove: true,
       hideLabelsOnMove: true,
       labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
-      itemSizesReference: 'positions',
+      itemSizesReference: 'screen',
       zoomToSizeRatioFunction: Math.sqrt,
       defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
