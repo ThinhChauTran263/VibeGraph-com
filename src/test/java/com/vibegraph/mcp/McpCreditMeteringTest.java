@@ -73,7 +73,16 @@ class McpCreditMeteringTest {
         org.mockito.Mockito.lenient().when(currentUser.id()).thenReturn(userId);
         org.mockito.Mockito.lenient().when(delegate.getToolDefinition()).thenReturn(NON_PROJECT_TOOL);
         org.mockito.Mockito.lenient().doNothing().when(apiKeyContextAccessor).assertProjectMatches(org.mockito.ArgumentMatchers.anyString());
-        callback = new MeteredToolCallback(
+        callback = buildCallback();
+    }
+
+    /**
+     * The callback caches whether the tool's schema declares projectId at construction time
+     * (tool schemas are immutable in production), so tests that switch the delegate to
+     * PROJECT_TOOL must rebuild the callback AFTER stubbing the definition.
+     */
+    private MeteredToolCallback buildCallback() {
+        return new MeteredToolCallback(
                 delegate,
                 currentUser,
                 creditPricingService,
@@ -89,6 +98,7 @@ class McpCreditMeteringTest {
     @DisplayName("owned project call authorizes and atomically debits before delegated work")
     void projectCall_owner_authorizesBeforeMetering() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
         when(currentUser.id()).thenReturn(userId);
         when(creditPricingService.calculateCredits("MCP_TOOL_CALL", 0, 0)).thenReturn(2L);
         when(delegate.call("{\"projectId\":\"p1\"}")).thenReturn("result");
@@ -162,6 +172,7 @@ class McpCreditMeteringTest {
     @DisplayName("API-key project mismatch is forbidden before ownership and metering")
     void projectCall_apiKeyProjectMismatch_blocksWork() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
         doThrow(new ForbiddenException("Access denied"))
                 .when(apiKeyContextAccessor).assertProjectMatches("p1");
 
@@ -177,6 +188,7 @@ class McpCreditMeteringTest {
     @DisplayName("wrong project owner is forbidden before metering or delegated work")
     void projectCall_wrongOwner_blocksMeteringAndDelegate() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
         when(currentUser.id()).thenReturn(userId);
         doThrow(new ForbiddenException("Access denied"))
                 .when(ownershipGuard).assertOwner("p1", userId);
@@ -193,6 +205,7 @@ class McpCreditMeteringTest {
     @DisplayName("missing ownership row returns project-not-found before metering or work")
     void projectCall_missingOwnership_blocksMeteringAndDelegate() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
         when(currentUser.id()).thenReturn(userId);
         doThrow(new ProjectNotFoundException("Project not found: missing"))
                 .when(ownershipGuard).assertOwner("missing", userId);
@@ -208,6 +221,7 @@ class McpCreditMeteringTest {
     @DisplayName("project-scoped calls reject missing, blank, and non-text project IDs")
     void projectCall_invalidProjectId_blocksMeteringAndDelegate() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
 
         assertThatThrownBy(() -> callback.call("{}"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -230,6 +244,7 @@ class McpCreditMeteringTest {
     void contextAwareProjectCall_owner_preservesContextAndMetersOnce() {
         ToolContext context = new ToolContext(Map.of("requestId", "r1"));
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
         when(currentUser.id()).thenReturn(userId);
         when(creditPricingService.calculateCredits("MCP_TOOL_CALL", 0, 0)).thenReturn(1L);
         when(delegate.call("{\"projectId\":\"p1\"}", context)).thenReturn("context-result");

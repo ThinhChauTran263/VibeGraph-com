@@ -23,7 +23,6 @@ interface ImportMetaEnv {
   readonly VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS?: string
 
   // Archive upload
-  readonly VITE_ARCHIVE_MAX_SIZE_MB?: string
 
   // WebSocket (STOMP/SockJS)
   readonly VITE_WS_RECONNECT_DELAY_MS?: string

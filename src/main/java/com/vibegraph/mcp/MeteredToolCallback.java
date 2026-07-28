@@ -32,6 +32,8 @@ public final class MeteredToolCallback implements ToolCallback {
     private final AccountAccessGuard accountAccessGuard;
     private final ApiKeyRequestContextAccessor apiKeyContextAccessor;
     private final ObjectMapper objectMapper;
+    /** Whether the delegate's input schema declares projectId — immutable per tool, computed once. */
+    private final boolean declaresProjectId;
 
     public MeteredToolCallback(
             ToolCallback delegate,
@@ -52,6 +54,7 @@ public final class MeteredToolCallback implements ToolCallback {
         this.accountAccessGuard = accountAccessGuard;
         this.apiKeyContextAccessor = apiKeyContextAccessor;
         this.objectMapper = objectMapper;
+        this.declaresProjectId = computeDeclaresProjectId();
     }
 
     @Override
@@ -91,7 +94,7 @@ public final class MeteredToolCallback implements ToolCallback {
     }
 
     private String extractProjectId(String toolInput) {
-        if (!declaresProjectId()) {
+        if (!declaresProjectId) {
             return null;
         }
 
@@ -103,7 +106,7 @@ public final class MeteredToolCallback implements ToolCallback {
         return projectId.textValue();
     }
 
-    private boolean declaresProjectId() {
+    private boolean computeDeclaresProjectId() {
         JsonNode schema = readJson(
                 delegate.getToolDefinition().inputSchema(),
                 "MCP tool input schema must be valid JSON");

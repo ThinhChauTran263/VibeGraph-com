@@ -319,7 +319,7 @@ class ParserServiceTest {
         }
 
         @Test
-        @DisplayName("deep CPG is OFF by default: no LocalVariable nodes or READS/WRITES/CATCHES edges")
+        @DisplayName("deep CPG disabled (plain construction, no Spring @Value): no LocalVariable nodes or READS/WRITES/CATCHES edges")
         void deepCpgOffByDefault() throws IOException {
             Path javaFile = tempDir.resolve("Calc.java");
             Files.writeString(javaFile, """

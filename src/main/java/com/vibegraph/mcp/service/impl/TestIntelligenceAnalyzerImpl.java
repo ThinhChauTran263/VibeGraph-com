@@ -1,6 +1,9 @@
 package com.vibegraph.mcp.service.impl;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,6 +25,7 @@ import com.vibegraph.mcp.dto.response.TestPlanResponse;
 import com.vibegraph.mcp.dto.response.TestPlanResponse.TestLevel;
 import com.vibegraph.mcp.service.TestIntelligenceAnalyzer;
 import com.vibegraph.mcp.source.GraphView;
+import com.vibegraph.mcp.source.SourceFileService;
 import com.vibegraph.mcp.source.SourceGraphSupport;
 
 import lombok.RequiredArgsConstructor;
@@ -39,6 +43,7 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
     private static final Set<String> REFERENCE_EDGES = Set.of("IMPORTS", "CALLS", "TYPE_OF", "EXTENDS", "INSTANTIATES", "PARAMETER_TYPE", "RETURNS");
 
     private final SourceGraphSupport graphSupport;
+    private final SourceFileService sourceFileService;
 
     // ---- find_related_tests ------------------------------------------------------------------
 
@@ -108,7 +113,7 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
                 .totalMatches(total)
                 .returnedMatches(returned.size())
                 .truncated(total > returned.size())
-                .suggestedCommands(commandsFor(ctx, returned))
+                .suggestedCommands(commandsFor(normalizedProjectId, ctx, returned))
                 .candidates(List.of())
                 .gaps(gaps)
                 .warnings(List.of())
@@ -167,10 +172,10 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
         }
     }
 
-    private SuggestedCommands commandsFor(ResolvedContext ctx, List<TestMatch> matches) {
+    private SuggestedCommands commandsFor(String projectId, ResolvedContext ctx, List<TestMatch> matches) {
         if (ctx.frontend) {
             return SuggestedCommands.builder()
-                    .frontend("npm --prefix vibegraph-web run test:unit")
+                    .frontend(frontendTestCommand(projectId))
                     .build();
         }
         List<String> classNames = matches.stream()
@@ -180,11 +185,90 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
                 .limit(10)
                 .toList();
         String selector = classNames.isEmpty() ? ctx.simpleName + "Test" : String.join(",", classNames);
+        BuildSystem build = detectBuildSystem(projectId);
         return SuggestedCommands.builder()
-                .windows(".\\mvnw.cmd -q \"-Dtest=" + selector + "\" test")
-                .unix("./mvnw -q -Dtest=" + selector + " test")
+                .windows(windowsTestCommand(build, selector))
+                .unix(unixTestCommand(build, selector))
                 .build();
     }
+
+    // ---- build-system detection --------------------------------------------------------------
+
+    /**
+     * Detect the ANALYZED project's build system from its source root, so suggested commands
+     * match the target repository instead of assuming VibeGraph's own Maven-wrapper layout.
+     * Unknown roots keep the conservative Maven-wrapper default.
+     */
+    private BuildSystem detectBuildSystem(String projectId) {
+        try {
+            Path root = sourceFileService.resolveProjectRoot(projectId);
+            if (Files.exists(root.resolve("pom.xml"))) {
+                boolean wrapper = Files.exists(root.resolve("mvnw")) || Files.exists(root.resolve("mvnw.cmd"));
+                return wrapper ? BuildSystem.MAVEN_WRAPPER : BuildSystem.MAVEN;
+            }
+            if (Files.exists(root.resolve("build.gradle")) || Files.exists(root.resolve("build.gradle.kts"))) {
+                boolean wrapper = Files.exists(root.resolve("gradlew")) || Files.exists(root.resolve("gradlew.bat"));
+                return wrapper ? BuildSystem.GRADLE_WRAPPER : BuildSystem.GRADLE;
+            }
+        } catch (RuntimeException ignored) {
+            // Unknown/unavailable root: fall through to the conservative default.
+        }
+        return BuildSystem.UNKNOWN;
+    }
+
+    private String windowsTestCommand(BuildSystem build, String selector) {
+        return switch (build) {
+            case MAVEN -> "mvn -q \"-Dtest=" + selector + "\" test";
+            case GRADLE_WRAPPER -> ".\\gradlew.bat test " + gradleSelector(selector);
+            case GRADLE -> "gradle test " + gradleSelector(selector);
+            default -> ".\\mvnw.cmd -q \"-Dtest=" + selector + "\" test";
+        };
+    }
+
+    private String unixTestCommand(BuildSystem build, String selector) {
+        return switch (build) {
+            case MAVEN -> "mvn -q -Dtest=" + selector + " test";
+            case GRADLE_WRAPPER -> "./gradlew test " + gradleSelector(selector);
+            case GRADLE -> "gradle test " + gradleSelector(selector);
+            default -> "./mvnw -q -Dtest=" + selector + " test";
+        };
+    }
+
+    private String verifyCommand(BuildSystem build) {
+        return switch (build) {
+            case MAVEN -> "mvn verify   (runs *IT integration tests; requires Docker if Testcontainers)";
+            case GRADLE_WRAPPER -> "./gradlew check   (integration tests; requires Docker if Testcontainers)";
+            case GRADLE -> "gradle check   (integration tests; requires Docker if Testcontainers)";
+            default -> ".\\mvnw.cmd verify   (runs *IT with Testcontainers; requires Docker)";
+        };
+    }
+
+    /** Gradle needs one --tests flag per class; Maven takes a comma-joined -Dtest selector. */
+    private String gradleSelector(String selector) {
+        return Arrays.stream(selector.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> "--tests \"" + s + "\"")
+                .collect(Collectors.joining(" "));
+    }
+
+    /** Frontend command: only suggest the repo-specific script when that layout actually exists. */
+    private String frontendTestCommand(String projectId) {
+        try {
+            Path root = sourceFileService.resolveProjectRoot(projectId);
+            if (Files.isDirectory(root.resolve("vibegraph-web"))) {
+                return "npm --prefix vibegraph-web run test:unit";
+            }
+            if (Files.exists(root.resolve("package.json"))) {
+                return "npm test";
+            }
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return "npm test   (adjust to the project's frontend setup)";
+    }
+
+    private enum BuildSystem { MAVEN_WRAPPER, MAVEN, GRADLE_WRAPPER, GRADLE, UNKNOWN }
 
     // ---- suggest_test_plan -------------------------------------------------------------------
 
@@ -203,17 +287,19 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
         boolean endpoint = lower.contains("endpoint") || lower.contains("api") || lower.contains("controller")
                 || lower.contains("route") || lower.contains("mcp");
 
+        BuildSystem build = detectBuildSystem(normalizedProjectId);
         List<TestLevel> levels = new ArrayList<>();
         levels.add(TestLevel.builder()
                 .level("unit")
-                .command(".\\mvnw.cmd -q \"-Dtest=<RelevantTest>\" test   (unix: ./mvnw -q -Dtest=<RelevantTest> test)")
+                .command(windowsTestCommand(build, "<RelevantTest>")
+                        + "   (unix: " + unixTestCommand(build, "<RelevantTest>") + ")")
                 .rationale("Cover the changed class/method logic in isolation.")
                 .failureImplication("Core logic regression in the changed unit.")
                 .build());
         if (persistence) {
             levels.add(TestLevel.builder()
                     .level("integration/Testcontainers")
-                    .command(".\\mvnw.cmd verify   (runs *IT with Testcontainers Neo4j; requires Docker)")
+                    .command(verifyCommand(build))
                     .rationale("Change touches persistence/Neo4j; verify real Cypher and mapping.")
                     .failureImplication("Schema/query/mapping mismatch against a real database.")
                     .build());
@@ -229,7 +315,7 @@ public class TestIntelligenceAnalyzerImpl implements TestIntelligenceAnalyzer {
         if (frontend) {
             levels.add(TestLevel.builder()
                     .level("frontend-unit")
-                    .command("npm --prefix vibegraph-web run test:unit; run type-check, lint, build-only")
+                    .command(frontendTestCommand(normalizedProjectId) + "; run type-check, lint, build-only")
                     .rationale("Change touches Vue/TS; verify components, types, lint, and build.")
                     .failureImplication("Component/regression or type/build break in the frontend.")
                     .build());

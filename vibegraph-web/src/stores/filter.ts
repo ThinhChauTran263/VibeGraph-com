@@ -82,7 +82,7 @@ export const useFilterStore = defineStore('filter', () => {
   const hiddenEdgeTypes = ref<Set<EdgeType>>(defaultHiddenEdgeTypes())
   // Isolated nodes stay hidden by default so the canvas does not fill up with
   // degree-zero leaves; the user can reveal them explicitly in the filter panel.
-  const hideIsolatedNodes = ref(true)
+  const hideIsolatedNodes = ref(false)
   const searchQuery = ref('')
 
   /** True when a hidden set deviates from its default-hidden baseline. */
@@ -101,25 +101,29 @@ export const useFilterStore = defineStore('filter', () => {
     () =>
       deviatesFromDefault(hiddenNodeTypes.value, defaultHiddenNodeTypes()) ||
       deviatesFromDefault(hiddenEdgeTypes.value, defaultHiddenEdgeTypes()) ||
-      !hideIsolatedNodes.value,
+      hideIsolatedNodes.value,
   )
 
-  function toggleNodeType(type: NodeType, available: readonly NodeType[] = []): void {
-    hiddenNodeTypes.value = nextIsolateHiddenSet(
-      hiddenNodeTypes.value,
-      type,
-      available,
-      defaultHiddenNodeTypes(),
-    )
+  function toggleNodeType(type: NodeType): void {
+    const next = cloneSet(hiddenNodeTypes.value)
+    const shouldHide = !next.has(type)
+    if (shouldHide) next.add(type)
+    else next.delete(type)
+    hiddenNodeTypes.value = next
+
+    if (type === 'Field') {
+      const nextEdges = cloneSet(hiddenEdgeTypes.value)
+      if (shouldHide) nextEdges.add('HAS_FIELD')
+      else nextEdges.delete('HAS_FIELD')
+      hiddenEdgeTypes.value = nextEdges
+    }
   }
 
-  function toggleEdgeType(type: EdgeType, available: readonly EdgeType[] = []): void {
-    hiddenEdgeTypes.value = nextIsolateHiddenSet(
-      hiddenEdgeTypes.value,
-      type,
-      available,
-      defaultHiddenEdgeTypes(),
-    )
+  function toggleEdgeType(type: EdgeType): void {
+    const next = cloneSet(hiddenEdgeTypes.value)
+    if (next.has(type)) next.delete(type)
+    else next.add(type)
+    hiddenEdgeTypes.value = next
   }
 
   function showAllNodeTypes(): void {
@@ -138,7 +142,7 @@ export const useFilterStore = defineStore('filter', () => {
     hiddenNodeTypes.value = defaultHiddenNodeTypes()
     // Reset returns to the readable DEFAULT (deep-CPG hidden), not "show all".
     hiddenEdgeTypes.value = defaultHiddenEdgeTypes()
-    hideIsolatedNodes.value = true
+    hideIsolatedNodes.value = false
     searchQuery.value = ''
   }
 

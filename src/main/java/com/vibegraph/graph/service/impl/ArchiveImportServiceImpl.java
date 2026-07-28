@@ -174,6 +174,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         // Blocked account check before we consume any server resources (extract, etc.).
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
+        accountSettingsService.assertQuotaNotExceeded(userId, file.getSize());
+        long remainingQuotaBytes = accountSettingsService.quotaSnapshot(userId).remainingBytes();
 
         ArchiveType type = ArchiveTypeDetector.detect(file.getOriginalFilename());
         Path workspace = properties.getWorkspaceRoot().resolve(UUID.randomUUID().toString());
@@ -185,7 +187,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             try (InputStream in = file.getInputStream()) {
                 Files.copy(in, uploaded);
             }
-            ArchiveExtractionResult extraction = archiveExtractor.extract(uploaded, type, source);
+            ArchiveExtractionResult extraction = archiveExtractor.extract(uploaded, type, source,
+                    remainingQuotaBytes);
             deleteRecursively(uploaded); // the raw archive is no longer needed once .java files are materialized
 
             // Quota check after extraction

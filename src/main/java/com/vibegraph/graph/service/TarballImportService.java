@@ -8,7 +8,7 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
  *
  * Pipeline:
  *   1. Pre-flight: GET https://api.github.com/repos/{owner}/{repo}
- *      → validate public, size < 100MB
+ *      → validate public, size within the account's remaining storage quota
  *   2. Stream tarball via commons-compress
  *      (GzipCompressorInputStream + TarArchiveInputStream)
  *   3. Iterate entries, filter *.java, parse in-memory

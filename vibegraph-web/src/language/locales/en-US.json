@@ -430,7 +430,7 @@
       "uploading": "Uploading...",
       "uploadArchive": "Upload archive",
       "archiveTitle": "Add project from archive",
-      "archiveHint": "Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Max {max}.",
+      "archiveHint": "Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Your account storage quota applies.",
       "projectName": "Project name",
       "archiveFile": "Archive file",
       "selectedFile": "Selected:",

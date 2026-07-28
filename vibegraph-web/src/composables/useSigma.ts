@@ -64,6 +64,7 @@ export interface UseSigmaOptions {
   onNodeHover?: (nodeId: string) => void
   onNodeLeave?: () => void
   onCameraRatioChange?: (ratio: number) => void
+  onLayoutSettled?: () => void
 }
 
 // Base label sizes (on-screen px) at the fit view. The actual per-zoom scaling is
@@ -75,7 +76,8 @@ const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
 
 const LABEL_RENDERED_SIZE_THRESHOLD = SIGMA_LABEL_RENDERED_SIZE_THRESHOLD
 const ZOOM_SIZE_POWER = 0.75
-const zoomToSizeRatio = (ratio: number): number => Math.max(0.001, Math.pow(ratio, ZOOM_SIZE_POWER))
+const zoomToSizeRatio = (ratio: number): number =>
+  Math.max(0.001, Math.pow(ratio, ZOOM_SIZE_POWER))
 
 export function useSigma(options: UseSigmaOptions) {
   const {
@@ -86,6 +88,7 @@ export function useSigma(options: UseSigmaOptions) {
     onNodeHover,
     onNodeLeave,
     onCameraRatioChange,
+    onLayoutSettled,
   } = options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
@@ -115,8 +118,8 @@ export function useSigma(options: UseSigmaOptions) {
   // clicking still works.
   const dragMoved = shallowRef(false)
 
-  // Last applied edge-label visibility, so setEdgeLabelsVisible can skip redundant
-  // setSetting + full refresh churn. Reset on each init (new Sigma defaults false).
+  // Last edge-label visibility batched with reducer updates. Reset on each init
+  // because a new Sigma instance starts with renderEdgeLabels disabled.
   let lastEdgeLabelsVisible: boolean | null = null
 
   /**
@@ -149,12 +152,10 @@ export function useSigma(options: UseSigmaOptions) {
       // tiny so this floor dominates, pinning line thickness instead of letting it
       // balloon with the default size/√ratio zoom scaling.
       minEdgeThickness: SIGMA_MIN_EDGE_THICKNESS,
-      // Keep edges + labels drawn during pan/zoom (no vanish-then-repaint "reload"
-      // flash). Label scaling is done live in the renderers without setSetting, so
-      // there is no refresh churn; a filtered few-hundred-node graph paints these
-      // cheaply every frame.
-      hideEdgesOnMove: true,
-      hideLabelsOnMove: true,
+      // Keep the graph visually continuous while zooming. Performance comes from
+      // batched settings and renderer culling, not hiding content during motion.
+      hideEdgesOnMove: false,
+      hideLabelsOnMove: false,
       labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
       itemSizesReference: 'screen',
       zoomToSizeRatioFunction: zoomToSizeRatio,
@@ -180,9 +181,7 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
-    // A fresh Sigma starts with renderEdgeLabels:false (see settings above). Reset
-    // the visibility guard so the first setEdgeLabelsVisible after a rebuild always
-    // applies instead of being skipped as a false no-op.
+    // Reset the visibility guard for the first batched reducer update after rebuild.
     lastEdgeLabelsVisible = false
 
     // Refill the per-frame edge-label draw budget at the start of every frame so a
@@ -527,7 +526,10 @@ export function useSigma(options: UseSigmaOptions) {
     cacheLayoutPositions(graph)
     sigmaInstance.value?.refresh({ skipIndexation: true })
 
-    if (!NOVERLAP_ENABLED || graph.order < 2) return
+    if (!NOVERLAP_ENABLED || graph.order < 2) {
+      onLayoutSettled?.()
+      return
+    }
 
     const overlap = new NoverlapLayout(graph, {
       settings: {
@@ -901,6 +903,7 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     sigmaInstance.value?.refresh({ skipIndexation: true })
+    if (runVisualSettle) onLayoutSettled?.()
   }
 
   /**
@@ -942,29 +945,23 @@ export function useSigma(options: UseSigmaOptions) {
     ghostLayer.value?.setPartition(partition)
   }
 
-  function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
+  function setReducers(
+    reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>,
+    edgeLabelsVisible?: boolean,
+  ): void {
     const sigma = sigmaInstance.value
     if (!sigma) return
-    sigma.setSetting('nodeReducer', reducers.nodeReducer)
-    sigma.setSetting('edgeReducer', reducers.edgeReducer)
-    sigma.refresh()
-  }
-
-  /**
-   * Toggle edge label rendering. Edge labels add clutter at the default view,
-   * so we only show them while a node is focused. Guarded against no-op churn:
-   * `applyFocusReducers` runs on every hover/leave/zoom-threshold event, but the
-   * edge-label visibility only actually flips at a couple of zoom thresholds. A
-   * redundant `setSetting` + `refresh` here reprocesses the whole graph into WebGL
-   * buffers for nothing — a real per-interaction stall — so skip when unchanged.
-   */
-  function setEdgeLabelsVisible(visible: boolean): void {
-    const sigma = sigmaInstance.value
-    if (!sigma) return
-    if (visible === lastEdgeLabelsVisible) return
-    lastEdgeLabelsVisible = visible
-    sigma.setSetting('renderEdgeLabels', visible)
-    sigma.refresh()
+    // Sigma schedules one refresh for setSettings; avoid two indexations plus a
+    // third explicit refresh when focus/filter reducers change together.
+    const settings: Partial<Settings> = {
+      nodeReducer: reducers.nodeReducer,
+      edgeReducer: reducers.edgeReducer,
+    }
+    if (typeof edgeLabelsVisible === 'boolean' && edgeLabelsVisible !== lastEdgeLabelsVisible) {
+      lastEdgeLabelsVisible = edgeLabelsVisible
+      settings.renderEdgeLabels = edgeLabelsVisible
+    }
+    sigma.setSettings(settings)
   }
 
   /**
@@ -1034,7 +1031,6 @@ export function useSigma(options: UseSigmaOptions) {
     },
     stopLayout,
     setReducers,
-    setEdgeLabelsVisible,
     setEdgeKindVisible,
     setGhostPartition,
   }

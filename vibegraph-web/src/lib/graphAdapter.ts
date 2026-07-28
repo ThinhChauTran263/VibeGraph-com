@@ -103,6 +103,7 @@ export function apiToGraphology(data: GraphData): Graph {
   const graph = new Graph({ multi: false, type: 'directed' })
 
   for (const node of data.nodes) {
+    if (node.type === 'Package') continue
     const attrs = getNodeAttributes(node)
     graph.addNode(node.id, attrs)
   }

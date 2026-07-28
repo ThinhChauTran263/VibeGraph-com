@@ -430,7 +430,7 @@
       "uploading": "Đang tải lên...",
       "uploadArchive": "Tải file nén lên",
       "archiveTitle": "Thêm dự án từ file nén",
-      "archiveHint": "Tải lên file nén dự án Java. Hỗ trợ: .zip, .tar, .tar.gz, .tgz. Tối đa {max}.",
+      "archiveHint": "Tải lên file nén dự án Java. Hỗ trợ: .zip, .tar, .tar.gz, .tgz. Áp dụng dung lượng còn lại của tài khoản.",
       "projectName": "Tên dự án",
       "archiveFile": "File nén",
       "selectedFile": "Đã chọn:",

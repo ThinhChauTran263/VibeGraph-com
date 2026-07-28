@@ -41,17 +41,11 @@ export function defaultHiddenNodeTypes(): Set<NodeType> {
 
 export function filterGraphData(data: GraphData, filters: GraphFilterState): GraphData {
   const visibleByType = data.nodes.filter((node) => !filters.hiddenNodeTypes.has(node.type))
-  const visibleByTypeIds = new Set(visibleByType.map((node) => node.id))
-  const edgesByType = data.edges.filter((edge) => {
-    return (
-      !filters.hiddenEdgeTypes.has(edge.type) &&
-      visibleByTypeIds.has(edge.source) &&
-      visibleByTypeIds.has(edge.target)
-    )
-  })
-
+  const sourceNodeIds = new Set(data.nodes.map((node) => node.id))
   const connectedNodeIds = new Set<string>()
-  for (const edge of edgesByType) {
+  for (const edge of data.edges) {
+    // Use source-graph connectivity, but ignore malformed edges with missing endpoints.
+    if (!sourceNodeIds.has(edge.source) || !sourceNodeIds.has(edge.target)) continue
     connectedNodeIds.add(edge.source)
     connectedNodeIds.add(edge.target)
   }

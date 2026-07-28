@@ -106,12 +106,14 @@ public class TarballImportServiceImpl implements TarballImportService {
         featureGateService.assertEnabled(FeatureGateService.IMPORT_GITHUB);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
+        accountSettingsService.assertQuotaNotExceeded(userId, 1L);
+        long remainingQuotaBytes = accountSettingsService.quotaSnapshot(userId).remainingBytes();
         ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(userId);
         ImportContext ctx = null;
         try {
             GitHubRepositoryRef parsed = urlParser.parse(request.url());
-            GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed);
-            ctx = prepareWorkspace(resolved, userId);
+            GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed, remainingQuotaBytes);
+            ctx = prepareWorkspace(resolved, userId, remainingQuotaBytes);
             projectService.markAnalyzing(ctx.projectId());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0,
                     "GitHub repository imported; analysis started");
@@ -137,7 +139,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         }
     }
 
-    private ImportContext prepareWorkspace(GitHubRepositoryRef ref, UUID userId) {
+    private ImportContext prepareWorkspace(GitHubRepositoryRef ref, UUID userId, long remainingQuotaBytes) {
         Path workspace = properties.getWorkspaceRoot().resolve("github-" + UUID.randomUUID());
         Path tarball = workspace.resolve("repo.tar.gz");
         Path source = workspace.resolve("source");
@@ -145,8 +147,9 @@ public class TarballImportServiceImpl implements TarballImportService {
 
         try {
             Files.createDirectories(source);
-            tarballClient.downloadTarball(ref, tarball, properties.getMaxSize().toBytes());
-            ArchiveExtractionResult extraction = archiveExtractor.extract(tarball, ArchiveType.TAR_GZ, source);
+            tarballClient.downloadTarball(ref, tarball, remainingQuotaBytes);
+            ArchiveExtractionResult extraction = archiveExtractor.extract(tarball, ArchiveType.TAR_GZ, source,
+                    remainingQuotaBytes);
             deleteRecursively(tarball);
 
             // Quota check after extraction — we now know the exact extracted size.

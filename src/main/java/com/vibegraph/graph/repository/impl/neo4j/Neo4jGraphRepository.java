@@ -49,7 +49,7 @@ public class Neo4jGraphRepository implements GraphRepository {
             // same stable-id scheme as every other node.
             session.run(
                     "MERGE (p:Project {id: $projectId}) " +
-                    "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
+                    "SET p:Symbol, p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
                     "p.createdAt = coalesce(p.createdAt, datetime()), p.lastAnalyzedAt = datetime()",
                     Map.of("projectId", projectId, "name", name, "path", path)
             );
@@ -88,11 +88,11 @@ public class Neo4jGraphRepository implements GraphRepository {
 
     private String projectMetadataCypher(String matchProject) {
         return matchProject + " " +
-                "OPTIONAL MATCH (n {projectId: p.id}) " +
+                "OPTIONAL MATCH (n:Symbol {projectId: p.id}) " +
                 "WHERE n IS NULL OR NOT n:Project " +
                 "WITH p, count(n) AS totalNodes, " +
                 "count(DISTINCT CASE WHEN n.filePath IS NULL OR n.filePath = '' THEN null ELSE n.filePath END) AS totalFiles " +
-                "OPTIONAL MATCH (a {projectId: p.id})-[r]->(b {projectId: p.id}) " +
+                "OPTIONAL MATCH (a:Symbol {projectId: p.id})-[r]->(b:Symbol {projectId: p.id}) " +
                 "RETURN p.id AS id, p.name AS name, p.path AS path, " +
                 "p.createdAt AS createdAt, p.lastAnalyzedAt AS lastAnalyzedAt, " +
                 "totalFiles, totalNodes, count(r) AS totalEdges";
@@ -159,9 +159,12 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         try (Session session = neo4jDriver.session()) {
             for (Map.Entry<String, List<Map<String, Object>>> group : byLabel.entrySet()) {
+                // MERGE is :Symbol-scoped so it hits the (projectId, fullName) composite
+                // index instead of an all-nodes scan; V2's backfill guarantees every
+                // pre-existing node (including :External placeholders) carries :Symbol.
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (n {projectId: $projectId, fullName: item.fullName}) " +
+                        "MERGE (n:Symbol {projectId: $projectId, fullName: item.fullName}) " +
                         "SET n:%s " +
                         "%s" +
                         "SET n.name = item.name, n.filePath = item.filePath, " +
@@ -206,8 +209,8 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byRelType.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MATCH (a {projectId: $projectId, fullName: item.sourceFullName}) " +
-                        "MATCH (b {projectId: $projectId, fullName: item.targetFullName}) " +
+                        "MATCH (a:Symbol {projectId: $projectId, fullName: item.sourceFullName}) " +
+                        "MATCH (b:Symbol {projectId: $projectId, fullName: item.targetFullName}) " +
                         "MERGE (a)-[r:%s]->(b) " +
                         "SET r += item.props " +
                         "RETURN count(r) AS persisted",
@@ -251,9 +254,11 @@ public class Neo4jGraphRepository implements GraphRepository {
     @Override
     public GraphDataResponse getFullGraph(String projectId) {
         try (Session session = neo4jDriver.session()) {
+            // :Symbol-scoped so the (projectId) index applies — the label-less form
+            // degraded to an all-nodes scan across every tenant.
             var result = session.run(
-                    "MATCH (n {projectId: $projectId}) " +
-                    "OPTIONAL MATCH (n)-[r]->(m {projectId: $projectId}) " +
+                    "MATCH (n:Symbol {projectId: $projectId}) " +
+                    "OPTIONAL MATCH (n)-[r]->(m:Symbol {projectId: $projectId}) " +
                     "RETURN n, r, m",
                     Map.of("projectId", projectId)
             );
@@ -311,7 +316,7 @@ public class Neo4jGraphRepository implements GraphRepository {
     public NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops) {
         try (Session session = neo4jDriver.session()) {
             var nodeResult = session.run(
-                    "MATCH (n {projectId: $projectId, fullName: $nodeId}) RETURN n",
+                    "MATCH (n:Symbol {projectId: $projectId, fullName: $nodeId}) RETURN n",
                     Map.of("projectId", projectId, "nodeId", nodeId)
             );
             if (!nodeResult.hasNext()) {
@@ -353,7 +358,7 @@ public class Neo4jGraphRepository implements GraphRepository {
         ImpactProfile boundedProfile = profile == null ? ImpactProfile.DEPENDENCY : profile;
         try (Session session = neo4jDriver.session()) {
             var targetResult = session.run(
-                    "MATCH (target {projectId: $projectId, fullName: $targetFullName}) RETURN target",
+                    "MATCH (target:Symbol {projectId: $projectId, fullName: $targetFullName}) RETURN target",
                     Map.of("projectId", projectId, "targetFullName", targetFullName)
             );
             if (!targetResult.hasNext()) {
@@ -361,8 +366,9 @@ public class Neo4jGraphRepository implements GraphRepository {
             }
 
             NodeDto target = mapNodeToDto(targetResult.single().get("target").asNode());
-            Map<Integer, List<NodeDto>> byDepth = getImpactNodesByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
-            Map<Integer, Integer> countsByDepth = getImpactCountsByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
+            ImpactByDepth impactByDepth = getImpactByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
+            Map<Integer, List<NodeDto>> byDepth = impactByDepth.nodes();
+            Map<Integer, Integer> countsByDepth = impactByDepth.counts();
             List<NodeDto> willBreak = byDepth.getOrDefault(1, List.of());
             List<NodeDto> likelyAffected = byDepth.getOrDefault(2, List.of());
             List<NodeDto> mayNeedTesting = impactNodesAtOrAfter(byDepth, 3);
@@ -396,7 +402,16 @@ public class Neo4jGraphRepository implements GraphRepository {
                 .toList();
     }
 
-    private Map<Integer, List<NodeDto>> getImpactNodesByDepth(
+    /** Nodes (bounded per depth) and total counts per depth from a single traversal. */
+    private record ImpactByDepth(Map<Integer, List<NodeDto>> nodes, Map<Integer, Integer> counts) {
+    }
+
+    /**
+     * Runs the variable-length impact traversal ONCE and projects both the per-depth
+     * dependent sample and the per-depth total count from the same expansion — previously
+     * two identical traversals ran back to back (nodes + counts).
+     */
+    private ImpactByDepth getImpactByDepth(
             Session session,
             String projectId,
             String targetFullName,
@@ -405,47 +420,29 @@ public class Neo4jGraphRepository implements GraphRepository {
         var result = session.run(impactTraversalCypher(maxDepth, profile,
                         "WITH dependent, min(length(path)) AS depth " +
                         "ORDER BY depth, dependent.fullName " +
-                        "WITH depth, collect(dependent)[..$limit] AS dependents " +
-                        "RETURN depth, dependents ORDER BY depth"),
+                        "WITH depth, count(dependent) AS dependentCount, collect(dependent)[..$limit] AS dependents " +
+                        "RETURN depth, dependentCount, dependents ORDER BY depth"),
                 Map.of(
                         "projectId", projectId,
                         "targetFullName", targetFullName,
                         "limit", MAX_IMPACT_NODES_PER_DEPTH));
 
         Map<Integer, List<NodeDto>> byDepth = new LinkedHashMap<>();
-        while (result.hasNext()) {
-            Record record = result.next();
-            int depth = record.get("depth").asInt();
-            List<NodeDto> nodes = record.get("dependents").asList(value -> mapNodeToDto(value.asNode()));
-            byDepth.put(depth, nodes);
-        }
-        return byDepth;
-    }
-
-    private Map<Integer, Integer> getImpactCountsByDepth(
-            Session session,
-            String projectId,
-            String targetFullName,
-            int maxDepth,
-            ImpactProfile profile) {
-        var result = session.run(impactTraversalCypher(maxDepth, profile,
-                        "WITH dependent, min(length(path)) AS depth " +
-                        "RETURN depth, count(dependent) AS dependentCount ORDER BY depth"),
-                Map.of("projectId", projectId, "targetFullName", targetFullName));
-
         Map<Integer, Integer> countsByDepth = new LinkedHashMap<>();
         while (result.hasNext()) {
             Record record = result.next();
-            countsByDepth.put(record.get("depth").asInt(), record.get("dependentCount").asInt());
+            int depth = record.get("depth").asInt();
+            byDepth.put(depth, record.get("dependents").asList(value -> mapNodeToDto(value.asNode())));
+            countsByDepth.put(depth, record.get("dependentCount").asInt());
         }
-        return countsByDepth;
+        return new ImpactByDepth(byDepth, countsByDepth);
     }
 
     private String impactTraversalCypher(int maxDepth, ImpactProfile profile, String projection) {
         String relationship = String.format("[:%s*1..%d]", profile.relationshipPattern(), maxDepth);
         String pathPattern = profile.directedToTarget()
-                ? "(dependent)-" + relationship + "->(target {projectId: $projectId, fullName: $targetFullName}) "
-                : "(dependent)-" + relationship + "-(target {projectId: $projectId, fullName: $targetFullName}) ";
+                ? "(dependent:Symbol)-" + relationship + "->(target:Symbol {projectId: $projectId, fullName: $targetFullName}) "
+                : "(dependent:Symbol)-" + relationship + "-(target:Symbol {projectId: $projectId, fullName: $targetFullName}) ";
         return String.format(
                 "MATCH path = %s" +
                 "WHERE dependent.projectId = $projectId " +
@@ -488,8 +485,8 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         int boundedHops = validateDetailHops(hops);
         String cypher = "INCOMING".equals(direction)
-                ? String.format("MATCH path = (other)-[rels*1..%d]->(n {projectId: $projectId, fullName: $nodeId}) ", boundedHops)
-                : String.format("MATCH path = (n {projectId: $projectId, fullName: $nodeId})-[rels*1..%d]->(other) ", boundedHops);
+                ? String.format("MATCH path = (other)-[rels*1..%d]->(n:Symbol {projectId: $projectId, fullName: $nodeId}) ", boundedHops)
+                : String.format("MATCH path = (n:Symbol {projectId: $projectId, fullName: $nodeId})-[rels*1..%d]->(other) ", boundedHops);
         var result = session.run(
                 cypher +
                 "WHERE other.projectId = $projectId " +

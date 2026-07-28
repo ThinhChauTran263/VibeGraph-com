@@ -87,4 +87,10 @@ class ClientAddressResolverTest {
     void canonicalize_ipv4Address_remainsStable() {
         assertThat(ClientAddressResolver.canonicalize("203.0.113.10")).isEqualTo("203.0.113.10");
     }
+
+    @Test
+    void canonicalize_scopedIpv6Address_stripsInterfaceScope() {
+        assertThat(ClientAddressResolver.canonicalize("0:0:0:0:0:0:0:1%0"))
+                .isEqualTo("0:0:0:0:0:0:0:1");
+    }
 }

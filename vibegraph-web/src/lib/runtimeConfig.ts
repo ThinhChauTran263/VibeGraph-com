@@ -103,11 +103,6 @@ export const PROJECTS_AUTO_REFRESH_INTERVAL_MS = envInt(
   { min: 1000 },
 )
 
-// ── Archive upload ───────────────────────────────────────────────────────────
-/** Client-side max archive size. Backend remains the authority and must re-validate. */
-export const ARCHIVE_MAX_SIZE_BYTES =
-  envInt('VITE_ARCHIVE_MAX_SIZE_MB', 100, { min: 1 }) * 1024 * 1024
-
 // ── WebSocket (STOMP/SockJS) ─────────────────────────────────────────────────
 /** Reconnect delay after a dropped socket. */
 export const WS_RECONNECT_DELAY_MS = envInt('VITE_WS_RECONNECT_DELAY_MS', 5000, { min: 0 })

@@ -29,8 +29,9 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
     private static final int MAX_LAYER_LENGTH = 128;
     private static final int MAX_EXAMPLES = 10;
     private static final int MAX_DEPENDENCIES = 10;
-    private static final int MAX_NODES_TO_PROCESS = 10_000;
-    private static final int MAX_EDGES_TO_PROCESS = 50_000;
+    /** Same bounds as the GraphView-based tools (SourceGraphSupport) for consistent behavior. */
+    private static final int MAX_NODES_TO_PROCESS = com.vibegraph.mcp.source.SourceGraphSupport.MAX_NODES_TO_PROCESS;
+    private static final int MAX_EDGES_TO_PROCESS = com.vibegraph.mcp.source.SourceGraphSupport.MAX_EDGES_TO_PROCESS;
     private static final Set<String> KNOWN_LAYERS = Set.of("CONTROLLER", "SERVICE", "REPOSITORY", "CONFIG", "ROUTE");
     private static final Set<String> DEPENDENCY_EDGE_TYPES = Set.of("CALLS", "IMPORTS", "EXTENDS", "IMPLEMENTS", "INJECTS", "HANDLES_ROUTE");
 
@@ -213,10 +214,12 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
                 .map(NodeDto::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+        // Layer classification per target is memoized — previously recomputed per edge.
+        Map<String, String> layerByNodeId = new LinkedHashMap<>();
         Map<String, Long> counts = edges.stream()
                 .filter(edge -> layerNodeIds.contains(edge.getSource()))
                 .filter(edge -> DEPENDENCY_EDGE_TYPES.contains(edge.getType()))
-                .map(edge -> dependencyKey(edge, nodesById))
+                .map(edge -> dependencyKey(edge, nodesById, layerByNodeId))
                 .filter(Objects::nonNull)
                 .collect(Collectors.groupingBy(Function.identity(), LinkedHashMap::new, Collectors.counting()));
         return counts.entrySet().stream()
@@ -226,12 +229,13 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
                 .toList();
     }
 
-    private String dependencyKey(EdgeDto edge, Map<String, NodeDto> nodesById) {
+    private String dependencyKey(EdgeDto edge, Map<String, NodeDto> nodesById, Map<String, String> layerByNodeId) {
         NodeDto target = nodesById.get(edge.getTarget());
         if (target == null) {
             return null;
         }
-        return edge.getType() + "|" + nodeLayer(target);
+        String layer = layerByNodeId.computeIfAbsent(target.getId(), key -> nodeLayer(target));
+        return edge.getType() + "|" + layer;
     }
 
     private LayerPatternResponse.DependencySummary toDependencySummary(String key, long count) {

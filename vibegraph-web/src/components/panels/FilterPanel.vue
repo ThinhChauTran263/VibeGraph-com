@@ -11,13 +11,11 @@ const props = defineProps<{
 const {
   hiddenNodeTypes,
   hiddenEdgeTypes,
-  hideIsolatedNodes,
-  hasActiveFilters,
   toggleNodeType,
   toggleEdgeType,
-  toggleIsolatedNodes,
   showAllNodeTypes,
   showAllEdgeTypes,
+  hasActiveFilters,
   reset,
 } = useFilters()
 
@@ -35,19 +33,6 @@ const edgeTypeItems = computed(() => {
     .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type))
 })
 
-// The full set of currently-present types, passed to the isolate toggle so it
-// knows which other types to close/restore.
-const nodeTypeList = computed(() => nodeTypeItems.value.map((item) => item.type))
-const edgeTypeList = computed(() => edgeTypeItems.value.map((item) => item.type))
-
-const isolatedNodeCount = computed(() => {
-  const connected = new Set<string>()
-  for (const edge of props.graphData.edges) {
-    connected.add(edge.source)
-    connected.add(edge.target)
-  }
-  return props.graphData.nodes.reduce((count, node) => count + (connected.has(node.id) ? 0 : 1), 0)
-})
 </script>
 
 <template>
@@ -74,21 +59,6 @@ const isolatedNodeCount = computed(() => {
       </div>
 
       <ul class="filter-panel__list">
-        <li v-if="isolatedNodeCount > 0">
-          <button
-            class="filter-panel__toggle"
-            :class="{ 'filter-panel__toggle--muted': hideIsolatedNodes }"
-            type="button"
-            :aria-label="`Isolated nodes ${hideIsolatedNodes ? 'hidden' : 'visible'}, ${isolatedNodeCount}`"
-            :aria-pressed="!hideIsolatedNodes"
-            @click="toggleIsolatedNodes"
-          >
-            <span class="filter-panel__swatch filter-panel__swatch--isolated" />
-            <span class="filter-panel__name">Isolated</span>
-            <span class="filter-panel__count">{{ isolatedNodeCount }}</span>
-          </button>
-        </li>
-
         <li v-for="item in nodeTypeItems" :key="item.type">
           <button
             class="filter-panel__toggle"
@@ -96,7 +66,7 @@ const isolatedNodeCount = computed(() => {
             type="button"
             :aria-label="`${item.type} nodes ${hiddenNodeTypes.has(item.type) ? 'hidden' : 'visible'}, ${item.count}`"
             :aria-pressed="!hiddenNodeTypes.has(item.type)"
-            @click="toggleNodeType(item.type, nodeTypeList)"
+            @click="toggleNodeType(item.type)"
           >
             <span
               class="filter-panel__swatch"
@@ -125,7 +95,7 @@ const isolatedNodeCount = computed(() => {
             type="button"
             :aria-label="`${item.type} edges ${hiddenEdgeTypes.has(item.type) ? 'hidden' : 'visible'}, ${item.count}`"
             :aria-pressed="!hiddenEdgeTypes.has(item.type)"
-            @click="toggleEdgeType(item.type, edgeTypeList)"
+            @click="toggleEdgeType(item.type)"
           >
             <span
               class="filter-panel__edge-swatch"
@@ -153,7 +123,6 @@ const isolatedNodeCount = computed(() => {
   backdrop-filter: blur(12px);
 }
 
-.filter-panel__header,
 .filter-panel__section-header,
 .filter-panel__toggle {
   display: flex;
@@ -161,14 +130,15 @@ const isolatedNodeCount = computed(() => {
 }
 
 .filter-panel__header {
+  display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .filter-panel__header h2,
-.filter-panel__section h3,
-.filter-panel__header p,
-.filter-panel__empty {
+.filter-panel__header p {
   margin: 0;
 }
 
@@ -176,14 +146,38 @@ const isolatedNodeCount = computed(() => {
   font-size: 1rem;
 }
 
-.filter-panel__header p,
+.filter-panel__header p {
+  margin-top: 0.25rem;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+}
+
+.filter-panel__reset {
+  border: 1px solid #374151;
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  background: rgba(31, 41, 55, 0.85);
+  color: #d1d5db;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-panel__reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.filter-panel__section h3,
+.filter-panel__empty {
+  margin: 0;
+}
+
 .filter-panel__empty {
   margin-top: 0.25rem;
   color: #9ca3af;
   font-size: 0.8125rem;
 }
 
-.filter-panel__reset,
 .filter-panel__section-header button {
   border: 1px solid #374151;
   border-radius: 999px;
@@ -193,12 +187,11 @@ const isolatedNodeCount = computed(() => {
   cursor: pointer;
 }
 
-.filter-panel__reset:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.filter-panel__section {
+  margin-top: 0;
 }
 
-.filter-panel__section {
+.filter-panel__section + .filter-panel__section {
   margin-top: 1rem;
 }
 

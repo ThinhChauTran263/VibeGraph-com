@@ -19,7 +19,6 @@ import {
 
 export const ALL_NODE_TYPES: readonly NodeType[] = Object.freeze([
   'Project',
-  'Package',
   'File',
   'Class',
   'Interface',
@@ -71,7 +70,6 @@ export const ALL_EDGE_TYPES: readonly EdgeType[] = Object.freeze([
 
 export const DEEP_LOAD_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'Project',
-  'Package',
   'Field',
   'Annotation',
   'LocalVariable',
@@ -243,11 +241,10 @@ export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType
 //   - LocalVariable: deep-CPG detail (only present with the backend deep-cpg flag)
 //   - Field / Annotation: member-level noise that clutters every class
 //   - External: third-party symbols outside the project
-//   - Package / Project: structural containers (the Explorer tree already shows these)
+//   - Project: structural container (the Explorer tree already shows it)
 export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'Field',
   'LocalVariable',
-  'Package',
   'Annotation',
   'Project',
   'External',

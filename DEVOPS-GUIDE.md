@@ -249,7 +249,7 @@ Symptoms:
 
 Fix:
 
-1. Keep uploads within the configured limit. The example configuration uses `VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE=100MB` and `VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE=105MB`.
+ 1. The account's remaining storage quota is the effective business limit. The example configuration keeps a separate `VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE=2048MB` and `VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE=2050MB` safety ceiling for the host.
 2. If changing limits for local testing, update `.env` and recreate the backend container:
 
    ```bash

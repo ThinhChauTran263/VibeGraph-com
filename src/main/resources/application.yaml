@@ -25,13 +25,12 @@ spring:
   flyway:
     enabled: true
 
-  # Multipart limits for archive upload (POST /api/projects/import-archive).
-  # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
-  # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
+  # Infrastructure safety ceilings for multipart parsing. Account plan quota is the
+  # business limit; these prevent unbounded request bodies from exhausting the host.
   servlet:
     multipart:
-      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
-      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE:2050MB}
 
   security:
     oauth2:
@@ -169,10 +168,11 @@ vibegraph:
     trust-proxy: ${VIBEGRAPH_TRUST_PROXY:false}
     trusted-proxies: ${VIBEGRAPH_TRUSTED_PROXIES:}
 
-  # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
+  # Legacy importer safety ceiling. Archive and GitHub services pass the account's
+  # remaining quota explicitly; this remains for compatibility with direct callers.
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
       # Writable workspace for uploaded archives. Never the read-only /projects mount.
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
       ignored-paths:
@@ -225,12 +225,15 @@ vibegraph:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
     # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
-    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
-    # When enabled, the frontend still default-hides these deep types so the
-    # architecture graph stays readable (revealed via "Show all").
+    # ON: body-level data-flow is VibeGraph's core Java advantage — the MCP
+    # method-CPG/data-flow tools are empty without it. Set
+    # VIBEGRAPH_PARSER_DEEP_CPG=false to opt out on very large repos (the analyze
+    # max-nodes/max-edges ceilings below still fail fast before OOM either way).
+    # The frontend still default-hides these deep types so the architecture graph
+    # stays readable (revealed via "Show all").
     # NOTE: key MUST stay under `parser` — ParserServiceImpl reads
     # ${vibegraph.parser.deep-cpg-enabled}.
-    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
+    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:true}
 
   # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
   # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.

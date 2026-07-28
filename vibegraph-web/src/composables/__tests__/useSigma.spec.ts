@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSigma } from '../useSigma'
+import { FA2_GRAVITY, FA2_SCALING_RATIO } from '@/lib/runtimeConfig'
 
 interface MockSigmaInstance {
   settings: Record<string, unknown>
@@ -172,19 +173,22 @@ describe('useSigma', () => {
     expect(layoutState.instances[0]!.start).toHaveBeenCalledTimes(1)
     expect(layoutState.instances[0]!.params).toMatchObject({
       settings: expect.objectContaining({
-        gravity: 1,
-        scalingRatio: 5,
+        gravity: FA2_GRAVITY,
+        scalingRatio: FA2_SCALING_RATIO,
         linLogMode: false,
       }),
     })
 
     const sigma = sigmaState.instances[0]!
-    expect(sigma.settings.hideEdgesOnMove).toBe(true)
-    expect(sigma.settings.hideLabelsOnMove).toBe(true)
+    expect(sigma.settings.hideEdgesOnMove).toBe(false)
+    expect(sigma.settings.hideLabelsOnMove).toBe(false)
     expect(sigma.settings.labelRenderedSizeThreshold).toBe(8)
     expect(sigma.settings.defaultEdgeColor).toBe('#475569')
-    expect(sigma.settings.itemSizesReference).toBe('positions')
+    expect(sigma.settings.itemSizesReference).toBe('screen')
     expect(typeof sigma.settings.zoomToSizeRatioFunction).toBe('function')
+    const zoomToSizeRatio = sigma.settings.zoomToSizeRatioFunction as (ratio: number) => number
+    expect(zoomToSizeRatio(1)).toBeCloseTo(1)
+    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** 0.75)
     expect(layoutState.instances[0]!.params).not.toHaveProperty('outputReducer')
     expect(graph.getNodeAttribute('service', 'x')).toBe(100)
     expect(graph.getNodeAttribute('service', 'y')).toBe(100)

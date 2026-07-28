@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountQuotaSnapshot;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
@@ -92,6 +93,8 @@ class TarballImportServiceImplTest {
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
         lenient().when(currentUser.id()).thenReturn(userId);
+        lenient().when(accountSettingsService.quotaSnapshot(userId))
+                .thenReturn(new AccountQuotaSnapshot(0, 104857600L, 104857600L, "TEST", "Test", null));
         service = new TarballImportServiceImpl(new GitHubUrlParser(), preFlightService, tarballClient, properties,
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
                 backgroundTasks::add, accountSettingsService, projectUsageService,
@@ -108,8 +111,8 @@ class TarballImportServiceImplTest {
         Files.createDirectories(javaFile.getParent());
         Files.writeString(javaFile, "class App {}");
 
-        when(preFlightService.validatePublicRepository(any(GitHubRepositoryRef.class))).thenReturn(resolved);
-        when(archiveExtractor.extract(any(Path.class), eq(ArchiveType.TAR_GZ), any(Path.class)))
+        when(preFlightService.validatePublicRepository(any(GitHubRepositoryRef.class), anyLong())).thenReturn(resolved);
+        when(archiveExtractor.extract(any(Path.class), eq(ArchiveType.TAR_GZ), any(Path.class), anyLong()))
                 .thenReturn(new ArchiveExtractionResult(extractedRoot, List.of(javaFile), List.of("src/App.java")));
         ProjectResponse created = ProjectResponse.builder().id("p1").name("acme/demo").rootPath("rp").status("CREATED").build();
         ProjectResponse analyzing = ProjectResponse.builder().id("p1").name("acme/demo").status("ANALYZING").progress(0).build();
@@ -119,7 +122,7 @@ class TarballImportServiceImplTest {
         ProjectResponse result = service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
 
         assertThat(result.getStatus()).isEqualTo("ANALYZING");
-        verify(preFlightService).validatePublicRepository(new GitHubRepositoryRef("acme", "demo", null));
+        verify(preFlightService).validatePublicRepository(new GitHubRepositoryRef("acme", "demo", null), 104857600L);
         verify(tarballClient).downloadTarball(eq(resolved), any(Path.class), eq(104857600L));
         verify(projectService).markAnalyzing("p1");
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZING), eq(0), any(String.class));
@@ -144,7 +147,7 @@ class TarballImportServiceImplTest {
         assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
                 .isInstanceOf(FeatureDisabledException.class);
 
-        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(preFlightService, never()).validatePublicRepository(any(), anyLong());
         verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
         verify(projectService, never()).createProjectFromWorkspace(any(), any());
     }
@@ -158,7 +161,7 @@ class TarballImportServiceImplTest {
         assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
                 .isInstanceOf(AccountBlockedException.class);
 
-        verify(preFlightService, never()).validatePublicRepository(any());
+        verify(preFlightService, never()).validatePublicRepository(any(), anyLong());
         verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
         verify(archiveExtractor, never()).extract(any(), any(), any());
         verify(projectService, never()).createProjectFromWorkspace(any(), any());
@@ -168,14 +171,14 @@ class TarballImportServiceImplTest {
     @DisplayName("preflight failure stops before tarball download and project creation")
     void rejectsPreflightFailureBeforeDownload() {
         GitHubRepositoryRef parsed = new GitHubRepositoryRef("acme", "private", null);
-        when(preFlightService.validatePublicRepository(parsed))
+        when(preFlightService.validatePublicRepository(parsed, 104857600L))
                 .thenThrow(new GithubImportException("GitHub repository is private or not found"));
 
         assertThatThrownBy(() -> service.importFromGithub(new GithubImportRequest("https://github.com/acme/private")))
                 .isInstanceOf(GithubImportException.class)
                 .hasMessage("GitHub repository is private or not found");
 
-        verify(preFlightService).validatePublicRepository(parsed);
+        verify(preFlightService).validatePublicRepository(parsed, 104857600L);
         verify(tarballClient, never()).downloadTarball(any(), any(), anyLong());
         verify(archiveExtractor, never()).extract(any(), any(), any());
         verify(projectService, never()).createProjectFromWorkspace(any(), any());
@@ -192,8 +195,8 @@ class TarballImportServiceImplTest {
         Path extractedRoot = workspaceRoot.resolve("github-test/source");
         Files.createDirectories(extractedRoot);
 
-        when(preFlightService.validatePublicRepository(any(GitHubRepositoryRef.class))).thenReturn(resolved);
-        when(archiveExtractor.extract(any(Path.class), eq(ArchiveType.TAR_GZ), any(Path.class)))
+        when(preFlightService.validatePublicRepository(any(GitHubRepositoryRef.class), anyLong())).thenReturn(resolved);
+        when(archiveExtractor.extract(any(Path.class), eq(ArchiveType.TAR_GZ), any(Path.class), anyLong()))
                 .thenReturn(new ArchiveExtractionResult(extractedRoot, List.of(extractedRoot.resolve("App.java")), List.of("App.java")));
         when(projectService.createProjectFromWorkspace("acme/demo", extractedRoot))
                 .thenReturn(ProjectResponse.builder().id("p1").rootPath("rp").build());

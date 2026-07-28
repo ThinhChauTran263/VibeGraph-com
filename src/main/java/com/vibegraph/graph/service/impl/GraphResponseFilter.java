@@ -16,7 +16,7 @@ import com.vibegraph.graph.dto.request.GraphFilterRequest;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
-import com.vibegraph.graph.repository.impl.neo4j.GraphSchema;
+import com.vibegraph.graph.model.GraphVocabulary;
 
 /**
  * Applies bounded graph filters at the HTTP boundary without changing repository facts.
@@ -122,7 +122,7 @@ public class GraphResponseFilter {
     private Set<String> normalizeNodeTypes(List<String> rawTypes) {
         Set<String> result = new LinkedHashSet<>();
         for (String type : flatten(rawTypes)) {
-            GraphSchema.nodeLabel(type);
+            GraphVocabulary.nodeLabel(type);
             result.add(type);
         }
         return result;
@@ -132,7 +132,7 @@ public class GraphResponseFilter {
         Set<String> result = new LinkedHashSet<>();
         for (String type : flatten(rawTypes)) {
             String normalized = type.toUpperCase(Locale.ROOT);
-            result.add(GraphSchema.relationshipType(normalized));
+            result.add(GraphVocabulary.relationshipType(normalized));
         }
         return result;
     }
