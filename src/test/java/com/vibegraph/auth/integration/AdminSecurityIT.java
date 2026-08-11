@@ -1,12 +1,24 @@
 package com.vibegraph.auth.integration;
 
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.FilterChain;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -29,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(classes = AdminSecurityIT.TestConfig.class)
 @DisplayName("Admin Security Integration")
@@ -50,6 +63,17 @@ class AdminSecurityIT {
         "com.vibegraph.auth.service"
     })
     static class TestConfig {
+        /**
+         * AuthController needs the sign-in failure budget, which lives in {@code com.vibegraph.abuse}
+         * and is outside this slice's component scan. Constructed explicitly rather than widening the
+         * scan, which would drag in the rate-limit filter and the telemetry pipeline with it.
+         */
+        @org.springframework.context.annotation.Bean
+        public com.vibegraph.abuse.LoginThrottleGuard loginThrottleGuard() {
+            return new com.vibegraph.abuse.LoginThrottleGuard(
+                    new com.vibegraph.abuse.AbuseProperties(), java.time.Clock.systemUTC());
+        }
+
         @org.springframework.context.annotation.Bean
         public jakarta.persistence.EntityManagerFactory entityManagerFactory() {
             return org.mockito.Mockito.mock(jakarta.persistence.EntityManagerFactory.class);
@@ -80,8 +104,13 @@ class AdminSecurityIT {
     @MockitoBean private CreditBalanceService creditBalanceService;
     @MockitoBean private JwtService jwtService;
     @MockitoBean private AccountSettingsService accountSettingsService;
+    @MockitoBean private AuthenticationFailureHandler authenticationFailureHandler;
+    @MockitoBean private AuthenticationSuccessHandler authenticationSuccessHandler;
+    @MockitoBean private OAuth2UserService<OAuth2UserRequest, OAuth2User> oAuth2UserService;
+    @MockitoBean private AuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository;
 
     @MockitoBean private UserRepository userRepository;
+    @MockitoBean private RefreshSessionRepository refreshSessionRepository;
     @MockitoBean private UserAccountSettingsRepository settingsRepository;
     @MockitoBean private ProjectOwnershipRepository projectOwnershipRepository;
     @MockitoBean private FeedbackReportRepository feedbackReportRepository;
@@ -207,6 +236,21 @@ class AdminSecurityIT {
         mockMvc.perform(get("/api/admin/security/stream"))
                 .andExpect(status().isOk())
                 .andExpect(request().asyncStarted());
+    }
+
+    @Test
+    @DisplayName("ASYNC dispatch for an SSE disconnect does not require a second authentication")
+    void securityStream_asyncDispatch_isAllowedAfterDisconnect() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/admin/security/stream");
+        request.setDispatcherType(DispatcherType.ASYNC);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = org.mockito.Mockito.mock(FilterChain.class);
+
+        springSecurityFilterChain.doFilter(request, response, chain);
+
+        org.mockito.Mockito.verify(chain).doFilter(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        assertThat(response.getStatus()).isNotEqualTo(403);
     }
 
     @Test
