@@ -44,7 +44,7 @@ class AuditLogEventStreamTest {
         stream.subscribe();
 
         stream.publish(new AuditLogResponse(
-                UUID.randomUUID(), "USER_BLOCK", null, null, "USER", "user-1", "SUCCESS",
+                UUID.randomUUID(), "USER_BLOCK", null, null, null, null, "USER", "user-1", "SUCCESS",
                 "203.0.113.10", null, Instant.parse("2026-07-19T10:00:00Z")));
 
         assertThat(stream.subscriberCount()).isZero();

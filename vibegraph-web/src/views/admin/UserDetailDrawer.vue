@@ -124,17 +124,6 @@ function storagePercent(u: AdminUserResponse): number {
   return Math.min(100, Math.round((usedMb(u) / quota) * 100))
 }
 
-function userInitials(u: AdminUserResponse): string {
-  const source = u.displayName || u.email
-  return (
-    source
-      .split(/[\s@._-]+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.charAt(0).toUpperCase())
-      .join('') || 'US'
-  )
-}
 
 function userStatus(u: AdminUserResponse): string {
   if (u.blocked) return 'blocked'

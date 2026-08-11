@@ -4,6 +4,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.demo.DemoDto;
+
 /**
  * Route entrypoint => HANDLES_ROUTE; extends BaseHandler => EXTENDS + OVERRIDES;
  * constructor-injects DemoService => Constructor node + CALLS into the service
@@ -25,7 +27,7 @@ public class DemoController extends BaseHandler {
     }
 
     @GetMapping("/{id}")
-    public String get(Long id) {
+    public DemoDto get(Long id) {
         return service.find(id); // CALLS -> STEP_IN_FLOW
     }
 }

@@ -25,6 +25,24 @@ class ImportAbuseTest {
     }
 
     @Test
+    void concurrentImportLease_exceptionFailureRelease_allowsRetry() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setConcurrentImportsPerUser(1);
+        ConcurrentImportGuard guard = new ConcurrentImportGuard(properties);
+        UUID userId = UUID.randomUUID();
+
+        try {
+            try (ConcurrentImportGuard.Lease ignored = guard.acquire(userId)) {
+                throw new IllegalStateException("import failed");
+            }
+        } catch (IllegalStateException ignored) {
+            // expected
+        }
+
+        guard.acquire(userId).close();
+    }
+
+    @Test
     void concurrentImportLease_activeWorker_rejectsSecondAttempt() {
         ConcurrentImportGuard guard = new ConcurrentImportGuard(new AbuseProperties());
         UUID userId = UUID.randomUUID();

@@ -52,6 +52,7 @@ const EDGE_TYPE_PRIORITY: Partial<Record<EdgeType, number>> = {
   EXTENDS: 8,
   IMPLEMENTS: 7,
   OVERRIDES: 6,
+  HAS_RELATION: 6,
   DEFINES: 5,
   HANDLES_ROUTE: 4,
   HAS_METHOD: 3,
@@ -102,6 +103,7 @@ export function apiToGraphology(data: GraphData): Graph {
   const graph = new Graph({ multi: false, type: 'directed' })
 
   for (const node of data.nodes) {
+    if (node.type === 'Package') continue
     const attrs = getNodeAttributes(node)
     graph.addNode(node.id, attrs)
   }

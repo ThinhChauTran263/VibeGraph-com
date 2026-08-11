@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createTestingPinia } from '@pinia/testing'
@@ -96,13 +96,13 @@ describe('UserLayout', () => {
       'API Keys',
       'Usage',
       'Subscription',
+      'Notifications',
       'Reports',
       'Settings',
       'Sign Out',
     ]) {
       expect(navigation.text()).toContain(label)
     }
-    expect(navigation.text()).not.toContain('Notification')
     expect(navigation.text()).not.toContain('Tutorial')
     expect(navigation.text()).toContain('User One')
     expect(navigation.text()).toContain('user@vibegraph.io')
@@ -126,6 +126,22 @@ describe('UserLayout', () => {
 
     await expandButton.trigger('click')
     expect(wrapper.classes()).not.toContain('collapsed')
+  })
+
+  it('shows the drawer close button only while the mobile drawer is open', async () => {
+    const { wrapper } = await mountLayout()
+
+    // On desktop the collapse toggle is the only header control; a close button here
+    // would have nothing to close.
+    expect(wrapper.find('button[aria-label="Close navigation"]').exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="Open navigation"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('button[aria-label="Close navigation"]').exists()).toBe(true)
+
+    await wrapper.get('button[aria-label="Close navigation"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('button[aria-label="Close navigation"]').exists()).toBe(false)
   })
 
   it('opens and closes the mobile drawer independently', async () => {

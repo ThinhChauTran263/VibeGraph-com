@@ -308,7 +308,7 @@ export function useArchiveImport(options: UseArchiveImportOptions = {}) {
 function toUserMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 413) {
-      return 'The archive is too large for the server (limit is 100 MB).'
+      return 'The archive exceeds the account storage quota or the server safety limit.'
     }
     if (err.status === 0 || err.status >= 500) {
       return err.message || 'The server is unavailable. Please try again.'

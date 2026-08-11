@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import { projectApi, type Project } from '@/lib/api'
-import { useAccountStore } from '@/stores/account'
+import { toAccountProject, useAccountStore } from '@/stores/account'
 import { useProjectStore } from '@/stores/project'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
-import type { Project as AccountProject } from '@/types/api'
 
 const route = useRoute(),
   router = useRouter(),
@@ -19,7 +18,10 @@ const { t } = useI18n({ useScope: 'global' })
 const errorMsg = ref(''),
   showImport = ref(route.query.import === 'new'),
   deleteTarget = ref<Project | null>(null),
-  deleting = ref(false)
+  deleting = ref(false),
+  /** The project just moved to trash, kept so the owner can undo without leaving the page. */
+  undoTarget = ref<Project | null>(null),
+  restoring = ref(false)
 const cli = useFeatureAvailability('cli.push'),
   archive = useFeatureAvailability('import.archive'),
   github = useFeatureAvailability('import.github')
@@ -79,11 +81,29 @@ async function confirmDelete() {
     await projectApi.remove(projectId)
     projectStore.projects = projectStore.projects.filter((item) => item.id !== projectId)
     syncAccountProjects(projectStore.projects)
+    undoTarget.value = deleteTarget.value
     deleteTarget.value = null
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : t('user.projects.deleteFallback')
   } finally {
     deleting.value = false
+  }
+}
+async function undoDelete() {
+  const project = undoTarget.value
+  if (!project) return
+  restoring.value = true
+  try {
+    await projectApi.restore(project.id)
+    // The graph was never destroyed, so the project comes back exactly as it was.
+    projectStore.projects = [project, ...projectStore.projects.filter((i) => i.id !== project.id)]
+    syncAccountProjects(projectStore.projects)
+    undoTarget.value = null
+    errorMsg.value = ''
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : t('user.trash.restoreFallback')
+  } finally {
+    restoring.value = false
   }
 }
 function relative(value?: string) {
@@ -96,18 +116,6 @@ function relative(value?: string) {
 }
 function syncAccountProjects(nextProjects: Project[]) {
   accountStore.setProjects(nextProjects.map(toAccountProject))
-}
-function toAccountProject(project: Project): AccountProject {
-  return {
-    id: project.id,
-    name: project.name,
-    sourceType: null,
-    sizeBytes: 0,
-    status: project.status ?? null,
-    createdAt: project.createdAt ?? null,
-    updatedAt: project.lastAnalyzedAt ?? project.createdAt ?? null,
-    lastAnalyzedAt: project.lastAnalyzedAt ?? null,
-  }
 }
 onMounted(() => {
   void loadProjects()
@@ -138,6 +146,24 @@ onMounted(() => {
     </header>
     <p v-if="importReason" id="import-disabled" class="disabled-note">{{ importReason }}</p>
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
+    <div v-if="undoTarget" class="undo-bar" role="status" data-test="undo-delete">
+      <AppIcon name="trash" :size="17" />
+      <p>{{ t('user.projects.movedToTrash', { name: undoTarget.name }) }}</p>
+      <button type="button" class="undo-bar__undo" :disabled="restoring" @click="undoDelete">
+        <AppIcon name="restore" :size="16" />{{ t('user.projects.undo') }}
+      </button>
+      <RouterLink class="undo-bar__link" :to="{ name: 'trash' }">
+        {{ t('user.projects.openTrash') }}
+      </RouterLink>
+      <button
+        type="button"
+        class="icon-button undo-bar__dismiss"
+        :aria-label="t('user.projects.dismissUndo')"
+        @click="undoTarget = null"
+      >
+        <AppIcon name="close" :size="16" />
+      </button>
+    </div>
     <section v-if="projects.length" class="repo-grid" :aria-label="t('user.projects.importedRepositories')">
       <article v-for="project in projects" :key="project.id" class="repo-card">
         <div class="repo-card__top">
@@ -312,6 +338,50 @@ button {
 }
 .error {
   color: var(--vg-danger);
+}
+.undo-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-3);
+  padding: var(--vg-space-3);
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-surface);
+  box-shadow: var(--vg-shadow-sm);
+  color: var(--vg-text-muted);
+}
+.undo-bar p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--vg-text-sm);
+}
+.undo-bar__undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--vg-blue);
+  border-radius: 6px;
+  background: var(--vg-blue);
+  color: white;
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.undo-bar__undo:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.undo-bar__link {
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.undo-bar__link:hover {
+  text-decoration: underline;
 }
 .repo-grid {
   display: grid;

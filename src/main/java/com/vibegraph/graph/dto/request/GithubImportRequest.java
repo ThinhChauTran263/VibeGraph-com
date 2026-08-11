@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Pattern;
  *
  * Constraints:
  *   - Public repo only (private rejected via pre-flight check)
- *   - Repo size < 100MB (rejected via GitHub API metadata)
+ *   - Repo size within the account's remaining storage quota (checked via GitHub API metadata)
  *   - URL must match GitHub HTTPS pattern
  */
 public record GithubImportRequest(

@@ -31,6 +31,7 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.expr.ThisExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.type.UnionType;
@@ -41,7 +42,9 @@ import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
 import com.github.javaparser.resolution.types.ResolvedReferenceType;
 import com.github.javaparser.symbolsolver.javaparsermodel.declarations.JavaParserMethodDeclaration;
+import com.vibegraph.parser.MethodSkipPolicy;
 import com.vibegraph.parser.Signatures;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -55,17 +58,26 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
     private final List<EdgeData> extractedEdges = new ArrayList<>();
     /** When false (default), no LocalVariable nodes or READS/WRITES/CATCHES edges are emitted. */
     private final boolean deepCpg;
+    private final boolean emitUnresolvedCallStubs;
 
     public MethodVisitor() {
         this(false);
     }
 
     public MethodVisitor(boolean deepCpg) {
+        this(deepCpg, Boolean.getBoolean("vibegraph.parser.emit-unresolved-call-stubs"));
+    }
+
+    public MethodVisitor(boolean deepCpg, boolean emitUnresolvedCallStubs) {
         this.deepCpg = deepCpg;
+        this.emitUnresolvedCallStubs = deepCpg || emitUnresolvedCallStubs;
     }
 
     @Override
     public void visit(MethodDeclaration n, Object arg) {
+        if (isInsideAnonymousClassBody(n) || MethodSkipPolicy.shouldSkip(n)) {
+            return;
+        }
         NodeData methodNode = toNodeData(n);
         extractedMethods.add(methodNode);
         extractMethodEdges(n, methodNode.fullName());
@@ -82,6 +94,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     @Override
     public void visit(ConstructorDeclaration n, Object arg) {
+        if (isInsideAnonymousClassBody(n) || MethodSkipPolicy.shouldSkip(n)) {
+            return;
+        }
         NodeData methodNode = toNodeData(n);
         extractedMethods.add(methodNode);
         extractConstructorEdges(n, methodNode.fullName());
@@ -92,11 +107,6 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
             extractDataFlow(n, methodNode.fullName(), n.getParameters());
             extractCatches(n, methodNode.fullName());
         }
-        super.visit(n, arg);
-    }
-
-    @Override
-    public void visit(LambdaExpr n, Object arg) {
         super.visit(n, arg);
     }
 
@@ -115,25 +125,25 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private void extractMethodEdges(MethodDeclaration declaration, String methodFullName) {
         // RETURNS edge
-        String returnType = declaration.getType().asString();
-        if (!returnType.equals("void")) {
-            String resolvedReturn = resolveTypeName(returnType, declaration);
-            extractedEdges.add(EdgeData.of("RETURNS", methodFullName, resolvedReturn));
-        }
+        TypeReferenceSupport.resolveTypeReference(declaration.getType(), declaration)
+                .ifPresent(resolvedReturn ->
+                        extractedEdges.add(EdgeData.of("RETURNS", methodFullName, resolvedReturn)));
 
         // PARAMETER_TYPE edges
         for (int i = 0; i < declaration.getParameters().size(); i++) {
-            String paramType = declaration.getParameter(i).getType().asString();
-            String resolvedParam = resolveTypeName(paramType, declaration);
-            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
-                    "position", i
-            )));
+            int position = i;
+            TypeReferenceSupport.resolveTypeReference(declaration.getParameter(i).getType(), declaration)
+                    .ifPresent(resolvedParam ->
+                            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
+                                    "position", position
+                            ))));
         }
 
         // THROWS edges
         for (var thrownType : declaration.getThrownExceptions()) {
-            String resolvedThrown = resolveTypeName(thrownType.asString(), declaration);
-            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown));
+            TypeReferenceSupport.resolveTypeReference(thrownType, declaration)
+                    .ifPresent(resolvedThrown ->
+                            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown)));
         }
 
         // HAS_METHOD edge from owner class
@@ -146,17 +156,19 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
     private void extractConstructorEdges(ConstructorDeclaration declaration, String methodFullName) {
         // PARAMETER_TYPE edges
         for (int i = 0; i < declaration.getParameters().size(); i++) {
-            String paramType = declaration.getParameter(i).getType().asString();
-            String resolvedParam = resolveTypeName(paramType, declaration);
-            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
-                    "position", i
-            )));
+            int position = i;
+            TypeReferenceSupport.resolveTypeReference(declaration.getParameter(i).getType(), declaration)
+                    .ifPresent(resolvedParam ->
+                            extractedEdges.add(EdgeData.of("PARAMETER_TYPE", methodFullName, resolvedParam, Map.of(
+                                    "position", position
+                            ))));
         }
 
         // THROWS edges
         for (var thrownType : declaration.getThrownExceptions()) {
-            String resolvedThrown = resolveTypeName(thrownType.asString(), declaration);
-            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown));
+            TypeReferenceSupport.resolveTypeReference(thrownType, declaration)
+                    .ifPresent(resolvedThrown ->
+                            extractedEdges.add(EdgeData.of("THROWS", methodFullName, resolvedThrown)));
         }
 
         // HAS_METHOD edge from owner class
@@ -168,6 +180,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private void extractCallEdges(com.github.javaparser.ast.Node declaration, String callerFullName) {
         declaration.findAll(MethodCallExpr.class).forEach(call -> {
+            if (isNestedExecutableBody(call, declaration)) {
+                return;
+            }
             int lineNumber = call.getBegin().map(p -> p.line).orElse(0);
 
             try {
@@ -175,6 +190,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                 // Only in-project methods wrap a JavaParser AST node — those become real CALLS edges
                 if (resolved instanceof JavaParserMethodDeclaration jpMethod) {
                     MethodDeclaration target = jpMethod.getWrappedNode();
+                    if (MethodSkipPolicy.shouldSkip(target)) {
+                        return;
+                    }
                     List<String> paramTypes = target.getParameters().stream()
                             .map(parameter -> parameter.getType().asString())
                             .toList();
@@ -193,7 +211,11 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                 }
                 // Resolved library/JDK calls are intentionally skipped — no target node exists.
             } catch (Exception e) {
-                // Unresolvable symbol (missing dependency, dynamic type, etc.) — emit low-confidence unresolved stub.
+                // Unresolvable symbols are suppressed by default. Debug/deep CPG can
+                // opt into low-confidence stubs for investigation.
+                if (!emitUnresolvedCallStubs) {
+                    return;
+                }
                 String rawTarget = call.getScope().map(s -> s.toString() + ".").orElse("") + call.getNameAsString();
 
                 String ownerName = "<unresolved>";
@@ -239,6 +261,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private void extractMethodReferenceEdges(com.github.javaparser.ast.Node declaration, String callerFullName) {
         declaration.findAll(MethodReferenceExpr.class).forEach(ref -> {
+            if (isNestedExecutableBody(ref, declaration)) {
+                return;
+            }
             int lineNumber = ref.getBegin().map(p -> p.line).orElse(0);
             String identifier = ref.getIdentifier();
             String callKind = "new".equals(identifier) ? "constructor" : "method";
@@ -247,6 +272,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                 var resolved = ref.resolve();
                 if (resolved instanceof JavaParserMethodDeclaration jpMethod) {
                     MethodDeclaration target = jpMethod.getWrappedNode();
+                    if (MethodSkipPolicy.shouldSkip(target)) {
+                        return;
+                    }
                     List<String> paramTypes = target.getParameters().stream()
                             .map(parameter -> parameter.getType().asString())
                             .toList();
@@ -264,7 +292,11 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                     extractedEdges.add(EdgeData.of("CALLS", callerFullName, targetFullName, props));
                 }
             } catch (Exception e) {
-                // Unresolved method reference — emit low-confidence stub.
+                // Unresolved method references are suppressed by default. Debug/deep
+                // CPG can opt into low-confidence stubs for investigation.
+                if (!emitUnresolvedCallStubs) {
+                    return;
+                }
                 String rawTarget = ref.getScope().toString() + "::" + identifier;
 
                 String ownerName = "<unresolved>";
@@ -293,6 +325,9 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
 
     private void extractInstantiations(com.github.javaparser.ast.Node body, String callerFullName) {
         body.findAll(ObjectCreationExpr.class).forEach(creation -> {
+            if (creation.getAnonymousClassBody().isPresent() || isNestedExecutableBody(creation, body)) {
+                return;
+            }
             int lineNumber = creation.getBegin().map(p -> p.line).orElse(0);
             String targetFullName = resolveInstantiatedType(creation);
             if (targetFullName != null && !targetFullName.isBlank()) {
@@ -303,22 +338,47 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         });
     }
 
+    private boolean isNestedExecutableBody(Node node, Node owner) {
+        Optional<Node> current = node.getParentNode();
+        while (current.isPresent()) {
+            Node candidate = current.get();
+            if (candidate == owner) {
+                return false;
+            }
+            if (candidate instanceof LambdaExpr
+                    || candidate instanceof MethodDeclaration
+                    || candidate instanceof ConstructorDeclaration
+                    || (candidate instanceof ObjectCreationExpr creation && creation.getAnonymousClassBody().isPresent())) {
+                return true;
+            }
+            current = candidate.getParentNode();
+        }
+        return false;
+    }
+
+    private boolean isInsideAnonymousClassBody(Node node) {
+        return node.findAncestor(ObjectCreationExpr.class)
+                .filter(creation -> creation.getAnonymousClassBody().isPresent())
+                .isPresent();
+    }
+
     /**
      * Resolve the instantiated type of a {@code new X(...)} expression. Best-effort:
      * the symbol solver gives the qualified name when resolvable, otherwise we fall
-     * back to import/same-package resolution. Out-of-project targets become External
-     * stubs at persistence time.
+     * back to import/same-package resolution. Out-of-project targets are skipped
+     * unless they resolve to a parsed project node before persistence.
      */
     private String resolveInstantiatedType(ObjectCreationExpr creation) {
         try {
             var resolved = creation.getType().resolve();
             if (resolved.isReferenceType()) {
-                return resolved.asReferenceType().getQualifiedName();
+                String qualifiedName = resolved.asReferenceType().getQualifiedName();
+                return TypeReferenceSupport.shouldSkipImportedType(qualifiedName) ? null : qualifiedName;
             }
         } catch (Exception e) {
             // Unresolvable — fall back to lexical resolution below.
         }
-        return resolveTypeName(creation.getType().getNameAsString(), creation);
+        return TypeReferenceSupport.resolveTypeReference(creation.getType(), creation).orElse(null);
     }
 
     /**
@@ -493,10 +553,11 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
                 types.add(type);
             }
             for (Type exceptionType : types) {
-                String resolved = resolveTypeName(exceptionType.asString(), catchClause);
-                extractedEdges.add(EdgeData.of("CATCHES", ownerFullName, resolved, Map.of(
-                        "lineNumber", line
-                )));
+                TypeReferenceSupport.resolveTypeReference(exceptionType, catchClause)
+                        .ifPresent(resolved ->
+                                extractedEdges.add(EdgeData.of("CATCHES", ownerFullName, resolved, Map.of(
+                                        "lineNumber", line
+                                ))));
             }
         }
     }
@@ -653,6 +714,7 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         properties.put("throwsTypes", throwsTypes);
         properties.put("httpMethod", routeMapping.httpMethod());
         properties.put("routePath", routeMapping.routePath());
+        properties.put("annotations", annotationNames(declaration));
 
         return NodeData.of(
                 "Method",
@@ -686,16 +748,27 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
         properties.put("throwsTypes", declaration.getThrownExceptions().stream().map(type -> type.asString()).toList());
         properties.put("httpMethod", null);
         properties.put("routePath", null);
+        properties.put("annotations", annotationNames(declaration));
+        String displayName = declaration.findAncestor(ClassOrInterfaceDeclaration.class)
+                .map(ClassOrInterfaceDeclaration::getNameAsString)
+                .orElse(declaration.getNameAsString());
 
         return NodeData.of(
                 "Constructor",
-                "<init>",
+                displayName,
                 fullName("<init>", declaration.findAncestor(ClassOrInterfaceDeclaration.class), paramTypes),
                 filePath(declaration),
                 declaration.getBegin().map(position -> position.line).orElse(0),
                 declaration.getEnd().map(position -> position.line).orElse(0),
                 properties
         );
+    }
+
+    private List<String> annotationNames(NodeWithAnnotations<?> declaration) {
+        return declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .distinct()
+                .toList();
     }
 
     private String fullName(String methodName, Optional<ClassOrInterfaceDeclaration> owner, List<String> paramTypes) {

@@ -2,7 +2,9 @@ package com.vibegraph.mcp.service.impl;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +34,8 @@ public class FailureExplainerImpl implements FailureExplainer {
     private static final int MAX_CALLS = 15;
     private static final int SNIPPET_RADIUS = 12;
     private static final Pattern FRAME = Pattern.compile("(?m)^\\s*at\\s+([\\w.$]+)\\(([^)]*)\\)");
+    private static final Pattern CAUSED_BY = Pattern.compile("(?m)^\\s*Caused by:");
+    private static final Pattern LAMBDA_METHOD = Pattern.compile("lambda\\$([^$]+)\\$\\d+");
     private static final java.util.Set<String> CLASSLIKE = java.util.Set.of("Class", "Interface", "Enum", "Record");
     private static final List<String> TEST_SUFFIXES = List.of("Test", "Tests", "IT", "ITCase", "IntegrationTest");
 
@@ -66,27 +70,23 @@ public class FailureExplainerImpl implements FailureExplainer {
             if (parsed.isEmpty()) {
                 warnings.add("No stack frames could be parsed; ensure the trace contains 'at package.Class.method(File.java:line)' lines.");
             }
+            GraphLookups lookups = buildLookups(graph);
+            List<FrameCandidate> candidates = new ArrayList<>();
             int index = 0;
             for (ParsedFrame pf : parsed) {
                 index++;
-                NodeDto classNode = findClass(graph, pf.declaringClass);
+                NodeDto classNode = findClass(lookups, pf.declaringClass);
                 if (classNode == null) {
                     continue;
                 }
-                NodeDto methodNode = findMethod(graph, pf.declaringClass, pf.methodName);
+                NodeDto methodNode = findMethod(lookups, pf.declaringClass, pf.methodName);
                 Frame frame = toFrame(index, pf, classNode, methodNode, graph, root, includeSource, normalizedProjectId);
                 projectFrames.add(frame);
-                if (rootCauses.size() < 2) {
-                    rootCauses.add(RootCause.builder()
-                            .fullName(methodNode != null ? methodNode.getFullName() : classNode.getFullName())
-                            .relativePath(frame.getRelativePath())
-                            .lineNumber(pf.lineNumber)
-                            .reason(rootCauses.isEmpty()
-                                    ? "Topmost in-project frame - most likely the throw site or nearest handler."
-                                    : "Caller of the throw site; inspect arguments/state passed downstream.")
-                            .build());
-                }
+                candidates.add(new FrameCandidate(
+                        methodNode != null ? methodNode.getFullName() : classNode.getFullName(),
+                        frame.getRelativePath(), pf.lineNumber, pf.section));
             }
+            rootCauses.addAll(deepestCauseRoots(candidates));
             if (parsedCount > 0 && projectFrames.isEmpty()) {
                 warnings.add("No project frames found; the stack trace is entirely external (library/JDK). "
                         + "Inspect the nearest call from your own code that reaches this library.");
@@ -115,6 +115,8 @@ public class FailureExplainerImpl implements FailureExplainer {
             notes.add("Error message provided; for precise mapping include the full stack trace. "
                     + "Message: " + errorMessage.trim().replaceAll("\\s+", " "));
         }
+
+        notes.addAll(knownFailureHints(stackTrace, errorMessage));
 
         List<String> steps = debuggingSteps(projectFrames, testTarget, rootCauses);
 
@@ -240,6 +242,11 @@ public class FailureExplainerImpl implements FailureExplainer {
     }
 
     private List<ParsedFrame> parseFrames(String stackTrace, int cap) {
+        List<Integer> causedByStarts = new ArrayList<>();
+        Matcher causedBy = CAUSED_BY.matcher(stackTrace);
+        while (causedBy.find()) {
+            causedByStarts.add(causedBy.start());
+        }
         List<ParsedFrame> frames = new ArrayList<>();
         Matcher matcher = FRAME.matcher(stackTrace);
         while (matcher.find() && frames.size() < cap) {
@@ -262,25 +269,146 @@ public class FailureExplainerImpl implements FailureExplainer {
                     line = null;
                 }
             }
-            frames.add(new ParsedFrame(declaringClass, method, fileName, line));
+            frames.add(new ParsedFrame(declaringClass, method, fileName, line,
+                    sectionOf(causedByStarts, matcher.start())));
         }
         return frames;
     }
 
-    private NodeDto findClass(GraphView graph, String fqcn) {
-        String outer = fqcn.contains("$") ? fqcn.substring(0, fqcn.indexOf('$')) : fqcn;
-        return graph.nodes().stream()
-                .filter(n -> CLASSLIKE.contains(n.getType()))
-                .filter(n -> fqcn.equals(n.getFullName()) || outer.equals(n.getFullName()))
-                .findFirst().orElse(null);
+    /** 0 = original exception; each preceding "Caused by:" bumps the section index. */
+    private int sectionOf(List<Integer> causedByStarts, int position) {
+        int section = 0;
+        for (int start : causedByStarts) {
+            if (start < position) {
+                section++;
+            } else {
+                break;
+            }
+        }
+        return section;
     }
 
-    private NodeDto findMethod(GraphView graph, String fqcn, String method) {
-        String prefix = fqcn + "." + method + "(";
-        return graph.nodes().stream()
-                .filter(n -> "Method".equals(n.getType()) || "Constructor".equals(n.getType()))
-                .filter(n -> n.getFullName() != null && n.getFullName().startsWith(prefix))
-                .findFirst().orElse(null);
+    /**
+     * Root causes come from the DEEPEST "Caused by:" section that has in-project frames —
+     * that is where the real throw site lives; the outer sections are wrappers.
+     */
+    private List<RootCause> deepestCauseRoots(List<FrameCandidate> candidates) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        int deepest = candidates.stream().mapToInt(c -> c.section).max().orElse(0);
+        List<RootCause> roots = new ArrayList<>();
+        for (FrameCandidate candidate : candidates) {
+            if (candidate.section != deepest) {
+                continue;
+            }
+            roots.add(RootCause.builder()
+                    .fullName(candidate.fullName)
+                    .relativePath(candidate.relativePath)
+                    .lineNumber(candidate.lineNumber)
+                    .reason(roots.isEmpty()
+                            ? (deepest == 0
+                                    ? "Topmost in-project frame - most likely the throw site or nearest handler."
+                                    : "Topmost in-project frame of the deepest 'Caused by:' section - most likely the real throw site.")
+                            : "Caller of the throw site; inspect arguments/state passed downstream.")
+                    .build());
+            if (roots.size() == 2) {
+                break;
+            }
+        }
+        return roots;
+    }
+
+    /** One O(N) pass instead of a full node scan per stack frame. Preserves nodes()-order first-match. */
+    private GraphLookups buildLookups(GraphView graph) {
+        Map<String, NodeDto> classByFullName = new LinkedHashMap<>();
+        Map<String, NodeDto> memberByBareName = new LinkedHashMap<>();
+        for (NodeDto node : graph.nodes()) {
+            if (node.getFullName() == null) {
+                continue;
+            }
+            if (CLASSLIKE.contains(node.getType())) {
+                classByFullName.putIfAbsent(node.getFullName(), node);
+            } else if ("Method".equals(node.getType()) || "Constructor".equals(node.getType())) {
+                memberByBareName.putIfAbsent(GraphView.stripParens(node.getFullName()), node);
+            }
+        }
+        return new GraphLookups(classByFullName, memberByBareName);
+    }
+
+    private NodeDto findClass(GraphLookups lookups, String fqcn) {
+        NodeDto exact = lookups.classByFullName.get(fqcn);
+        if (exact != null) {
+            return exact;
+        }
+        // Inner/anonymous class frames (Outer$Inner / Outer$1) map to the outer class.
+        String outer = fqcn.contains("$") ? fqcn.substring(0, fqcn.indexOf('$')) : fqcn;
+        return lookups.classByFullName.get(outer);
+    }
+
+    private NodeDto findMethod(GraphLookups lookups, String fqcn, String method) {
+        String normalized = normalizeFrameMethod(fqcn, method);
+        if (normalized == null) {
+            return null;
+        }
+        NodeDto match = lookups.memberByBareName.get(fqcn + "." + normalized);
+        if (match != null) {
+            return match;
+        }
+        if (fqcn.contains("$")) {
+            String outer = fqcn.substring(0, fqcn.indexOf('$'));
+            return lookups.memberByBareName.get(outer + "." + normalized);
+        }
+        return null;
+    }
+
+    /**
+     * Map JVM frame method names to source names: {@code lambda$foo$0} → the enclosing
+     * method {@code foo}, {@code <init>} → the constructor (simple class name),
+     * synthetic accessors ({@code access$000}) → no method (class-level frame only).
+     */
+    private String normalizeFrameMethod(String fqcn, String method) {
+        if (method.startsWith("access$")) {
+            return null;
+        }
+        Matcher lambda = LAMBDA_METHOD.matcher(method);
+        if (lambda.matches()) {
+            return lambda.group(1);
+        }
+        if ("<init>".equals(method)) {
+            String outer = fqcn.contains("$") ? fqcn.substring(0, fqcn.indexOf('$')) : fqcn;
+            return outer.substring(outer.lastIndexOf('.') + 1);
+        }
+        return method;
+    }
+
+    /** Recognizable Java/Spring/Hibernate failure signatures mapped to actionable hints. */
+    private List<String> knownFailureHints(String stackTrace, String errorMessage) {
+        String text = (stackTrace == null ? "" : stackTrace) + "\n" + (errorMessage == null ? "" : errorMessage);
+        List<String> hints = new ArrayList<>();
+        if (text.contains("NoSuchBeanDefinitionException")) {
+            hints.add("Spring hint: NoSuchBeanDefinitionException - a required bean is missing. Check that the "
+                    + "implementation is annotated (@Service/@Component/@Repository) and lives in a scanned package, "
+                    + "or that the @Qualifier name matches.");
+        }
+        if (text.contains("UnsatisfiedDependencyException")) {
+            hints.add("Spring hint: UnsatisfiedDependencyException - constructor injection failed. The real cause is "
+                    + "in the deepest 'Caused by:' section (missing or ambiguous bean).");
+        }
+        if (text.contains("BeanCurrentlyInCreationException")) {
+            hints.add("Spring hint: circular dependency between beans. Break the cycle with @Lazy on one injection "
+                    + "point or restructure the dependency.");
+        }
+        if (text.contains("LazyInitializationException")) {
+            hints.add("Hibernate hint: LazyInitializationException - a lazy association was touched outside a "
+                    + "transaction. Check the @Transactional boundary of the topmost in-project frame or fetch the "
+                    + "association explicitly.");
+        }
+        if (text.contains("NullPointerException")) {
+            hints.add("NPE hint: open the throw-site line, then use get_method_cpg_context (profile=data-flow) on "
+                    + "that method to see which reads can be null.");
+        }
+        return hints;
     }
 
     private NodeDto findClassByPath(GraphView graph, Path root, String relativePath) {
@@ -386,6 +514,15 @@ public class FailureExplainerImpl implements FailureExplainer {
         return value.trim();
     }
 
-    private record ParsedFrame(String declaringClass, String methodName, String fileName, Integer lineNumber) {
+    private record ParsedFrame(String declaringClass, String methodName, String fileName, Integer lineNumber,
+            int section) {
+    }
+
+    /** In-project frame candidate for root-cause selection, tagged with its Caused-by section. */
+    private record FrameCandidate(String fullName, String relativePath, Integer lineNumber, int section) {
+    }
+
+    /** Per-call lookup maps so frame resolution is O(1) instead of a node scan per frame. */
+    private record GraphLookups(Map<String, NodeDto> classByFullName, Map<String, NodeDto> memberByBareName) {
     }
 }

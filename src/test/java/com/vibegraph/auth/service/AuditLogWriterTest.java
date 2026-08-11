@@ -16,11 +16,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.vibegraph.auth.domain.AuditLog;
 import com.vibegraph.auth.repository.AuditLogRepository;
+import com.vibegraph.auth.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class AuditLogWriterTest {
 
     @Mock private AuditLogRepository auditLogRepository;
+    @Mock private UserRepository userRepository;
     @Mock private AuditRedactor redactor;
     @Mock private AuditLogEventPublisher eventPublisher;
 
@@ -28,7 +30,7 @@ class AuditLogWriterTest {
 
     @BeforeEach
     void setUp() {
-        writer = new AuditLogWriter(auditLogRepository, redactor, eventPublisher);
+        writer = new AuditLogWriter(auditLogRepository, userRepository, redactor, eventPublisher);
     }
 
     @Test

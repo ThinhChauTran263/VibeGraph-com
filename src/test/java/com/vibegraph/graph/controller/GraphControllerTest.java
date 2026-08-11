@@ -30,7 +30,9 @@ import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
+import com.vibegraph.graph.service.impl.GraphResponseFilter;
 
 /**
  * Web-layer tests for GraphController using standalone MockMvc — no Neo4j and no
@@ -51,7 +53,8 @@ class GraphControllerTest {
         graphService = Mockito.mock(GraphService.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         GraphController controller = new GraphController(
-                graphService, new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
+                graphService, new GraphArchitectureProjector(), new GraphResponseFilter(),
+                new GraphPayloadGuard(), new GraphPayloadProperties(), ownershipGuard);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -70,39 +73,285 @@ class GraphControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/projects/{id}/graph returns the wrapped full graph")
+    @DisplayName("GET /api/projects/{id}/graph returns the baseline graph by default")
     void shouldReturnFullGraph() throws Exception {
         GraphDataResponse response = GraphDataResponse.builder()
-                .nodes(List.of(NodeDto.builder()
-                        .id("com.example.UserService")
-                        .type("Class")
-                        .name("UserService")
-                        .fullName("com.example.UserService")
-                        .build()))
+                .nodes(List.of(
+                        NodeDto.builder()
+                                .id("com.example.UserService")
+                                .type("Class")
+                                .name("UserService")
+                                .fullName("com.example.UserService")
+                                .filePath("src/main/java/com/example/UserService.java")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.UserService.findById()")
+                                .type("Method")
+                                .name("findById")
+                                .fullName("com.example.UserService.findById()")
+                                .filePath("src/main/java/com/example/UserService.java")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.UserService.load()")
+                                .type("Method")
+                                .name("load")
+                                .fullName("com.example.UserService.load()")
+                                .filePath("src/main/java/com/example/UserService.java")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.UserRepository")
+                                .type("Interface")
+                                .name("UserRepository")
+                                .fullName("com.example.UserRepository")
+                                .filePath("src/main/java/com/example/UserRepository.java")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.UserService.repository")
+                                .type("Field")
+                                .name("repository")
+                                .fullName("com.example.UserService.repository")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example")
+                                .type("Project")
+                                .name("com.example")
+                                .fullName("com.example")
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.user")
+                                .type("Package")
+                                .name("user")
+                                .fullName("com.example.user")
+                                .build(),
+                        NodeDto.builder()
+                                .id("src/main/java/com/example/UserService.java")
+                                .type("File")
+                                .name("UserService.java")
+                                .fullName("src/main/java/com/example/UserService.java")
+                                .filePath("src/main/java/com/example/UserService.java")
+                                .build(),
+                        NodeDto.builder()
+                                .id("src/main/java/com/example/UserRepository.java")
+                                .type("File")
+                                .name("UserRepository.java")
+                                .fullName("src/main/java/com/example/UserRepository.java")
+                                .filePath("src/main/java/com/example/UserRepository.java")
+                                .build()))
                 .edges(List.of(EdgeDto.builder()
-                        .id("com.example.UserService|CALLS|com.example.UserRepository.find()")
-                        .source("com.example.UserService")
-                        .target("com.example.UserRepository.find()")
+                        .id("com.example.UserService.findById()|CALLS|com.example.UserService.load()")
+                        .source("com.example.UserService.findById()")
+                        .target("com.example.UserService.load()")
                         .type("CALLS")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("com.example|CONTAINS|com.example.user")
+                        .source("com.example")
+                        .target("com.example.user")
+                        .type("CONTAINS")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("com.example.user|CONTAINS|src/main/java/com/example/UserService.java")
+                        .source("com.example.user")
+                        .target("src/main/java/com/example/UserService.java")
+                        .type("CONTAINS")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("src/main/java/com/example/UserService.java|DEFINES|com.example.UserService")
+                        .source("src/main/java/com/example/UserService.java")
+                        .target("com.example.UserService")
+                        .type("DEFINES")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("src/main/java/com/example/UserService.java|DEFINES|com.example.UserService.findById()")
+                        .source("src/main/java/com/example/UserService.java")
+                        .target("com.example.UserService.findById()")
+                        .type("DEFINES")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("com.example.UserService|HAS_METHOD|com.example.UserService.findById()")
+                        .source("com.example.UserService")
+                        .target("com.example.UserService.findById()")
+                        .type("HAS_METHOD")
+                        .build(),
+                        EdgeDto.builder()
+                        .id("com.example.UserService|IMPORTS|com.example.UserRepository")
+                        .source("com.example.UserService")
+                        .target("com.example.UserRepository")
+                        .type("IMPORTS")
+                        .lineNumber(3)
+                        .build(),
+                        EdgeDto.builder()
+                        .id("com.example.UserService.repository|TYPE_OF|com.example.UserRepository")
+                        .source("com.example.UserService.repository")
+                        .target("com.example.UserRepository")
+                        .type("TYPE_OF")
                         .build()))
-                .nodeStats(Map.of("Class", 1))
-                .edgeStats(Map.of("CALLS", 1))
+                .nodeStats(Map.of("Class", 1, "Method", 2, "Interface", 1, "Field", 1, "Project", 1, "Package", 1, "File", 2))
+                .edgeStats(Map.of("CALLS", 1, "IMPORTS", 1, "TYPE_OF", 1, "CONTAINS", 2, "DEFINES", 2, "HAS_METHOD", 1))
                 .build();
         when(graphService.getFullGraph("p1")).thenReturn(response);
 
         mockMvc.perform(get("/api/projects/p1/graph"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.nodes.length()").value(6))
                 .andExpect(jsonPath("$.data.nodes[0].type").value("Class"))
-                .andExpect(jsonPath("$.data.nodes[0].fullName").value("com.example.UserService"))
+                .andExpect(jsonPath("$.data.nodes[1].type").value("Method"))
+                .andExpect(jsonPath("$.data.edges.length()").value(5))
                 .andExpect(jsonPath("$.data.edges[0].type").value("CALLS"))
                 .andExpect(jsonPath("$.data.nodeStats.Class").value(1))
+                .andExpect(jsonPath("$.data.nodeStats.File").value(2))
+                .andExpect(jsonPath("$.data.nodeStats.Method").value(2))
+                .andExpect(jsonPath("$.data.nodeStats.Project").doesNotExist())
+                .andExpect(jsonPath("$.data.nodeStats.Package").doesNotExist())
+                .andExpect(jsonPath("$.data.edgeStats.CONTAINS").doesNotExist())
+                .andExpect(jsonPath("$.data.edgeStats.TYPE_OF").doesNotExist())
+                .andExpect(jsonPath("$.data.edgeStats.DEFINES").value(1))
+                .andExpect(jsonPath("$.data.edges[4].source").value("src/main/java/com/example/UserService.java"))
+                .andExpect(jsonPath("$.data.edges[4].target").value("src/main/java/com/example/UserRepository.java"))
+                .andExpect(jsonPath("$.data.edges[4].type").value("IMPORTS"))
                 // Guardrail metadata is attached even when the graph fits under the limits.
                 .andExpect(jsonPath("$.data.meta.truncated").value(false))
-                .andExpect(jsonPath("$.data.meta.totalNodes").value(1))
-                .andExpect(jsonPath("$.data.meta.returnedNodes").value(1));
+                .andExpect(jsonPath("$.data.meta.totalNodes").value(6))
+                .andExpect(jsonPath("$.data.meta.returnedNodes").value(6));
 
         verify(graphService, times(1)).getFullGraph("p1");
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph?mode=deep returns the full graph")
+    void shouldReturnDeepGraphWhenRequested() throws Exception {
+        GraphDataResponse response = GraphDataResponse.builder()
+                .nodes(List.of(
+                        NodeDto.builder().id("com.example.UserService").type("Class").name("UserService").fullName("com.example.UserService").build(),
+                        NodeDto.builder().id("com.example.UserService.findById()").type("Method").name("findById").fullName("com.example.UserService.findById()").build(),
+                        NodeDto.builder().id("com.example.UserService.load()").type("Method").name("load").fullName("com.example.UserService.load()").build(),
+                        NodeDto.builder().id("com.example.UserService.repository").type("Field").name("repository").fullName("com.example.UserService.repository").build()))
+                .edges(List.of(EdgeDto.builder()
+                        .id("com.example.UserService.findById()|CALLS|com.example.UserService.load()")
+                        .source("com.example.UserService.findById()")
+                        .target("com.example.UserService.load()")
+                        .type("CALLS")
+                        .build(),
+                        EdgeDto.builder()
+                                .id("com.example.UserService.repository|TYPE_OF|com.example.UserRepository")
+                                .source("com.example.UserService.repository")
+                                .target("com.example.UserRepository")
+                                .type("TYPE_OF")
+                                .build()))
+                .nodeStats(Map.of("Class", 1, "Method", 2, "Field", 1))
+                .edgeStats(Map.of("CALLS", 1, "TYPE_OF", 1))
+                .build();
+        when(graphService.getFullGraph("p1")).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph").param("mode", "deep"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.nodes.length()").value(4))
+                .andExpect(jsonPath("$.data.edges.length()").value(2))
+                .andExpect(jsonPath("$.data.nodes[3].type").value("Field"));
+
+        verify(graphService, times(1)).getFullGraph("p1");
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/{id}/graph?includeDeep=true returns the full graph")
+    void shouldReturnDeepGraphWhenIncludeDeepIsTrue() throws Exception {
+        GraphDataResponse response = GraphDataResponse.builder()
+                .nodes(List.of(
+                        NodeDto.builder().id("com.example.UserService").type("Class").name("UserService").fullName("com.example.UserService").build(),
+                        NodeDto.builder().id("com.example.UserService.findById()").type("Method").name("findById").fullName("com.example.UserService.findById()").build(),
+                        NodeDto.builder().id("com.example.UserService.load()").type("Method").name("load").fullName("com.example.UserService.load()").build(),
+                        NodeDto.builder().id("com.example.UserService.repository").type("Field").name("repository").fullName("com.example.UserService.repository").build()))
+                .edges(List.of(EdgeDto.builder()
+                        .id("com.example.UserService.findById()|CALLS|com.example.UserService.load()")
+                        .source("com.example.UserService.findById()")
+                        .target("com.example.UserService.load()")
+                        .type("CALLS")
+                        .build(),
+                        EdgeDto.builder()
+                                .id("com.example.UserService.repository|TYPE_OF|com.example.UserRepository")
+                                .source("com.example.UserService.repository")
+                                .target("com.example.UserRepository")
+                                .type("TYPE_OF")
+                                .build()))
+                .nodeStats(Map.of("Class", 1, "Method", 2, "Field", 1))
+                .edgeStats(Map.of("CALLS", 1, "TYPE_OF", 1))
+                .build();
+        when(graphService.getFullGraph("p1")).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph").param("includeDeep", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes.length()").value(4))
+                .andExpect(jsonPath("$.data.edges.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("GET graph filters by normalized packageName and whitelisted edge types")
+    void shouldFilterGraphByPackageAndEdgeTypes() throws Exception {
+        GraphDataResponse response = GraphDataResponse.builder()
+                .nodes(List.of(
+                        NodeDto.builder()
+                                .id("com.example.service.UserService")
+                                .type("Class")
+                                .name("UserService")
+                                .fullName("com.example.service.UserService")
+                                .properties(Map.of("packageName", "com.example.service"))
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.service.UserService.run()")
+                                .type("Method")
+                                .name("run")
+                                .fullName("com.example.service.UserService.run()")
+                                .properties(Map.of("packageName", "com.example.service"))
+                                .build(),
+                        NodeDto.builder()
+                                .id("com.example.web.UserController")
+                                .type("Class")
+                                .name("UserController")
+                                .fullName("com.example.web.UserController")
+                                .properties(Map.of("packageName", "com.example.web"))
+                                .build()))
+                .edges(List.of(
+                        EdgeDto.builder()
+                                .id("e1")
+                                .source("com.example.service.UserService")
+                                .target("com.example.service.UserService.run()")
+                                .type("HAS_METHOD")
+                                .build(),
+                        EdgeDto.builder()
+                                .id("e2")
+                                .source("com.example.service.UserService.run()")
+                                .target("com.example.web.UserController")
+                                .type("CALLS")
+                                .build()))
+                .build();
+        when(graphService.getFullGraph("p1")).thenReturn(response);
+
+        mockMvc.perform(get("/api/projects/p1/graph")
+                        .param("mode", "deep")
+                        .param("packagePath", "com.example.service")
+                        .param("edgeTypes", "HAS_METHOD"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nodes.length()").value(2))
+                .andExpect(jsonPath("$.data.edges.length()").value(1))
+                .andExpect(jsonPath("$.data.edges[0].type").value("HAS_METHOD"))
+                .andExpect(jsonPath("$.data.nodeStats.Class").value(1))
+                .andExpect(jsonPath("$.data.nodeStats.Method").value(1));
+    }
+
+    @Test
+    @DisplayName("GET graph rejects invalid edge type filters before returning payload")
+    void shouldRejectInvalidEdgeTypeFilter() throws Exception {
+        when(graphService.getFullGraph("p1")).thenReturn(GraphDataResponse.builder()
+                .nodes(List.of()).edges(List.of()).build());
+
+        mockMvc.perform(get("/api/projects/p1/graph")
+                        .param("mode", "deep")
+                        .param("edgeTypes", "CALLS,DELETE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
     }
 
     @Test
@@ -123,6 +372,28 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.data.meta.totalNodes").value(10))
                 .andExpect(jsonPath("$.data.meta.returnedNodes").value(3))
                 .andExpect(jsonPath("$.data.meta.reason").value("GRAPH_TOO_LARGE"));
+    }
+
+    @Test
+    @DisplayName("GET graph treats zero limits as uncapped")
+    void shouldDisablePayloadCapWithZeroLimits() throws Exception {
+        List<NodeDto> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            nodes.add(NodeDto.builder().id("c" + i).type("Class").name("C" + i).fullName("C" + i).build());
+        }
+        when(graphService.getFullGraph("big")).thenReturn(GraphDataResponse.builder()
+                .nodes(nodes).edges(List.of()).nodeStats(Map.of("Class", 10)).edgeStats(Map.of()).build());
+
+        mockMvc.perform(get("/api/projects/big/graph")
+                        .param("mode", "deep")
+                        .param("nodeLimit", "0")
+                        .param("edgeLimit", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.nodes.length()").value(10))
+                .andExpect(jsonPath("$.data.meta.truncated").value(false))
+                .andExpect(jsonPath("$.data.meta.nodeLimit").value(0))
+                .andExpect(jsonPath("$.data.meta.edgeLimit").value(0));
     }
 
     @Test

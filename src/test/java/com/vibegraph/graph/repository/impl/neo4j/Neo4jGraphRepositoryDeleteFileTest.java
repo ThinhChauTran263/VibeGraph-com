@@ -16,7 +16,7 @@ import org.neo4j.driver.Session;
 class Neo4jGraphRepositoryDeleteFileTest {
 
     @Test
-    @DisplayName("deleteFile deletes file nodes then prunes orphan External stubs")
+    @DisplayName("deleteFile deletes file nodes then prunes legacy placeholder nodes")
     void deleteFilePrunesOrphanExternalStubs() {
         Driver driver = mock(Driver.class);
         Session session = mock(Session.class);

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.vibegraph.auth.domain.AuditLog;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.repository.AuditLogRepository;
+import com.vibegraph.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 public class AuditLogWriter {
 
     private final AuditLogRepository auditLogRepository;
+    private final UserRepository userRepository;
     private final AuditRedactor redactor;
     private final AuditLogEventPublisher auditLogEventPublisher;
 
@@ -43,9 +45,22 @@ public class AuditLogWriter {
                 .ipAddress(limit(ipAddress, 64))
                 .details(redactedDetails)
                 .build());
-        AuditLogResponse response = AuditLogResponse.from(saved);
+        AuditLogResponse response = AuditLogResponse.from(saved).withUserDisplayNames(
+                userDisplayName(saved.getActorUserId()),
+                userDisplayName(saved.getTargetUserId()));
         auditLogEventPublisher.publishAfterCommit(response);
         return response;
+    }
+
+    private String userDisplayName(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        return userRepository.findById(userId)
+                .map(user -> user.getDisplayName() == null || user.getDisplayName().isBlank()
+                        ? user.getEmail()
+                        : user.getDisplayName())
+                .orElse(null);
     }
 
     private String validDetails(String redactedDetails) {

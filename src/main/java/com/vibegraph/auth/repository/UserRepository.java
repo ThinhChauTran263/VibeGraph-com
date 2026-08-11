@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.repository.projection.AdminSeriesRow;
+import com.vibegraph.auth.repository.projection.AuthSnapshot;
 
 import jakarta.persistence.LockModeType;
 
@@ -23,6 +24,39 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") UUID id);
+
+    /**
+     * Load identity, account restrictions and refresh-session liveness in one round trip.
+     *
+     * <p>This exists solely for the per-request authentication path, where four separate reads used
+     * to run for every call. The {@code LEFT JOIN} keeps users that have no settings row (never
+     * blocked), and a {@code null} {@code sessionId} yields {@code sessionActive = false} — the
+     * caller decides what a token without {@code sid} means rather than hiding it here.
+     */
+    @Query("""
+            SELECT new com.vibegraph.auth.repository.projection.AuthSnapshot(
+                u.id,
+                u.email,
+                u.role,
+                u.deactivated,
+                u.deactivationReasonSafe,
+                CASE WHEN s.blockedAt IS NOT NULL THEN true ELSE false END,
+                s.blockedReasonSafe,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM RefreshSession r
+                    WHERE r.id = :sessionId
+                      AND r.userId = u.id
+                      AND r.revokedAt IS NULL
+                      AND r.expiresAt > :now
+                ) THEN true ELSE false END)
+            FROM User u
+            LEFT JOIN UserAccountSettings s ON s.userId = u.id
+            WHERE u.id = :userId
+            """)
+    Optional<AuthSnapshot> findAuthSnapshot(
+            @Param("userId") UUID userId,
+            @Param("sessionId") UUID sessionId,
+            @Param("now") java.time.Instant now);
 
     @Query("SELECT u FROM User u WHERE lower(u.email) = lower(:email)")
     Optional<User> findByEmailIgnoreCase(@Param("email") String email);

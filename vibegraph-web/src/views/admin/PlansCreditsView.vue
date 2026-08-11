@@ -550,6 +550,10 @@ function formatStorageMb(plan: AdminPlan): string {
 
 <style scoped>
 .admin-page {
+  --plans-control-height: 2.75rem;
+  --plans-create-width: 10.75rem;
+  --plans-reset-width: 10.75rem;
+  --plans-sales-width: 14rem;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -620,7 +624,7 @@ h3 {
 .plan-editor {
   grid-template-columns:
     minmax(7rem, 0.72fr) minmax(12rem, 1.25fr) repeat(3, minmax(8rem, 0.82fr))
-    11.25rem 8rem;
+    var(--plans-sales-width) var(--plans-create-width);
 }
 .rule-editor {
   grid-template-columns: repeat(16, minmax(0, 1fr));
@@ -644,7 +648,7 @@ h3 {
 }
 input {
   min-width: 0;
-  min-height: 2.75rem;
+  min-height: var(--plans-control-height);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius-sm);
   background: var(--vg-bg);
@@ -664,7 +668,7 @@ input:focus {
 }
 .compact-switch {
   position: relative;
-  min-height: 2.5rem;
+  min-height: var(--plans-control-height);
   display: inline-grid;
   grid-template-columns: 2rem minmax(0, auto);
   align-items: center;
@@ -697,13 +701,14 @@ input:focus {
   background: rgba(59, 130, 246, 0.1);
 }
 .sales-switch {
-  min-height: 2.75rem;
+  min-height: var(--plans-control-height);
+  width: 100%;
   justify-self: stretch;
   padding-inline: var(--vg-space-3);
 }
 .pricing-switch {
   grid-area: active;
-  min-height: 2.75rem;
+  min-height: var(--plans-control-height);
   align-self: end;
 }
 .toggle-track {
@@ -731,7 +736,7 @@ input:focus {
   transform: translateX(0.78rem);
 }
 button {
-  min-height: 2.5rem;
+  min-height: var(--plans-control-height);
   border: 1px solid var(--vg-blue);
   border-radius: var(--vg-radius-sm);
   background: var(--vg-blue);
@@ -740,6 +745,8 @@ button {
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 button:disabled {
   border-color: var(--vg-border);
@@ -748,13 +755,14 @@ button:disabled {
   cursor: not-allowed;
 }
 .ghost-button {
-  min-width: 8rem;
+  min-width: var(--plans-reset-width);
   background: var(--vg-surface-2);
   color: var(--vg-text);
   border-color: var(--vg-border);
 }
 .submit-button {
   width: 100%;
+  min-width: var(--plans-create-width);
 }
 .operation-field {
   grid-area: operation;

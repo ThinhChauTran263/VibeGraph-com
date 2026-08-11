@@ -98,12 +98,14 @@ vibegraph:
     deep-cpg-enabled: false
 
   # JWT test config — secret được ghi đè per-run trong AbstractPostgresIT
-  # (random ≥ 32 ký tự) để không có secret hardcoded trong repo.
+  # (random ≥ 64 ký tự) để không có secret hardcoded trong repo.
   # Prefix phải khớp JwtProperties (@ConfigurationProperties "vibegraph.auth.jwt").
   auth:
     jwt:
-      secret: overridden-per-run-by-DynamicPropertySource
+      secret: overridden-per-run-by-DynamicPropertySource-64-byte-placeholder-for-tests
       expiration-ms: 3600000
+      refresh-expiration-ms: 604800000
+      secure-cookies: false
 
 # Chỉ expose health cho actuator IT (nếu có).
 management:

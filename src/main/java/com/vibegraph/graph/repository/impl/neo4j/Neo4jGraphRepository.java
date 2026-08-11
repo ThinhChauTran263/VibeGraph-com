@@ -16,6 +16,7 @@ import org.neo4j.driver.types.Relationship;
 import org.springframework.stereotype.Repository;
 
 import com.vibegraph.common.exception.NodeNotFoundException;
+import com.vibegraph.common.util.HashUtils;
 import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
@@ -38,6 +39,12 @@ public class Neo4jGraphRepository implements GraphRepository {
     private static final int MAX_DETAIL_CONNECTIONS = 50;
     private static final int MAX_IMPACT_NODES_PER_DEPTH = 50;
 
+    /**
+     * Shared label added to every node by {@code V2__symbol_label.cypher} so the hot queries can
+     * use an index. It is infrastructure, never a node's domain type.
+     */
+    private static final String SYMBOL_LABEL = "Symbol";
+
     private final Driver neo4jDriver;
 
     @Override
@@ -48,7 +55,7 @@ public class Neo4jGraphRepository implements GraphRepository {
             // same stable-id scheme as every other node.
             session.run(
                     "MERGE (p:Project {id: $projectId}) " +
-                    "SET p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
+                    "SET p:Symbol, p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
                     "p.createdAt = coalesce(p.createdAt, datetime()), p.lastAnalyzedAt = datetime()",
                     Map.of("projectId", projectId, "name", name, "path", path)
             );
@@ -87,11 +94,11 @@ public class Neo4jGraphRepository implements GraphRepository {
 
     private String projectMetadataCypher(String matchProject) {
         return matchProject + " " +
-                "OPTIONAL MATCH (n {projectId: p.id}) " +
+                "OPTIONAL MATCH (n:Symbol {projectId: p.id}) " +
                 "WHERE n IS NULL OR NOT n:Project " +
                 "WITH p, count(n) AS totalNodes, " +
                 "count(DISTINCT CASE WHEN n.filePath IS NULL OR n.filePath = '' THEN null ELSE n.filePath END) AS totalFiles " +
-                "OPTIONAL MATCH (a {projectId: p.id})-[r]->(b {projectId: p.id}) " +
+                "OPTIONAL MATCH (a:Symbol {projectId: p.id})-[r]->(b:Symbol {projectId: p.id}) " +
                 "RETURN p.id AS id, p.name AS name, p.path AS path, " +
                 "p.createdAt AS createdAt, p.lastAnalyzedAt AS lastAnalyzedAt, " +
                 "totalFiles, totalNodes, count(r) AS totalEdges";
@@ -128,12 +135,11 @@ public class Neo4jGraphRepository implements GraphRepository {
     public void upsertNodes(String projectId, List<NodeData> nodes) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        // Identity is {projectId, fullName} — label-agnostic — so upserting a node
-        // ENRICHES any pre-existing `External` stub with the same fullName (created
-        // on demand by upsertEdges for unparsed targets) instead of creating a
-        // duplicate: MERGE without a label, then SET the real label and REMOVE
-        // :External. Neo4j cannot parameterize labels, so we group by label and run
-        // one UNWIND batch per label; the validated label is interpolated into SET n:%s.
+        // Identity is {projectId, fullName} - label-agnostic - so upserting a
+        // real parsed node can enrich any pre-existing placeholder node with
+        // the same fullName instead of creating a duplicate. Neo4j cannot
+        // parameterize labels, so we group by label and run one UNWIND batch
+        // per label; the validated label is interpolated into SET n:%s.
         // Dynamic properties are bulk-applied with `SET n += item.props`.
         Map<String, List<Map<String, Object>>> byLabel = new LinkedHashMap<>();
         for (NodeData node : nodes) {
@@ -159,15 +165,19 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         try (Session session = neo4jDriver.session()) {
             for (Map.Entry<String, List<Map<String, Object>>> group : byLabel.entrySet()) {
+                // MERGE is :Symbol-scoped so it hits the (projectId, fullName) composite
+                // index instead of an all-nodes scan; V2's backfill guarantees every
+                // pre-existing node (including :External placeholders) carries :Symbol.
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (n {projectId: $projectId, fullName: item.fullName}) " +
+                        "MERGE (n:Symbol {projectId: $projectId, fullName: item.fullName}) " +
                         "SET n:%s " +
-                        "REMOVE n:External " +
+                        "%s" +
                         "SET n.name = item.name, n.filePath = item.filePath, " +
                         "n.lineNumber = item.lineNumber, n.endLine = item.endLine " +
                         "SET n += item.props",
-                        group.getKey()
+                        group.getKey(),
+                        GraphSchema.EXTERNAL_LABEL.equals(group.getKey()) ? "" : "REMOVE n:External "
                 );
                 session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
             }
@@ -179,9 +189,8 @@ public class Neo4jGraphRepository implements GraphRepository {
         if (edges == null || edges.isEmpty()) return 0;
 
         // Group by relationship type — Neo4j cannot parameterize rel types, so
-        // we run one UNWIND batch per type. Endpoints get an External stub on
-        // creation if they don't exist yet (library/JDK refs, unresolved targets),
-        // so edges are never silently dropped.
+        // we run one UNWIND batch per type. Missing endpoints are skipped in
+        // baseline mode instead of creating placeholder nodes.
         Map<String, List<Map<String, Object>>> byRelType = new LinkedHashMap<>();
         for (EdgeData edge : edges) {
             String relType = GraphSchema.relationshipType(edge.type());
@@ -206,16 +215,17 @@ public class Neo4jGraphRepository implements GraphRepository {
             for (Map.Entry<String, List<Map<String, Object>>> group : byRelType.entrySet()) {
                 String cypher = String.format(
                         "UNWIND $batch AS item " +
-                        "MERGE (a {projectId: $projectId, fullName: item.sourceFullName}) " +
-                        "ON CREATE SET a:%s, a.name = item.sourceFullName " +
-                        "MERGE (b {projectId: $projectId, fullName: item.targetFullName}) " +
-                        "ON CREATE SET b:%s, b.name = item.targetFullName " +
+                        "MATCH (a:Symbol {projectId: $projectId, fullName: item.sourceFullName}) " +
+                        "MATCH (b:Symbol {projectId: $projectId, fullName: item.targetFullName}) " +
                         "MERGE (a)-[r:%s]->(b) " +
-                        "SET r += item.props",
-                        GraphSchema.EXTERNAL_LABEL, GraphSchema.EXTERNAL_LABEL, group.getKey()
+                        "SET r += item.props " +
+                        "RETURN count(r) AS persisted",
+                        group.getKey()
                 );
-                session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
-                persisted += group.getValue().size();
+                persisted += session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()))
+                        .single()
+                        .get("persisted")
+                        .asInt();
             }
         }
         return persisted;
@@ -250,9 +260,11 @@ public class Neo4jGraphRepository implements GraphRepository {
     @Override
     public GraphDataResponse getFullGraph(String projectId) {
         try (Session session = neo4jDriver.session()) {
+            // :Symbol-scoped so the (projectId) index applies — the label-less form
+            // degraded to an all-nodes scan across every tenant.
             var result = session.run(
-                    "MATCH (n {projectId: $projectId}) " +
-                    "OPTIONAL MATCH (n)-[r]->(m {projectId: $projectId}) " +
+                    "MATCH (n:Symbol {projectId: $projectId}) " +
+                    "OPTIONAL MATCH (n)-[r]->(m:Symbol {projectId: $projectId}) " +
                     "RETURN n, r, m",
                     Map.of("projectId", projectId)
             );
@@ -277,11 +289,9 @@ public class Neo4jGraphRepository implements GraphRepository {
 
                     Relationship r = rVal.asRelationship();
                     String edgeType = r.type();
-                    // Stable, deterministic identity instead of Neo4j's internal id()
-                    // (which is reused after deletes and changes across re-analysis).
                     String sourceId = stableNodeId(n);
                     String targetId = stableNodeId(m);
-                    String edgeId = sourceId + "|" + edgeType + "|" + targetId;
+                    String edgeId = stableEdgeId(sourceId, edgeType, targetId);
 
                     EdgeDto edgeDto = EdgeDto.builder()
                             .id(edgeId)
@@ -290,6 +300,9 @@ public class Neo4jGraphRepository implements GraphRepository {
                             .type(edgeType)
                             .confidence(r.get("confidence").isNull() ? null : r.get("confidence").asDouble())
                             .lineNumber(r.get("lineNumber").isNull() ? null : r.get("lineNumber").asInt())
+                            .weight(r.get("weight").isNull() ? 1 : r.get("weight").asInt())
+                            .occurrences(readOccurrences(r))
+                            .properties(edgeProperties(r))
                             .build();
                     edges.add(edgeDto);
                     edgeStats.merge(edgeType, 1, Integer::sum);
@@ -309,7 +322,7 @@ public class Neo4jGraphRepository implements GraphRepository {
     public NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops) {
         try (Session session = neo4jDriver.session()) {
             var nodeResult = session.run(
-                    "MATCH (n {projectId: $projectId, fullName: $nodeId}) RETURN n",
+                    "MATCH (n:Symbol {projectId: $projectId, fullName: $nodeId}) RETURN n",
                     Map.of("projectId", projectId, "nodeId", nodeId)
             );
             if (!nodeResult.hasNext()) {
@@ -351,7 +364,7 @@ public class Neo4jGraphRepository implements GraphRepository {
         ImpactProfile boundedProfile = profile == null ? ImpactProfile.DEPENDENCY : profile;
         try (Session session = neo4jDriver.session()) {
             var targetResult = session.run(
-                    "MATCH (target {projectId: $projectId, fullName: $targetFullName}) RETURN target",
+                    "MATCH (target:Symbol {projectId: $projectId, fullName: $targetFullName}) RETURN target",
                     Map.of("projectId", projectId, "targetFullName", targetFullName)
             );
             if (!targetResult.hasNext()) {
@@ -359,8 +372,9 @@ public class Neo4jGraphRepository implements GraphRepository {
             }
 
             NodeDto target = mapNodeToDto(targetResult.single().get("target").asNode());
-            Map<Integer, List<NodeDto>> byDepth = getImpactNodesByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
-            Map<Integer, Integer> countsByDepth = getImpactCountsByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
+            ImpactByDepth impactByDepth = getImpactByDepth(session, projectId, targetFullName, boundedDepth, boundedProfile);
+            Map<Integer, List<NodeDto>> byDepth = impactByDepth.nodes();
+            Map<Integer, Integer> countsByDepth = impactByDepth.counts();
             List<NodeDto> willBreak = byDepth.getOrDefault(1, List.of());
             List<NodeDto> likelyAffected = byDepth.getOrDefault(2, List.of());
             List<NodeDto> mayNeedTesting = impactNodesAtOrAfter(byDepth, 3);
@@ -394,7 +408,16 @@ public class Neo4jGraphRepository implements GraphRepository {
                 .toList();
     }
 
-    private Map<Integer, List<NodeDto>> getImpactNodesByDepth(
+    /** Nodes (bounded per depth) and total counts per depth from a single traversal. */
+    private record ImpactByDepth(Map<Integer, List<NodeDto>> nodes, Map<Integer, Integer> counts) {
+    }
+
+    /**
+     * Runs the variable-length impact traversal ONCE and projects both the per-depth
+     * dependent sample and the per-depth total count from the same expansion — previously
+     * two identical traversals ran back to back (nodes + counts).
+     */
+    private ImpactByDepth getImpactByDepth(
             Session session,
             String projectId,
             String targetFullName,
@@ -403,47 +426,29 @@ public class Neo4jGraphRepository implements GraphRepository {
         var result = session.run(impactTraversalCypher(maxDepth, profile,
                         "WITH dependent, min(length(path)) AS depth " +
                         "ORDER BY depth, dependent.fullName " +
-                        "WITH depth, collect(dependent)[..$limit] AS dependents " +
-                        "RETURN depth, dependents ORDER BY depth"),
+                        "WITH depth, count(dependent) AS dependentCount, collect(dependent)[..$limit] AS dependents " +
+                        "RETURN depth, dependentCount, dependents ORDER BY depth"),
                 Map.of(
                         "projectId", projectId,
                         "targetFullName", targetFullName,
                         "limit", MAX_IMPACT_NODES_PER_DEPTH));
 
         Map<Integer, List<NodeDto>> byDepth = new LinkedHashMap<>();
-        while (result.hasNext()) {
-            Record record = result.next();
-            int depth = record.get("depth").asInt();
-            List<NodeDto> nodes = record.get("dependents").asList(value -> mapNodeToDto(value.asNode()));
-            byDepth.put(depth, nodes);
-        }
-        return byDepth;
-    }
-
-    private Map<Integer, Integer> getImpactCountsByDepth(
-            Session session,
-            String projectId,
-            String targetFullName,
-            int maxDepth,
-            ImpactProfile profile) {
-        var result = session.run(impactTraversalCypher(maxDepth, profile,
-                        "WITH dependent, min(length(path)) AS depth " +
-                        "RETURN depth, count(dependent) AS dependentCount ORDER BY depth"),
-                Map.of("projectId", projectId, "targetFullName", targetFullName));
-
         Map<Integer, Integer> countsByDepth = new LinkedHashMap<>();
         while (result.hasNext()) {
             Record record = result.next();
-            countsByDepth.put(record.get("depth").asInt(), record.get("dependentCount").asInt());
+            int depth = record.get("depth").asInt();
+            byDepth.put(depth, record.get("dependents").asList(value -> mapNodeToDto(value.asNode())));
+            countsByDepth.put(depth, record.get("dependentCount").asInt());
         }
-        return countsByDepth;
+        return new ImpactByDepth(byDepth, countsByDepth);
     }
 
     private String impactTraversalCypher(int maxDepth, ImpactProfile profile, String projection) {
         String relationship = String.format("[:%s*1..%d]", profile.relationshipPattern(), maxDepth);
         String pathPattern = profile.directedToTarget()
-                ? "(dependent)-" + relationship + "->(target {projectId: $projectId, fullName: $targetFullName}) "
-                : "(dependent)-" + relationship + "-(target {projectId: $projectId, fullName: $targetFullName}) ";
+                ? "(dependent:Symbol)-" + relationship + "->(target:Symbol {projectId: $projectId, fullName: $targetFullName}) "
+                : "(dependent:Symbol)-" + relationship + "-(target:Symbol {projectId: $projectId, fullName: $targetFullName}) ";
         return String.format(
                 "MATCH path = %s" +
                 "WHERE dependent.projectId = $projectId " +
@@ -486,8 +491,8 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         int boundedHops = validateDetailHops(hops);
         String cypher = "INCOMING".equals(direction)
-                ? String.format("MATCH path = (other)-[rels*1..%d]->(n {projectId: $projectId, fullName: $nodeId}) ", boundedHops)
-                : String.format("MATCH path = (n {projectId: $projectId, fullName: $nodeId})-[rels*1..%d]->(other) ", boundedHops);
+                ? String.format("MATCH path = (other)-[rels*1..%d]->(n:Symbol {projectId: $projectId, fullName: $nodeId}) ", boundedHops)
+                : String.format("MATCH path = (n:Symbol {projectId: $projectId, fullName: $nodeId})-[rels*1..%d]->(other) ", boundedHops);
         var result = session.run(
                 cypher +
                 "WHERE other.projectId = $projectId " +
@@ -536,7 +541,6 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     private NodeDto mapNodeToDto(Node node) {
-        String type = node.labels().iterator().next();
         Map<String, Object> properties = new HashMap<>(node.asMap());
         properties.remove("projectId");
         properties.remove("fullName");
@@ -546,12 +550,55 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         return NodeDto.builder()
                 .id(stableNodeId(node))
-                .type(type)
+                .type(domainType(node))
                 .name(node.get("name").asString(""))
                 .fullName(node.get("fullName").asString(""))
                 .filePath(node.get("filePath").asString(""))
                 .lineNumber(node.get("lineNumber").isNull() ? null : node.get("lineNumber").asInt())
                 .properties(properties)
                 .build();
+    }
+
+    /**
+     * Resolves a node's domain type from its labels.
+     *
+     * <p>Since V2 every node also carries the shared {@code :Symbol} label, and Neo4j gives no
+     * ordering guarantee for {@code labels()}. Taking the first label would therefore return
+     * "Symbol" for an arbitrary subset of nodes, which breaks type-based filtering and the
+     * per-type statistics. The shared label is skipped, and only used as the type when a node has
+     * nothing else.
+     */
+    private String domainType(Node node) {
+        String fallback = "Unknown";
+        for (String label : node.labels()) {
+            if (!SYMBOL_LABEL.equals(label)) {
+                return label;
+            }
+            fallback = SYMBOL_LABEL;
+        }
+        return fallback;
+    }
+
+    private String stableEdgeId(String sourceId, String edgeType, String targetId) {
+        return HashUtils.sha256(sourceId + "|" + edgeType + "|" + targetId);
+    }
+
+    private List<Integer> readOccurrences(Relationship relationship) {
+        if (relationship.get("occurrences").isNull()) {
+            if (relationship.get("lineNumber").isNull()) {
+                return List.of();
+            }
+            return List.of(relationship.get("lineNumber").asInt());
+        }
+        return relationship.get("occurrences").asList(value -> value.asInt());
+    }
+
+    private Map<String, Object> edgeProperties(Relationship relationship) {
+        Map<String, Object> properties = new HashMap<>(relationship.asMap());
+        properties.remove("confidence");
+        properties.remove("lineNumber");
+        properties.remove("weight");
+        properties.remove("occurrences");
+        return properties;
     }
 }

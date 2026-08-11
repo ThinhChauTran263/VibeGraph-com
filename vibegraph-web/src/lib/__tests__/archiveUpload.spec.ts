@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   ARCHIVE_ACCEPT_ATTRIBUTE,
   ARCHIVE_ALLOWED_EXTENSIONS,
-  ARCHIVE_MAX_SIZE_BYTES,
   formatFileSize,
   validateArchiveFile,
 } from '../archiveUpload'
@@ -12,8 +11,8 @@ import {
  * tens-of-megabytes of real bytes. The browser File API only requires a
  * BlobPart array, so we lean on a single Uint8Array sized to match.
  *
- * For oversized cases (> 100 MB) we cheat by overriding the `size` getter
- * to avoid actually allocating that much memory in jsdom.
+ * For large-file validation cases we cheat by overriding the `size` getter
+ * to avoid allocating large buffers in jsdom.
  */
 function makeFile(name: string, size: number): File {
   const bytes = size > 0 ? new Uint8Array(Math.min(size, 64)) : new Uint8Array(0)
@@ -25,10 +24,6 @@ function makeFile(name: string, size: number): File {
 }
 
 describe('archiveUpload constants', () => {
-  it('exposes 100 MB as the byte limit', () => {
-    expect(ARCHIVE_MAX_SIZE_BYTES).toBe(100 * 1024 * 1024)
-  })
-
   it('lists exactly the four supported archive extensions', () => {
     expect([...ARCHIVE_ALLOWED_EXTENSIONS].sort()).toEqual(
       ['.zip', '.tar', '.tar.gz', '.tgz'].sort(),
@@ -84,16 +79,8 @@ describe('validateArchiveFile - rejections', () => {
     expect(result?.message).toContain('empty')
   })
 
-  it('rejects a file larger than 100 MB and reports the size in MB', () => {
-    const result = validateArchiveFile(makeFile('project.zip', ARCHIVE_MAX_SIZE_BYTES + 1024))
-    expect(result?.kind).toBe('size')
-    expect(result?.message).toContain('100 MB')
-    // The reported size should be roughly the file size in MB.
-    expect(result?.message).toMatch(/Archive is \d+(\.\d+)? MB/)
-  })
-
-  it('accepts a file exactly at the 100 MB limit', () => {
-    expect(validateArchiveFile(makeFile('project.zip', ARCHIVE_MAX_SIZE_BYTES))).toBeNull()
+  it('accepts a large archive and leaves quota enforcement to the backend', () => {
+    expect(validateArchiveFile(makeFile('project.zip', 2 * 1024 * 1024 * 1024))).toBeNull()
   })
 
   it('checks extension before size so tiny non-archives still fail on extension', () => {
@@ -119,6 +106,6 @@ describe('formatFileSize', () => {
   it('formats megabytes with one decimal', () => {
     expect(formatFileSize(1024 * 1024)).toBe('1.0 MB')
     expect(formatFileSize(10 * 1024 * 1024)).toBe('10.0 MB')
-    expect(formatFileSize(ARCHIVE_MAX_SIZE_BYTES)).toBe('100.0 MB')
+    expect(formatFileSize(100 * 1024 * 1024)).toBe('100.0 MB')
   })
 })

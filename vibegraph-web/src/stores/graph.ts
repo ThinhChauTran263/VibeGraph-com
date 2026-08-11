@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { GraphData, GraphMeta, GraphNode, NodeType, EdgeType } from '@/types/graph'
 
+export type GraphPayloadMode = 'baseline' | 'baseline+deep'
+
 const emptyStats = <T extends string>(): Record<T, number> => ({}) as Record<T, number>
 
 /**
@@ -17,6 +19,10 @@ export const useGraphStore = defineStore('graph', () => {
   const selectedNode = ref<GraphNode | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const projectId = ref<string | null>(null)
+  const baselineGraphData = ref<GraphData | null>(null)
+  const deepGraphData = ref<GraphData | null>(null)
+  const payloadMode = ref<GraphPayloadMode>('baseline')
 
   /**
    * Backend payload guardrail metadata from the last fetch (null until first load, or when the
@@ -48,6 +54,10 @@ export const useGraphStore = defineStore('graph', () => {
     error.value = null
     renderInfo.value = null
     payloadMeta.value = null
+    projectId.value = null
+    baselineGraphData.value = null
+    deepGraphData.value = null
+    payloadMode.value = 'baseline'
   }
 
   return {
@@ -57,6 +67,10 @@ export const useGraphStore = defineStore('graph', () => {
     error,
     renderInfo,
     payloadMeta,
+    projectId,
+    baselineGraphData,
+    deepGraphData,
+    payloadMode,
     reset,
   }
 })

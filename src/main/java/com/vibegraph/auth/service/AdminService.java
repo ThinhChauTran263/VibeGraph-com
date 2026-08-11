@@ -86,6 +86,7 @@ public class AdminService {
     private final SecurityEventRepository securityEventRepository;
     private final AuditService auditService;
     private final OnlineUserHistoryService onlineUserHistoryService;
+    private final RefreshSessionService refreshSessionService;
 
     @Transactional(readOnly = true)
     public AdminOverviewResponse getOverview() {
@@ -265,6 +266,7 @@ public class AdminService {
                 .orElseThrow(() -> new IllegalArgumentException("User settings not found"));
         settings.block(request.reason(), request.safeReason());
         settingsRepository.save(settings);
+        refreshSessionService.revokeAllForUser(userId, "ACCOUNT_BLOCKED");
         auditService.recordCurrentUser("USER_BLOCK", userId, "USER", userId.toString(),
                 details("safeReason", request.safeReason()));
         return toAdminUserResponse(getUserOrThrow(userId));
@@ -290,6 +292,7 @@ public class AdminService {
         user.setDeactivationReason(request.reason());
         user.setDeactivationReasonSafe(request.safeReason());
         userRepository.save(user);
+        refreshSessionService.revokeAllForUser(userId, "ACCOUNT_DEACTIVATED");
         auditService.recordCurrentUser("USER_DEACTIVATE", userId, "USER", userId.toString(),
                 details("safeReason", request.safeReason()));
         return toAdminUserResponse(user);
@@ -418,14 +421,14 @@ public class AdminService {
         return toAdminUserResponse(getUserOrThrow(userId));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = "supabaseTransactionManager", readOnly = true)
     public Page<AdminFeedbackResponse> getFeedbackReports(String status, String q, Pageable pageable) {
         FeedbackReportStatus parsedStatus = parseFeedbackStatus(status);
         return feedbackReportRepository.findAllWithFilters(parsedStatus, q, pageable)
                 .map(this::toAdminFeedbackResponse);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = "supabaseTransactionManager", readOnly = true)
     public AdminFeedbackDetailResponse getFeedbackReportDetail(UUID reportId) {
         FeedbackReport report = feedbackReportRepository.findById(reportId)
                 .orElseThrow(() -> new IllegalArgumentException("Feedback report not found"));
@@ -434,7 +437,7 @@ public class AdminService {
                 toAdminFeedbackResponse(report), messages.stream().map(this::toMessageResponse).toList());
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public void replyToFeedbackReport(UUID reportId, UUID adminUserId, AdminFeedbackReplyRequest request) {
         FeedbackReport report = feedbackReportRepository.findById(reportId)
                 .orElseThrow(() -> new IllegalArgumentException("Feedback report not found"));
@@ -460,7 +463,7 @@ public class AdminService {
                 java.util.Map.of("messageId", saved.getId().toString()));
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public void closeFeedbackReport(UUID reportId) {
         FeedbackReport report = feedbackReportRepository.findById(reportId)
                 .orElseThrow(() -> new IllegalArgumentException("Feedback report not found"));

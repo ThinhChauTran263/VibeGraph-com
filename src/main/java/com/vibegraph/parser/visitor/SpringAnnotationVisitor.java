@@ -21,6 +21,7 @@ import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.StringLiteralExpr;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.vibegraph.parser.Signatures;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -153,8 +154,10 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             return;
         }
 
-        String rawType = field.getElementType().asString();
-        String resolvedType = resolveTypeName(rawType, owner);
+        String resolvedType = TypeReferenceSupport.resolveTypeReference(field.getElementType(), owner).orElse(null);
+        if (resolvedType == null) {
+            return;
+        }
         String injectionKind = isAnnotated ? annotationName : "RequiredArgsConstructor";
 
         extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
@@ -219,16 +222,19 @@ public class SpringAnnotationVisitor extends VoidVisitorAdapter<Object> {
             if (param.getType().isPrimitiveType()) {
                 continue;
             }
-            String rawType = param.getType().asString();
-            String baseName = rawType.contains("<") ? rawType.substring(0, rawType.indexOf('<')) : rawType;
+            String baseName = param.getType().asString();
+            if (baseName.contains("<")) {
+                baseName = baseName.substring(0, baseName.indexOf('<'));
+            }
             if (NON_BEAN_TYPES.contains(baseName)) {
                 continue;
             }
-            String resolvedType = resolveTypeName(rawType, owner);
-            extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
-                    "annotation", "Constructor",
-                    "lineNumber", injectable.getBegin().map(p -> p.line).orElse(0)
-            )));
+            TypeReferenceSupport.resolveTypeReference(param.getType(), owner)
+                    .ifPresent(resolvedType ->
+                            extractedEdges.add(EdgeData.of("INJECTS", classFqcn, resolvedType, Map.of(
+                                    "annotation", "Constructor",
+                                    "lineNumber", injectable.getBegin().map(p -> p.line).orElse(0)
+                            ))));
         }
     }
 

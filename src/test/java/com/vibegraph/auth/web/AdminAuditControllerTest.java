@@ -57,7 +57,7 @@ class AdminAuditControllerTest {
     void listAndDetail_succeed() throws Exception {
         UUID id = UUID.randomUUID();
         AuditLogResponse response = new AuditLogResponse(
-                id, "FAILED_LOGIN", null, null, "USER", "user@test.local", "FAILURE",
+                id, "FAILED_LOGIN", null, null, null, null, "USER", "user@test.local", "FAILURE",
                 "127.0.0.1", "{\"password\":\"[REDACTED]\"}", Instant.now());
         when(auditService.list(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(response)));

@@ -154,7 +154,20 @@ public class MethodSourceAnalyzerImpl implements MethodSourceAnalyzer {
                 .paramTypes(paramTypes)
                 .signature(buildSignature(method.getName(), returnType, paramTypes))
                 .visibility(SourceGraphSupport.stringProperty(method, "visibility"))
+                .annotations(annotationsOf(method))
                 .build();
+    }
+
+    /** Annotation simple names recorded by the parser on the method node (empty when absent). */
+    private List<String> annotationsOf(NodeDto method) {
+        if (method.getProperties() == null) {
+            return List.of();
+        }
+        Object value = method.getProperties().get("annotations");
+        if (value instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
     }
 
     private String buildSignature(String name, String returnType, String paramTypes) {

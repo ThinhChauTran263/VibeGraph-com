@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import LanguageSelector from '../LanguageSelector.vue'
 import i18n, { LOCALE_STORAGE_KEY, setLocale } from '@/language'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes, filterGraphData } from '../graphFilters'
-import { CPG_LITE_EDGE_TYPES, STRUCTURAL_EDGE_TYPES } from '../constants'
+import { ALL_NODE_TYPES, CPG_LITE_EDGE_TYPES, STRUCTURAL_EDGE_TYPES } from '../constants'
 import type { GraphData, GraphEdge, GraphNode } from '@/types/graph'
 
 function graphNode(id: string, type: GraphNode['type']): GraphNode {
@@ -49,12 +49,98 @@ describe('filterGraphData', () => {
     expect(filtered.edges).toEqual([])
     expect(filtered.nodeStats).toEqual({ Class: 1, Method: 1 })
   })
+
+  it('keeps a connected Constructor when its endpoint type and edges are hidden', () => {
+    const constructorGraph: GraphData = {
+      nodes: [graphNode('OrderService', 'Class'), graphNode('OrderService#init', 'Constructor')],
+      edges: [graphEdge('constructor-edge', 'OrderService', 'OrderService#init', 'HAS_METHOD')],
+      nodeStats: { Class: 1, Constructor: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_METHOD: 1 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(constructorGraph, {
+      hiddenNodeTypes: new Set(['Class']),
+      hiddenEdgeTypes: new Set(['HAS_METHOD']),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['OrderService#init'])
+    expect(filtered.edges).toEqual([])
+  })
+
+  it.each(ALL_NODE_TYPES)('can isolate connected %s nodes without removing them', (type) => {
+    const companionType = type === 'Project' ? 'Class' : 'Project'
+    const isolatedTypeGraph: GraphData = {
+      nodes: [graphNode('selected', type), graphNode('companion', companionType)],
+      edges: [graphEdge('relation', 'selected', 'companion', 'HAS_RELATION')],
+      nodeStats: { [type]: 1, [companionType]: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_RELATION: 1 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(isolatedTypeGraph, {
+      hiddenNodeTypes: new Set(ALL_NODE_TYPES.filter((candidate) => candidate !== type)),
+      hiddenEdgeTypes: new Set(['HAS_RELATION']),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['selected'])
+    expect(filtered.edges).toEqual([])
+  })
+
+  it('still removes nodes that have no edge in the source graph', () => {
+    const sourceWithOrphan: GraphData = {
+      nodes: [...data.nodes, graphNode('orphan', 'Constructor')],
+      edges: data.edges,
+      nodeStats: { Class: 1, Method: 1, Constructor: 1 } as GraphData['nodeStats'],
+      edgeStats: data.edgeStats,
+    }
+
+    const filtered = filterGraphData(sourceWithOrphan, {
+      hiddenNodeTypes: new Set(),
+      hiddenEdgeTypes: new Set(),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['OrderService', 'placeOrder'])
+  })
+
+  it('never returns an edge without both endpoints in the filtered node set', () => {
+    const graphWithDanglingCandidates: GraphData = {
+      nodes: [
+        graphNode('visible-a', 'Class'),
+        graphNode('visible-b', 'Class'),
+        graphNode('hidden', 'Method'),
+        graphNode('dangling-source', 'Class'),
+      ],
+      edges: [
+        graphEdge('visible', 'visible-a', 'visible-b', 'EXTENDS'),
+        graphEdge('hidden-target', 'visible-a', 'hidden', 'CALLS'),
+        graphEdge('missing-target', 'visible-a', 'missing', 'CALLS'),
+        graphEdge('dangling-source-edge', 'dangling-source', 'missing', 'CALLS'),
+      ],
+      nodeStats: { Class: 3, Method: 1 } as GraphData['nodeStats'],
+      edgeStats: { EXTENDS: 1, CALLS: 3 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(graphWithDanglingCandidates, {
+      hiddenNodeTypes: new Set(['Method']),
+      hiddenEdgeTypes: new Set(),
+      hideIsolatedNodes: true,
+    })
+    const visibleNodeIds = new Set(filtered.nodes.map((node) => node.id))
+
+    expect(filtered.edges.map((edge) => edge.id)).toEqual(['visible'])
+    for (const edge of filtered.edges) {
+      expect(visibleNodeIds.has(edge.source)).toBe(true)
+      expect(visibleNodeIds.has(edge.target)).toBe(true)
+    }
+  })
 })
 
 /**
- * Phase 1 CPG-lite exposure policy: structural edges visible by default, CPG-lite
- * edges hidden by default but revealable via "Show all". Counts are always
- * computed from the actual filtered data, never hardcoded.
+ * Default exposure policy: the graph loads all available node/edge types, but
+ * starts with noisy detail edges disabled. Counts are always computed from the
+ * actual filtered data, never hardcoded.
  */
 function mixedGraph(): GraphData {
   const nodes: GraphNode[] = [
@@ -66,9 +152,10 @@ function mixedGraph(): GraphData {
   const edges: GraphEdge[] = [
     graphEdge('s1', 'A', 'm', 'HAS_METHOD'), // structural
     graphEdge('s2', 'A', 'B', 'EXTENDS'), // structural
+    graphEdge('s3', 'A', 'B', 'IMPORTS'), // structural, visible by default
     graphEdge('c1', 'm', 'B', 'RETURNS'), // CPG-lite
     graphEdge('c2', 'A', 'f', 'HAS_FIELD'), // CPG-lite
-    graphEdge('c3', 'A', 'B', 'INJECTS'), // CPG-lite
+    graphEdge('c3', 'A', 'B', 'INJECTS'), // visible semantic edge
   ]
   return {
     nodes,
@@ -77,6 +164,7 @@ function mixedGraph(): GraphData {
     edgeStats: {
       HAS_METHOD: 1,
       EXTENDS: 1,
+      IMPORTS: 1,
       RETURNS: 1,
       HAS_FIELD: 1,
       INJECTS: 1,
@@ -84,13 +172,28 @@ function mixedGraph(): GraphData {
   }
 }
 
-describe('CPG-lite default vs show-all edge visibility', () => {
-  it('default-hidden set is exactly the CPG-lite edge types (and excludes structural)', () => {
+describe('default vs show-all edge visibility', () => {
+  it('default-hidden set matches the curated hidden edge policy', () => {
     const hidden = defaultHiddenEdgeTypes()
-    expect(new Set(hidden)).toEqual(new Set(CPG_LITE_EDGE_TYPES))
-    for (const structural of STRUCTURAL_EDGE_TYPES) {
-      expect(hidden.has(structural)).toBe(false)
-    }
+    expect(hidden).toEqual(
+      new Set([
+        'HAS_FIELD',
+        'RETURNS',
+        'TYPE_OF',
+        'PARAMETER_TYPE',
+        'THROWS',
+        'INSTANTIATES',
+        'ANNOTATED_BY',
+        'READS',
+        'WRITES',
+        'CATCHES',
+        'PUBLISHES_EVENT',
+        'LISTENS_EVENT',
+        'TRIGGERS',
+        'CALLS_DYNAMIC',
+        'DISPATCH_CANDIDATES',
+      ]),
+    )
   })
 
   it('returns a fresh set each call so callers can own their copy', () => {
@@ -98,10 +201,10 @@ describe('CPG-lite default vs show-all edge visibility', () => {
     const removed = [...first][0]
     if (removed) first.delete(removed)
     const second = defaultHiddenEdgeTypes()
-    expect(second.size).toBe(CPG_LITE_EDGE_TYPES.size)
+    expect(second.has('HAS_FIELD')).toBe(true)
   })
 
-  it('default view shows only structural edges and counts match filtered data', () => {
+  it('default view shows curated semantic edges and counts match filtered data', () => {
     const data = mixedGraph()
     const filtered = filterGraphData(data, {
       hiddenNodeTypes: new Set(),
@@ -109,24 +212,25 @@ describe('CPG-lite default vs show-all edge visibility', () => {
     })
 
     const types = filtered.edges.map((edge) => edge.type).sort()
-    expect(types).toEqual(['EXTENDS', 'HAS_METHOD'])
+    expect(types).toEqual(['EXTENDS', 'HAS_METHOD', 'IMPORTS', 'INJECTS'])
     // edgeStats are recomputed from the actual filtered edges, not hardcoded.
-    expect(filtered.edgeStats).toEqual({ HAS_METHOD: 1, EXTENDS: 1 })
+    expect(filtered.edgeStats).toEqual({ HAS_METHOD: 1, EXTENDS: 1, IMPORTS: 1, INJECTS: 1 })
     // A hidden CPG-lite type must not silently disappear from the source data.
     expect(data.edges.some((edge) => edge.type === 'RETURNS')).toBe(true)
   })
 
-  it('"Show all" (empty hidden set) reveals every CPG-lite edge with correct counts', () => {
+  it('"Show all" (empty hidden set) reveals every edge with correct counts', () => {
     const data = mixedGraph()
     const filtered = filterGraphData(data, {
       hiddenNodeTypes: new Set(),
       hiddenEdgeTypes: new Set(),
     })
 
-    expect(filtered.edges).toHaveLength(5)
+    expect(filtered.edges).toHaveLength(6)
     expect(filtered.edgeStats).toEqual({
       HAS_METHOD: 1,
       EXTENDS: 1,
+      IMPORTS: 1,
       RETURNS: 1,
       HAS_FIELD: 1,
       INJECTS: 1,
@@ -135,7 +239,7 @@ describe('CPG-lite default vs show-all edge visibility', () => {
 
   it('no backend-emitted type with count > 0 is impossible to reveal', () => {
     const data = mixedGraph()
-    // Every CPG-lite type present in the data can be revealed by clearing the
+    // Every hidden-by-default type present in the data can be revealed by clearing the
     // hidden set; none are dropped at ingestion.
     const revealed = filterGraphData(data, {
       hiddenNodeTypes: new Set(),
@@ -143,16 +247,16 @@ describe('CPG-lite default vs show-all edge visibility', () => {
     })
     const sourceTypes = new Set(data.edges.map((edge) => edge.type))
     const revealedTypes = new Set(revealed.edges.map((edge) => edge.type))
-    const presentCpgLite = [...CPG_LITE_EDGE_TYPES].filter((type) => sourceTypes.has(type))
-    for (const type of presentCpgLite) {
+    const presentHidden = [...defaultHiddenEdgeTypes()].filter((type) => sourceTypes.has(type))
+    for (const type of presentHidden) {
       expect(revealedTypes.has(type)).toBe(true)
     }
   })
 })
 
 /**
- * Phase 3 deep CPG: LocalVariable nodes + READS/WRITES/CATCHES edges are
- * default-hidden (node type + edge types) so the architecture graph stays
+ * Phase 3 deep CPG: LocalVariable nodes + READS/WRITES/CATCHES edges stay
+ * default-hidden (node type + edge types) so the graph stays
  * readable, and revealed only via "Show all".
  */
 describe('deep CPG (READS/WRITES/CATCHES + LocalVariable) default visibility', () => {
@@ -182,11 +286,6 @@ describe('deep CPG (READS/WRITES/CATCHES + LocalVariable) default visibility', (
     expect(hidden.has('READS')).toBe(true)
     expect(hidden.has('WRITES')).toBe(true)
     expect(hidden.has('CATCHES')).toBe(true)
-    // and they are classified CPG-lite, never structural
-    for (const type of ['READS', 'WRITES', 'CATCHES'] as const) {
-      expect(CPG_LITE_EDGE_TYPES.has(type)).toBe(true)
-      expect(STRUCTURAL_EDGE_TYPES.has(type)).toBe(false)
-    }
   })
 
   it('default-hidden node set includes LocalVariable', () => {
@@ -215,8 +314,8 @@ describe('deep CPG (READS/WRITES/CATCHES + LocalVariable) default visibility', (
 })
 
 /**
- * Phase 4 STEP_IN_FLOW: inferred execution-flow steps are default-hidden (CPG-lite)
- * and revealed via "Show all"; they never show on the default canvas.
+ * Phase 4 STEP_IN_FLOW: inferred execution-flow steps are visible by default
+ * because they summarize the execution path better than raw detail edges.
  */
 describe('STEP_IN_FLOW default visibility', () => {
   function flowGraph(): GraphData {
@@ -233,18 +332,18 @@ describe('STEP_IN_FLOW default visibility', () => {
     }
   }
 
-  it('classifies STEP_IN_FLOW as default-hidden CPG-lite, never structural', () => {
+  it('classifies STEP_IN_FLOW as visible-by-default semantic flow', () => {
     expect(CPG_LITE_EDGE_TYPES.has('STEP_IN_FLOW')).toBe(true)
     expect(STRUCTURAL_EDGE_TYPES.has('STEP_IN_FLOW')).toBe(false)
-    expect(defaultHiddenEdgeTypes().has('STEP_IN_FLOW')).toBe(true)
+    expect(defaultHiddenEdgeTypes().has('STEP_IN_FLOW')).toBe(false)
   })
 
-  it('default view hides STEP_IN_FLOW but keeps CALLS', () => {
+  it('default view keeps STEP_IN_FLOW alongside CALLS', () => {
     const filtered = filterGraphData(flowGraph(), {
       hiddenNodeTypes: defaultHiddenNodeTypes(),
       hiddenEdgeTypes: defaultHiddenEdgeTypes(),
     })
-    expect(filtered.edges.map((e) => e.type)).toEqual(['CALLS'])
+    expect(filtered.edges.map((e) => e.type).sort()).toEqual(['CALLS', 'STEP_IN_FLOW'])
   })
 
   it('"Show all" reveals STEP_IN_FLOW alongside CALLS', () => {

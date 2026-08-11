@@ -6,6 +6,7 @@ import java.util.UUID;
 public interface NotificationViewRow {
     UUID getId();
     UUID getAnnouncementId();
+    UUID getCreatorUserId();
     String getTitle();
     String getBody();
     String getType();

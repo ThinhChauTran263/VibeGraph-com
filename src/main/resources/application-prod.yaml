@@ -27,8 +27,28 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
-      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE:2050MB}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+            scope:
+              - read:user
+              - user:email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
 
   ai:
     mcp:
@@ -40,12 +60,18 @@ spring:
           mcp-endpoint: /mcp
 
 vibegraph:
+  auth:
+    oauth:
+      frontend-url: ${FRONTEND_URL}
+      success-path: ${OAUTH_SUCCESS_PATH:/}
+      login-path: ${OAUTH_LOGIN_PATH:/login}
+
   projects:
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
 
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:/app/data/uploads}
 
   watcher:
@@ -63,6 +89,16 @@ vibegraph:
   cors:
     allowed-origins:
       - ${FRONTEND_URL}
+
+  abuse:
+    concurrent-imports-per-user: ${VIBEGRAPH_CONCURRENT_IMPORTS_PER_USER:1}
+    requests-per-minute-per-ip: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP:120}
+    requests-per-minute-per-user: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_USER:240}
+    requests-per-minute-per-api-key: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_API_KEY:240}
+    # Enable only when the immediate peer is a trusted reverse proxy.
+    # Accepts exact IPs and CIDRs, e.g. 127.0.0.1,172.18.0.0/16.
+    trust-proxy: ${VIBEGRAPH_TRUST_PROXY:false}
+    trusted-proxies: ${VIBEGRAPH_TRUSTED_PROXIES:}
 
   parser:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}

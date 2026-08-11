@@ -9,7 +9,9 @@ public record AuditLogResponse(
         UUID id,
         String action,
         UUID actorUserId,
+        String actorDisplayName,
         UUID targetUserId,
+        String targetUserDisplayName,
         String targetType,
         String targetId,
         String outcome,
@@ -22,12 +24,30 @@ public record AuditLogResponse(
                 log.getId(),
                 log.getAction(),
                 log.getActorUserId(),
+                null,
                 log.getTargetUserId(),
+                null,
                 log.getTargetType(),
                 log.getTargetId(),
                 log.getOutcome(),
                 log.getIpAddress(),
                 log.getDetails(),
                 log.getCreatedAt());
+    }
+
+    public AuditLogResponse withUserDisplayNames(String actorName, String targetUserName) {
+        return new AuditLogResponse(
+                id,
+                action,
+                actorUserId,
+                actorName,
+                targetUserId,
+                targetUserName,
+                targetType,
+                targetId,
+                outcome,
+                ipAddress,
+                details,
+                createdAt);
     }
 }

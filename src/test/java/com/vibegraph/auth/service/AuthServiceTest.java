@@ -1,5 +1,6 @@
 package com.vibegraph.auth.service;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -12,13 +13,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.domain.AuthProvider;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.dto.AuthResponse;
+import com.vibegraph.auth.domain.UserIdentity;
 import com.vibegraph.auth.dto.LoginRequest;
 import com.vibegraph.auth.dto.RegisterRequest;
+import com.vibegraph.auth.oauth.OAuthAccountProfile;
+import com.vibegraph.auth.repository.UserIdentityRepository;
 import com.vibegraph.auth.repository.UserRepository;
-import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
 import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.InvalidCredentialsException;
@@ -32,8 +35,15 @@ import static org.mockito.Mockito.*;
 @DisplayName("Auth service")
 class AuthServiceTest {
 
+    private static final UUID SESSION_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final String REFRESH_TOKEN = "opaque-refresh-token";
+    private static final Instant REFRESH_EXPIRES_AT = Instant.parse("2026-08-17T00:00:00Z");
+
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private UserIdentityRepository userIdentityRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -53,18 +63,23 @@ class AuthServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private RefreshSessionService refreshSessionService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         authService = new AuthService(
                 userRepository,
+                userIdentityRepository,
                 passwordEncoder,
                 jwtService,
                 currentUser,
                 accountSettingsService,
                 featureGateService,
-                auditService);
+                auditService,
+                refreshSessionService);
     }
 
     @Test
@@ -79,13 +94,15 @@ class AuthServiceTest {
             user.setId(userId);
             return user;
         });
-        when(jwtService.issue(any(User.class))).thenReturn("jwt-token");
+        stubSessionIssue("jwt-token");
 
-        AuthResponse response = authService.register(request);
+        AuthenticationResult response = authService.registerSession(request);
 
-        assertEquals("jwt-token", response.token());
+        assertEquals("jwt-token", response.accessToken());
+        assertEquals(REFRESH_TOKEN, response.refreshToken());
         assertEquals("new@test.local", response.user().email());
         verify(accountSettingsService).createDefaultSettings(any(User.class));
+        verify(jwtService).issue(any(User.class), eq(SESSION_ID));
     }
 
     @Test
@@ -95,9 +112,14 @@ class AuthServiceTest {
                 .when(featureGateService).assertEnabled(FeatureGateService.REGISTRATION);
         RegisterRequest request = new RegisterRequest("new@test.local", "Password123!", "New User");
 
-        assertThrows(FeatureDisabledException.class, () -> authService.register(request));
+        assertThrows(FeatureDisabledException.class, () -> authService.registerSession(request));
 
-        verifyNoInteractions(userRepository, passwordEncoder, jwtService, accountSettingsService);
+        verifyNoInteractions(
+                userRepository,
+                passwordEncoder,
+                jwtService,
+                accountSettingsService,
+                refreshSessionService);
     }
 
     @Test
@@ -106,9 +128,10 @@ class AuthServiceTest {
         RegisterRequest request = new RegisterRequest("taken@test.local", "Password123!", "Taken User");
         when(userRepository.existsByEmailIgnoreCase("taken@test.local")).thenReturn(true);
 
-        assertThrows(EmailAlreadyExistsException.class, () -> authService.register(request));
+        assertThrows(EmailAlreadyExistsException.class, () -> authService.registerSession(request));
 
         verifyNoInteractions(accountSettingsService);
+        verifyNoInteractions(jwtService, refreshSessionService);
     }
 
     @Test
@@ -131,14 +154,16 @@ class AuthServiceTest {
         when(userRepository.findByEmailIgnoreCase("blocked@test.local")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Password123!", "hash")).thenReturn(true);
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(jwtService.issue(user)).thenReturn("restricted-token");
+        stubSessionIssue(user, "restricted-token");
 
-        AuthResponse response = authService.login(request);
+        AuthenticationResult response = authService.loginSession(request);
 
-        assertEquals("restricted-token", response.token());
+        assertEquals("restricted-token", response.accessToken());
         assertEquals("BLOCKED", response.user().accountStatus());
         assertEquals("Policy review", response.user().safeReason());
         assertFalse(response.user().toString().contains("private fraud note"));
+        verify(refreshSessionService).issue(user);
+        verify(jwtService).issue(user, SESSION_ID);
     }
 
     @Test
@@ -159,9 +184,9 @@ class AuthServiceTest {
         when(passwordEncoder.matches("Password123!", "hash")).thenReturn(true);
         when(accountSettingsService.findSettings(userId))
                 .thenReturn(com.vibegraph.auth.domain.UserAccountSettings.builder().userId(userId).build());
-        when(jwtService.issue(user)).thenReturn("restricted-token");
+        stubSessionIssue(user, "restricted-token");
 
-        AuthResponse response = authService.login(request);
+        AuthenticationResult response = authService.loginSession(request);
 
         assertEquals("DEACTIVATED", response.user().accountStatus());
         assertEquals("Account closed by administrator", response.user().safeReason());
@@ -181,10 +206,10 @@ class AuthServiceTest {
         when(userRepository.findByEmailIgnoreCase("blocked@test.local")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 
-        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertThrows(InvalidCredentialsException.class, () -> authService.loginSession(request));
 
         verifyNoInteractions(accountSettingsService);
-        verify(jwtService, never()).issue(any());
+        verifyNoInteractions(jwtService, refreshSessionService);
     }
 
     @Test
@@ -194,11 +219,11 @@ class AuthServiceTest {
         when(userRepository.findByEmailIgnoreCase("missing@test.local")).thenReturn(Optional.empty());
         when(passwordEncoder.matches(eq("Password123!"), any())).thenReturn(false);
 
-        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertThrows(InvalidCredentialsException.class, () -> authService.loginSession(request));
 
         verify(passwordEncoder).matches(eq("Password123!"), any());
         verifyNoInteractions(accountSettingsService);
-        verify(jwtService, never()).issue(any());
+        verifyNoInteractions(jwtService, refreshSessionService);
     }
 
     @Test
@@ -214,10 +239,111 @@ class AuthServiceTest {
         when(userRepository.findByEmailIgnoreCase("oauth@test.local")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(eq("Password123!"), any())).thenReturn(false);
 
-        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertThrows(InvalidCredentialsException.class, () -> authService.loginSession(request));
 
         verify(passwordEncoder).matches(eq("Password123!"), any());
         verifyNoInteractions(accountSettingsService);
-        verify(jwtService, never()).issue(any());
+        verifyNoInteractions(jwtService, refreshSessionService);
+    }
+
+    @Test
+    @DisplayName("OAuth login creates a local account and provider identity for verified email")
+    void oauthLogin_newVerifiedGoogleAccount_createsUserAndIdentity() {
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GOOGLE,
+                "google-subject",
+                "oauth@test.local",
+                true,
+                "OAuth User",
+                "https://avatar.test/user.png");
+        UUID userId = UUID.randomUUID();
+        when(userIdentityRepository.findByProviderAndProviderUserId(AuthProvider.GOOGLE, "google-subject"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("oauth@test.local")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                user.setId(userId);
+            }
+            return user;
+        });
+        stubSessionIssue("oauth-jwt");
+
+        AuthenticationResult response = authService.oauthLoginSession(profile);
+
+        assertEquals("oauth-jwt", response.accessToken());
+        assertEquals("oauth@test.local", response.user().email());
+        verify(accountSettingsService).createDefaultSettings(any(User.class));
+        verify(userIdentityRepository).save(argThat(identity ->
+                identity.getProvider() == AuthProvider.GOOGLE
+                        && identity.getProviderUserId().equals("google-subject")
+                        && identity.getUserId().equals(userId)));
+        verifyNoInteractions(passwordEncoder);
+    }
+
+    @Test
+    @DisplayName("OAuth login links verified provider identity to an existing email account")
+    void oauthLogin_existingEmail_linksIdentityWithoutCreatingSettings() {
+        UUID userId = UUID.randomUUID();
+        User existing = User.builder()
+                .id(userId)
+                .email("existing@test.local")
+                .displayName("Existing")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .emailVerified(false)
+                .build();
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GITHUB,
+                "12345",
+                "existing@test.local",
+                true,
+                "GitHub Name",
+                "https://avatar.test/github.png");
+        when(userIdentityRepository.findByProviderAndProviderUserId(AuthProvider.GITHUB, "12345"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findByEmailIgnoreCase("existing@test.local")).thenReturn(Optional.of(existing));
+        when(userRepository.save(existing)).thenReturn(existing);
+        stubSessionIssue(existing, "linked-jwt");
+
+        AuthenticationResult response = authService.oauthLoginSession(profile);
+
+        assertEquals("linked-jwt", response.accessToken());
+        assertTrue(existing.isEmailVerified());
+        assertEquals("Existing", existing.getDisplayName());
+        verify(userIdentityRepository).save(any(UserIdentity.class));
+        verify(accountSettingsService, never()).createDefaultSettings(any(User.class));
+    }
+
+    @Test
+    @DisplayName("OAuth login rejects unverified provider email before linking")
+    void oauthLogin_unverifiedEmail_rejectsBeforePersistence() {
+        OAuthAccountProfile profile = new OAuthAccountProfile(
+                AuthProvider.GOOGLE,
+                "google-subject",
+                "oauth@test.local",
+                false,
+                "OAuth User",
+                null);
+
+        assertThrows(org.springframework.security.oauth2.core.OAuth2AuthenticationException.class,
+                () -> authService.oauthLoginSession(profile));
+
+        verifyNoInteractions(userIdentityRepository, jwtService, refreshSessionService);
+        verify(userRepository, never()).save(any());
+    }
+
+    private void stubSessionIssue(String accessToken) {
+        when(refreshSessionService.issue(any(User.class)))
+                .thenReturn(new RefreshSessionService.SessionToken(
+                        SESSION_ID, REFRESH_TOKEN, REFRESH_EXPIRES_AT));
+        when(jwtService.issue(any(User.class), eq(SESSION_ID))).thenReturn(accessToken);
+    }
+
+    private void stubSessionIssue(User user, String accessToken) {
+        when(refreshSessionService.issue(user))
+                .thenReturn(new RefreshSessionService.SessionToken(
+                        SESSION_ID, REFRESH_TOKEN, REFRESH_EXPIRES_AT));
+        when(jwtService.issue(user, SESSION_ID)).thenReturn(accessToken);
     }
 }

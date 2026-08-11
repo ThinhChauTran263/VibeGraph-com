@@ -249,7 +249,7 @@ class ApiKeyLifecycleServiceTest {
 
     private void stubCreationChecks() {
         lenient().when(apiKeyRepository.countByUserIdAndDeletedAtIsNull(userId)).thenReturn(0);
-        when(projectOwnershipRepository.findByProjectIdAndOwnerId("project-1", userId))
+        when(projectOwnershipRepository.findByProjectIdAndOwnerIdAndDeletedAtIsNull("project-1", userId))
                 .thenReturn(Optional.of(project));
     }
 

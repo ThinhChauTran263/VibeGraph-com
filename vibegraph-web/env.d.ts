@@ -23,7 +23,6 @@ interface ImportMetaEnv {
   readonly VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS?: string
 
   // Archive upload
-  readonly VITE_ARCHIVE_MAX_SIZE_MB?: string
 
   // WebSocket (STOMP/SockJS)
   readonly VITE_WS_RECONNECT_DELAY_MS?: string
@@ -46,6 +45,16 @@ interface ImportMetaEnv {
   readonly VITE_FA2_SLOW_DOWN?: string
   readonly VITE_LAYOUT_AUTO_STOP_MS?: string
   readonly VITE_ZOOM_FIT_DURATION_MS?: string
+  readonly VITE_LAYOUT_BRANCH_ENABLED?: string
+  readonly VITE_LAYOUT_BRANCH_MIN_NODES?: string
+  readonly VITE_LAYOUT_BRANCH_STRENGTH?: string
+  readonly VITE_LAYOUT_BRANCH_LEVEL_GAP?: string
+  readonly VITE_LAYOUT_BRANCH_JITTER?: string
+  readonly VITE_LAYOUT_BRANCH_COMPONENT_GAP?: string
+  readonly VITE_LAYOUT_SCREEN_OVERLAP_ENABLED?: string
+  readonly VITE_LAYOUT_SCREEN_OVERLAP_GAP_PX?: string
+  readonly VITE_LAYOUT_SCREEN_OVERLAP_ITERATIONS?: string
+  readonly VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH?: string
 
   // Node detail panel
   readonly VITE_NODE_DETAIL_MAX_PROPERTIES?: string

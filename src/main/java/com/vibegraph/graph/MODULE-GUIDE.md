@@ -65,7 +65,7 @@ graph/
 - [ ] `POST /api/projects/import-github`: Import từ GitHub URL
   - Request: `{url: "https://github.com/owner/repo"}`
   - Response: `{projectId, status: "ANALYZING"}` (202 Accepted)
-  - Pre-flight: validate public repo, size < 100MB
+  - Pre-flight: validate public repo, size within account storage quota
   - Stream tarball qua commons-compress (không lưu disk)
   - Parse in-memory, push progress qua WebSocket
 
@@ -94,7 +94,7 @@ graph/
 - [x] `GraphService.getImpactAnalysis(projectId, nodeId, depth, profile)`: Trace upstream dependencies (blast radius)
 - [ ] `TarballImportService.importFromGithub(request)` (MỚI):
   1. Pre-flight check (GET https://api.github.com/repos/{owner}/{repo})
-     - Validate: public, size < 100MB, default_branch
+     - Validate: public, size within account quota, default_branch
      - Reject với GithubImportException nếu private hoặc quá lớn
   2. Stream tarball (GET /tarball, Bearer ${GITHUB_TOKEN})
      - GzipCompressorInputStream + TarArchiveInputStream
@@ -110,9 +110,9 @@ Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph man
 - Parser xuất `NodeData` / `EdgeData` / `ParseResult` (parser-neutral, xem `parser/node/`).
 - `GraphRepository` là storage abstraction; impl duy nhất `Neo4jGraphRepository` ghi xuống bằng **raw Neo4j Java Driver + parameterized Cypher**.
 - Label node và relationship type được validate qua `GraphSchema` (allow-list), không phải class entity Java.
-- Node labels: Project, Package, File, Class, Interface, Enum, Method, Field, Annotation, Route (+ `External` stub cho ref chưa resolve).
-- Relationship types: OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, HAS_INNER, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, THROWS, CALLS, INJECTS, HANDLES_ROUTE, ANNOTATED_BY.
-- Edge properties: type, confidence, lineNumber (where applicable).
+- Node labels: Project, Package, File, Class, Interface, Enum, Record, DBModel, Method, Constructor, Field, Annotation, LocalVariable, Route, APIEndpoint. `External` is legacy-only for persisted cleanup/migration; the parser no longer creates new unresolved-reference stubs.
+- Relationship types: OWNS, CONTAINS, DEFINES, HAS_METHOD, HAS_FIELD, HAS_INNER, HAS_RELATION, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, TYPE_OF, RETURNS, PARAMETER_TYPE, THROWS, CALLS, INSTANTIATES, INJECTS, HANDLES_ROUTE, READS, WRITES, CATCHES, STEP_IN_FLOW, PUBLISHES_EVENT, LISTENS_EVENT, TRIGGERS, RESOLVES_TO, CALLS_DYNAMIC, DISPATCH_CANDIDATES. `ANNOTATED_BY` is legacy schema-only; annotation usages are stored in node `properties.annotations`.
+- Edge properties: type, confidence, lineNumber, weight, occurrences, cardinality (where applicable).
 
 ### WebSocket
 - [ ] Topic `/topic/projects/{id}/updates`: Push graph changes
@@ -154,7 +154,7 @@ Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph man
 - [ ] **GitHub Import (MỚI):**
   - [ ] POST /api/projects/import-github trả về 202 Accepted
   - [ ] Pre-flight reject private repo → GithubImportException → 400
-  - [ ] Pre-flight reject repo > 100MB → GithubImportException → 400
+  - [ ] Pre-flight reject repo over account quota → GithubImportException → 400
   - [ ] Tarball stream không ghi file tạm xuống disk
   - [ ] Parse chỉ *.java files, skip build/target/.git/node_modules
   - [ ] WebSocket push progress /topic/projects/{id}/status

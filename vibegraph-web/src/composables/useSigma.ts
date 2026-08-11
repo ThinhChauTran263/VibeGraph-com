@@ -8,7 +8,7 @@ import Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
-import forceAtlas2 from 'graphology-layout-forceatlas2'
+import NoverlapLayout from 'graphology-layout-noverlap/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
@@ -18,20 +18,28 @@ import {
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
   FA2_SLOW_DOWN,
-  FA2_ITERATIONS,
   FA2_LINLOG_MODE,
   FA2_OUTBOUND_ATTRACTION,
   FA2_ADJUST_SIZES,
   FA2_STRONG_GRAVITY_MODE,
-  FA2_OUTLIER_CLAMP_PERCENTILE,
   FA2_LARGE_GRAPH_THRESHOLD,
   FA2_GRAVITY_LARGE,
   FA2_SCALING_RATIO_LARGE,
-  FA2_ITERATIONS_LARGE,
   LAYOUT_NORMALIZE_SPAN,
+  LAYOUT_BRANCH_ENABLED,
+  LAYOUT_BRANCH_MIN_NODES,
+  LAYOUT_BRANCH_STRENGTH,
+  LAYOUT_BRANCH_LEVEL_GAP,
+  LAYOUT_BRANCH_JITTER,
+  LAYOUT_BRANCH_COMPONENT_GAP,
   NOVERLAP_ENABLED,
   NOVERLAP_MARGIN,
-  NOVERLAP_MAX_ITERATIONS,
+  NOVERLAP_RATIO,
+  NOVERLAP_AUTO_STOP_MS,
+  LAYOUT_SCREEN_OVERLAP_ENABLED,
+  LAYOUT_SCREEN_OVERLAP_GAP_PX,
+  LAYOUT_SCREEN_OVERLAP_ITERATIONS,
+  LAYOUT_SCREEN_OVERLAP_STRENGTH,
   LAYOUT_AUTO_STOP_MS,
   ZOOM_FIT_DURATION_MS,
   SIGMA_MAX_EDGE_LABELS_PER_FRAME,
@@ -56,6 +64,7 @@ export interface UseSigmaOptions {
   onNodeHover?: (nodeId: string) => void
   onNodeLeave?: () => void
   onCameraRatioChange?: (ratio: number) => void
+  onLayoutSettled?: () => void
 }
 
 // Base label sizes (on-screen px) at the fit view. The actual per-zoom scaling is
@@ -64,6 +73,11 @@ export interface UseSigmaOptions {
 // flash) and labels resize smoothly as the camera renders each frame.
 const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
 const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
+
+const LABEL_RENDERED_SIZE_THRESHOLD = SIGMA_LABEL_RENDERED_SIZE_THRESHOLD
+const ZOOM_SIZE_POWER = 0.75
+const zoomToSizeRatio = (ratio: number): number =>
+  Math.max(0.001, Math.pow(ratio, ZOOM_SIZE_POWER))
 
 export function useSigma(options: UseSigmaOptions) {
   const {
@@ -74,12 +88,15 @@ export function useSigma(options: UseSigmaOptions) {
     onNodeHover,
     onNodeLeave,
     onCameraRatioChange,
+    onLayoutSettled,
   } = options
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
+  const overlapLayout = shallowRef<NoverlapLayout | null>(null)
+  const overlapStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
   const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
   // Cleanup for the manual right/middle-button canvas panning listeners.
   const panCleanup = shallowRef<null | (() => void)>(null)
@@ -101,8 +118,8 @@ export function useSigma(options: UseSigmaOptions) {
   // clicking still works.
   const dragMoved = shallowRef(false)
 
-  // Last applied edge-label visibility, so setEdgeLabelsVisible can skip redundant
-  // setSetting + full refresh churn. Reset on each init (new Sigma defaults false).
+  // Last edge-label visibility batched with reducer updates. Reset on each init
+  // because a new Sigma instance starts with renderEdgeLabels disabled.
   let lastEdgeLabelsVisible: boolean | null = null
 
   /**
@@ -122,10 +139,8 @@ export function useSigma(options: UseSigmaOptions) {
 
     graphInstance.value = graph
 
-    // Seed node positions from the cache and run ForceAtlas2 only for nodes that
-    // have never been laid out. A pure filter toggle re-shows nodes that are all
-    // cached → the expensive layout pass is skipped entirely and positions are
-    // reused, which is what removes the freeze on re-showing a node type.
+    // Seed node positions from the cache so rebuilds keep the last stable placement
+    // for known nodes before the worker refines them.
     applyCachedLayout(graph)
 
     const sigma = new Sigma(graph, container.value, {
@@ -137,13 +152,14 @@ export function useSigma(options: UseSigmaOptions) {
       // tiny so this floor dominates, pinning line thickness instead of letting it
       // balloon with the default size/√ratio zoom scaling.
       minEdgeThickness: SIGMA_MIN_EDGE_THICKNESS,
-      // Keep edges + labels drawn during pan/zoom (no vanish-then-repaint "reload"
-      // flash). Label scaling is done live in the renderers without setSetting, so
-      // there is no refresh churn; a filtered few-hundred-node graph paints these
-      // cheaply every frame.
+      // Keep the graph visually continuous while zooming. Performance comes from
+      // batched settings and renderer culling, not hiding content during motion.
       hideEdgesOnMove: false,
       hideLabelsOnMove: false,
-      labelRenderedSizeThreshold: SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+      labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
+      itemSizesReference: 'screen',
+      zoomToSizeRatioFunction: zoomToSizeRatio,
+      defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
       labelSize: BASE_NODE_LABEL_SIZE,
@@ -165,9 +181,7 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
-    // A fresh Sigma starts with renderEdgeLabels:false (see settings above). Reset
-    // the visibility guard so the first setEdgeLabelsVisible after a rebuild always
-    // applies instead of being skipped as a false no-op.
+    // Reset the visibility guard for the first batched reducer update after rebuild.
     lastEdgeLabelsVisible = false
 
     // Refill the per-frame edge-label draw budget at the start of every frame so a
@@ -239,8 +253,7 @@ export function useSigma(options: UseSigmaOptions) {
       onCameraRatioChange?.(ratio)
     })
 
-    // Layout is precomputed synchronously (settleLayout) before paint, so there is
-    // no live worker animation. Node positions are static until the user drags.
+    startLayout(graph)
   }
 
   /**
@@ -256,32 +269,17 @@ export function useSigma(options: UseSigmaOptions) {
     positionCache.clear()
   }
 
-  /**
-   * Seed node positions from the cache and run ForceAtlas2 only for nodes that
-   * have no cached position yet (first load or a lazy expansion). When every node
-   * is already cached — the filter toggle case — the layout pass is skipped
-   * entirely, which removes the freeze on re-showing a node type. Resulting
-   * positions are written back so the next rebuild is just as cheap.
-   */
+  /** Seed node positions from the cache and keep the latest values for next rebuild. */
   function applyCachedLayout(graph: Graph): void {
     if (graph.order === 0) return
 
-    let uncached = 0
     graph.forEachNode((id) => {
       const cached = positionCache.get(id)
       if (cached) {
         graph.setNodeAttribute(id, 'x', cached.x)
         graph.setNodeAttribute(id, 'y', cached.y)
-      } else {
-        uncached++
       }
     })
-
-    // Only pay for a global relayout when at least one node is new; a toggle that
-    // re-shows already-laid-out nodes hits none of this.
-    if (uncached > 0) {
-      settleLayout(graph)
-    }
 
     graph.forEachNode((id) => {
       positionCache.set(id, {
@@ -291,213 +289,12 @@ export function useSigma(options: UseSigmaOptions) {
     })
   }
 
-  /**
-   * Compute the ForceAtlas2 layout synchronously (no worker, no animation) and
-   * write final x/y onto the graph before it is first rendered.
-   *
-   * Small graphs keep the base profile (already spread well). Large graphs switch
-   * to a cluster-separating profile — LinLog mode + dissuade-hubs + lower gravity
-   * and scaling + more iterations — which turns a dense hairball into visibly
-   * separated communities. An optional Noverlap pass then removes residual node
-   * overlap without collapsing the cluster structure FA2 produced.
-   */
-  function settleLayout(graph: Graph): void {
-    if (graph.order === 0) return
-    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
-    try {
-      forceAtlas2.assign(graph, {
-        iterations: isLarge ? FA2_ITERATIONS_LARGE : FA2_ITERATIONS,
-        settings: {
-          gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
-          scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
-          barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
-          slowDown: FA2_SLOW_DOWN,
-          linLogMode: FA2_LINLOG_MODE,
-          outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
-          adjustSizes: FA2_ADJUST_SIZES,
-          strongGravityMode: FA2_STRONG_GRAVITY_MODE,
-        },
+  function cacheLayoutPositions(graph: Graph): void {
+    graph.forEachNode((id) => {
+      positionCache.set(id, {
+        x: graph.getNodeAttribute(id, 'x') as number,
+        y: graph.getNodeAttribute(id, 'y') as number,
       })
-    } catch {
-      // Leave the random seed positions if the layout fails.
-    }
-
-    // Bound far-flung outliers first so the camera frames the main body, THEN run
-    // Noverlap as the final pass so it also resolves any pile-up the clamp creates
-    // on the bounding ring — guaranteeing no two nodes render touching.
-    if (isLarge) clampOutliers(graph, FA2_OUTLIER_CLAMP_PERCENTILE)
-
-    // Normalize the settled layout to a fixed span so node sizes (rendered in
-    // layout space, see Sigma `itemSizesReference`) map to a predictable pixel
-    // radius and the Noverlap margin becomes a consistent on-screen gap.
-    if (isLarge) normalizeSpan(graph, LAYOUT_NORMALIZE_SPAN)
-
-    if (isLarge && NOVERLAP_ENABLED) {
-      try {
-        resolveOverlaps(graph, NOVERLAP_MARGIN, NOVERLAP_MAX_ITERATIONS)
-      } catch {
-        // Keep the FA2 layout if the overlap-removal pass fails.
-      }
-    }
-  }
-
-  /**
-   * Guarantee no two nodes render overlapping by separating every pair closer than
-   * (radius_a + radius_b + margin), in the SAME layout-coordinate space Sigma uses
-   * for node sizes (`itemSizesReference: 'positions'`). Unlike graphology's noverlap
-   * — which nudges only one node of each pair by a small fixed step and plateaus
-   * with residual overlaps in dense clusters — this pushes BOTH nodes apart by the
-   * FULL half-overlap along their axis each pass, which converges reliably. A uniform
-   * spatial grid (cell = largest node diameter + margin) keeps it O(n) per pass.
-   */
-  function resolveOverlaps(graph: Graph, margin: number, maxIterations: number): void {
-    const ids = graph.nodes()
-    const n = ids.length
-    if (n < 2) return
-    const X = new Float64Array(n)
-    const Y = new Float64Array(n)
-    const S = new Float64Array(n)
-    let maxS = 0
-    for (let i = 0; i < n; i++) {
-      X[i] = graph.getNodeAttribute(ids[i]!, 'x') as number
-      Y[i] = graph.getNodeAttribute(ids[i]!, 'y') as number
-      const s = graph.getNodeAttribute(ids[i]!, 'size') as number
-      S[i] = s
-      if (s > maxS) maxS = s
-    }
-    const cell = 2 * maxS + margin + 1
-    const jitter = (seed: number) => {
-      // deterministic pseudo-random in [-0.5, 0.5] to split exactly-coincident nodes
-      const v = Math.sin(seed * 12.9898) * 43758.5453
-      return v - Math.floor(v) - 0.5
-    }
-    for (let it = 0; it < maxIterations; it++) {
-      let minX = Infinity
-      let minY = Infinity
-      for (let i = 0; i < n; i++) {
-        if (X[i]! < minX) minX = X[i]!
-        if (Y[i]! < minY) minY = Y[i]!
-      }
-      const grid = new Map<number, number[]>()
-      const cols = 1 << 15
-      const key = (cx: number, cy: number) => cx * cols + cy
-      for (let i = 0; i < n; i++) {
-        const cx = Math.floor((X[i]! - minX) / cell)
-        const cy = Math.floor((Y[i]! - minY) / cell)
-        const k = key(cx, cy)
-        const arr = grid.get(k)
-        if (arr) arr.push(i)
-        else grid.set(k, [i])
-      }
-      let moved = false
-      for (let i = 0; i < n; i++) {
-        const xi = X[i]!
-        const yi = Y[i]!
-        const si = S[i]!
-        const cx = Math.floor((xi - minX) / cell)
-        const cy = Math.floor((yi - minY) / cell)
-        for (let gx = cx - 1; gx <= cx + 1; gx++) {
-          for (let gy = cy - 1; gy <= cy + 1; gy++) {
-            const arr = grid.get(key(gx, gy))
-            if (!arr) continue
-            for (const j of arr) {
-              if (j <= i) continue
-              let dx = X[j]! - xi
-              let dy = Y[j]! - yi
-              let dist = Math.hypot(dx, dy)
-              const minDist = si + S[j]! + margin
-              if (dist < minDist) {
-                moved = true
-                if (dist < 1e-6) {
-                  dx = jitter(i + 1)
-                  dy = jitter(j + 1)
-                  dist = Math.hypot(dx, dy) || 1
-                }
-                const push = (minDist - dist) / 2
-                const ux = dx / dist
-                const uy = dy / dist
-                X[i] = X[i]! - ux * push
-                Y[i] = Y[i]! - uy * push
-                X[j] = X[j]! + ux * push
-                Y[j] = Y[j]! + uy * push
-              }
-            }
-          }
-        }
-      }
-      if (!moved) break
-    }
-    for (let i = 0; i < n; i++) {
-      graph.setNodeAttribute(ids[i]!, 'x', X[i]!)
-      graph.setNodeAttribute(ids[i]!, 'y', Y[i]!)
-    }
-  }
-
-  /**
-   * Uniformly rescale node positions about their centroid so the layout's larger
-   * bounding-box dimension equals `targetSpan` units. No-op when disabled (0) or
-   * the graph is degenerate.
-   */
-  function normalizeSpan(graph: Graph, targetSpan: number): void {
-    if (targetSpan <= 0 || graph.order === 0) return
-    let minX = Infinity
-    let maxX = -Infinity
-    let minY = Infinity
-    let maxY = -Infinity
-    graph.forEachNode((_id, attr) => {
-      const x = attr.x as number
-      const y = attr.y as number
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    })
-    const span = Math.max(maxX - minX, maxY - minY)
-    if (!(span > 0)) return
-    const k = targetSpan / span
-    if (Math.abs(k - 1) < 1e-3) return
-    const cx = (minX + maxX) / 2
-    const cy = (minY + maxY) / 2
-    graph.forEachNode((id, attr) => {
-      graph.setNodeAttribute(id, 'x', cx + ((attr.x as number) - cx) * k)
-      graph.setNodeAttribute(id, 'y', cy + ((attr.y as number) - cy) * k)
-    })
-  }
-
-  /**
-   * Move every node whose distance from the centroid exceeds the given percentile
-   * radius onto that radius (keeping its direction). Disabled when percentile is
-   * 0 or ≥ 1. Operates in place on the graph's x/y attributes.
-   */
-  function clampOutliers(graph: Graph, percentile: number): void {
-    if (percentile <= 0 || percentile >= 1 || graph.order === 0) return
-    let sumX = 0
-    let sumY = 0
-    const nodes: string[] = []
-    graph.forEachNode((id, attr) => {
-      sumX += attr.x as number
-      sumY += attr.y as number
-      nodes.push(id)
-    })
-    const cx = sumX / nodes.length
-    const cy = sumY / nodes.length
-    const radii = nodes.map((id) => {
-      const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
-      const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
-      return Math.hypot(dx, dy)
-    })
-    const sorted = [...radii].sort((a, b) => a - b)
-    const maxR = sorted[Math.min(sorted.length - 1, Math.floor(percentile * sorted.length))] ?? 0
-    if (!(maxR > 0)) return
-    nodes.forEach((id, i) => {
-      const r = radii[i] ?? 0
-      if (r > maxR) {
-        const dx = (graph.getNodeAttribute(id, 'x') as number) - cx
-        const dy = (graph.getNodeAttribute(id, 'y') as number) - cy
-        const k = maxR / r
-        graph.setNodeAttribute(id, 'x', cx + dx * k)
-        graph.setNodeAttribute(id, 'y', cy + dy * k)
-      }
     })
   }
 
@@ -671,6 +468,7 @@ export function useSigma(options: UseSigmaOptions) {
    */
   function startLayout(graph: Graph) {
     stopLayout()
+    if (graph.order === 0) return
 
     const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
     const fa2 = new FA2Layout(graph, {
@@ -691,7 +489,7 @@ export function useSigma(options: UseSigmaOptions) {
 
     layoutStopTimer.value = setTimeout(() => {
       if (layout.value === fa2) {
-        stopLayout()
+        stopLayout(true)
       }
     }, LAYOUT_AUTO_STOP_MS)
   }
@@ -699,16 +497,413 @@ export function useSigma(options: UseSigmaOptions) {
   /**
    * Stop the running layout.
    */
-  function stopLayout() {
+  function stopLayout(runPostLayout: boolean = false) {
     if (layoutStopTimer.value) {
       clearTimeout(layoutStopTimer.value)
       layoutStopTimer.value = null
     }
 
+    stopOverlapLayout()
+
     if (layout.value) {
       layout.value.kill()
       layout.value = null
     }
+
+    if (graphInstance.value) {
+      cacheLayoutPositions(graphInstance.value)
+    }
+
+    if (runPostLayout && graphInstance.value) {
+      runPostLayoutPass(graphInstance.value)
+    }
+  }
+
+  function runPostLayoutPass(graph: Graph): void {
+    normalizeLayout(graph)
+    spreadLayoutClusters(graph)
+    centerLayout(graph)
+    cacheLayoutPositions(graph)
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+
+    if (!NOVERLAP_ENABLED || graph.order < 2) {
+      onLayoutSettled?.()
+      return
+    }
+
+    const overlap = new NoverlapLayout(graph, {
+      settings: {
+        margin: NOVERLAP_MARGIN,
+        ratio: NOVERLAP_RATIO,
+      },
+      onConverged: () => stopOverlapLayout(true),
+    })
+
+    overlapLayout.value = overlap
+    overlap.start()
+    overlapStopTimer.value = setTimeout(() => stopOverlapLayout(true), NOVERLAP_AUTO_STOP_MS)
+  }
+
+  function normalizeLayout(graph: Graph): void {
+    if (LAYOUT_NORMALIZE_SPAN <= 0 || graph.order < 2) return
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+
+    graph.forEachNode((_id, attributes) => {
+      const x = Number(attributes.x)
+      const y = Number(attributes.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+    })
+
+    const width = maxX - minX
+    const height = maxY - minY
+    const span = Math.max(width, height)
+    if (!Number.isFinite(span) || span <= 0) return
+
+    const scale = LAYOUT_NORMALIZE_SPAN / span
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+
+    graph.updateEachNodeAttributes((_id, attributes) => ({
+      ...attributes,
+      x: (Number(attributes.x) - centerX) * scale,
+      y: (Number(attributes.y) - centerY) * scale,
+    }))
+  }
+
+  function centerLayout(graph: Graph): void {
+    if (graph.order < 2) return
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+
+    graph.forEachNode((_id, attributes) => {
+      const x = Number(attributes.x)
+      const y = Number(attributes.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+    })
+
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return
+
+    graph.updateEachNodeAttributes((_id, attributes) => ({
+      ...attributes,
+      x: Number(attributes.x) - centerX,
+      y: Number(attributes.y) - centerY,
+    }))
+  }
+
+  interface LayoutCluster {
+    nodeIds: string[]
+    centerX: number
+    centerY: number
+    radius: number
+  }
+
+  function spreadLayoutClusters(graph: Graph): boolean {
+    if (!LAYOUT_BRANCH_ENABLED || graph.order < LAYOUT_BRANCH_MIN_NODES) return false
+
+    const clusters = collectLayoutClusters(graph)
+    if (clusters.length === 0) return false
+    const clusterByNode = new Map<string, LayoutCluster>()
+    clusters.forEach((cluster) => {
+      cluster.nodeIds.forEach((nodeId) => clusterByNode.set(nodeId, cluster))
+    })
+
+    const mainCluster = clusters.reduce((largest, cluster) =>
+      cluster.nodeIds.length > largest.nodeIds.length ? cluster : largest,
+    )
+    const centerX = mainCluster.centerX
+    const centerY = mainCluster.centerY
+    const hasMultipleClusters = clusters.length > 1
+    const mainSizeBoost = Math.log(mainCluster.nodeIds.length + 1) * 0.03
+    const mainCompactBoost =
+      mainCluster.radius > 0 ? Math.min(0.34, LAYOUT_BRANCH_LEVEL_GAP / mainCluster.radius / 10) : 0.34
+    const mainClusterScale =
+      1 + Math.min(1.08, LAYOUT_BRANCH_STRENGTH * 0.1 + mainSizeBoost + 0.28 + mainCompactBoost)
+    const expandedMainRadius = mainCluster.radius * mainClusterScale
+    const satelliteGapBase =
+      LAYOUT_BRANCH_COMPONENT_GAP * 0.32 + LAYOUT_BRANCH_LEVEL_GAP * 0.1 + expandedMainRadius * 0.14
+
+    graph.updateEachNodeAttributes((nodeId, attributes) => {
+      const cluster = clusterByNode.get(nodeId)
+      if (!cluster) return attributes
+
+      const sizeBoost = Math.log(cluster.nodeIds.length + 1) * 0.02
+      const baseBoost = LAYOUT_BRANCH_STRENGTH * 0.08
+      const compactBoost =
+        cluster.radius > 0 ? Math.min(0.24, LAYOUT_BRANCH_LEVEL_GAP / cluster.radius / 18) : 0.24
+      const intraScale = cluster === mainCluster
+        ? mainClusterScale
+        : 1 + Math.min(0.72, baseBoost + sizeBoost + 0.22 + compactBoost)
+
+      const offsetX = Number(attributes.x) - cluster.centerX
+      const offsetY = Number(attributes.y) - cluster.centerY
+      let nextX = cluster.centerX + offsetX * intraScale
+      let nextY = cluster.centerY + offsetY * intraScale
+
+      if (!hasMultipleClusters || cluster === mainCluster) {
+        return { ...attributes, x: nextX, y: nextY }
+      }
+
+      const fromCenterX = cluster.centerX - centerX
+      const fromCenterY = cluster.centerY - centerY
+      const distance = Math.hypot(fromCenterX, fromCenterY)
+      let dirX = 0
+      let dirY = 0
+
+      if (distance > 0.0001) {
+        dirX = fromCenterX / distance
+        dirY = fromCenterY / distance
+      } else {
+        const angle = ((cluster.nodeIds.length * 37) % 360) * (Math.PI / 180)
+        dirX = Math.cos(angle)
+        dirY = Math.sin(angle)
+      }
+
+      const clusterCoreBuffer = Math.max(0, expandedMainRadius - mainCluster.radius)
+      const clusterSpreadBias = Math.log(cluster.nodeIds.length + 1) * 24 + cluster.radius * 0.22
+      const targetDistance =
+        satelliteGapBase + cluster.radius * 0.48 + clusterCoreBuffer * 0.9 + clusterSpreadBias
+      const shiftDistance = Math.max(0, targetDistance - distance) + LAYOUT_BRANCH_JITTER * 0.35
+      nextX += dirX * shiftDistance
+      nextY += dirY * shiftDistance
+
+      return { ...attributes, x: nextX, y: nextY }
+    })
+
+    return true
+  }
+
+  function collectLayoutClusters(graph: Graph): LayoutCluster[] {
+    const visited = new Set<string>()
+    const clusters: LayoutCluster[] = []
+
+    graph.forEachNode((nodeId) => {
+      if (visited.has(nodeId)) return
+
+      const queue = [nodeId]
+      const nodeIds: string[] = []
+      visited.add(nodeId)
+
+      for (let i = 0; i < queue.length; i += 1) {
+        const current = queue[i]
+        if (!current) continue
+        nodeIds.push(current)
+        graph.neighbors(current).forEach((neighbor) => {
+          if (visited.has(neighbor)) return
+          visited.add(neighbor)
+          queue.push(neighbor)
+        })
+      }
+
+      let sumX = 0
+      let sumY = 0
+      let count = 0
+
+      for (const id of nodeIds) {
+        const x = Number(graph.getNodeAttribute(id, 'x'))
+        const y = Number(graph.getNodeAttribute(id, 'y'))
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+        sumX += x
+        sumY += y
+        count += 1
+      }
+
+      if (count === 0) return
+
+      const centerX = sumX / count
+      const centerY = sumY / count
+      let radius = 0
+
+      for (const id of nodeIds) {
+        const x = Number(graph.getNodeAttribute(id, 'x'))
+        const y = Number(graph.getNodeAttribute(id, 'y'))
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+        radius = Math.max(radius, Math.hypot(x - centerX, y - centerY))
+      }
+
+      clusters.push({ nodeIds, centerX, centerY, radius })
+    })
+
+    return clusters
+  }
+
+
+  interface ScreenOverlapNode {
+    id: string
+    x: number
+    y: number
+    radius: number
+  }
+
+  function settleScreenOverlaps(graph: Graph): boolean {
+    if (!LAYOUT_SCREEN_OVERLAP_ENABLED || graph.order < 2 || !container.value) return false
+
+    const viewportWidth = container.value.clientWidth
+    const viewportHeight = container.value.clientHeight
+    if (viewportWidth <= 0 || viewportHeight <= 0) return false
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    const nodes: ScreenOverlapNode[] = []
+
+    graph.forEachNode((id, attributes) => {
+      if (attributes.filterHidden === true || attributes.hidden === true) return
+
+      const x = Number(attributes.x)
+      const y = Number(attributes.y)
+      const size = Number(attributes.size ?? 0)
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size <= 0) {
+        return
+      }
+
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+      nodes.push({ id, x, y, radius: size })
+    })
+
+    if (nodes.length < 2) return false
+
+    const width = maxX - minX
+    const height = maxY - minY
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return false
+    }
+
+    const unitsPerPixel = Math.max(width / viewportWidth, height / viewportHeight)
+    if (!Number.isFinite(unitsPerPixel) || unitsPerPixel <= 0) return false
+
+    const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX * unitsPerPixel
+    let maxRadius = 0
+    for (const node of nodes) {
+      node.radius *= unitsPerPixel
+      maxRadius = Math.max(maxRadius, node.radius)
+    }
+
+    const cellSize = Math.max(1, maxRadius * 2 + gap)
+    let moved = false
+
+    for (let iteration = 0; iteration < LAYOUT_SCREEN_OVERLAP_ITERATIONS; iteration += 1) {
+      const grid = new Map<string, number[]>()
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        const node = nodes[i]
+        if (!node) continue
+        const key = `${Math.floor(node.x / cellSize)}:${Math.floor(node.y / cellSize)}`
+        const bucket = grid.get(key)
+        if (bucket) bucket.push(i)
+        else grid.set(key, [i])
+      }
+
+      const shiftX = new Float32Array(nodes.length)
+      const shiftY = new Float32Array(nodes.length)
+      let collisions = 0
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        const a = nodes[i]
+        if (!a) continue
+        const cellX = Math.floor(a.x / cellSize)
+        const cellY = Math.floor(a.y / cellSize)
+
+        for (let dxCell = -1; dxCell <= 1; dxCell += 1) {
+          for (let dyCell = -1; dyCell <= 1; dyCell += 1) {
+            const bucket = grid.get(`${cellX + dxCell}:${cellY + dyCell}`)
+            if (!bucket) continue
+
+            for (const j of bucket) {
+              if (j <= i) continue
+              const b = nodes[j]
+              if (!b) continue
+
+              let dx = b.x - a.x
+              let dy = b.y - a.y
+              let distance = Math.hypot(dx, dy)
+              const target = a.radius + b.radius + gap
+              if (distance >= target) continue
+
+              if (distance < 0.0001) {
+                const angle = ((i * 97 + j * 53) % 360) * (Math.PI / 180)
+                dx = Math.cos(angle)
+                dy = Math.sin(angle)
+                distance = 1
+              }
+
+              collisions += 1
+              const push = ((target - distance) / distance) * LAYOUT_SCREEN_OVERLAP_STRENGTH * 0.5
+              const moveX = dx * push
+              const moveY = dy * push
+              shiftX[i] = (shiftX[i] ?? 0) - moveX
+              shiftY[i] = (shiftY[i] ?? 0) - moveY
+              shiftX[j] = (shiftX[j] ?? 0) + moveX
+              shiftY[j] = (shiftY[j] ?? 0) + moveY
+            }
+          }
+        }
+      }
+
+      if (collisions === 0) break
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        const node = nodes[i]
+        if (!node) continue
+        node.x += shiftX[i] ?? 0
+        node.y += shiftY[i] ?? 0
+      }
+
+      moved = true
+    }
+
+    if (!moved) return false
+
+    for (const node of nodes) {
+      graph.mergeNodeAttributes(node.id, { x: node.x, y: node.y })
+    }
+
+    return true
+  }
+
+  function stopOverlapLayout(runVisualSettle: boolean = false): void {
+    const hadOverlapLayout = overlapLayout.value !== null
+
+    if (overlapStopTimer.value) {
+      clearTimeout(overlapStopTimer.value)
+      overlapStopTimer.value = null
+    }
+
+    if (overlapLayout.value) {
+      overlapLayout.value.kill()
+      overlapLayout.value = null
+    }
+
+    if (runVisualSettle && hadOverlapLayout && graphInstance.value) {
+      settleScreenOverlaps(graphInstance.value)
+    }
+
+    if (graphInstance.value) {
+      cacheLayoutPositions(graphInstance.value)
+    }
+
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+    if (runVisualSettle) onLayoutSettled?.()
   }
 
   /**
@@ -736,6 +931,9 @@ export function useSigma(options: UseSigmaOptions) {
       sigmaInstance.value.kill()
       sigmaInstance.value = null
     }
+    if (graphInstance.value) {
+      graphInstance.value.clear()
+    }
     graphInstance.value = null
   }
 
@@ -747,29 +945,23 @@ export function useSigma(options: UseSigmaOptions) {
     ghostLayer.value?.setPartition(partition)
   }
 
-  function setReducers(reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>): void {
+  function setReducers(
+    reducers: Pick<Settings, 'nodeReducer' | 'edgeReducer'>,
+    edgeLabelsVisible?: boolean,
+  ): void {
     const sigma = sigmaInstance.value
     if (!sigma) return
-    sigma.setSetting('nodeReducer', reducers.nodeReducer)
-    sigma.setSetting('edgeReducer', reducers.edgeReducer)
-    sigma.refresh()
-  }
-
-  /**
-   * Toggle edge label rendering. Edge labels add clutter at the default view,
-   * so we only show them while a node is focused. Guarded against no-op churn:
-   * `applyFocusReducers` runs on every hover/leave/zoom-threshold event, but the
-   * edge-label visibility only actually flips at a couple of zoom thresholds. A
-   * redundant `setSetting` + `refresh` here reprocesses the whole graph into WebGL
-   * buffers for nothing — a real per-interaction stall — so skip when unchanged.
-   */
-  function setEdgeLabelsVisible(visible: boolean): void {
-    const sigma = sigmaInstance.value
-    if (!sigma) return
-    if (visible === lastEdgeLabelsVisible) return
-    lastEdgeLabelsVisible = visible
-    sigma.setSetting('renderEdgeLabels', visible)
-    sigma.refresh()
+    // Sigma schedules one refresh for setSettings; avoid two indexations plus a
+    // third explicit refresh when focus/filter reducers change together.
+    const settings: Partial<Settings> = {
+      nodeReducer: reducers.nodeReducer,
+      edgeReducer: reducers.edgeReducer,
+    }
+    if (typeof edgeLabelsVisible === 'boolean' && edgeLabelsVisible !== lastEdgeLabelsVisible) {
+      lastEdgeLabelsVisible = edgeLabelsVisible
+      settings.renderEdgeLabels = edgeLabelsVisible
+    }
+    sigma.setSettings(settings)
   }
 
   /**
@@ -839,7 +1031,6 @@ export function useSigma(options: UseSigmaOptions) {
     },
     stopLayout,
     setReducers,
-    setEdgeLabelsVisible,
     setEdgeKindVisible,
     setGhostPartition,
   }

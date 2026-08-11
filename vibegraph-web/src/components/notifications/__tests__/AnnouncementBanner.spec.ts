@@ -1,8 +1,8 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AnnouncementBanner from '../AnnouncementBanner.vue'
 import type { UserNotification } from '@/types/api'
-import i18n from '@/language'
+import i18n, { setLocale } from '@/language'
 
 const mocks = vi.hoisted(() => ({
   listNotifications: vi.fn(),
@@ -43,6 +43,7 @@ const announcement: UserNotification = {
 describe('AnnouncementBanner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setLocale('en-US')
   })
 
   it('renders a retryable error when the initial announcement request fails', async () => {
@@ -62,5 +63,20 @@ describe('AnnouncementBanner', () => {
     expect(mocks.listNotifications).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('Scheduled maintenance')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('renders the localized view action instead of the raw translation key', async () => {
+    mocks.listNotifications.mockResolvedValueOnce([announcement])
+
+    const wrapper = mount(AnnouncementBanner, { global: { plugins: [i18n] } })
+    await flushPromises()
+
+    expect(wrapper.get('.btn-primary').text()).toBe('View')
+    expect(wrapper.text()).not.toContain('common.view')
+
+    setLocale('vi-VN')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.btn-primary').text()).toBe('Xem')
   })
 })

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import AppIcon from '@/components/ui/AppIcon.vue'
 import { accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
 
@@ -10,6 +11,13 @@ const { t } = useI18n({ useScope: 'global' })
 const notification = ref<UserNotification | null>(null)
 const busy = ref(false)
 const errorMsg = ref('')
+
+/** Severity drives the accent colour and the icon, so meaning is never colour-only. */
+const severity = computed(() => (notification.value?.severity ?? 'INFO').toLowerCase())
+const severityIcon = computed(() =>
+  severity.value === 'critical' ? 'critical' : severity.value === 'warning' ? 'warning' : 'info',
+)
+const typeLabel = computed(() => notification.value?.type.replace(/_/g, ' ') ?? '')
 
 onMounted(loadActiveNotification)
 
@@ -64,42 +72,48 @@ async function read(): Promise<void> {
 <template>
   <aside
     v-if="errorMsg && !notification"
-    class="banner banner-error"
+    class="banner is-error"
     role="alert"
     aria-live="assertive"
   >
-    <div class="copy">
-      <span>{{ t('nav.announcements') }}</span>
-      <strong>{{ t('user.notifications.unavailableTitle') }}</strong>
-      <p>{{ errorMsg }}</p>
+    <span class="glyph"><AppIcon name="warning" :size="18" /></span>
+    <div class="body">
+      <p class="headline">{{ t('user.notifications.unavailableTitle') }}</p>
+      <p class="detail">{{ errorMsg }}</p>
     </div>
     <div class="actions">
-      <button type="button" :disabled="busy" @click="loadActiveNotification">
+      <button type="button" class="btn btn-ghost" :disabled="busy" @click="loadActiveNotification">
         {{ busy ? t('user.notifications.loading') : t('common.retry') }}
       </button>
     </div>
   </aside>
-  <aside
-    v-else-if="notification"
-    class="banner"
-    :class="`severity-${notification.severity.toLowerCase()}`"
-    aria-live="polite"
-  >
-    <div class="copy">
-      <span>{{ notification.type.replace(/_/g, ' ') }}</span>
-      <strong>{{ notification.title }}</strong>
-      <p>{{ notification.body }}</p>
-      <small v-if="errorMsg" role="alert">{{ errorMsg }}</small>
+
+  <aside v-else-if="notification" class="banner" :class="`is-${severity}`" aria-live="polite">
+    <span class="glyph"><AppIcon :name="severityIcon" :size="18" /></span>
+
+    <div class="body">
+      <p class="headline">
+        <span class="kind">{{ typeLabel }}</span>
+        <span class="title">{{ notification.title }}</span>
+      </p>
+      <p class="detail">{{ notification.body }}</p>
+      <p v-if="errorMsg" class="failure" role="alert">{{ errorMsg }}</p>
     </div>
+
     <div class="actions">
-      <button type="button" :disabled="busy" @click="read">{{ t('common.view') }}</button>
+      <button type="button" class="btn btn-primary" :disabled="busy" @click="read">
+        {{ t('common.view') }}
+      </button>
       <button
         v-if="notification.dismissible"
         type="button"
+        class="btn btn-icon"
         :disabled="busy"
+        :aria-label="t('common.close')"
+        :title="t('common.close')"
         @click="close"
       >
-        {{ t('common.close') }}
+        <AppIcon name="close" :size="16" />
       </button>
     </div>
   </aside>
@@ -107,87 +121,158 @@ async function read(): Promise<void> {
 
 <style scoped>
 .banner {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vg-space-4);
-  margin-bottom: var(--vg-space-3);
-  padding: var(--vg-space-4);
-  border: 1px solid rgba(96, 165, 250, 0.46);
-  border-left: 4px solid var(--vg-blue-bright);
+  --accent: var(--vg-blue-bright);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--vg-space-3);
+  margin-bottom: var(--vg-space-4);
+  padding: var(--vg-space-3) var(--vg-space-4);
+  border: 1px solid var(--vg-border);
+  border-left: 3px solid var(--accent);
   border-radius: var(--vg-radius);
-  background: linear-gradient(110deg, rgba(59, 130, 246, 0.17), rgba(59, 130, 246, 0.06));
-  color: var(--vg-text);
+  background: var(--vg-surface);
+  box-shadow: var(--vg-shadow-sm);
+  animation: banner-in var(--vg-dur) var(--vg-ease-out);
 }
-.severity-warning {
-  border-color: color-mix(in srgb, var(--vg-warning) 48%, var(--vg-border));
-  border-left-color: var(--vg-warning);
-  background: color-mix(in srgb, var(--vg-warning) 10%, var(--vg-surface));
+.is-warning {
+  --accent: var(--vg-warning);
 }
-.severity-critical {
-  border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
-  border-left-color: var(--vg-danger);
-  background: color-mix(in srgb, var(--vg-danger) 10%, var(--vg-surface));
+.is-critical,
+.is-error {
+  --accent: var(--vg-danger);
 }
-.banner-error {
-  border-color: color-mix(in srgb, var(--vg-danger) 52%, var(--vg-border));
-  border-left-color: var(--vg-danger);
-  background: color-mix(in srgb, var(--vg-danger) 9%, var(--vg-surface));
+
+/* Icon carries the severity so meaning is not conveyed by colour alone. */
+.glyph {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--vg-radius-sm);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
-.copy {
+
+.body {
   min-width: 0;
+  padding-top: 0.15rem;
 }
-.copy > span {
-  display: block;
-  margin-bottom: 0.25rem;
-  color: var(--vg-blue-bright);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
+.headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--vg-space-2);
+  margin: 0;
+}
+.kind {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
-.copy strong {
-  display: block;
-  font: 700 var(--vg-text-base) var(--vg-font-display);
+.title {
+  min-width: 0;
+  font-family: var(--vg-font-display);
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
+  color: var(--vg-text);
 }
-p {
-  max-width: 72ch;
-  margin: 0.35rem 0 0;
+.detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  max-width: 78ch;
+  margin: 0.2rem 0 0;
   color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
   line-height: 1.5;
 }
-small {
-  display: block;
-  margin-top: var(--vg-space-2);
+.failure {
+  margin: var(--vg-space-2) 0 0;
   color: var(--vg-danger);
+  font-size: var(--vg-text-xs);
 }
+
 .actions {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   gap: var(--vg-space-2);
 }
-button {
-  min-height: 38px;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--vg-border);
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vg-space-2);
+  min-height: 34px;
+  padding: 0 var(--vg-space-3);
+  border: 1px solid transparent;
   border-radius: var(--vg-radius-sm);
-  background: var(--vg-surface);
-  color: var(--vg-text);
   font: inherit;
-  font-weight: 700;
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
   cursor: pointer;
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    color var(--vg-dur-fast) var(--vg-ease-out);
 }
-button:disabled {
+.btn-primary {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--vg-text);
+}
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.btn-ghost {
+  border-color: var(--vg-border-strong);
+  background: transparent;
+  color: var(--vg-text);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--vg-surface-3);
+}
+/* Icon-only control keeps a 40px hit area while looking compact. */
+.btn-icon {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  background: transparent;
+  color: var(--vg-text-muted);
+}
+.btn-icon:hover:not(:disabled) {
+  background: var(--vg-surface-3);
+  color: var(--vg-text);
+}
+.btn:disabled {
   opacity: 0.55;
-  cursor: wait;
+  cursor: not-allowed;
 }
-@media (max-width: 620px) {
-  .banner {
-    align-items: stretch;
-    flex-direction: column;
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
-  .actions button {
-    flex: 1;
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .banner {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
 }
 </style>

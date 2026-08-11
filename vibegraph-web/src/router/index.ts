@@ -73,6 +73,11 @@ const router = createRouter({
           component: () => import('../views/user/ProjectsView.vue'),
         },
         {
+          path: 'trash',
+          name: 'trash',
+          component: () => import('../views/user/TrashView.vue'),
+        },
+        {
           path: 'api-keys',
           name: 'api-keys',
           component: () => import('../views/user/ApiKeysView.vue'),
@@ -166,7 +171,7 @@ const router = createRouter({
 // ─── Navigation guard ──────────────────────────────────────────────────────────
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (to.meta.requiresAuth || to.meta.guestOnly) {
+  if ((to.meta.requiresAuth || to.meta.guestOnly) && !auth.isLoggingOut) {
     await ensureSessionLoaded(auth)
   }
   const role = auth.user?.role?.toUpperCase() ?? ''

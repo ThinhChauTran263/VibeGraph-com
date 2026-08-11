@@ -24,14 +24,35 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+    # V16 exists in already-applied database history but is intentionally absent from source.
+    ignore-migration-patterns: "*:missing"
 
-  # Multipart limits for archive upload (POST /api/projects/import-archive).
-  # Per-file limit matches vibegraph.import.archive.max-size; request limit adds headroom
-  # for the multipart name field + boundaries so a full 100MB archive is not blocked here.
+  # Infrastructure safety ceilings for multipart parsing. Account plan quota is the
+  # business limit; these prevent unbounded request bodies from exhausting the host.
   servlet:
     multipart:
-      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
-      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE:2050MB}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:__disabled__}
+            client-secret: ${GOOGLE_CLIENT_SECRET:__disabled__}
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+          github:
+            client-id: ${GITHUB_CLIENT_ID:__disabled__}
+            client-secret: ${GITHUB_CLIENT_SECRET:__disabled__}
+            scope:
+              - read:user
+              - user:email
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
 
   # Neo4j connection
   neo4j:
@@ -80,23 +101,79 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  # Realtime/high-volume PostgreSQL storage. Disabled keeps the existing local
+  # control-plane tables active and leaves them untouched for a controlled cutover.
+  supabase:
+    enabled: ${VIBEGRAPH_SUPABASE_ENABLED:false}
+    # Runtime credential: CRUD only on the moved tables, no CREATE/ALTER/DROP.
+    jdbc-url: ${SUPABASE_DB_URL:}
+    username: ${SUPABASE_DB_USER:}
+    password: ${SUPABASE_DB_PASSWORD:}
+    schema: ${SUPABASE_DB_SCHEMA:vibegraph_realtime}
+    # Production must set this to true. It makes the migration credential mandatory and rejects a
+    # configuration where migration and runtime are the same role on the same database. Local and
+    # development setups may leave it false and reuse one credential; startup then logs a warning.
+    require-separate-credentials: ${SUPABASE_REQUIRE_SEPARATE_CREDENTIALS:false}
+    migration:
+      # DDL credential: creates the schema and runs Flyway. Never used by the runtime pool.
+      jdbc-url: ${SUPABASE_MIGRATION_DB_URL:}
+      username: ${SUPABASE_MIGRATION_DB_USER:}
+      password: ${SUPABASE_MIGRATION_DB_PASSWORD:}
+    maximum-pool-size: ${SUPABASE_DB_MAX_POOL_SIZE:10}
+    connection-timeout-ms: ${SUPABASE_DB_CONNECTION_TIMEOUT_MS:10000}
+    telemetry:
+      queue-capacity: ${SUPABASE_TELEMETRY_QUEUE_CAPACITY:10000}
+      batch-size: ${SUPABASE_TELEMETRY_BATCH_SIZE:250}
+      flush-interval-ms: ${SUPABASE_TELEMETRY_FLUSH_INTERVAL_MS:2000}
+      # Failed batches keep their identity and retry with exponential backoff. Telemetry is
+      # best-effort: batches live in memory, so a crash or an exhausted retry budget loses them.
+      retry-queue-capacity: ${SUPABASE_TELEMETRY_RETRY_QUEUE_CAPACITY:200}
+      max-attempts: ${SUPABASE_TELEMETRY_MAX_ATTEMPTS:4}
+      retry-backoff-ms: ${SUPABASE_TELEMETRY_RETRY_BACKOFF_MS:1000}
+      max-retry-backoff-ms: ${SUPABASE_TELEMETRY_MAX_RETRY_BACKOFF_MS:60000}
+      retry-batches-per-cycle: ${SUPABASE_TELEMETRY_RETRY_BATCHES_PER_CYCLE:2}
+      # Drain throughput is capped at batch-size x fresh-batches-per-cycle per flush cycle. Raise
+      # this only once VibeGraph-specs-2month/supabase-capacity-policy.md has a measured peak
+      # arrival rate to size against.
+      fresh-batches-per-cycle: ${SUPABASE_TELEMETRY_FRESH_BATCHES_PER_CYCLE:1}
+      max-split-depth: ${SUPABASE_TELEMETRY_MAX_SPLIT_DEPTH:4}
+      # The container termination grace period MUST be longer than this drain budget.
+      shutdown-drain-timeout-ms: ${SUPABASE_TELEMETRY_SHUTDOWN_DRAIN_TIMEOUT_MS:10000}
+      shutdown-retry-pause-ms: ${SUPABASE_TELEMETRY_SHUTDOWN_RETRY_PAUSE_MS:250}
+    retention:
+      request-event-days: ${SUPABASE_RETENTION_REQUEST_EVENT_DAYS:14}
+      security-event-days: ${SUPABASE_RETENTION_SECURITY_EVENT_DAYS:180}
+      dismissed-notification-days: ${SUPABASE_RETENTION_DISMISSED_NOTIFICATION_DAYS:90}
+      expired-announcement-days: ${SUPABASE_RETENTION_EXPIRED_ANNOUNCEMENT_DAYS:180}
+
   # ── Auth (Phase 1) ──────────────────────────────────────────────────────────
-  # JWT is HS256; the secret MUST be >=32 chars or the app fails fast at startup.
+  # JWT is HS512; the secret MUST be >=64 UTF-8 bytes or the app fails fast at startup.
   # realtime.demo-permit defaults false = /ws and /mcp require auth (fail closed);
   # setting it true permits those routes for demo/local only and logs a startup WARN.
   auth:
     jwt:
       secret: ${JWT_SECRET:}
-      expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+      expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:${JWT_EXPIRATION_MS:1800000}}
+      refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
+      # Secure by default: forgetting to set this in production would send session cookies over
+      # plaintext, so plain HTTP is the case that must opt out, not the other way round. Browsers
+      # accept Secure cookies on http://localhost, so local development still works unchanged;
+      # docker-compose sets it to false explicitly for anything reached over a LAN address.
+      secure-cookies: ${AUTH_COOKIE_SECURE:true}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    oauth:
+      frontend-url: ${FRONTEND_URL:http://localhost:5173}
+      success-path: ${OAUTH_SUCCESS_PATH:/}
+      login-path: ${OAUTH_LOGIN_PATH:/login}
     realtime:
       demo-permit: ${VIBEGRAPH_REALTIME_DEMO_PERMIT:false}
     # Explicit, opt-in admin bootstrap. Default disabled — normal startup never creates an admin.
     # Enable deliberately (one-shot) to create the admin account; requires ADMIN_EMAIL and one of
     # ADMIN_PASSWORD / ADMIN_PASSWORD_HASH or the app fails fast at startup.
     bootstrap:
-      enabled: true
-      admin-email: admin@vibegraph.com
-      admin-password: adminpassword
+      enabled: ${VIBEGRAPH_AUTH_BOOTSTRAP_ENABLED:false}
+      admin-email: ${ADMIN_EMAIL:}
+      admin-password: ${ADMIN_PASSWORD:}
       admin-password-hash: ${ADMIN_PASSWORD_HASH:}
 
   projects:
@@ -140,13 +217,22 @@ vibegraph:
     requests-per-minute-per-ip: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP:120}
     requests-per-minute-per-user: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_USER:240}
     requests-per-minute-per-api-key: ${VIBEGRAPH_REQUESTS_PER_MINUTE_PER_API_KEY:240}
+    # Only enable behind a reverse proxy that overwrites forwarded headers.
+    # trusted-proxies accepts exact IPs and CIDRs, e.g. 127.0.0.1,172.18.0.0/16.
     trust-proxy: ${VIBEGRAPH_TRUST_PROXY:false}
     trusted-proxies: ${VIBEGRAPH_TRUSTED_PROXIES:}
+    # Per-instance window store bounds. Enforcement is NOT cluster-wide: each replica keeps its
+    # own windows, so N replicas allow up to N times the configured rate. Once the cache is full,
+    # least-recently-used windows are evicted and enforcement degrades to best-effort for them.
+    rate-limit:
+      window-maximum-size: ${VIBEGRAPH_RATE_LIMIT_WINDOW_MAX_SIZE:100000}
+      window-ttl-ms: ${VIBEGRAPH_RATE_LIMIT_WINDOW_TTL_MS:180000}
 
-  # Archive upload (primary onboarding flow) — bound by ArchiveImportProperties.
+  # Legacy importer safety ceiling. Archive and GitHub services pass the account's
+  # remaining quota explicitly; this remains for compatibility with direct callers.
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
       # Writable workspace for uploaded archives. Never the read-only /projects mount.
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
       ignored-paths:
@@ -179,12 +265,12 @@ vibegraph:
       - http://127.0.0.1:5173
       - http://localhost:3000
 
-  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph). Caps what the
-  # browser receives by default so a huge project cannot freeze the tab during transfer
-  # /JSON.parse. Internal Java consumers still read the full graph directly.
+  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph). Default 0 disables
+  # truncation so filter counts and rendered graph data stay aligned. Set positive values in
+  # deployment if a browser safety cap is needed.
   graph:
-    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:1500}
-    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:4000}
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:0}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:0}
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 
@@ -199,12 +285,15 @@ vibegraph:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
     # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
-    # OFF: body-level data-flow can multiply node/edge counts, so it is opt-in.
-    # When enabled, the frontend still default-hides these deep types so the
-    # architecture graph stays readable (revealed via "Show all").
+    # ON: body-level data-flow is VibeGraph's core Java advantage — the MCP
+    # method-CPG/data-flow tools are empty without it. Set
+    # VIBEGRAPH_PARSER_DEEP_CPG=false to opt out on very large repos (the analyze
+    # max-nodes/max-edges ceilings below still fail fast before OOM either way).
+    # The frontend still default-hides these deep types so the architecture graph
+    # stays readable (revealed via "Show all").
     # NOTE: key MUST stay under `parser` — ParserServiceImpl reads
     # ${vibegraph.parser.deep-cpg-enabled}.
-    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:false}
+    deep-cpg-enabled: ${VIBEGRAPH_PARSER_DEEP_CPG:true}
 
   # Fail-fast ceilings for the in-memory analysis pipeline (AnalyzeServiceImpl). Exceeding either
   # marks the project FAILED instead of risking an OutOfMemoryError. Raise if the host has the heap.

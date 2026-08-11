@@ -10,6 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -63,6 +64,20 @@ public class GlobalExceptionHandler {
                 .message("Access denied")
                 .build();
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTooManyLoginAttempts(
+            TooManyLoginAttemptsException ex) {
+        // Same shape for an exhausted address budget and an exhausted account budget, so the
+        // response cannot be used to discover which accounts exist.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("TOO_MANY_LOGIN_ATTEMPTS")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.error(error));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
@@ -290,6 +305,12 @@ public class GlobalExceptionHandler {
                 .message("Resource not found")
                 .build();
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleDisconnectedAsyncRequest(AsyncRequestNotUsableException ex) {
+        // The client closed an async/SSE response; never write a JSON error to its event stream.
+        log.debug("Async response closed by client: {}", ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

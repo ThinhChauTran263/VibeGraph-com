@@ -19,11 +19,13 @@ defineProps<{
   padding: 0.25rem 0.75rem;
   border-radius: var(--vg-radius-pill);
   font-size: var(--vg-text-xs);
+  line-height: 1;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   min-width: 80px;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 /* Base statuses */
@@ -35,7 +37,8 @@ defineProps<{
   border: 1px solid rgba(34, 197, 94, 0.25);
 }
 .status-inactive,
-.status-disabled {
+.status-disabled,
+.status-deactivated {
   background-color: rgba(148, 163, 184, 0.12);
   color: var(--vg-text-dim);
   border: 1px solid var(--vg-border);

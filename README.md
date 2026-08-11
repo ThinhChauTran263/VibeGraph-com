@@ -102,6 +102,10 @@ See `VibeGraph-specs-2month/` for detailed documentation:
 - `deployment-plan.md` — Docker / domain / SSL / CI notes
 - `presentation.html` — Customer-facing overview (generated)
 
+## Codex Workflow
+
+Xem **[docs/codex/README.md](docs/codex/README.md)** để dùng Codex CLI theo workflow senior: cheat sheet, prompt copy-paste, multi-agent, session/context, debugging và verification riêng cho VibeGraph.
+
 ## MCP Configuration
 
 Add to your AI tool's `mcp.json`:

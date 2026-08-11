@@ -8,7 +8,7 @@
  * - Click node, emit selected
  * - Loading + error states
  */
-import { onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphExpand } from '@/composables/useGraphExpand'
 import { useFilters } from '@/composables/useFilters'
@@ -27,12 +27,20 @@ import {
   partitionFocusGraph,
   resolveFocusLabelDensity,
   type FocusLabelDensity,
+  type FocusReducers,
   type HoveredRelation,
 } from '@/lib/focusMode'
 import { createFlowFocusReducers, partitionFlowGraph } from '@/lib/flowFocus'
 import type { FlowListItem } from '@/lib/dataFlow'
 import { useGraphRealtime } from '@/composables/useGraphRealtime'
-import type { GraphIncrementalEvent, GraphNode, GraphUpdateEvent, NodeType } from '@/types/graph'
+import type {
+  EdgeType,
+  GraphData,
+  GraphIncrementalEvent,
+  GraphNode,
+  GraphUpdateEvent,
+  NodeType,
+} from '@/types/graph'
 
 const props = defineProps<{
   projectId: string
@@ -43,6 +51,8 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+const graphReady = ref(true)
+const revealTimer = ref<number | null>(null)
 
 // Left sidebar tab: file Explorer (browse source), Graph filters, or Data Flows.
 const activeSidebarTab = ref<'explorer' | 'filters' | 'flows'>('explorer')
@@ -94,6 +104,8 @@ function onResizeEnd(): void {
 
 // Monotonic counter to discard stale async graph loads (see load()).
 let loadSeq = 0
+const pendingInitialReveal = ref(false)
+let pendingRevealSeq: number | null = null
 
 // Graph focus is resolved from three independent inputs with a deterministic
 // priority (see applyFocusReducers):
@@ -176,13 +188,19 @@ const {
   nodes,
 } = useGraphData()
 
+// The right-hand detail column floats over the stage, so the top toolbar has to
+// reserve its width instead of running underneath it and hiding the search box.
+const detailOpen = computed(
+  () => graphReady.value && !loading.value && !error.value
+    && Boolean(activeFlowDetail.value || selectedNode.value),
+)
+
 const { expandNode, reset: resetExpand } = useGraphExpand()
 
 const {
   init: initSigma,
   graphInstance,
   setReducers,
-  setEdgeLabelsVisible,
   setEdgeKindVisible,
   setGhostPartition,
   refresh: refreshSigma,
@@ -191,6 +209,20 @@ const {
   focusNode,
 } = useSigma({
   container: canvasRef,
+  onLayoutSettled: () => {
+    if (!pendingInitialReveal.value) return
+    pendingInitialReveal.value = false
+    if (revealTimer.value) {
+      clearTimeout(revealTimer.value)
+      revealTimer.value = null
+    }
+    zoomToFit()
+    revealTimer.value = window.setTimeout(() => {
+      if (pendingRevealSeq !== loadSeq) return
+      graphReady.value = true
+      revealTimer.value = null
+    }, 300)
+  },
   onNodeClick: (nodeId: string) => {
     const node = nodes.value.find((n) => n.id === nodeId) ?? null
     // Clicking a graph node clears any pinned/previewed relation focus and takes
@@ -247,10 +279,32 @@ const {
  * redraws them below the WebGL edges. This guarantees a background node can never
  * cover a foreground edge.
  */
+function withFilterVisibility(reducers: FocusReducers): FocusReducers {
+  return {
+    nodeReducer: (node, attributes) => {
+      if (attributes.filterHidden === true) return { ...attributes, hidden: true }
+      return reducers.nodeReducer(node, attributes)
+    },
+    edgeReducer: (edge, attributes) => {
+      const graph = graphInstance.value
+      if (!graph) return reducers.edgeReducer(edge, attributes)
+      const source = graph.source(edge)
+      const target = graph.target(edge)
+      const sourceHidden = graph.getNodeAttribute(source, 'filterHidden') === true
+      const targetHidden = graph.getNodeAttribute(target, 'filterHidden') === true
+      if (attributes.filterHidden === true || sourceHidden || targetHidden) {
+        return { ...attributes, hidden: true }
+      }
+      return reducers.edgeReducer(edge, attributes)
+    },
+  }
+}
+
 function applyFocusReducers(): void {
   if (!graphInstance.value) return
   const graph = graphInstance.value
-
+  // Filtering is a cheap Graphology attribute mutation. Apply it before focus
+  // logic so a focused reducer can never reveal a filtered endpoint.
   // 1 & 2: relation focus (hover preview, then pinned) — relative to the selected
   // node. The relation's edge connects the selected node to its counterpart.
   const relation = hoveredRelation.value ?? pinnedRelation.value
@@ -283,37 +337,43 @@ function applyFocusReducers(): void {
   // they'd flicker/vanish without a selection). The renderer hides any that don't
   // fully fit their edge.
   const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
-  setReducers({
+  setReducers(withFilterVisibility({
     nodeReducer: (_node, attributes) => attributes,
     edgeReducer: (_edge, attributes) => {
       return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
     },
-  })
+  }), showEdgeLabels)
   setGhostPartition?.(null)
-  setEdgeLabelsVisible?.(showEdgeLabels)
   updateHighlightedTypes(null)
 }
 
 /** Focus the graph on a node (and optional single relation), revealing edge labels. */
 function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   if (!graphInstance.value) return
+  const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers(
-    createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
+    withFilterVisibility(
+      createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
+    ),
+    showEdgeLabels,
   )
   const partition = partitionFocusGraph(nodeId, graphInstance.value, relation)
   setGhostPartition?.(partition)
   updateHighlightedTypes(partition.foregroundNodes)
-  setEdgeLabelsVisible?.(edgeLabelsEnabled.value && labelDensity.value === 'edges')
 }
 
 /** Spotlight the whole active Data Flow chain on the graph. */
 function applyFlowFocus(): void {
   if (!graphInstance.value || !activeFlow.value) return
   const { nodeIds, edgeIds, primaryNodeId } = activeFlow.value
-  setReducers(createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId))
+  setReducers(
+    withFilterVisibility(
+      createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId),
+    ),
+    true,
+  )
   setGhostPartition?.(partitionFlowGraph(nodeIds, edgeIds, graphInstance.value))
   updateHighlightedTypes(nodeIds)
-  setEdgeLabelsVisible?.(true)
 }
 
 // A Data Flow was selected in the Flows panel: highlight the chain, open the
@@ -355,18 +415,28 @@ async function load(projectId: string) {
   const graph = await loadGraph(projectId)
   if (seq !== loadSeq) return
   if (graph && canvasRef.value) {
+    beginLayoutReveal(seq)
     // A project (re)load starts from a clean layout: drop cached positions so the
     // fresh graph is laid out from scratch. Filter toggles / expansions keep the
     // cache (see useSigma.applyCachedLayout) so they never recompute the layout.
     resetSigmaLayout()
+    // graphData changes once during loadGraph; the graph returned above is
+    // already initialized, so discard that duplicate watcher rebuild.
+    skipNextRebuild = true
     initSigma(graph)
-    applyFocusReducers()
-    // Frame the whole graph once the canvas has its final box (next frame), so a
-    // first-paint mis-measure can't leave the graph offset to one edge.
-    requestAnimationFrame(() => {
-      if (seq === loadSeq) zoomToFit()
-    })
+    setEdgeKindVisible?.(edgeKindEnabled.value)
+    applyFilterVisibility()
   }
+}
+
+function beginLayoutReveal(seq: number = loadSeq): void {
+  if (revealTimer.value) {
+    clearTimeout(revealTimer.value)
+    revealTimer.value = null
+  }
+  pendingRevealSeq = seq
+  pendingInitialReveal.value = true
+  graphReady.value = false
 }
 
 function onSearchSelect(node: GraphNode): void {
@@ -504,6 +574,7 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
         size: getNodeSize(node.type),
         color: getNodeColor(node.type),
         nodeType: node.type,
+        layer: getNodeLayer(node),
         fullName: node.fullName,
         filePath: node.filePath,
         lineNumber: node.lineNumber,
@@ -519,23 +590,77 @@ function patchSigmaIncremental(event: GraphIncrementalEvent): void {
       color: getNodeColor(node.type),
       type: 'circle',
       nodeType: node.type,
+      layer: getNodeLayer(node),
       fullName: node.fullName,
       filePath: node.filePath,
       lineNumber: node.lineNumber,
     })
   }
 
-  // Added edges: respect hidden types, present endpoints, and the one-line-per-pair rule.
+  // Added edges: respect hidden types and present endpoints. Preserve every
+  // backend edge key so directed edges and multiple edge types between the same
+  // node pair are not silently dropped.
   for (const edge of addedEdges) {
     if (hiddenEdges.has(edge.type)) continue
     if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
     if (graph.hasEdge(edge.id)) continue
-    if (graph.hasEdge(edge.source, edge.target) || graph.hasEdge(edge.target, edge.source)) continue
     graph.addEdgeWithKey(edge.id, edge.source, edge.target, getEdgeAttributes(edge))
   }
 
+  applyFocusReducers()
+}
+
+function applyFilterVisibility(): void {
+  const graph = graphInstance.value
+  if (!graph) return
+
+  const hiddenNodeTypes = filters.hiddenNodeTypes.value
+  const hiddenEdgeTypes = filters.hiddenEdgeTypes.value
+  const isolatedNodeIds = new Set<string>()
+  if (filters.hideIsolatedNodes.value) {
+    graph.forEachNode((node) => {
+      if (graph.degree(node) === 0) isolatedNodeIds.add(node)
+    })
+  }
+
+  graph.forEachNode((node, attributes) => {
+    graph.setNodeAttribute(
+      node,
+      'filterHidden',
+      hiddenNodeTypes.has(attributes.nodeType as NodeType) || isolatedNodeIds.has(node),
+    )
+  })
+
+  graph.forEachEdge((edge, attributes, source, target) => {
+    const sourceHidden = graph.getNodeAttribute(source, 'filterHidden') === true
+    const targetHidden = graph.getNodeAttribute(target, 'filterHidden') === true
+    graph.setEdgeAttribute(
+      edge,
+      'filterHidden',
+      hiddenEdgeTypes.has(attributes.edgeType as EdgeType) || sourceHidden || targetHidden,
+    )
+  })
+
   refreshSigma()
   applyFocusReducers()
+}
+
+/**
+ * Filter toggles should reuse the live Graphology graph whenever possible.
+ * A rebuild is only needed when a newly enabled type has not been rendered yet.
+ */
+function graphContainsData(graph: NonNullable<typeof graphInstance.value>, data: GraphData): boolean {
+  for (const node of data.nodes) {
+    if (!graph.hasNode(node.id)) return false
+  }
+  for (const edge of data.edges) {
+    // Graphology keeps one representative edge per node pair, so the backend
+    // edge id is not necessarily the id currently drawn by the adapter.
+    const hasPair =
+      graph.hasEdge(edge.source, edge.target) || graph.hasEdge(edge.target, edge.source)
+    if (!hasPair) return false
+  }
+  return true
 }
 
 /** Place a newly-added node next to an already-present neighbour (small jitter), else near origin. */
@@ -558,33 +683,61 @@ function spawnPosition(
   return { x: Math.random() * 200 - 100, y: Math.random() * 200 - 100 }
 }
 
+function getNodeLayer(node: GraphNode): string {
+  const value = node.properties?.layer ?? node.properties?.springLayer
+  return typeof value === 'string' && value ? value : ''
+}
+
 // Rebuilding + re-rendering the whole Sigma graph is expensive. Filter toggles can
 // fire several reactive changes in a burst, so we debounce the rebuild: the graph is
 // rebuilt once after the user stops toggling, never on every intermediate change.
-const rebuildGraph = debounce((data: typeof filteredGraphData.value) => {
+const rebuildGraph = debounce((data: typeof graphData.value) => {
   // A realtime patch already applied this change in place — don't rebuild (would reset camera).
   if (skipNextRebuild) {
     skipNextRebuild = false
     return
   }
   if (!canvasRef.value || loading.value || error.value) return
+  beginLayoutReveal()
   initSigma(buildGraph(data))
-  applyFocusReducers()
+  setEdgeKindVisible?.(edgeKindEnabled.value)
+  applyFilterVisibility()
 }, 200)
 
-watch(filteredGraphData, (graphData) => {
+watch(graphData, (nextGraphData) => {
   // Selection consistency is cheap and must stay synchronous so a stale selected
   // node is cleared immediately even before the debounced rebuild runs.
-  if (selectedNode.value && !graphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+  if (selectedNode.value && !nextGraphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
     clearSelection()
   }
 
   if (!canvasRef.value || loading.value || error.value) return
-  rebuildGraph(graphData)
+  rebuildGraph(nextGraphData)
+})
+
+watch([filters.hiddenNodeTypes, filters.hiddenEdgeTypes, filters.hideIsolatedNodes], () => {
+  if (!canvasRef.value || loading.value || error.value || !graphInstance.value) return
+  const nextGraphData = filteredGraphData.value
+
+  if (graphContainsData(graphInstance.value, nextGraphData)) {
+    // The type was rendered before: hide/show it in-place and preserve all
+    // settled coordinates, camera state, and WebGL buffers.
+    rebuildGraph.cancel()
+    applyFilterVisibility()
+    return
+  }
+
+  // The first enable of a type that is not on the canvas still needs one layout.
+  // Keep the canvas covered by the existing finalizing spinner until it settles.
+  rebuildGraph(nextGraphData)
 })
 
 onUnmounted(() => {
   rebuildGraph.cancel()
+  if (revealTimer.value) {
+    clearTimeout(revealTimer.value)
+    revealTimer.value = null
+  }
   window.removeEventListener('pointermove', onResizeMove)
   window.removeEventListener('pointerup', onResizeEnd)
 })
@@ -595,13 +748,13 @@ onUnmounted(() => {
     ref="wrapperRef"
     class="graph-canvas-wrapper"
     :class="{
-      'graph-canvas-wrapper--detail-open': !loading && !error && (selectedNode || activeFlowDetail),
-      'graph-canvas-wrapper--collapsed': !loading && !error && sidebarCollapsed,
-      'graph-canvas-wrapper--loading': loading || error,
+      'graph-canvas-wrapper--detail-open': graphReady && !loading && !error && (selectedNode || activeFlowDetail),
+      'graph-canvas-wrapper--collapsed': graphReady && !loading && !error && sidebarCollapsed,
+      'graph-canvas-wrapper--loading': loading || error || !graphReady,
     }"
     :style="{ '--sidebar-width': (sidebarCollapsed ? 0 : sidebarWidth) + 'px' }"
   >
-    <aside v-show="!loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
+    <aside v-show="graphReady && !loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
       <div class="graph-canvas__sidebar-topbar">
         <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
           <button
@@ -663,7 +816,7 @@ onUnmounted(() => {
     </aside>
 
     <div
-      v-if="!loading && !error && !sidebarCollapsed"
+      v-if="graphReady && !loading && !error && !sidebarCollapsed"
       class="graph-canvas__resizer"
       role="separator"
       aria-orientation="vertical"
@@ -673,10 +826,10 @@ onUnmounted(() => {
       @pointerdown="onResizeStart"
     />
 
-    <div class="graph-canvas__stage">
-      <div ref="canvasRef" class="graph-canvas" />
+    <div class="graph-canvas__stage" :class="{ 'graph-canvas__stage--detail-open': detailOpen }">
+      <div ref="canvasRef" class="graph-canvas" :class="{ 'graph-canvas--hidden': !graphReady || loading || error }" />
 
-      <div v-if="!loading && !error" class="graph-top-controls">
+      <div v-if="graphReady && !loading && !error" class="graph-top-controls">
         <button
           v-if="sidebarCollapsed"
           type="button"
@@ -716,7 +869,7 @@ onUnmounted(() => {
         />
       </div>
 
-      <div v-if="!loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
+      <div v-if="graphReady && !loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
         <div class="graph-controls-help__title">Controls</div>
         <div class="graph-controls-help__row">
           <span class="graph-controls-help__icon graph-controls-help__icon--primary">L</span>
@@ -732,9 +885,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="loading" class="graph-overlay graph-overlay--loading">
+      <div v-if="(loading || !graphReady) && !error" class="graph-overlay graph-overlay--loading">
         <div class="spinner" aria-label="Loading graph" />
-        <p>Loading graph...</p>
+        <p>{{ loading ? 'Loading graph...' : 'Finalizing graph layout...' }}</p>
       </div>
 
       <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
@@ -742,31 +895,31 @@ onUnmounted(() => {
         <p class="error-message">{{ error }}</p>
         <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
       </div>
+
+      <aside v-if="graphReady && !loading && !error && activeFlowDetail" class="graph-canvas__detail">
+        <DataFlowDetailPanel
+          :item="activeFlowDetail"
+          :selected-node-id="activeFlow?.primaryNodeId ?? null"
+          @focus-step="onFlowStep"
+          @close="onFlowClear"
+        />
+      </aside>
+
+      <aside v-else-if="graphReady && !loading && !error && selectedNode" class="graph-canvas__detail">
+        <NodeDetailPanel
+          :pinned-edge-id="pinnedRelation?.edgeId ?? null"
+          :project-id="props.projectId"
+          @close="onDetailClose"
+          @relation-hover="onRelationHover"
+          @relation-select="onRelationSelect"
+        />
+        <ImpactAnalysisPanel
+          :project-id="props.projectId"
+          :node="selectedNode"
+          @select="onImpactSelect"
+        />
+      </aside>
     </div>
-
-    <aside v-if="!loading && !error && activeFlowDetail" class="graph-canvas__detail">
-      <DataFlowDetailPanel
-        :item="activeFlowDetail"
-        :selected-node-id="activeFlow?.primaryNodeId ?? null"
-        @focus-step="onFlowStep"
-        @close="onFlowClear"
-      />
-    </aside>
-
-    <aside v-else-if="!loading && !error && selectedNode" class="graph-canvas__detail">
-      <NodeDetailPanel
-        :pinned-edge-id="pinnedRelation?.edgeId ?? null"
-        :project-id="props.projectId"
-        @close="onDetailClose"
-        @relation-hover="onRelationHover"
-        @relation-select="onRelationSelect"
-      />
-      <ImpactAnalysisPanel
-        :project-id="props.projectId"
-        :node="selectedNode"
-        @select="onImpactSelect"
-      />
-    </aside>
   </div>
 </template>
 
@@ -785,7 +938,7 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--detail-open {
-  grid-template-columns: var(--sidebar-width, 18rem) 1fr 23rem;
+  grid-template-columns: var(--sidebar-width, 18rem) 1fr;
 }
 
 /* When the sidebar is collapsed it is removed from the grid flow (display:none),
@@ -796,7 +949,7 @@ onUnmounted(() => {
 }
 
 .graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
-  grid-template-columns: 1fr 23rem;
+  grid-template-columns: 1fr;
 }
 
 /* While loading or in an error state the sidebar/detail are hidden, but the grid
@@ -965,6 +1118,20 @@ onUnmounted(() => {
 }
 
 .graph-canvas__stage {
+  /* Single source of truth for the floating detail column width. The toolbar
+     reserves the same value, so the two can never drift apart. */
+  --detail-width: 23rem;
+  /* Narrower than this and the toolbar cannot keep a usable search box beside the
+     panel. The number is the sum, not a guess:
+       1rem left + 12rem search floor + 0.75rem gap + 23rem panel + 1rem right
+       = 37.75rem, rounded up to 40rem for slack.
+     The toggles may wrap onto their own line, so the search floor is what binds. */
+  --detail-side-by-side-min: 40rem;
+  /* Queried instead of the viewport because the stage is what actually has to fit
+     both. The left sidebar is user-resizable, so viewport width says nothing about
+     how much room is left here — that mismatch is what let the panel cover the
+     search box between roughly 1024px and 1150px. */
+  container-type: inline-size;
   position: relative;
   min-width: 0;
   height: 100%;
@@ -977,18 +1144,34 @@ onUnmounted(() => {
   background: #0f172a;
 }
 
+.graph-canvas--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Pure layout column — deliberately no border, background, padding or shadow.
+   NodeDetailPanel, ImpactAnalysisPanel and DataFlowDetailPanel are each already a
+   finished card (1px border, 1rem radius, 1rem padding, blur, shadow). Giving the
+   column the same chrome wrapped a card inside an identical card and the wrapper's
+   padding read as dead space around every panel. */
 .graph-canvas__detail {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 7;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 1rem;
+  width: min(var(--detail-width), calc(100% - 2rem));
   /* The whole column scrolls as one. Panels size to their content so the Impact
      Analysis results are never crushed to a zero-height (previously the panel was
      capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
   overflow-y: auto;
-  border-left: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.85);
+  /* The cards carry their own shadow; a scrollbar gutter keeps them from being
+     clipped against the stage edge when the column overflows. */
+  scrollbar-gutter: stable;
 }
 
 /* Node Detail caps its height and scrolls internally so a node with many
@@ -1030,7 +1213,7 @@ onUnmounted(() => {
   }
 
   .graph-canvas-wrapper--detail-open {
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
   }
 
   .graph-canvas-wrapper--collapsed {
@@ -1038,13 +1221,27 @@ onUnmounted(() => {
   }
 
   .graph-canvas-wrapper--collapsed.graph-canvas-wrapper--detail-open {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .graph-canvas__detail {
-    border-left: none;
-    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
     max-height: 50vh;
+  }
+
+  /* Below this breakpoint the detail column docks to the bottom, so it no longer
+     shares the top-right corner with the toolbar — take the reserved width back.
+     The extra `.graph-canvas-wrapper` is deliberate, not redundant: the container
+     query further down matches the same selector at (0,2,0) and would otherwise win
+     on source order, leaving the toolbar reserving 23rem for a panel that is no
+     longer beside it. Here the stage can be wide (the sidebar becomes a full-width
+     row at this breakpoint), so the container query alone cannot tell. */
+  .graph-canvas-wrapper .graph-canvas__stage--detail-open .graph-top-controls {
+    right: 1rem;
   }
 }
 
@@ -1176,19 +1373,50 @@ onUnmounted(() => {
   position: absolute;
   top: 1rem;
   left: 1rem;
+  /* Detail column is z-index 7 and pinned to the same right edge. Reserving its
+     width here is what keeps it from covering the search box; the toolbar shrinks
+     rather than sliding under the panel. */
   right: 1rem;
   z-index: 6;
   display: flex;
-  flex-wrap: nowrap;
+  /* Wrapping is the escape valve: once the reserved detail width leaves too little
+     room, the search box drops to its own line instead of being squeezed to nothing. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.625rem;
+  transition: right 200ms ease;
+}
+
+/* Only reserve the panel's width while there is genuinely room for both. Reserving
+   it on a narrow stage left the toolbar ~90px wide, and the search box — floored at
+   min-width: 12rem — then overflowed its own container straight under the panel.
+   Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
+@container (min-width: 40rem) {
+  .graph-canvas__stage--detail-open .graph-top-controls {
+    right: calc(1rem + var(--detail-width) + 0.75rem);
+  }
+}
+
+/* Not enough room side by side: dock the panel to the bottom and give the toolbar
+   the full width back. Same treatment the narrow-viewport breakpoint already used,
+   now driven by the space that actually matters. */
+@container (max-width: 39.99rem) {
+  .graph-canvas__detail {
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+    max-height: 50vh;
+  }
 }
 
 .graph-top-controls :deep(.search-bar) {
   flex: 1 1 14rem;
   width: auto;
   max-width: 45rem;
-  min-width: 0;
+  /* Floor the shrink so the field stays typable; below this the toolbar wraps. */
+  min-width: 12rem;
 }
 
 .graph-edge-label-toggle {

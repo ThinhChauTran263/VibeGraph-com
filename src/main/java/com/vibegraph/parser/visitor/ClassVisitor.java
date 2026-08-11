@@ -4,8 +4,10 @@ import com.github.javaparser.ast.body.AnnotationDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.EnumDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -60,19 +62,19 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     private void extractInheritanceEdges(ClassOrInterfaceDeclaration declaration, String sourceFullName) {
         // EXTENDS edges
         for (ClassOrInterfaceType extendedType : declaration.getExtendedTypes()) {
-            String targetFullName = resolveTypeName(extendedType, declaration);
-            extractedEdges.add(EdgeData.of("EXTENDS", sourceFullName, targetFullName, Map.of(
-                    "lineNumber", extendedType.getBegin().map(p -> p.line).orElse(0)
-            )));
+            TypeReferenceSupport.resolveTypeReference(extendedType, declaration)
+                    .ifPresent(targetFullName -> extractedEdges.add(EdgeData.of("EXTENDS", sourceFullName, targetFullName, Map.of(
+                            "lineNumber", extendedType.getBegin().map(p -> p.line).orElse(0)
+                    ))));
         }
 
         // IMPLEMENTS edges (only for classes)
         if (!declaration.isInterface()) {
             for (ClassOrInterfaceType implementedType : declaration.getImplementedTypes()) {
-                String targetFullName = resolveTypeName(implementedType, declaration);
-                extractedEdges.add(EdgeData.of("IMPLEMENTS", sourceFullName, targetFullName, Map.of(
-                        "lineNumber", implementedType.getBegin().map(p -> p.line).orElse(0)
-                )));
+                TypeReferenceSupport.resolveTypeReference(implementedType, declaration)
+                        .ifPresent(targetFullName -> extractedEdges.add(EdgeData.of("IMPLEMENTS", sourceFullName, targetFullName, Map.of(
+                                "lineNumber", implementedType.getBegin().map(p -> p.line).orElse(0)
+                        ))));
             }
         }
 
@@ -86,31 +88,6 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         }
     }
 
-    private String resolveTypeName(ClassOrInterfaceType type, ClassOrInterfaceDeclaration context) {
-        // Try to resolve fully qualified name from imports or same package
-        String simpleName = type.getNameAsString();
-
-        // Check if it's already qualified
-        if (simpleName.contains(".")) {
-            return simpleName;
-        }
-
-        // Try to find from imports in the compilation unit
-        return context.findCompilationUnit()
-                .flatMap(cu -> cu.getImports().stream()
-                        .filter(imp -> !imp.isAsterisk())
-                        .filter(imp -> imp.getName().getIdentifier().equals(simpleName))
-                        .findFirst()
-                        .map(imp -> imp.getNameAsString()))
-                .orElseGet(() -> {
-                    // Fallback: use package name + simple name if in same package
-                    return context.findCompilationUnit()
-                            .flatMap(cu -> cu.getPackageDeclaration())
-                            .map(pkg -> pkg.getNameAsString() + "." + simpleName)
-                            .orElse(simpleName);
-                });
-    }
-
     private NodeData toNodeData(ClassOrInterfaceDeclaration declaration) {
         String type = declaration.isInterface() ? "Interface" : classNodeType(declaration);
         Map<String, Object> properties = new HashMap<>();
@@ -119,9 +96,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("final", declaration.isFinal());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
 
         return NodeData.of(
                 type,
@@ -139,9 +116,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("visibility", declaration.getAccessSpecifier().asString());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
         properties.put("values", declaration.getEntries().stream()
                 .map(entry -> entry.getNameAsString())
                 .toList());
@@ -160,6 +137,7 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     private NodeData toNodeData(AnnotationDeclaration declaration) {
         Map<String, Object> properties = new HashMap<>();
         properties.put("visibility", declaration.getAccessSpecifier().asString());
+        properties.put("annotations", annotationNames(declaration));
 
         return NodeData.of(
                 "Annotation",
@@ -177,9 +155,9 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
         properties.put("visibility", declaration.getAccessSpecifier().asString());
         properties.put("static", declaration.isStatic());
         properties.put("inner", declaration.isNestedType());
-        properties.put("springLayer", springLayer(declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList()));
+        List<String> annotations = annotationNames(declaration);
+        properties.put("annotations", annotations);
+        properties.put("springLayer", springLayer(annotations));
         properties.put("components", declaration.getParameters().stream()
                 .map(parameter -> parameter.getNameAsString())
                 .toList());
@@ -196,10 +174,15 @@ public class ClassVisitor extends VoidVisitorAdapter<Object> {
     }
 
     private String classNodeType(ClassOrInterfaceDeclaration declaration) {
-        List<String> annotations = declaration.getAnnotations().stream()
-                .map(annotation -> annotation.getName().getIdentifier())
-                .toList();
+        List<String> annotations = annotationNames(declaration);
         return isDbModel(annotations) ? "DBModel" : "Class";
+    }
+
+    private List<String> annotationNames(NodeWithAnnotations<?> declaration) {
+        return declaration.getAnnotations().stream()
+                .map(annotation -> annotation.getName().getIdentifier())
+                .distinct()
+                .toList();
     }
 
     private boolean isDbModel(List<String> annotations) {

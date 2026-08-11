@@ -12,9 +12,18 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.web.context.NullSecurityContextRepository;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -28,16 +37,21 @@ import com.vibegraph.abuse.IpBlockService;
 import com.vibegraph.abuse.RateLimitFilter;
 import com.vibegraph.abuse.RequestEventService;
 import com.vibegraph.auth.web.ApiKeyAuthFilter;
+import com.vibegraph.auth.web.CookieCsrfFilter;
 import com.vibegraph.auth.web.JwtAuthFilter;
 import com.vibegraph.auth.web.RestAccessDeniedHandler;
 import com.vibegraph.auth.web.RestAuthEntryPoint;
+import com.vibegraph.auth.web.StatelessSessionCookieFilter;
+import com.vibegraph.auth.oauth.OAuthRedirectProperties;
 import com.vibegraph.common.config.CorsProperties;
+
+import jakarta.servlet.DispatcherType;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * Explicit, stateless security policy (Phase 1). No HTTP session, no CSRF (token-based,
- * no cookies), JWT bearer auth via {@link JwtAuthFilter}.
+ * Explicit, stateless security policy. Browser JWT cookies are protected by the custom client
+ * header CSRF boundary; bearer/API-key clients remain stateless and do not need a CSRF token.
  *
  * <p>Permit list is deliberately narrow: {@code /api/auth/**}, {@code /actuator/health}, the
  * WebSocket transport handshake, and CORS preflight. STOMP sessions authenticate independently on
@@ -51,13 +65,18 @@ import lombok.RequiredArgsConstructor;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({JwtProperties.class, RealtimeSecurityProperties.class, AbuseProperties.class})
+@EnableConfigurationProperties({
+        JwtProperties.class,
+        RealtimeSecurityProperties.class,
+        AbuseProperties.class,
+        OAuthRedirectProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final CookieCsrfFilter cookieCsrfFilter;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final RestAuthEntryPoint authEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
@@ -67,6 +86,11 @@ public class SecurityConfig {
     private final IpBlockService ipBlockService;
     private final RequestEventService requestEventService;
     private final ObjectMapper objectMapper;
+    private final AuthenticationSuccessHandler oAuth2LoginSuccessHandler;
+    private final AuthenticationFailureHandler oAuth2LoginFailureHandler;
+    private final OAuth2UserService<OAuth2UserRequest, OAuth2User> oAuth2UserService;
+    private final AuthorizationRequestRepository<OAuth2AuthorizationRequest> oAuth2AuthorizationRequestRepository;
+    private final StatelessSessionCookieFilter statelessSessionCookieFilter;
 
     @Bean
     public ClientAddressResolver clientAddressResolver() {
@@ -79,13 +103,15 @@ public class SecurityConfig {
     }
 
     @Bean
-    public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver) {
+    public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         return new RateLimitFilter(abuseProperties, resolver, requestEventService, objectMapper,
-                java.time.Clock.systemUTC());
+                java.time.Clock.systemUTC(), meterRegistry);
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) throws Exception {
         boolean demoPermit = realtimeProperties.isDemoPermit();
         if (demoPermit) {
             log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
@@ -97,13 +123,44 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        // This service answers JSON, not pages — the SPA is served separately, and
+                        // its own server still needs a CSP of its own. What this policy protects is
+                        // the HTML Spring itself can emit (error pages, OAuth redirect stops): if
+                        // one of those ever reflected input, nothing here would be allowed to load
+                        // or execute.
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(String.join("; ",
+                                "default-src 'none'",
+                                "frame-ancestors 'none'",
+                                "base-uri 'none'",
+                                "form-action 'self'")))
+                        .referrerPolicy(referrer -> referrer.policy(
+                                ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        // Sent only over HTTPS by Spring, so it stays inert in local HTTP dev.
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000L))
+                        .permissionsPolicyHeader(permissions -> permissions.policy(
+                                "camera=(), microphone=(), geolocation=(), interest-cohort=()")))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .securityContext(sc -> sc.securityContextRepository(new NullSecurityContextRepository()))
+                .requestCache(cache -> cache.disable())
                 .exceptionHandling(eh -> eh
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> {
+                    // MVC completes SseEmitter requests through an ASYNC dispatch after a
+                    // client disconnects. The initial request is still authenticated below;
+                    // re-authorizing the internal dispatch can only produce a late 403 after
+                    // the response has already been committed.
+                    auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    auth.requestMatchers("/api/auth/**", "/actuator/health", "/ws/**").permitAll();
+                    auth.requestMatchers(
+                            "/api/auth/**",
+                            "/actuator/health",
+                            "/ws/**",
+                            "/oauth2/**",
+                            "/login/oauth2/**").permitAll();
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/mcp/**").permitAll();
@@ -112,10 +169,18 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(authorization -> authorization
+                                .authorizationRequestRepository(oAuth2AuthorizationRequestRepository))
+                        .userInfoEndpoint(userInfo -> userInfo.userService(oAuth2UserService))
+                        .successHandler(oAuth2LoginSuccessHandler)
+                        .failureHandler(oAuth2LoginFailureHandler))
+                .addFilterBefore(statelessSessionCookieFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(cookieCsrfFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(rateLimitFilter(clientAddressResolver()), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
+                .addFilterBefore(rateLimitFilter(clientAddressResolver(), meterRegistry), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();
     }
