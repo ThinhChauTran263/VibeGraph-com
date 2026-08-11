@@ -39,6 +39,12 @@ public class Neo4jGraphRepository implements GraphRepository {
     private static final int MAX_DETAIL_CONNECTIONS = 50;
     private static final int MAX_IMPACT_NODES_PER_DEPTH = 50;
 
+    /**
+     * Shared label added to every node by {@code V2__symbol_label.cypher} so the hot queries can
+     * use an index. It is infrastructure, never a node's domain type.
+     */
+    private static final String SYMBOL_LABEL = "Symbol";
+
     private final Driver neo4jDriver;
 
     @Override
@@ -535,11 +541,6 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     private NodeDto mapNodeToDto(Node node) {
-        String type = "Unknown";
-        for (String label : node.labels()) {
-            type = label;
-            break;
-        }
         Map<String, Object> properties = new HashMap<>(node.asMap());
         properties.remove("projectId");
         properties.remove("fullName");
@@ -549,13 +550,33 @@ public class Neo4jGraphRepository implements GraphRepository {
 
         return NodeDto.builder()
                 .id(stableNodeId(node))
-                .type(type)
+                .type(domainType(node))
                 .name(node.get("name").asString(""))
                 .fullName(node.get("fullName").asString(""))
                 .filePath(node.get("filePath").asString(""))
                 .lineNumber(node.get("lineNumber").isNull() ? null : node.get("lineNumber").asInt())
                 .properties(properties)
                 .build();
+    }
+
+    /**
+     * Resolves a node's domain type from its labels.
+     *
+     * <p>Since V2 every node also carries the shared {@code :Symbol} label, and Neo4j gives no
+     * ordering guarantee for {@code labels()}. Taking the first label would therefore return
+     * "Symbol" for an arbitrary subset of nodes, which breaks type-based filtering and the
+     * per-type statistics. The shared label is skipped, and only used as the type when a node has
+     * nothing else.
+     */
+    private String domainType(Node node) {
+        String fallback = "Unknown";
+        for (String label : node.labels()) {
+            if (!SYMBOL_LABEL.equals(label)) {
+                return label;
+            }
+            fallback = SYMBOL_LABEL;
+        }
+        return fallback;
     }
 
     private String stableEdgeId(String sourceId, String edgeType, String targetId) {
