@@ -25,9 +25,11 @@ const collapsed = ref(false),
 const nav = [
   ['nav.overview', '/dashboard', 'overview'],
   ['nav.repositories', '/projects', 'repository'],
+  ['nav.trash', '/trash', 'trash'],
   ['nav.apiKeys', '/api-keys', 'key'],
   ['nav.usage', '/usage', 'usage'],
   ['nav.subscription', '/subscription', 'subscription'],
+  ['nav.notifications', '/notifications', 'notification'],
   ['nav.reports', '/reports', 'reports'],
   ['nav.settings', '/settings', 'settings'],
 ] as const
@@ -179,7 +181,10 @@ function signOut(): void {
       @keydown="handleSidebarKeydown"
     >
       <header>
+        <!-- Exists only while the mobile drawer is open. On desktop it had nothing to
+             close and simply sat next to the collapse toggle as a dead control. -->
         <button
+          v-if="mobile"
           ref="mobileCloseButton"
           class="sidebar__mobile-close"
           type="button"
@@ -306,7 +311,13 @@ function signOut(): void {
 .layout.collapsed {
   --side: 66px;
 }
-aside {
+/*
+ * Scoped to the sidebar id on purpose. A bare `aside` selector also lands on the root element of
+ * any child component that happens to use <aside> (Vue scoped CSS always applies to a child's root
+ * node), which previously stretched AnnouncementBanner to 100vh and pushed the page content off
+ * screen. The same reasoning applies to the header/nav rules below.
+ */
+#user-sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
@@ -319,18 +330,18 @@ aside {
   background: var(--vg-surface);
   z-index: 30;
 }
-header {
+#user-sidebar header {
   min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.35rem;
 }
-header a {
+#user-sidebar header a {
   display: flex;
   min-width: 0;
 }
-header button,
+#user-sidebar header button,
 .mobile {
   width: 40px;
   height: 40px;
@@ -343,13 +354,13 @@ header button,
   color: var(--vg-text);
   cursor: pointer;
 }
-nav {
+#user-sidebar nav {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   overflow-y: auto;
 }
-nav a,
+#user-sidebar nav a,
 .nav-disabled,
 .signout,
 .account {
@@ -366,8 +377,8 @@ nav a,
   font-size: var(--vg-text-sm);
   font-weight: 600;
 }
-nav a:hover,
-nav a.router-link-active {
+#user-sidebar nav a:hover,
+#user-sidebar nav a.router-link-active {
   color: var(--vg-text);
   border-color: rgba(96, 165, 250, 0.28);
   background: rgba(59, 130, 246, 0.1);
@@ -376,7 +387,7 @@ nav a.router-link-active {
   opacity: 0.45;
   cursor: not-allowed;
 }
-nav svg,
+#user-sidebar nav svg,
 .account > svg,
 .signout svg {
   flex: 0 0 auto;
@@ -441,24 +452,24 @@ nav svg,
   height: 38px;
   flex: 0 0 auto;
 }
-.collapsed aside {
+.collapsed #user-sidebar {
   align-items: center;
   padding-inline: 0.75rem;
 }
-.collapsed header,
-.collapsed nav,
+.collapsed #user-sidebar header,
+.collapsed #user-sidebar nav,
 .collapsed .sidebar-actions,
 .collapsed .signout,
 .collapsed .sidebar-language {
   width: 100%;
 }
-.collapsed header {
+.collapsed #user-sidebar header {
   justify-content: center;
 }
-.collapsed header a {
+.collapsed #user-sidebar header a {
   display: none;
 }
-.collapsed nav a,
+.collapsed #user-sidebar nav a,
 .collapsed .signout,
 .collapsed .sidebar-language {
   justify-content: center;
@@ -482,7 +493,7 @@ nav svg,
   border-color: var(--vg-border);
   background: var(--vg-bg-elev);
 }
-.collapsed nav span,
+.collapsed #user-sidebar nav span,
 .collapsed .signout span,
 .collapsed .account div {
   position: absolute;
@@ -604,7 +615,11 @@ nav svg,
 .restricted-state a {
   margin-top: var(--vg-space-4);
 }
-.sidebar__mobile-close {
+/* Drawer-only control: it closes the mobile overlay, so on desktop it would sit
+   next to the collapse toggle doing nothing. The `#user-sidebar` prefix is required
+   — `#user-sidebar header button` above is (1,0,1) and would otherwise win and
+   force this button visible on every viewport. */
+#user-sidebar .sidebar__mobile-close {
   display: none;
 }
 .mobile,
@@ -636,31 +651,31 @@ nav svg,
     border: 0;
     background: rgba(0, 0, 0, 0.52);
   }
-  aside {
+  #user-sidebar {
     position: fixed;
     width: min(88vw, 300px);
     transform: translateX(-105%);
     transition: transform var(--vg-dur-fast) var(--vg-ease-out);
   }
-  aside.open {
+  #user-sidebar.open {
     transform: none;
   }
-  .sidebar__mobile-close {
+  #user-sidebar .sidebar__mobile-close {
     display: grid;
     place-items: center;
     flex: 0 0 auto;
   }
-  .collapsed header a {
+  .collapsed #user-sidebar header a {
     display: flex;
   }
-  .collapsed nav a,
+  .collapsed #user-sidebar nav a,
   .collapsed .nav-disabled,
   .collapsed .signout,
   .collapsed .account {
     justify-content: flex-start;
     padding: 0.55rem 0.7rem;
   }
-  .collapsed nav span,
+  .collapsed #user-sidebar nav span,
   .collapsed .signout span,
   .collapsed .account div {
     position: static;

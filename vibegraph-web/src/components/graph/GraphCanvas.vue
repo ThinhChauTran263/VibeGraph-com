@@ -8,7 +8,7 @@
  * - Click node, emit selected
  * - Loading + error states
  */
-import { onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphExpand } from '@/composables/useGraphExpand'
 import { useFilters } from '@/composables/useFilters'
@@ -187,6 +187,13 @@ const {
   selectedNode,
   nodes,
 } = useGraphData()
+
+// The right-hand detail column floats over the stage, so the top toolbar has to
+// reserve its width instead of running underneath it and hiding the search box.
+const detailOpen = computed(
+  () => graphReady.value && !loading.value && !error.value
+    && Boolean(activeFlowDetail.value || selectedNode.value),
+)
 
 const { expandNode, reset: resetExpand } = useGraphExpand()
 
@@ -819,7 +826,7 @@ onUnmounted(() => {
       @pointerdown="onResizeStart"
     />
 
-    <div class="graph-canvas__stage">
+    <div class="graph-canvas__stage" :class="{ 'graph-canvas__stage--detail-open': detailOpen }">
       <div ref="canvasRef" class="graph-canvas" :class="{ 'graph-canvas--hidden': !graphReady || loading || error }" />
 
       <div v-if="graphReady && !loading && !error" class="graph-top-controls">
@@ -1111,6 +1118,20 @@ onUnmounted(() => {
 }
 
 .graph-canvas__stage {
+  /* Single source of truth for the floating detail column width. The toolbar
+     reserves the same value, so the two can never drift apart. */
+  --detail-width: 23rem;
+  /* Narrower than this and the toolbar cannot keep a usable search box beside the
+     panel. The number is the sum, not a guess:
+       1rem left + 12rem search floor + 0.75rem gap + 23rem panel + 1rem right
+       = 37.75rem, rounded up to 40rem for slack.
+     The toggles may wrap onto their own line, so the search floor is what binds. */
+  --detail-side-by-side-min: 40rem;
+  /* Queried instead of the viewport because the stage is what actually has to fit
+     both. The left sidebar is user-resizable, so viewport width says nothing about
+     how much room is left here — that mismatch is what let the panel cover the
+     search box between roughly 1024px and 1150px. */
+  container-type: inline-size;
   position: relative;
   min-width: 0;
   height: 100%;
@@ -1128,6 +1149,11 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* Pure layout column — deliberately no border, background, padding or shadow.
+   NodeDetailPanel, ImpactAnalysisPanel and DataFlowDetailPanel are each already a
+   finished card (1px border, 1rem radius, 1rem padding, blur, shadow). Giving the
+   column the same chrome wrapped a card inside an identical card and the wrapper's
+   padding read as dead space around every panel. */
 .graph-canvas__detail {
   position: absolute;
   top: 1rem;
@@ -1137,18 +1163,15 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  width: min(23rem, calc(100% - 2rem));
-  padding: 1rem;
+  width: min(var(--detail-width), calc(100% - 2rem));
   /* The whole column scrolls as one. Panels size to their content so the Impact
      Analysis results are never crushed to a zero-height (previously the panel was
      capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
   overflow-y: auto;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 0.5rem;
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(12px);
+  /* The cards carry their own shadow; a scrollbar gutter keeps them from being
+     clipped against the stage edge when the column overflows. */
+  scrollbar-gutter: stable;
 }
 
 /* Node Detail caps its height and scrolls internally so a node with many
@@ -1208,6 +1231,17 @@ onUnmounted(() => {
     bottom: 0.75rem;
     width: auto;
     max-height: 50vh;
+  }
+
+  /* Below this breakpoint the detail column docks to the bottom, so it no longer
+     shares the top-right corner with the toolbar — take the reserved width back.
+     The extra `.graph-canvas-wrapper` is deliberate, not redundant: the container
+     query further down matches the same selector at (0,2,0) and would otherwise win
+     on source order, leaving the toolbar reserving 23rem for a panel that is no
+     longer beside it. Here the stage can be wide (the sidebar becomes a full-width
+     row at this breakpoint), so the container query alone cannot tell. */
+  .graph-canvas-wrapper .graph-canvas__stage--detail-open .graph-top-controls {
+    right: 1rem;
   }
 }
 
@@ -1339,19 +1373,50 @@ onUnmounted(() => {
   position: absolute;
   top: 1rem;
   left: 1rem;
+  /* Detail column is z-index 7 and pinned to the same right edge. Reserving its
+     width here is what keeps it from covering the search box; the toolbar shrinks
+     rather than sliding under the panel. */
   right: 1rem;
   z-index: 6;
   display: flex;
-  flex-wrap: nowrap;
+  /* Wrapping is the escape valve: once the reserved detail width leaves too little
+     room, the search box drops to its own line instead of being squeezed to nothing. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.625rem;
+  transition: right 200ms ease;
+}
+
+/* Only reserve the panel's width while there is genuinely room for both. Reserving
+   it on a narrow stage left the toolbar ~90px wide, and the search box — floored at
+   min-width: 12rem — then overflowed its own container straight under the panel.
+   Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
+@container (min-width: 40rem) {
+  .graph-canvas__stage--detail-open .graph-top-controls {
+    right: calc(1rem + var(--detail-width) + 0.75rem);
+  }
+}
+
+/* Not enough room side by side: dock the panel to the bottom and give the toolbar
+   the full width back. Same treatment the narrow-viewport breakpoint already used,
+   now driven by the space that actually matters. */
+@container (max-width: 39.99rem) {
+  .graph-canvas__detail {
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+    max-height: 50vh;
+  }
 }
 
 .graph-top-controls :deep(.search-bar) {
   flex: 1 1 14rem;
   width: auto;
   max-width: 45rem;
-  min-width: 0;
+  /* Floor the shrink so the field stays typable; below this the toolbar wraps. */
+  min-width: 12rem;
 }
 
 .graph-edge-label-toggle {

@@ -9,7 +9,9 @@
     "close": "Close",
     "create": "Create",
     "update": "Update",
-    "retry": "Retry"
+    "retry": "Retry",
+    "view": "View",
+    "loading": "Loading..."
   },
   "language": {
     "label": "Language",
@@ -254,10 +256,12 @@
   "nav": {
     "overview": "Overview",
     "repositories": "Repositories",
+    "trash": "Trash",
     "apiKeys": "API Keys",
     "usage": "Usage",
     "subscription": "Subscription",
     "reports": "Reports",
+    "notifications": "Notifications",
     "settings": "Settings",
     "users": "Users",
     "feedbackReports": "Feedback / Reports",
@@ -370,8 +374,12 @@
       "importDialogTitle": "Import a project",
       "closeImportDialog": "Close import dialog",
       "deleteTitle": "Delete repository",
-      "deleteMessage": "Delete {name}? This cannot be undone.",
-      "deleteConfirm": "Delete repository",
+      "deleteMessage": "Move {name} to trash? It stays restorable for 3 days, then it is deleted permanently.",
+      "deleteConfirm": "Move to trash",
+      "movedToTrash": "{name} moved to trash. It is deleted permanently in 3 days.",
+      "undo": "Undo",
+      "openTrash": "Open trash",
+      "dismissUndo": "Dismiss",
       "loadFallback": "Failed to load repositories.",
       "deleteFallback": "Failed to delete repository.",
       "importBlocked": "Project import is blocked until the account capability contract reports an enabled method.",
@@ -391,6 +399,28 @@
       "noImportMethod": "No import method is currently available.",
       "noImportMethodDescription": "No import method is currently available. Import is blocked until the account capability contract reports an enabled method.",
       "importMethod": "Import method"
+    },
+    "trash": {
+      "title": "Trash",
+      "workspace": "Workspace",
+      "description": "Deleted repositories stay here for 3 days, then they are permanently removed. They keep counting toward your storage quota until then.",
+      "emptyTitle": "Trash is empty",
+      "emptyDescription": "Repositories you delete land here and stay restorable for 3 days.",
+      "deletedAt": "Deleted",
+      "size": "Size",
+      "purgeIn": "Deleted permanently",
+      "daysRemaining": "in {count} day | in {count} days",
+      "purgeToday": "on the next sweep",
+      "restore": "Restore",
+      "restoreAria": "Restore {name}",
+      "purge": "Delete now",
+      "purgeAria": "Permanently delete {name}",
+      "purgeTitle": "Delete permanently",
+      "purgeMessage": "Permanently delete {name}? The graph and the extracted sources are destroyed and the storage is freed. This cannot be undone.",
+      "purgeConfirm": "Delete permanently",
+      "loadFallback": "Failed to load trash.",
+      "restoreFallback": "Failed to restore the repository.",
+      "purgeFallback": "Failed to permanently delete the repository."
     },
     "import": {
       "finalizing": "Finalizing graph…",
@@ -644,7 +674,13 @@
       "loadFallback": "Notifications could not be loaded.",
       "announcementUnavailable": "Announcements are temporarily unavailable.",
       "readFallback": "Could not mark this notification read.",
-      "dismissFallback": "Could not dismiss this notification."
+      "dismissFallback": "Could not dismiss this notification.",
+      "newBadge": "New",
+      "unreadCount": "{count} unread",
+      "relativeNow": "Just now",
+      "detailLabel": "Notification detail",
+      "selectPrompt": "Select a notification to read it here.",
+      "markedRead": "Read"
     },
     "quota": {
       "used": "used",

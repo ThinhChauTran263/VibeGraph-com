@@ -207,7 +207,7 @@ watch(status, (next) => {
           <select
             id="impact-profile"
             v-model="selectedProfile"
-            class="impact-panel__select impact-panel__select--profile"
+            class="impact-panel__select"
             :disabled="isLoading"
           >
             <option v-for="profile in allowedProfiles" :key="profile" :value="profile">
@@ -389,10 +389,14 @@ watch(status, (next) => {
   font-size: 0.8125rem;
 }
 
+/* Grid, not flex-wrap. The panel is only ~21rem wide, so Profile + Depth + Analyze
+   never fit on one line: Analyze used to wrap to its own full-width row while the
+   two selects kept their content widths above it, leaving a ragged right edge.
+   Two explicit columns make the selector row end exactly where the button ends. */
 .impact-panel__controls {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  align-items: end;
   gap: 0.5rem;
   margin-top: 1rem;
 }
@@ -401,7 +405,7 @@ watch(status, (next) => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  flex: 0 1 7rem;
+  min-width: 0;
   color: #9ca3af;
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -419,9 +423,8 @@ watch(status, (next) => {
   cursor: pointer;
 }
 
-.impact-panel__select--profile {
-  min-width: 8.75rem;
-}
+/* The grid column now sets the width; a fixed min-width would push the row wider
+   than the Analyze button and reintroduce the ragged edge. */
 
 .impact-panel__profile-help {
   margin: 0.5rem 0 0;
@@ -432,7 +435,7 @@ watch(status, (next) => {
 
 .impact-panel__analyze {
   height: 2.25rem;
-  flex: 1 1 6rem;
+  grid-column: 1 / -1;
   border: none;
   border-radius: 0.5rem;
   background: #dc2626;
