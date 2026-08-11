@@ -110,6 +110,10 @@ task/final/
 /uc_check.json
 /uc_new*.json
 
+# Postman workspaces and local exports.
+/.postman/
+/postman/
+
 # Local environment backups. The `.env` rule above matches that exact name only,
 # so copies such as `.env.codex-backup-...` would otherwise be committable.
 .env.*
