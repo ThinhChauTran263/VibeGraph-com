@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,9 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AccountAccessGuard;
+import com.vibegraph.auth.service.AccountAccessGuard.AccountAccessDecision;
 import com.vibegraph.auth.service.AuthCookieService;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
@@ -41,16 +41,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private static final Map<UUID, Long> ACTIVE_USERS = new ConcurrentHashMap<>();
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
     private final AccountAccessGuard accountAccessGuard;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public JwtAuthFilter(
-            JwtService jwtService,
-            UserRepository userRepository,
-            AccountAccessGuard accountAccessGuard) {
+    /**
+     * The guard is the only collaborator: it owns the single authentication read, so the filter no
+     * longer needs a repository or the session service. That also removes the previous nullable
+     * {@code RefreshSessionService}, which let a test construct a filter that silently skipped the
+     * session check.
+     */
+    @Autowired
+    public JwtAuthFilter(JwtService jwtService, AccountAccessGuard accountAccessGuard) {
         this.jwtService = jwtService;
-        this.userRepository = userRepository;
         this.accountAccessGuard = accountAccessGuard;
     }
 
@@ -65,6 +67,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        if (isSessionManagementEndpoint(request)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         String token = bearerToken(request.getHeader("Authorization"));
         if (token == null) {
             token = cookieToken(request);
@@ -83,16 +89,22 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             HttpServletResponse response) throws IOException {
         try {
             AuthenticatedUser tokenPrincipal = jwtService.parse(token);
-            AccountBlockedException restriction = currentRestriction(tokenPrincipal.id());
-            if (restriction != null && !isRestrictedAccountRoute(request)) {
+            // One read answers identity, account restrictions and session liveness together; these
+            // used to be four separate round trips on every authenticated request.
+            AccountAccessDecision decision =
+                    accountAccessGuard.authenticate(tokenPrincipal.id(), tokenPrincipal.sessionId());
+            if (decision.restriction() != null && !isRestrictedAccountRoute(request)) {
                 SecurityContextHolder.clearContext();
-                writeRestrictedResponse(response, restriction);
+                writeRestrictedResponse(response, decision.restriction());
                 return false;
             }
-            User user = userRepository.findById(tokenPrincipal.id())
-                    .orElseThrow(() -> new UnauthorizedException("Authenticated user not found"));
-            setAuthentication(currentPrincipal(user), request);
-            ACTIVE_USERS.put(user.getId(), System.currentTimeMillis());
+            if (!decision.sessionUsable()) {
+                SecurityContextHolder.clearContext();
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return false;
+            }
+            setAuthentication(decision.principal(), request);
+            ACTIVE_USERS.put(decision.principal().id(), System.currentTimeMillis());
             return true;
         } catch (JwtException | IllegalArgumentException ex) {
             SecurityContextHolder.clearContext();
@@ -102,19 +114,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return false;
         }
-    }
-
-    private AccountBlockedException currentRestriction(UUID userId) {
-        try {
-            accountAccessGuard.assertProductAccess(userId);
-            return null;
-        } catch (AccountBlockedException ex) {
-            return ex;
-        }
-    }
-
-    private AuthenticatedUser currentPrincipal(User user) {
-        return new AuthenticatedUser(user.getId(), user.getEmail(), user.getRole());
     }
 
     private void setAuthentication(AuthenticatedUser principal, HttpServletRequest request) {
@@ -170,6 +169,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return "PATCH".equals(method);
         }
         return "GET".equals(method);
+    }
+
+    private boolean isSessionManagementEndpoint(HttpServletRequest request) {
+        if (!"POST".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        return "/api/auth/refresh".equals(path) || "/api/auth/logout".equals(path);
     }
 
     private void writeRestrictedResponse(

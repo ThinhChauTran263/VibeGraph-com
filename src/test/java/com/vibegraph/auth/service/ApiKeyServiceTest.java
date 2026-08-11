@@ -111,7 +111,7 @@ class ApiKeyServiceTest {
                 .plan(freePlan)
                 .apiKeyCreationDisabled(false)
                 .build();
-        lenient().when(projectOwnershipRepository.findByProjectIdAndOwnerId("project-1", userId))
+        lenient().when(projectOwnershipRepository.findByProjectIdAndOwnerIdAndDeletedAtIsNull("project-1", userId))
                 .thenReturn(java.util.Optional.of(com.vibegraph.auth.domain.ProjectOwnership.builder()
                         .projectId("project-1")
                         .ownerId(userId)
@@ -155,7 +155,7 @@ class ApiKeyServiceTest {
     void createForCurrentUser_wrongProjectOwner_throws() {
         when(currentUser.id()).thenReturn(userId);
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
-        when(projectOwnershipRepository.findByProjectIdAndOwnerId("other-project", userId))
+        when(projectOwnershipRepository.findByProjectIdAndOwnerIdAndDeletedAtIsNull("other-project", userId))
                 .thenReturn(java.util.Optional.empty());
 
         assertThrows(ForbiddenException.class, () -> apiKeyService.createForCurrentUser(
