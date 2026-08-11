@@ -13,7 +13,26 @@ import type {
   FeatureCapability,
   UserNotification,
 } from '../types/api'
-import { accountApi } from '../lib/api'
+import { accountApi, projectApi, type Project as WorkspaceProject } from '../lib/api'
+
+/**
+ * Maps a workspace repository (`/api/projects`) onto the account project shape.
+ *
+ * The workspace listing carries graph counters instead of storage metadata, so the account-only
+ * fields have no source and stay null/zero.
+ */
+export function toAccountProject(project: WorkspaceProject): Project {
+  return {
+    id: project.id,
+    name: project.name,
+    sourceType: null,
+    sizeBytes: 0,
+    status: project.status ?? null,
+    createdAt: project.createdAt ?? null,
+    updatedAt: project.lastAnalyzedAt ?? project.createdAt ?? null,
+    lastAnalyzedAt: project.lastAnalyzedAt ?? null,
+  }
+}
 
 /** Converts a backend UserResponse accountStatus to our legacy status field. */
 function normalizeStatus(accountStatus?: string): 'active' | 'blocked' | 'deactivated' {
@@ -207,27 +226,22 @@ export const useAccountStore = defineStore('account', () => {
 
   // ─── Projects ───────────────────────────────────────────────────────────────
 
+  /**
+   * Loads the repositories the caller can actually open.
+   *
+   * Deliberately reads `/api/projects` — the same source as the Repositories page — instead of the
+   * paginated `/api/account/projects` ownership listing. The ownership listing returns every row
+   * the user owns, including projects whose recorded workspace root is unreachable from the current
+   * runtime (for example imported before the backend moved into a container). Counting those made
+   * the overview disagree with the list the user can actually see, and let the API-key screen offer
+   * repositories that cannot be used.
+   */
   async function fetchProjects(options: { force?: boolean } = {}): Promise<void> {
     if (projectsLoaded.value && !options.force) return
     if (projectsRequest) return projectsRequest
 
-    const pageSize = 100
     projectsRequest = (async () => {
-      const firstPage = await accountApi.getProjects(0, pageSize)
-      const remainingPages = await Promise.all(
-        Array.from({ length: Math.max(firstPage.totalPages - 1, 0) }, (_, index) =>
-          accountApi.getProjects(index + 1, pageSize),
-        ),
-      )
-      const projectItems = [firstPage, ...remainingPages].flatMap(
-        (page) => page.items ?? page.content ?? [],
-      )
-      setProjects(
-        projectItems.map((project) => ({
-          ...project,
-          lastAnalyzedAt: project.updatedAt,
-        })),
-      )
+      setProjects((await projectApi.list()).map(toAccountProject))
     })()
 
     try {
