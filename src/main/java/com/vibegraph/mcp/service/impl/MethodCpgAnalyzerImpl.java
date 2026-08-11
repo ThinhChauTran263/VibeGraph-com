@@ -115,6 +115,7 @@ public class MethodCpgAnalyzerImpl implements MethodCpgAnalyzer {
                         .lineNumber(method.getLineNumber())
                         .endLine(SourceGraphSupport.endLineOf(method))
                         .visibility(SourceGraphSupport.stringProperty(method, "visibility"))
+                        .annotations(listProp(method, "annotations"))
                         .build())
                 .signature(signature(method))
                 .dataFlow(dataFlow)
@@ -249,8 +250,9 @@ public class MethodCpgAnalyzerImpl implements MethodCpgAnalyzer {
         boolean hasDeepCpg = outgoing.stream().anyMatch(e ->
                 "READS".equals(e.getType()) || "WRITES".equals(e.getType()) || "CATCHES".equals(e.getType()));
         if (!hasDeepCpg) {
-            notes.add("No READS/WRITES/CATCHES edges found. Deep CPG is opt-in "
-                    + "(VIBEGRAPH_PARSER_DEEP_CPG=true); without it, body-level data flow is not populated.");
+            notes.add("No READS/WRITES/CATCHES edges found. Deep CPG is on by default now; this project was "
+                    + "likely analyzed before that (or with VIBEGRAPH_PARSER_DEEP_CPG=false) - re-run analyze "
+                    + "to populate body-level data flow.");
         }
         if (SourceGraphSupport.endLineOf(method) == null) {
             notes.add("endLine is unknown for this method; source/flow line ranges may be approximate.");

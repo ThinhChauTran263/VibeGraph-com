@@ -41,10 +41,15 @@ vi.mock('../../lib/api', async (importOriginal) => {
       markNotificationRead: vi.fn(),
       dismissNotification: vi.fn(),
     },
+    projectApi: {
+      ...original.projectApi,
+      list: vi.fn(),
+    },
   }
 })
 
 const mockAccountApi = vi.mocked(apiModule.accountApi)
+const mockProjectApi = vi.mocked(apiModule.projectApi)
 
 const notification: UserNotification = {
   id: 'notification-1',
@@ -280,58 +285,55 @@ describe('Account Store', () => {
     expect(store.creditLedger[0]?.operationCode).toBe('CLI_PUSH')
   })
 
-  it('fetchProjects loads every repository page for API-key binding', async () => {
-    mockAccountApi.getProjects
-      .mockResolvedValueOnce({
-        content: [{ id: 'project-1', name: 'One', sourceType: 'GITHUB', sizeBytes: 1, status: 'READY', createdAt: null, updatedAt: null, lastAnalyzedAt: null }],
-        totalElements: 2,
-        totalPages: 2,
-        pageNumber: 0,
-        pageSize: 100,
-      })
-      .mockResolvedValueOnce({
-        content: [{ id: 'project-2', name: 'Two', sourceType: 'LOCAL', sizeBytes: 1, status: 'READY', createdAt: null, updatedAt: null, lastAnalyzedAt: null }],
-        totalElements: 2,
-        totalPages: 2,
-        pageNumber: 1,
-        pageSize: 100,
-      })
+  it('fetchProjects reads the reachable workspace listing, not the ownership listing', async () => {
+    // The ownership listing also returns projects whose workspace is unreachable from the current
+    // runtime; counting those made the overview disagree with the repositories the user can open.
+    mockProjectApi.list.mockResolvedValue([
+      {
+        id: 'project-1',
+        name: 'One',
+        status: 'ANALYZED',
+        createdAt: '2026-01-01T00:00:00Z',
+        lastAnalyzedAt: '2026-01-02T00:00:00Z',
+        totalFiles: 1,
+        totalNodes: 2,
+        totalEdges: 3,
+      },
+    ])
 
     const store = useAccountStore()
     await store.fetchProjects()
 
-    expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(1, 0, 100)
-    expect(mockAccountApi.getProjects).toHaveBeenNthCalledWith(2, 1, 100)
-    expect(store.projects.map((project) => project.id)).toEqual(['project-1', 'project-2'])
+    expect(mockProjectApi.list).toHaveBeenCalledTimes(1)
+    expect(mockAccountApi.getProjects).not.toHaveBeenCalled()
+    expect(store.projects.map((project) => project.id)).toEqual(['project-1'])
+    expect(store.projects[0]).toMatchObject({
+      name: 'One',
+      status: 'ANALYZED',
+      lastAnalyzedAt: '2026-01-02T00:00:00Z',
+      updatedAt: '2026-01-02T00:00:00Z',
+    })
     expect(store.projectsLoaded).toBe(true)
   })
 
   it('reuses the loaded repository cache unless a refresh is forced', async () => {
-    mockAccountApi.getProjects.mockResolvedValue({
-      content: [
-        {
-          id: 'project-1',
-          name: 'One',
-          sourceType: 'GITHUB',
-          sizeBytes: 1,
-          status: 'READY',
-          createdAt: null,
-          updatedAt: null,
-          lastAnalyzedAt: null,
-        },
-      ],
-      totalElements: 1,
-      totalPages: 1,
-      pageNumber: 0,
-      pageSize: 100,
-    })
+    mockProjectApi.list.mockResolvedValue([
+      {
+        id: 'project-1',
+        name: 'One',
+        status: 'ANALYZED',
+        totalFiles: 1,
+        totalNodes: 2,
+        totalEdges: 3,
+      },
+    ])
 
     const store = useAccountStore()
     await store.fetchProjects()
     await store.fetchProjects()
     await store.fetchProjects({ force: true })
 
-    expect(mockAccountApi.getProjects).toHaveBeenCalledTimes(2)
+    expect(mockProjectApi.list).toHaveBeenCalledTimes(2)
   })
 
   it('changePassword forwards old, new, and confirmation passwords to the API', async () => {

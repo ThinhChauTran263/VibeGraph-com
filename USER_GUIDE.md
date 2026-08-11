@@ -13,7 +13,7 @@ The home page offers three ways to add a project:
 | Method | When to use | Notes |
 | --- | --- | --- |
 | **Local folder** | The project already exists on the machine running VibeGraph | The graph updates in realtime as you edit those files — no re-upload needed. The folder must be inside the server's configured projects root. |
-| **Archive** | You have a `.zip`, `.tar`, `.tar.gz`, or `.tgz` | Max 100 MB. Enter a project name, choose the file, upload. |
+| **Archive** | You have a `.zip`, `.tar`, `.tar.gz`, or `.tgz` | Uses your account's remaining storage quota. Enter a project name, choose the file, upload. |
 | **GitHub** | A public repository | Paste the HTTPS URL (e.g. `https://github.com/owner/repo`). |
 
 All three show a progress bar (Uploading → Analyzing… N% → Finalizing) while the

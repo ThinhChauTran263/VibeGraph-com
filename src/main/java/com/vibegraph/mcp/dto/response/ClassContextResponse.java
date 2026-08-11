@@ -19,6 +19,8 @@ public class ClassContextResponse {
     private List<MemberInfo> fields;
     private List<RelationInfo> incomingRelations;
     private List<RelationInfo> outgoingRelations;
+    /** Populated instead of classInfo when the query matches more than one class. */
+    private List<Candidate> candidates;
     private List<String> warnings;
 
     @Data
@@ -66,6 +68,17 @@ public class ClassContextResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class NodeRef {
+        private String id;
+        private String type;
+        private String name;
+        private String fullName;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Candidate {
         private String id;
         private String type;
         private String name;

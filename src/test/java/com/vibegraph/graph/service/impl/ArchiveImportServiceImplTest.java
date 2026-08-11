@@ -14,6 +14,7 @@ import java.util.zip.ZipOutputStream;
 import java.util.UUID;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.service.AccountQuotaSnapshot;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
@@ -88,6 +89,8 @@ class ArchiveImportServiceImplTest {
         ArchiveImportProperties properties = new ArchiveImportProperties();
         properties.setWorkspaceRoot(workspaceRoot);
         lenient().when(currentUser.id()).thenReturn(userId);
+        lenient().when(accountSettingsService.quotaSnapshot(userId))
+                .thenReturn(new AccountQuotaSnapshot(0, Long.MAX_VALUE, Long.MAX_VALUE, "TEST", "Test", null));
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
                 accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService,

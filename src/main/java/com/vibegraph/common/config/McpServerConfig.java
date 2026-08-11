@@ -19,11 +19,13 @@ import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.MeteredToolCallback;
 import com.vibegraph.mcp.tool.ArchitectureTool;
 import com.vibegraph.mcp.tool.ClassContextTool;
+import com.vibegraph.mcp.tool.ExplainCompileErrorTool;
 import com.vibegraph.mcp.tool.ExplainFailureTool;
 import com.vibegraph.mcp.tool.FindReferencesTool;
 import com.vibegraph.mcp.tool.FindRelatedTestsTool;
 import com.vibegraph.mcp.tool.ImpactAnalysisTool;
 import com.vibegraph.mcp.tool.LayerPatternTool;
+import com.vibegraph.mcp.tool.ListProjectsTool;
 import com.vibegraph.mcp.tool.MethodCpgTool;
 import com.vibegraph.mcp.tool.MethodSourceTool;
 import com.vibegraph.mcp.tool.PlanCodeChangeTool;
@@ -32,6 +34,7 @@ import com.vibegraph.mcp.tool.SearchSourceTool;
 import com.vibegraph.mcp.tool.SourceFileTool;
 import com.vibegraph.mcp.tool.SuggestTestPlanTool;
 import com.vibegraph.mcp.tool.TraceEndpointTool;
+import com.vibegraph.mcp.tool.VerifyChangeTool;
 
 @Configuration
 public class McpServerConfig {
@@ -59,6 +62,9 @@ public class McpServerConfig {
             PlanCodeChangeTool planCodeChangeTool,
             ExplainFailureTool explainFailureTool,
             ProjectConventionsTool projectConventionsTool,
+            ListProjectsTool listProjectsTool,
+            VerifyChangeTool verifyChangeTool,
+            ExplainCompileErrorTool explainCompileErrorTool,
             CurrentUser currentUser,
             CreditPricingService creditPricingService,
             CreditBalanceService creditBalanceService,
@@ -83,7 +89,10 @@ public class McpServerConfig {
                         suggestTestPlanTool,
                         planCodeChangeTool,
                         explainFailureTool,
-                        projectConventionsTool)
+                        projectConventionsTool,
+                        listProjectsTool,
+                        verifyChangeTool,
+                        explainCompileErrorTool)
                 .build();
         return ToolCallbackProvider.from(Arrays.stream(baseProvider.getToolCallbacks())
                 .map(callback -> new MeteredToolCallback(

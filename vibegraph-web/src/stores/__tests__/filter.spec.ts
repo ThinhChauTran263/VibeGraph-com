@@ -1,11 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { CPG_LITE_EDGE_TYPES, STRUCTURAL_EDGE_TYPES } from '@/lib/constants'
+import { CPG_LITE_EDGE_TYPES } from '@/lib/constants'
 import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes } from '@/lib/graphFilters'
 import { useFilterStore } from '@/stores/filter'
 import type { EdgeType, NodeType } from '@/types/graph'
-
-const ALL_EDGE_TYPES: readonly EdgeType[] = [...STRUCTURAL_EDGE_TYPES, ...CPG_LITE_EDGE_TYPES]
 
 const sortedTypes = (set: ReadonlySet<EdgeType>): EdgeType[] => [...set].sort()
 
@@ -36,33 +34,51 @@ describe('useFilterStore — edge filter state semantics', () => {
     expect(store.hasActiveFilters).toBe(false)
   })
 
-  it('isolates a visible baseline type on first click even when detail types are hidden', () => {
+  it('toggles one node type without changing other types', () => {
     const store = useFilterStore()
 
-    store.toggleNodeType('Class', ['Project', 'Package', 'File', 'Class', 'Method'])
+    store.toggleNodeType('Class')
 
+    expect(store.hiddenNodeTypes.has('Class')).toBe(true)
+    expect(store.hiddenNodeTypes.has('Method')).toBe(false)
+    expect(store.hiddenNodeTypes.has('File')).toBe(false)
+    expect(store.hiddenNodeTypes.has('Package')).toBe(false)
+
+    store.toggleNodeType('Class')
     expect(store.hiddenNodeTypes.has('Class')).toBe(false)
-    expect(store.hiddenNodeTypes.has('Method')).toBe(true)
-    expect(store.hiddenNodeTypes.has('File')).toBe(true)
-    expect(store.hiddenNodeTypes.has('Package')).toBe(true)
   })
 
-  it('flags active filters when a baseline edge type is isolated', () => {
+  it('flags active filters when a baseline edge type is hidden', () => {
     const store = useFilterStore()
 
-    store.toggleEdgeType('CALLS', ALL_EDGE_TYPES)
+    store.toggleEdgeType('CALLS')
 
-    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(false)
-    expect(store.hiddenEdgeTypes.has('IMPORTS')).toBe(true)
-    expect(store.hiddenEdgeTypes.has('DEFINES')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('IMPORTS')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('DEFINES')).toBe(false)
     expect(store.hasActiveFilters).toBe(true)
+  })
+
+  it('keeps Field nodes and HAS_FIELD edges in sync', () => {
+    const store = useFilterStore()
+
+    expect(store.hiddenNodeTypes.has('Field')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('HAS_FIELD')).toBe(true)
+
+    store.toggleNodeType('Field')
+    expect(store.hiddenNodeTypes.has('Field')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('HAS_FIELD')).toBe(false)
+
+    store.toggleNodeType('Field')
+    expect(store.hiddenNodeTypes.has('Field')).toBe(true)
+    expect(store.hiddenEdgeTypes.has('HAS_FIELD')).toBe(true)
   })
 
   it('flags active filters when a hidden CPG-lite edge type is revealed', () => {
     const store = useFilterStore()
 
     // TYPE_OF starts hidden; revealing it deviates from the default baseline.
-    store.toggleEdgeType('TYPE_OF', ALL_EDGE_TYPES)
+    store.toggleEdgeType('TYPE_OF')
 
     expect(store.hiddenEdgeTypes.has('TYPE_OF')).toBe(false)
     expect(store.hasActiveFilters).toBe(true)
@@ -94,8 +110,8 @@ describe('useFilterStore — edge filter state semantics', () => {
   it('reset clears user node-type filters and restores default node + edge baselines', () => {
     const store = useFilterStore()
 
-    store.toggleNodeType('Class', ['Class', 'Method', 'Field'])
-    store.toggleEdgeType('DEFINES', ALL_EDGE_TYPES)
+    store.toggleNodeType('Class')
+    store.toggleEdgeType('DEFINES')
     expect(store.hasActiveFilters).toBe(true)
 
     store.reset()
@@ -103,18 +119,18 @@ describe('useFilterStore — edge filter state semantics', () => {
     const sortedNodes = (set: ReadonlySet<NodeType>): NodeType[] => [...set].sort()
     expect(sortedNodes(store.hiddenNodeTypes)).toEqual(sortedNodes(defaultHiddenNodeTypes()))
     expect(sortedTypes(store.hiddenEdgeTypes)).toEqual(sortedTypes(defaultHiddenEdgeTypes()))
-    expect(store.hideIsolatedNodes).toBe(true)
+    expect(store.hideIsolatedNodes).toBe(false)
     expect(store.searchQuery).toBe('')
     expect(store.hasActiveFilters).toBe(false)
   })
 
-  it('lets isolated nodes be revealed without changing the default hidden baselines', () => {
+  it('keeps isolated nodes visible by default', () => {
     const store = useFilterStore()
 
-    expect(store.hideIsolatedNodes).toBe(true)
-    store.toggleIsolatedNodes()
     expect(store.hideIsolatedNodes).toBe(false)
-    store.reset()
+    store.toggleIsolatedNodes()
     expect(store.hideIsolatedNodes).toBe(true)
+    store.reset()
+    expect(store.hideIsolatedNodes).toBe(false)
   })
 })

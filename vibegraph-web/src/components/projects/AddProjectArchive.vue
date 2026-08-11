@@ -15,7 +15,6 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ARCHIVE_ACCEPT_ATTRIBUTE,
-  ARCHIVE_MAX_SIZE_BYTES,
   formatFileSize,
   validateArchiveFile,
 } from '@/lib/archiveUpload'
@@ -58,8 +57,6 @@ const {
   uploadArchiveAsync,
   reset,
 } = useArchiveImport()
-
-const maxSizeLabel = computed(() => formatFileSize(ARCHIVE_MAX_SIZE_BYTES))
 
 const canSubmit = computed(
   () =>
@@ -163,7 +160,7 @@ onBeforeUnmount(() => {
       </span>
       <div class="archive-import__heading-group">
         <h2 id="archive-import-heading">{{ t('user.import.archiveTitle') }}</h2>
-        <p class="archive-import__hint">{{ t('user.import.archiveHint', { max: maxSizeLabel }) }}</p>
+        <p class="archive-import__hint">{{ t('user.import.archiveHint') }}</p>
       </div>
     </header>
 

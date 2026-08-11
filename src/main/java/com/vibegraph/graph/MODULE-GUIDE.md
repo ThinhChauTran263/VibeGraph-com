@@ -65,7 +65,7 @@ graph/
 - [ ] `POST /api/projects/import-github`: Import từ GitHub URL
   - Request: `{url: "https://github.com/owner/repo"}`
   - Response: `{projectId, status: "ANALYZING"}` (202 Accepted)
-  - Pre-flight: validate public repo, size < 100MB
+  - Pre-flight: validate public repo, size within account storage quota
   - Stream tarball qua commons-compress (không lưu disk)
   - Parse in-memory, push progress qua WebSocket
 
@@ -94,7 +94,7 @@ graph/
 - [x] `GraphService.getImpactAnalysis(projectId, nodeId, depth, profile)`: Trace upstream dependencies (blast radius)
 - [ ] `TarballImportService.importFromGithub(request)` (MỚI):
   1. Pre-flight check (GET https://api.github.com/repos/{owner}/{repo})
-     - Validate: public, size < 100MB, default_branch
+     - Validate: public, size within account quota, default_branch
      - Reject với GithubImportException nếu private hoặc quá lớn
   2. Stream tarball (GET /tarball, Bearer ${GITHUB_TOKEN})
      - GzipCompressorInputStream + TarArchiveInputStream
@@ -154,7 +154,7 @@ Không có entity Neo4j `@Node` và không có `BaseNode`. Dữ liệu graph man
 - [ ] **GitHub Import (MỚI):**
   - [ ] POST /api/projects/import-github trả về 202 Accepted
   - [ ] Pre-flight reject private repo → GithubImportException → 400
-  - [ ] Pre-flight reject repo > 100MB → GithubImportException → 400
+  - [ ] Pre-flight reject repo over account quota → GithubImportException → 400
   - [ ] Tarball stream không ghi file tạm xuống disk
   - [ ] Parse chỉ *.java files, skip build/target/.git/node_modules
   - [ ] WebSocket push progress /topic/projects/{id}/status

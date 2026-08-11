@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultHiddenEdgeTypes, defaultHiddenNodeTypes, filterGraphData } from '../graphFilters'
-import { CPG_LITE_EDGE_TYPES, STRUCTURAL_EDGE_TYPES } from '../constants'
+import { ALL_NODE_TYPES, CPG_LITE_EDGE_TYPES, STRUCTURAL_EDGE_TYPES } from '../constants'
 import type { GraphData, GraphEdge, GraphNode } from '@/types/graph'
 
 function graphNode(id: string, type: GraphNode['type']): GraphNode {
@@ -48,6 +48,92 @@ describe('filterGraphData', () => {
     expect(filtered.nodes).toHaveLength(2)
     expect(filtered.edges).toEqual([])
     expect(filtered.nodeStats).toEqual({ Class: 1, Method: 1 })
+  })
+
+  it('keeps a connected Constructor when its endpoint type and edges are hidden', () => {
+    const constructorGraph: GraphData = {
+      nodes: [graphNode('OrderService', 'Class'), graphNode('OrderService#init', 'Constructor')],
+      edges: [graphEdge('constructor-edge', 'OrderService', 'OrderService#init', 'HAS_METHOD')],
+      nodeStats: { Class: 1, Constructor: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_METHOD: 1 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(constructorGraph, {
+      hiddenNodeTypes: new Set(['Class']),
+      hiddenEdgeTypes: new Set(['HAS_METHOD']),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['OrderService#init'])
+    expect(filtered.edges).toEqual([])
+  })
+
+  it.each(ALL_NODE_TYPES)('can isolate connected %s nodes without removing them', (type) => {
+    const companionType = type === 'Project' ? 'Class' : 'Project'
+    const isolatedTypeGraph: GraphData = {
+      nodes: [graphNode('selected', type), graphNode('companion', companionType)],
+      edges: [graphEdge('relation', 'selected', 'companion', 'HAS_RELATION')],
+      nodeStats: { [type]: 1, [companionType]: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_RELATION: 1 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(isolatedTypeGraph, {
+      hiddenNodeTypes: new Set(ALL_NODE_TYPES.filter((candidate) => candidate !== type)),
+      hiddenEdgeTypes: new Set(['HAS_RELATION']),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['selected'])
+    expect(filtered.edges).toEqual([])
+  })
+
+  it('still removes nodes that have no edge in the source graph', () => {
+    const sourceWithOrphan: GraphData = {
+      nodes: [...data.nodes, graphNode('orphan', 'Constructor')],
+      edges: data.edges,
+      nodeStats: { Class: 1, Method: 1, Constructor: 1 } as GraphData['nodeStats'],
+      edgeStats: data.edgeStats,
+    }
+
+    const filtered = filterGraphData(sourceWithOrphan, {
+      hiddenNodeTypes: new Set(),
+      hiddenEdgeTypes: new Set(),
+      hideIsolatedNodes: true,
+    })
+
+    expect(filtered.nodes.map((node) => node.id)).toEqual(['OrderService', 'placeOrder'])
+  })
+
+  it('never returns an edge without both endpoints in the filtered node set', () => {
+    const graphWithDanglingCandidates: GraphData = {
+      nodes: [
+        graphNode('visible-a', 'Class'),
+        graphNode('visible-b', 'Class'),
+        graphNode('hidden', 'Method'),
+        graphNode('dangling-source', 'Class'),
+      ],
+      edges: [
+        graphEdge('visible', 'visible-a', 'visible-b', 'EXTENDS'),
+        graphEdge('hidden-target', 'visible-a', 'hidden', 'CALLS'),
+        graphEdge('missing-target', 'visible-a', 'missing', 'CALLS'),
+        graphEdge('dangling-source-edge', 'dangling-source', 'missing', 'CALLS'),
+      ],
+      nodeStats: { Class: 3, Method: 1 } as GraphData['nodeStats'],
+      edgeStats: { EXTENDS: 1, CALLS: 3 } as GraphData['edgeStats'],
+    }
+
+    const filtered = filterGraphData(graphWithDanglingCandidates, {
+      hiddenNodeTypes: new Set(['Method']),
+      hiddenEdgeTypes: new Set(),
+      hideIsolatedNodes: true,
+    })
+    const visibleNodeIds = new Set(filtered.nodes.map((node) => node.id))
+
+    expect(filtered.edges.map((edge) => edge.id)).toEqual(['visible'])
+    for (const edge of filtered.edges) {
+      expect(visibleNodeIds.has(edge.source)).toBe(true)
+      expect(visibleNodeIds.has(edge.target)).toBe(true)
+    }
   })
 })
 

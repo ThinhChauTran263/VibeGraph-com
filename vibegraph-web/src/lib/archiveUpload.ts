@@ -9,18 +9,13 @@
  * leaves the browser. The backend MUST still re-validate.
  */
 
-import { ARCHIVE_MAX_SIZE_BYTES } from '@/lib/runtimeConfig'
-
-/** Maximum archive size in bytes. Sourced from `VITE_ARCHIVE_MAX_SIZE_MB` (runtimeConfig). */
-export { ARCHIVE_MAX_SIZE_BYTES }
-
 /** Supported archive file extensions, lower-case, with leading dot. */
 export const ARCHIVE_ALLOWED_EXTENSIONS = ['.zip', '.tar.gz', '.tgz', '.tar'] as const
 
 /** Value for the `accept` attribute on `<input type="file">`. */
 export const ARCHIVE_ACCEPT_ATTRIBUTE = ARCHIVE_ALLOWED_EXTENSIONS.join(',')
 
-export type ArchiveValidationErrorKind = 'extension' | 'empty' | 'size'
+export type ArchiveValidationErrorKind = 'extension' | 'empty'
 
 export interface ArchiveValidationError {
   kind: ArchiveValidationErrorKind
@@ -33,9 +28,8 @@ export interface ArchiveValidationError {
  * Returns `null` on success, otherwise a structured error describing the
  * first failure encountered.
  *
- * Note: order matters. We check extension first because a non-archive file
- * is the most common user mistake; size is checked last so the message can
- * cite the exact size.
+ * The backend enforces the account's remaining storage quota; the browser
+ * only validates properties it can determine without server state.
  */
 export function validateArchiveFile(file: File): ArchiveValidationError | null {
   const lowerName = file.name.toLowerCase()
@@ -49,14 +43,6 @@ export function validateArchiveFile(file: File): ArchiveValidationError | null {
 
   if (file.size === 0) {
     return { kind: 'empty', message: 'The selected archive is empty.' }
-  }
-
-  if (file.size > ARCHIVE_MAX_SIZE_BYTES) {
-    const sizeMb = (file.size / (1024 * 1024)).toFixed(1)
-    return {
-      kind: 'size',
-      message: `Archive is ${sizeMb} MB; the maximum is 100 MB.`,
-    }
   }
 
   return null

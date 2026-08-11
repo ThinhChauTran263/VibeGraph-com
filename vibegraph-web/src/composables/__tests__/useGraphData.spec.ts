@@ -93,13 +93,13 @@ describe('useGraphData - Safe Mode render info', () => {
   })
 })
 
-describe('useGraphData - baseline plus lazy deep graph', () => {
+describe('useGraphData - complete initial graph', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     fetchFullGraphMock.mockReset()
   })
 
-  it('loads baseline by default and merges deep details without dropping baseline projections', async () => {
+  it('loads baseline and deep together without dropping baseline projections', async () => {
     const fileA = { ...node('A.java'), type: 'File' as const, filePath: 'A.java' }
     const fileB = { ...node('B.java'), type: 'File' as const, filePath: 'B.java' }
     const classA = { ...node('A'), type: 'Class' as const, filePath: 'A.java' }
@@ -122,11 +122,13 @@ describe('useGraphData - baseline plus lazy deep graph', () => {
     const { ensureDeepGraph, loadGraph } = useGraphData()
 
     await loadGraph('project-1')
-    expect(fetchFullGraphMock).toHaveBeenLastCalledWith('project-1', { mode: 'baseline' })
-    expect(store.payloadMode).toBe('baseline')
+    expect(fetchFullGraphMock).toHaveBeenNthCalledWith(1, 'project-1', { mode: 'baseline' })
+    expect(fetchFullGraphMock).toHaveBeenNthCalledWith(2, 'project-1', { mode: 'deep' })
+    expect(store.payloadMode).toBe('baseline+deep')
+    expect(store.graphData.nodeStats.Field).toBe(1)
 
     await ensureDeepGraph('project-1')
-    expect(fetchFullGraphMock).toHaveBeenLastCalledWith('project-1', { mode: 'deep' })
+    expect(fetchFullGraphMock).toHaveBeenCalledTimes(2)
     expect(store.payloadMode).toBe('baseline+deep')
     expect(store.graphData.edgeStats.IMPORTS).toBe(1)
     expect(store.graphData.edgeStats.HAS_FIELD).toBe(1)

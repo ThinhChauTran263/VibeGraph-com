@@ -1,42 +1,26 @@
 package com.vibegraph.graph.repository.impl.neo4j;
 
-import java.util.Set;
 import java.util.regex.Pattern;
+
+import com.vibegraph.graph.model.GraphVocabulary;
 
 /**
  * Whitelist for Neo4j labels, relationship types, and property keys.
  *
  * Neo4j cannot parameterize labels or relationship types - they must be string-
  * interpolated into Cypher. To keep that safe and stable, every interpolated
- * token is validated against a fixed allow-list here before it reaches a query.
+ * token is validated against a fixed allow-list before it reaches a query.
  * Anything outside the schema is rejected loudly instead of silently producing
  * malformed Cypher or an injection vector.
  *
- * Source of truth mirrors VibeGraph-specs-2month/neo4j-schema.md and the FE EdgeType /
- * NodeType unions in vibegraph-web/src/types/graph.ts.
+ * The label / relationship-type allow-list lives in the storage-neutral
+ * {@link GraphVocabulary}; this class adds the Cypher-specific property-key
+ * validation on top.
  */
 public final class GraphSchema {
 
     /** Legacy placeholder label kept for migration cleanup; parser no longer emits it. */
-    public static final String EXTERNAL_LABEL = "External";
-
-    private static final Set<String> NODE_LABELS = Set.of(
-            "Project", "Package", "File", "Class", "Interface", "Enum",
-            "Record", "DBModel", "Method", "Constructor", "Field", "Annotation",
-            "LocalVariable", "Route", "APIEndpoint", EXTERNAL_LABEL
-    );
-
-    private static final Set<String> RELATIONSHIP_TYPES = Set.of(
-            "OWNS", "CONTAINS", "DEFINES",
-            "HAS_METHOD", "HAS_FIELD", "HAS_INNER",
-            "HAS_RELATION",
-            "EXTENDS", "IMPLEMENTS", "OVERRIDES",
-            "IMPORTS", "TYPE_OF", "RETURNS", "PARAMETER_TYPE", "THROWS",
-            "CALLS", "INSTANTIATES", "INJECTS", "HANDLES_ROUTE", "ANNOTATED_BY",
-            "READS", "WRITES", "CATCHES", "STEP_IN_FLOW",
-            "PUBLISHES_EVENT", "LISTENS_EVENT", "TRIGGERS",
-            "RESOLVES_TO", "CALLS_DYNAMIC", "DISPATCH_CANDIDATES"
-    );
+    public static final String EXTERNAL_LABEL = GraphVocabulary.EXTERNAL_LABEL;
 
     /** Safe Cypher identifier for property keys: letter/underscore then word chars. */
     private static final Pattern PROPERTY_KEY = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
@@ -50,10 +34,7 @@ public final class GraphSchema {
      * @throws IllegalArgumentException if the label is not in the schema.
      */
     public static String nodeLabel(String label) {
-        if (label == null || !NODE_LABELS.contains(label)) {
-            throw new IllegalArgumentException("Unknown node label (not in graph schema): " + label);
-        }
-        return label;
+        return GraphVocabulary.nodeLabel(label);
     }
 
     /**
@@ -62,10 +43,7 @@ public final class GraphSchema {
      * @throws IllegalArgumentException if the type is not in the schema.
      */
     public static String relationshipType(String type) {
-        if (type == null || !RELATIONSHIP_TYPES.contains(type)) {
-            throw new IllegalArgumentException("Unknown relationship type (not in graph schema): " + type);
-        }
-        return type;
+        return GraphVocabulary.relationshipType(type);
     }
 
     /**

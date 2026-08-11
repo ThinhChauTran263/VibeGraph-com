@@ -25,7 +25,7 @@ public class AdminAnnouncementService {
     private final CurrentUser currentUser;
     private final AuditService auditService;
 
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = "supabaseTransactionManager", readOnly = true)
     public List<AnnouncementResponse> list() {
         return announcementRepository.findAll().stream()
                 .sorted(Comparator.comparing(Announcement::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -33,7 +33,7 @@ public class AdminAnnouncementService {
                 .toList();
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public AnnouncementResponse create(AnnouncementRequest request) {
         Announcement announcement = toAnnouncement(Announcement.builder().build(), request);
         announcement.setCreatedByUserId(currentUser.id());
@@ -45,7 +45,7 @@ public class AdminAnnouncementService {
         return response;
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public AnnouncementResponse update(UUID id, AnnouncementRequest request) {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Announcement not found: " + id));
@@ -55,13 +55,13 @@ public class AdminAnnouncementService {
         return response;
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public void delete(UUID id) {
         announcementRepository.deleteById(id);
         auditService.recordCurrentUser("ANNOUNCEMENT_DELETE", null, "ANNOUNCEMENT", id.toString(), java.util.Map.of());
     }
 
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public AnnouncementResponse disable(UUID id) {
         Announcement announcement = announcementRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Announcement not found: " + id));

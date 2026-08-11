@@ -73,6 +73,11 @@ const router = createRouter({
           component: () => import('../views/user/ProjectsView.vue'),
         },
         {
+          path: 'trash',
+          name: 'trash',
+          component: () => import('../views/user/TrashView.vue'),
+        },
+        {
           path: 'api-keys',
           name: 'api-keys',
           component: () => import('../views/user/ApiKeysView.vue'),

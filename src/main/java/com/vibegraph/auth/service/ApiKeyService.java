@@ -196,7 +196,7 @@ public class ApiKeyService {
     }
 
     private ProjectOwnership requireOwnedProject(String projectId, UUID userId) {
-        return projectOwnershipRepository.findByProjectIdAndOwnerId(projectId, userId)
+        return projectOwnershipRepository.findByProjectIdAndOwnerIdAndDeletedAtIsNull(projectId, userId)
                 .orElseThrow(() -> new ForbiddenException("Access denied"));
     }
 

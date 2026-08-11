@@ -44,6 +44,7 @@ import com.vibegraph.mcp.service.impl.ArchitectureAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.ClassContextAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.ImpactAnalysisAnalyzerImpl;
 import com.vibegraph.mcp.service.impl.LayerPatternAnalyzerImpl;
+import com.vibegraph.mcp.source.SourceGraphSupport;
 
 @DisplayName("MCP Tools")
 class McpToolsTest {
@@ -52,7 +53,8 @@ class McpToolsTest {
             "get_project_architecture", "get_class_context", "get_impact_analysis", "get_layer_pattern",
             "get_source_file", "get_method_source", "search_source", "find_references", "trace_endpoint",
             "get_method_cpg_context", "find_related_tests", "suggest_test_plan", "plan_code_change",
-            "explain_failure_path", "get_project_conventions");
+            "explain_failure_path", "get_project_conventions",
+            "list_projects", "verify_change", "explain_compile_error");
 
     /**
      * Build the full tool-callback provider for registration assertions. The four original tools
@@ -63,7 +65,7 @@ class McpToolsTest {
         return new McpServerConfig().mcpToolCallbackProvider(
                 new ArchitectureTool(new ArchitectureAnalyzerImpl(graphService)),
                 new ClassContextTool(new ClassContextAnalyzerImpl(graphService)),
-                new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService)),
+                new ImpactAnalysisTool(new ImpactAnalysisAnalyzerImpl(graphService, new SourceGraphSupport(graphService))),
                 new LayerPatternTool(new LayerPatternAnalyzerImpl(graphService)),
                 new SourceFileTool(null),
                 new MethodSourceTool(null),
@@ -76,6 +78,9 @@ class McpToolsTest {
                 new PlanCodeChangeTool(null),
                 new ExplainFailureTool(null),
                 new ProjectConventionsTool(null),
+                new ListProjectsTool(null),
+                new VerifyChangeTool(null),
+                new ExplainCompileErrorTool(null),
                 Mockito.mock(CurrentUser.class),
                 Mockito.mock(CreditPricingService.class),
                 Mockito.mock(CreditBalanceService.class),
@@ -220,15 +225,20 @@ class McpToolsTest {
         }
 
         @Test
-        @DisplayName("get_class_context resolves class by simple name deterministically")
-        void getClassContext_simpleName_returnsFirstDeterministicMatch() {
+        @DisplayName("get_class_context returns candidates instead of guessing when simple name is ambiguous")
+        void getClassContext_ambiguousSimpleName_returnsCandidates() {
             when(graphService.getFullGraph("p1")).thenReturn(classGraph());
 
             ClassContextResponse result = classContextTool.getClassContext("p1", "UserService");
 
-            assertThat(result.getClassInfo().getFullName()).isEqualTo("com.app.duplicate.UserService");
+            assertThat(result.getClassInfo()).isNull();
             assertThat(result.getMethods()).isEmpty();
             assertThat(result.getOutgoingRelations()).isEmpty();
+            assertThat(result.getCandidates())
+                    .extracting(ClassContextResponse.Candidate::getFullName)
+                    .containsExactly("com.app.duplicate.UserService", "com.app.service.UserService");
+            assertThat(result.getWarnings())
+                    .containsExactly("Class query is ambiguous; refine using the full name. Candidates: 2");
         }
 
         @Test
@@ -289,7 +299,7 @@ class McpToolsTest {
             ClassContextResponse result = classContextTool.getClassContext("p1", "UserService");
 
             assertThat(result.getClassInfo()).isNull();
-            assertThat(result.getWarnings()).containsExactly("Graph is too large for class context: 10001 nodes, 0 edges.");
+            assertThat(result.getWarnings()).containsExactly("Graph is too large for class context: 50001 nodes, 0 edges.");
         }
 
         @Test
@@ -340,7 +350,7 @@ class McpToolsTest {
 
         private GraphDataResponse largeGraph() {
             List<NodeDto> nodes = new ArrayList<>();
-            for (int index = 0; index < 10_001; index++) {
+            for (int index = 0; index < 50_001; index++) {
                 nodes.add(classNode("class-" + index, "UserService" + index, "com.app.UserService" + index, "SERVICE"));
             }
             return GraphDataResponse.builder()
@@ -484,7 +494,7 @@ class McpToolsTest {
             LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "SERVICE");
 
             assertThat(result.getExamples()).isEmpty();
-            assertThat(result.getWarnings()).containsExactly("Graph is too large for layer pattern: 10001 nodes, 0 edges.");
+            assertThat(result.getWarnings()).containsExactly("Graph is too large for layer pattern: 50001 nodes, 0 edges.");
         }
 
         @Test
@@ -526,7 +536,7 @@ class McpToolsTest {
 
         private GraphDataResponse largeLayerGraph() {
             List<NodeDto> nodes = new ArrayList<>();
-            for (int index = 0; index < 10_001; index++) {
+            for (int index = 0; index < 50_001; index++) {
                 nodes.add(layerNode("service-" + index, "Class", "Service" + index, "com.app.service.Service" + index, "SERVICE"));
             }
             return GraphDataResponse.builder()
@@ -564,7 +574,8 @@ class McpToolsTest {
     class ImpactAnalysisToolTest {
 
         private final GraphService graphService = Mockito.mock(GraphService.class);
-        private final ImpactAnalysisAnalyzer impactAnalysisAnalyzer = new ImpactAnalysisAnalyzerImpl(graphService);
+        private final ImpactAnalysisAnalyzer impactAnalysisAnalyzer =
+                new ImpactAnalysisAnalyzerImpl(graphService, new SourceGraphSupport(graphService));
         private final ImpactAnalysisTool impactAnalysisTool = new ImpactAnalysisTool(impactAnalysisAnalyzer);
 
         @Test

@@ -43,6 +43,8 @@ public class MethodCpgContextResponse {
         private Integer lineNumber;
         private Integer endLine;
         private String visibility;
+        /** Annotation simple names on the method (e.g. Transactional, Async, Cacheable). */
+        private List<String> annotations;
     }
 
     @Data

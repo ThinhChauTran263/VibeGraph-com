@@ -21,7 +21,8 @@ import lombok.RequiredArgsConstructor;
 public class AccountSettingsService {
 
     private static final String FREE_PLAN_CODE = "FREE";
-    private static final String DEFAULT_BLOCKED_REASON = "Account is blocked";
+    /** Shared with {@link AccountAccessGuard}, which builds the same restriction from a projection. */
+    static final String DEFAULT_BLOCKED_REASON = "Account is blocked";
     static final String QUOTA_EXCEEDED_MESSAGE =
             "Source storage quota exceeded. Free up storage or ask an admin for a quota override.";
 
