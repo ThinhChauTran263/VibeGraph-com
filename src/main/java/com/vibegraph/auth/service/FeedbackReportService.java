@@ -53,7 +53,7 @@ public class FeedbackReportService {
      *
      * @return summary of the newly created report (without messages)
      */
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public FeedbackReportResponse createReport(FeedbackReportCreateRequest request) {
         UUID userId = currentUser.id();
 
@@ -82,7 +82,7 @@ public class FeedbackReportService {
      * List all reports owned by the currently authenticated user, newest first
      * (ordering delegated to Spring Data convention; adjust query if needed).
      */
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = "supabaseTransactionManager", readOnly = true)
     public List<FeedbackReportResponse> listReports() {
         return reportRepository.findByUserId(currentUser.id())
                 .stream()
@@ -96,7 +96,7 @@ public class FeedbackReportService {
      * Return a report with all its messages, in chronological order.
      * Throws {@link ForbiddenException} if the report does not belong to the caller.
      */
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = "supabaseTransactionManager", readOnly = true)
     public FeedbackReportDetailResponse getReportDetail(UUID reportId) {
         FeedbackReport report = findOwnedReport(reportId);
         List<FeedbackMessageResponse> messages = messageRepository
@@ -115,7 +115,7 @@ public class FeedbackReportService {
      * @throws ForbiddenException    if the report is not owned by the caller
      * @throws IllegalStateException if the report is already CLOSED
      */
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public FeedbackMessageResponse addMessage(UUID reportId, FeedbackMessageRequest request) {
         FeedbackReport report = findOwnedReport(reportId);
 
@@ -141,7 +141,7 @@ public class FeedbackReportService {
      * Close an open report. Idempotent: closing an already-closed report is a no-op.
      * Sets {@code closedAt = now} and {@code deleteAfter = closedAt + 7 days}.
      */
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public FeedbackReportResponse closeReport(UUID reportId) {
         FeedbackReport report = findOwnedReport(reportId);
 
@@ -169,7 +169,7 @@ public class FeedbackReportService {
      * Runs at 02:00 every day. Requires {@code @EnableScheduling} on the application class.
      */
     @Scheduled(cron = "0 0 2 * * ?")
-    @Transactional
+    @Transactional(transactionManager = "supabaseTransactionManager")
     public void cleanupExpiredReports() {
         reportRepository.deleteByDeleteAfterLessThanEqual(Instant.now());
         log.info("Cleaned up expired feedback reports");

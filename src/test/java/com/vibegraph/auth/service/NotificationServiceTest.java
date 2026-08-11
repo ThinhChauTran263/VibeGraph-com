@@ -22,6 +22,7 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.dto.NotificationResponse;
 import com.vibegraph.auth.repository.NotificationRepository;
+import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.repository.projection.NotificationViewRow;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,6 +32,7 @@ class NotificationServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-16T10:00:00Z");
 
     @Mock private NotificationRepository notificationRepository;
+    @Mock private UserRepository userRepository;
     @Mock private CurrentUser currentUser;
     @Mock private NotificationViewRow row;
 
@@ -44,6 +46,7 @@ class NotificationServiceTest {
         notificationId = UUID.randomUUID();
         service = new NotificationService(
                 notificationRepository,
+                userRepository,
                 currentUser,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         when(currentUser.id()).thenReturn(userId);
@@ -52,12 +55,13 @@ class NotificationServiceTest {
     }
 
     @Test
-    @DisplayName("list materializes active announcements and returns newest notifications")
-    void list_materializesAndReturnsNewestFirst() {
-        when(notificationRepository.findActiveForUser(userId, NOW, org.springframework.data.domain.PageRequest.of(0, 50)))
+    @DisplayName("list reads active announcements without materializing per-user rows")
+    void list_returnsActiveAnnouncementsWithoutMaterializing() {
+        when(notificationRepository.findActiveForUser(
+                userId, "USER", NOW, org.springframework.data.domain.PageRequest.of(0, 50)))
                 .thenReturn(List.of(row));
         when(row.getId()).thenReturn(notificationId);
-        when(row.getAnnouncementId()).thenReturn(UUID.randomUUID());
+        when(row.getAnnouncementId()).thenReturn(notificationId);
         when(row.getTitle()).thenReturn("Maintenance");
         when(row.getBody()).thenReturn("Service restart");
         when(row.getType()).thenReturn("MAINTENANCE");
@@ -68,7 +72,8 @@ class NotificationServiceTest {
 
         List<NotificationResponse> result = service.list(50);
 
-        verify(notificationRepository).materializeActiveForUser(userId, "USER", NOW);
+        verify(notificationRepository).findActiveForUser(
+                userId, "USER", NOW, org.springframework.data.domain.PageRequest.of(0, 50));
         assertThat(result).singleElement().satisfies(notification -> {
             assertThat(notification.id()).isEqualTo(notificationId);
             assertThat(notification.creatorName()).isEqualTo("Ops");
@@ -79,12 +84,13 @@ class NotificationServiceTest {
     @Test
     @DisplayName("markRead and dismiss update only notification rows owned by the current user")
     void stateChanges_areOwnerScopedAndPersisted() {
-        when(notificationRepository.markRead(notificationId, userId, NOW)).thenReturn(1);
-        when(notificationRepository.dismiss(notificationId, userId, NOW)).thenReturn(1);
-        when(notificationRepository.findViewByIdAndUserId(notificationId, userId))
+        when(notificationRepository.markRead(notificationId, userId, "USER", NOW)).thenReturn(1);
+        when(notificationRepository.dismiss(notificationId, userId, "USER", NOW)).thenReturn(1);
+        when(notificationRepository.findViewByAnnouncementIdAndUserId(
+                notificationId, userId, "USER", NOW))
                 .thenReturn(Optional.of(row));
         when(row.getId()).thenReturn(notificationId);
-        when(row.getAnnouncementId()).thenReturn(UUID.randomUUID());
+        when(row.getAnnouncementId()).thenReturn(notificationId);
         when(row.getTitle()).thenReturn("Notice");
         when(row.getBody()).thenReturn("Body");
         when(row.getType()).thenReturn("GENERAL");
@@ -95,7 +101,7 @@ class NotificationServiceTest {
 
         assertThat(service.markRead(notificationId).readAt()).isEqualTo(NOW);
         assertThat(service.dismiss(notificationId).dismissedAt()).isEqualTo(NOW);
-        verify(notificationRepository).markRead(notificationId, userId, NOW);
-        verify(notificationRepository).dismiss(notificationId, userId, NOW);
+        verify(notificationRepository).markRead(notificationId, userId, "USER", NOW);
+        verify(notificationRepository).dismiss(notificationId, userId, "USER", NOW);
     }
 }
