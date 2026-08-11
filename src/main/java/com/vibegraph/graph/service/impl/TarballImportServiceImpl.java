@@ -7,6 +7,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -22,6 +23,7 @@ import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
+import com.vibegraph.common.ownership.ProjectTrashService;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
@@ -66,6 +68,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final FeatureGateService featureGateService;
     private final ConcurrentImportGuard concurrentImportGuard;
+    private final ProjectTrashService trashService;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
             GitHubPreFlightService preFlightService,
@@ -82,7 +85,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             CurrentUser currentUser,
             ProjectOwnershipRegistrar ownershipRegistrar,
             FeatureGateService featureGateService,
-            ConcurrentImportGuard concurrentImportGuard) {
+            ConcurrentImportGuard concurrentImportGuard,
+            ProjectTrashService trashService) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -99,6 +103,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.ownershipRegistrar = ownershipRegistrar;
         this.featureGateService = featureGateService;
         this.concurrentImportGuard = concurrentImportGuard;
+        this.trashService = trashService;
     }
 
     @Override
@@ -106,12 +111,23 @@ public class TarballImportServiceImpl implements TarballImportService {
         featureGateService.assertEnabled(FeatureGateService.IMPORT_GITHUB);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
+
+        // Parsing the URL is pure, so the repository name is known before any quota check. That
+        // ordering matters: re-importing a repository is an explicit replace, and a trashed copy of
+        // the same repository still occupies the owner's quota. Purging it first frees that space
+        // for this import instead of letting the old copy reject its own replacement.
+        GitHubRepositoryRef parsed = urlParser.parse(request.url());
+        List<String> replaced = trashService.purgeTrashedGitHubDuplicates(userId, parsed.displayName());
+        if (!replaced.isEmpty()) {
+            log.info("Re-import of {} permanently removed {} trashed copy/copies: {}",
+                    parsed.displayName(), replaced.size(), replaced);
+        }
+
         accountSettingsService.assertQuotaNotExceeded(userId, 1L);
         long remainingQuotaBytes = accountSettingsService.quotaSnapshot(userId).remainingBytes();
         ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(userId);
         ImportContext ctx = null;
         try {
-            GitHubRepositoryRef parsed = urlParser.parse(request.url());
             GitHubRepositoryRef resolved = preFlightService.validatePublicRepository(parsed, remainingQuotaBytes);
             ctx = prepareWorkspace(resolved, userId, remainingQuotaBytes);
             projectService.markAnalyzing(ctx.projectId());

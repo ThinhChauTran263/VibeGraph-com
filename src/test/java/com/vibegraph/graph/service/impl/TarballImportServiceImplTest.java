@@ -81,6 +81,7 @@ class TarballImportServiceImplTest {
     @Mock CurrentUser currentUser;
     @Mock ProjectOwnershipRegistrar ownershipRegistrar;
     @Mock FeatureGateService featureGateService;
+    @Mock com.vibegraph.common.ownership.ProjectTrashService trashService;
 
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
@@ -99,7 +100,9 @@ class TarballImportServiceImplTest {
                 archiveExtractor, projectService, analyzeService, graphUpdateController, fileChangeBroadcaster,
                 backgroundTasks::add, accountSettingsService, projectUsageService,
                 currentUser, ownershipRegistrar, featureGateService,
-                new ConcurrentImportGuard(new AbuseProperties()));
+                new ConcurrentImportGuard(new AbuseProperties()), trashService);
+        lenient().when(trashService.purgeTrashedGitHubDuplicates(eq(userId), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(List.of());
     }
 
     @Test

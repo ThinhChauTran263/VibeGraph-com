@@ -21,9 +21,11 @@ import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
+import com.vibegraph.common.ownership.ProjectTrashService;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
+import com.vibegraph.graph.dto.TrashedProjectResponse;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.CliRepositoryCreateRequest;
 import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
@@ -47,6 +49,7 @@ public class ProjectController {
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
     private final ProjectDeletionOrchestrator deletionOrchestrator;
+    private final ProjectTrashService trashService;
     private final CurrentUser currentUser;
     private final AccountSettingsService accountSettingsService;
     private final FeatureGateService featureGateService;
@@ -63,7 +66,9 @@ public class ProjectController {
             projectUsageService.recordImport(project.getId(), currentUser.id(), 0L);
         } catch (RuntimeException ex) {
             try {
-                deletionOrchestrator.delete(project.getId());
+                // Rollback of a half-finished create must remove the project outright: trashing it
+                // would leave a project the user never successfully created sitting in their bin.
+                deletionOrchestrator.purge(project.getId());
             } catch (RuntimeException cleanupFailure) {
                 ex.addSuppressed(cleanupFailure);
             }
@@ -114,12 +119,38 @@ public class ProjectController {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
+    /**
+     * Moves a project to trash. The graph and the extracted sources are kept for the retention
+     * window so the owner can restore, and the project disappears from every listing meanwhile.
+     * The permanent delete happens on the retention sweep, or immediately via {@code /purge}.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
-        // Fail-safe delete: ownership first (403/404), then data plane, then control plane.
-        // 204 only after BOTH planes are removed; partial failure surfaces an error, never 204.
         ownershipGuard.assertOwner(id);
-        deletionOrchestrator.delete(id);
+        deletionOrchestrator.moveToTrash(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/trash")
+    public ResponseEntity<ApiResponse<List<TrashedProjectResponse>>> trash() {
+        return ResponseEntity.ok(ApiResponse.success(trashService.listTrash()));
+    }
+
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<Void> restore(@PathVariable String id) {
+        // Ownership is checked inside the service: the usual guard treats a trashed project as
+        // missing, which is exactly what we need to undo here.
+        trashService.restore(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Permanently deletes a trashed project without waiting for the retention sweep. Irreversible:
+     * removes the graph, the ownership row and the extracted sources.
+     */
+    @DeleteMapping("/{id}/purge")
+    public ResponseEntity<Void> purge(@PathVariable String id) {
+        trashService.purge(id);
         return ResponseEntity.noContent().build();
     }
 }

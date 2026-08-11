@@ -59,7 +59,8 @@ class ProjectApiIT {
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator, Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
+                deletionOrchestrator, Mockito.mock(com.vibegraph.common.ownership.ProjectTrashService.class),
+                Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
                 Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class),
                 Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class),
                 Mockito.mock(CliRepositoryService.class));
