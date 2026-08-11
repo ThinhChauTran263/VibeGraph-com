@@ -10,6 +10,7 @@ import { apiToGraphology } from '@/lib/graphAdapter'
 import { capGraphData } from '@/lib/graphCap'
 import { useFilters } from '@/composables/useFilters'
 import { bumpGraphVersion } from '@/lib/graphVersion'
+import { withoutPackageNodes } from '@/lib/graphSanitizer'
 import type Graph from 'graphology'
 import type { EdgeType, GraphData, GraphEdge, GraphNode, NodeType } from '@/types/graph'
 
@@ -78,15 +79,21 @@ export function useGraphData() {
     store.error = null
 
     try {
-      const data = await fetchFullGraph(projectId, { mode: 'baseline' })
+      const [baseline, deep] = await Promise.all([
+        fetchFullGraph(projectId, { mode: 'baseline' }),
+        fetchFullGraph(projectId, { mode: 'deep' }),
+      ])
+      const data = withoutPackageNodes(mergeGraphData(baseline, deep))
       store.projectId = projectId
-      store.baselineGraphData = data
-      store.deepGraphData = null
-      store.payloadMode = 'baseline'
+      store.baselineGraphData = withoutPackageNodes(baseline)
+      store.deepGraphData = withoutPackageNodes(deep)
+      store.payloadMode = 'baseline+deep'
       store.graphData = data
       store.payloadMeta = data.meta ?? null
       // Signal derived views (diagrams) that the graph changed, so their caches revalidate.
       bumpGraphVersion()
+      // Keep the complete data in Pinia for counts/search, but render only the
+      // default-visible subset. Filter changes explicitly trigger a new layout.
       return buildGraph(filters.applyFilters(data))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load graph'
@@ -113,11 +120,11 @@ export function useGraphData() {
     store.isLoading = true
     store.error = null
     try {
-      const deep = await fetchFullGraph(projectId, { mode: 'deep' })
+      const deep = withoutPackageNodes(await fetchFullGraph(projectId, { mode: 'deep' }))
       const baseline = store.baselineGraphData ?? deep
       store.projectId = projectId
       store.deepGraphData = deep
-      store.graphData = mergeGraphData(baseline, deep)
+      store.graphData = withoutPackageNodes(mergeGraphData(baseline, deep))
       store.payloadMode = 'baseline+deep'
       store.payloadMeta = deep.meta ?? baseline.meta ?? null
       bumpGraphVersion()
@@ -145,7 +152,7 @@ export function useGraphData() {
       renderedEdges: capped.renderedEdges,
       totalEdges: backendMeta?.totalEdges ?? capped.totalEdges,
     }
-    return apiToGraphology(capped.data)
+    return apiToGraphology(withoutPackageNodes(capped.data))
   }
 
   function selectNode(node: GraphNode | null) {

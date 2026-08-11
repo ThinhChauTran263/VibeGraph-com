@@ -72,6 +72,7 @@ class AdminServiceTest {
     @Mock private SecurityEventRepository securityEventRepository;
     @Mock private AuditService auditService;
     @Mock private OnlineUserHistoryService onlineUserHistoryService;
+    @Mock private RefreshSessionService refreshSessionService;
 
     private AdminService adminService;
 
@@ -94,7 +95,8 @@ class AdminServiceTest {
                 feedbackReportRealtimePublisher,
                 securityEventRepository,
                 auditService,
-                onlineUserHistoryService
+                onlineUserHistoryService,
+                refreshSessionService
         );
     }
 
@@ -252,6 +254,7 @@ class AdminServiceTest {
         assertEquals("Spam", response.blockedReason());
         assertEquals("Spam Policy violation", response.blockedReasonSafe());
         verify(settingsRepository).save(settings);
+        verify(refreshSessionService).revokeAllForUser(userId, "ACCOUNT_BLOCKED");
         verify(auditService).recordCurrentUser("USER_BLOCK", userId, "USER", userId.toString(),
                 java.util.Map.of("safeReason", "Spam Policy violation"));
     }
@@ -270,6 +273,7 @@ class AdminServiceTest {
 
         assertTrue(response.deactivated());
         verify(userRepository).save(user);
+        verify(refreshSessionService).revokeAllForUser(userId, "ACCOUNT_DEACTIVATED");
         verify(auditService).recordCurrentUser("USER_DEACTIVATE", userId, "USER", userId.toString(),
                 java.util.Map.of("safeReason", "Account closed"));
     }

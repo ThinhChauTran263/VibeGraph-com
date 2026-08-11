@@ -49,12 +49,14 @@ public class ParserServiceImpl implements ParserService {
             "Class", "Interface", "Enum", "Record", "DBModel");
 
     /**
-     * Phase 3 deep CPG toggle. Default false: LocalVariable nodes + READS/WRITES/CATCHES
-     * are opt-in (body-level data-flow can multiply graph size). Bound from
-     * {@code vibegraph.parser.deep-cpg-enabled}; defaults to false when unset (e.g. in
-     * plain {@code new ParserServiceImpl()} unit tests), preserving the Phase 2 graph.
+     * Phase 3 deep CPG toggle. Default TRUE: LocalVariable nodes + READS/WRITES/CATCHES
+     * are VibeGraph's core Java data-flow advantage; opt out on very large repositories
+     * with {@code VIBEGRAPH_PARSER_DEEP_CPG=false} (the analyze max-nodes/max-edges
+     * ceilings still fail fast before OOM). Bound from
+     * {@code vibegraph.parser.deep-cpg-enabled}. Plain {@code new ParserServiceImpl()}
+     * unit tests bypass @Value processing, so the field stays {@code false} there.
      */
-    @Value("${vibegraph.parser.deep-cpg-enabled:false}")
+    @Value("${vibegraph.parser.deep-cpg-enabled:true}")
     private boolean deepCpgEnabled;
 
     @Override

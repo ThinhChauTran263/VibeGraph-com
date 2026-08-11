@@ -17,7 +17,7 @@ workspace/root guard.
 
 ## Current Tool Surface
 
-The server currently registers 15 tools through `McpServerConfig`:
+The server currently registers 18 tools through `McpServerConfig`:
 
 | Tool | Class | Purpose |
 | --- | --- | --- |
@@ -36,6 +36,9 @@ The server currently registers 15 tools through `McpServerConfig`:
 | `plan_code_change` | `PlanCodeChangeTool` | Conservative change plan with risks and tests. |
 | `explain_failure_path` | `ExplainFailureTool` | Stacktrace-to-project mapping. |
 | `get_project_conventions` | `ProjectConventionsTool` | Durable repo conventions from `ai-memory.md`. |
+| `list_projects` | `ListProjectsTool` | Analyzed projects owned by the caller (id, name, analyzedAt, stats). |
+| `verify_change` | `VerifyChangeTool` | Changed files → symbols, reachable API routes, related tests, commands. |
+| `explain_compile_error` | `ExplainCompileErrorTool` | javac/Maven output → enclosing symbols, caller counts, fix hints. |
 
 ## Package Structure
 
@@ -75,12 +78,14 @@ persisted paths.
 ## CPG Behavior
 
 - CPG-lite relation types are available in the graph generically.
-- Deep CPG (`LocalVariable`, `READS`, `WRITES`, `CATCHES`) is opt-in through
-  `VIBEGRAPH_PARSER_DEEP_CPG=true`.
+- Deep CPG (`LocalVariable`, `READS`, `WRITES`, `CATCHES`) is ON by default;
+  set `VIBEGRAPH_PARSER_DEEP_CPG=false` to opt out on very large repositories.
+  Projects analyzed before the default flipped need a re-analyze to gain the
+  deep edges.
 - `STEP_IN_FLOW` is inferred from resolved in-project `CALLS` reachable from
   route handlers. It is a deterministic flow view, not runtime tracing.
-- If deep CPG is disabled, method CPG tools should report empty data-flow groups
-  as a limitation, not as a failure.
+- If deep CPG was disabled at analyze time, method CPG tools should report empty
+  data-flow groups as a limitation, not as a failure.
 
 ## Safety Rules
 

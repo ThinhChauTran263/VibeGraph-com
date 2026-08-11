@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import com.vibegraph.graph.config.GraphPayloadProperties;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.service.ProjectRuntimeStatusService;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class GraphUpdateController {
     private final SimpMessagingTemplate messagingTemplate;
     private final GraphPayloadGuard payloadGuard;
     private final GraphPayloadProperties payloadProperties;
+    private final ProjectRuntimeStatusService runtimeStatusService;
 
     /**
      * Broadcast a full-graph replacement to {@code /topic/projects/{projectId}/updates}.
@@ -109,6 +111,7 @@ public class GraphUpdateController {
         int clamped = Math.max(0, Math.min(100, progress));
         ProjectStatusEvent event = new ProjectStatusEvent(projectId, status, clamped, message, Instant.now());
         messagingTemplate.convertAndSend("/topic/projects/" + projectId + "/status", event);
+        runtimeStatusService.record(event);
         log.debug("Status broadcast: project={} status={} progress={}", projectId, status, clamped);
     }
 

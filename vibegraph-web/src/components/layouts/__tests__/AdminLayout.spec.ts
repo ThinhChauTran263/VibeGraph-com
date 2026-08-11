@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AdminLayout from '../AdminLayout.vue'
 import { createRouter, createWebHistory } from 'vue-router'

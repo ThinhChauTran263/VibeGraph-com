@@ -21,6 +21,7 @@ import type {
   GraphUpdateEvent,
   NodeType,
 } from '@/types/graph'
+import { withoutPackageFromEvent, withoutPackageNodes } from '@/lib/graphSanitizer'
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -176,10 +177,13 @@ function applyIncremental(current: GraphData, event: GraphIncrementalEvent): Gra
  * brand-new {@link GraphData}. The input is never mutated.
  */
 export function applyGraphUpdate(current: GraphData, event: GraphUpdateEvent): GraphData {
-  if (event.type === 'FULL_UPDATE') {
+  const sanitizedEvent = withoutPackageFromEvent(event)
+  if (sanitizedEvent.type === 'FULL_UPDATE') {
     // Recompute stats from the authoritative node/edge arrays so the store
     // invariant holds even if the producer sent stale/missing stats.
-    return withStats([...event.graph.nodes], [...event.graph.edges])
+    return withoutPackageNodes(
+      withStats([...sanitizedEvent.graph.nodes], [...sanitizedEvent.graph.edges]),
+    )
   }
-  return applyIncremental(current, event)
+  return withoutPackageNodes(applyIncremental(current, sanitizedEvent))
 }

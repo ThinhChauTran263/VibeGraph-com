@@ -63,6 +63,7 @@ class ProjectControllerTest {
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
     private ProjectDeletionOrchestrator deletionOrchestrator;
+    private com.vibegraph.common.ownership.ProjectTrashService trashService;
     private CurrentUser currentUser;
     private AccountSettingsService accountSettingsService;
     private com.vibegraph.auth.service.FeatureGateService featureGateService;
@@ -77,6 +78,7 @@ class ProjectControllerTest {
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
+        trashService = Mockito.mock(com.vibegraph.common.ownership.ProjectTrashService.class);
         currentUser = Mockito.mock(CurrentUser.class);
         accountSettingsService = Mockito.mock(AccountSettingsService.class);
         featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
@@ -84,8 +86,8 @@ class ProjectControllerTest {
         cliRepositoryService = Mockito.mock(CliRepositoryService.class);
         ProjectController controller = new ProjectController(
                 projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
-                deletionOrchestrator, currentUser, accountSettingsService, featureGateService, projectUsageService,
-                cliRepositoryService);
+                deletionOrchestrator, trashService, currentUser, accountSettingsService, featureGateService,
+                projectUsageService, cliRepositoryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -153,7 +155,8 @@ class ProjectControllerTest {
                 .andExpect(status().isConflict());
 
 
-        verify(deletionOrchestrator).delete("abc123");
+        // A create that never completed is rolled back outright, not parked in the user's trash.
+        verify(deletionOrchestrator).purge("abc123");
     }
 
     @Test
@@ -265,13 +268,15 @@ class ProjectControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/projects/{id} guards ownership then orchestrates delete, returning 204")
+    @DisplayName("DELETE /api/projects/{id} guards ownership then moves the project to trash, returning 204")
     void shouldDeleteOwnedProject() throws Exception {
         mockMvc.perform(delete("/api/projects/p1"))
                 .andExpect(status().isNoContent());
 
         verify(ownershipGuard, times(1)).assertOwner("p1");
-        verify(deletionOrchestrator, times(1)).delete("p1");
+        verify(deletionOrchestrator, times(1)).moveToTrash("p1");
+        // The public delete is reversible for the whole retention window.
+        verify(deletionOrchestrator, never()).purge("p1");
     }
 
     @Test
@@ -283,18 +288,63 @@ class ProjectControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
-        // No data-plane/control-plane delete when ownership is rejected.
-        verify(deletionOrchestrator, never()).delete("p1");
+        // Nothing is trashed when ownership is rejected.
+        verify(deletionOrchestrator, never()).moveToTrash("p1");
     }
 
     @Test
-    @DisplayName("DELETE /api/projects/{id} maps partial deletion to 500 DELETE_PARTIAL_FAILED")
+    @DisplayName("DELETE /api/projects/{id}/purge maps partial deletion to 500 DELETE_PARTIAL_FAILED")
     void shouldReturn500OnPartialDeletion() throws Exception {
         doThrow(new PartialDeletionException("p1", "CONTROL_PLANE", new RuntimeException("db down")))
-                .when(deletionOrchestrator).delete("p1");
+                .when(trashService).purge("p1");
 
-        mockMvc.perform(delete("/api/projects/p1"))
+        mockMvc.perform(delete("/api/projects/p1/purge"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.error.code").value("DELETE_PARTIAL_FAILED"));
+    }
+
+    @Test
+    @DisplayName("GET /api/projects/trash lists the caller's trashed projects with the countdown")
+    void shouldListTrashedProjects() throws Exception {
+        java.time.Instant deletedAt = java.time.Instant.parse("2026-08-09T10:00:00Z");
+        when(trashService.listTrash()).thenReturn(java.util.List.of(
+                new com.vibegraph.graph.dto.TrashedProjectResponse(
+                        "p1", "acme/widgets", "GITHUB", 2048L,
+                        deletedAt, deletedAt.plus(java.time.Duration.ofDays(3)), 2L)));
+
+        mockMvc.perform(get("/api/projects/trash"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].id").value("p1"))
+                .andExpect(jsonPath("$.data[0].name").value("acme/widgets"))
+                .andExpect(jsonPath("$.data[0].daysRemaining").value(2));
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/restore brings a trashed project back, returning 204")
+    void shouldRestoreTrashedProject() throws Exception {
+        mockMvc.perform(post("/api/projects/p1/restore"))
+                .andExpect(status().isNoContent());
+
+        verify(trashService, times(1)).restore("p1");
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/restore returns 404 when the project is not in the caller's trash")
+    void shouldReturn404WhenRestoringForeignProject() throws Exception {
+        doThrow(new com.vibegraph.common.exception.ProjectNotFoundException("Trashed project not found: p1"))
+                .when(trashService).restore("p1");
+
+        mockMvc.perform(post("/api/projects/p1/restore"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE /api/projects/{id}/purge permanently deletes a trashed project, returning 204")
+    void shouldPurgeTrashedProject() throws Exception {
+        mockMvc.perform(delete("/api/projects/p1/purge"))
+                .andExpect(status().isNoContent());
+
+        verify(trashService, times(1)).purge("p1");
     }
 }

@@ -10,6 +10,7 @@
 
 import axios from 'axios'
 import { API_BASE_URL } from './constants'
+import { clearStoredSession, redirectToLogin, refreshBrowserSession } from './authRefresh'
 
 /**
  * Main axios instance — every request includes browser cookies and redirects to /login on 401.
@@ -31,18 +32,24 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      // Clear stored session
-      localStorage.removeItem('vg_token')
-      localStorage.removeItem('vg_user')
-
-      // Redirect to login page. We access the router lazily to avoid circular
-      // imports (router depends on stores which depend on api which depends on router).
-      // Using window.location as a simple, framework-agnostic redirect.
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
+      const config = error.config as (typeof error.config & { _refreshAttempt?: boolean }) | undefined
+      const path = config?.url ?? ''
+      const lifecycleRequest = [
+        '/api/auth/login',
+        '/api/auth/register',
+        '/api/auth/refresh',
+        '/api/auth/logout',
+      ].some((candidate) => path.includes(candidate))
+      if (config && !config._refreshAttempt && !lifecycleRequest) {
+        config._refreshAttempt = true
+        if (await refreshBrowserSession()) {
+          return http(config)
+        }
       }
+      clearStoredSession()
+      redirectToLogin()
     }
     return Promise.reject(error)
   },

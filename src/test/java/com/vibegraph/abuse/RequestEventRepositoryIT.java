@@ -9,18 +9,27 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.repository.SecurityEventRepository;
+import com.vibegraph.common.supabase.SupabaseDatabaseConfig;
+import com.vibegraph.common.supabase.repository.JdbcProjectRuntimeStatusRepository;
+import com.vibegraph.common.supabase.repository.JdbcRequestEventRepository;
+import com.vibegraph.common.supabase.repository.JdbcSecurityEventRepository;
+import com.vibegraph.graph.repository.ProjectRuntimeStatusRepository;
+import com.vibegraph.graph.websocket.ProjectStatusEvent;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = RequestEventRepositoryIT.TestConfig.class)
@@ -39,6 +48,15 @@ class RequestEventRepositoryIT {
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
+        registry.add("vibegraph.supabase.enabled", () -> "true");
+        registry.add("vibegraph.supabase.jdbc-url", POSTGRES::getJdbcUrl);
+        registry.add("vibegraph.supabase.username", POSTGRES::getUsername);
+        registry.add("vibegraph.supabase.password", POSTGRES::getPassword);
+        registry.add("vibegraph.supabase.migration.jdbc-url", POSTGRES::getJdbcUrl);
+        registry.add("vibegraph.supabase.migration.username", POSTGRES::getUsername);
+        registry.add("vibegraph.supabase.migration.password", POSTGRES::getPassword);
+        registry.add("vibegraph.supabase.require-separate-credentials", () -> "false");
+        registry.add("vibegraph.supabase.schema", () -> "vibegraph_realtime");
     }
 
     @Configuration
@@ -46,25 +64,117 @@ class RequestEventRepositoryIT {
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfiguration",
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jRepositoriesAutoConfiguration"
     })
-    @EntityScan("com.vibegraph.abuse")
-    @EnableJpaRepositories("com.vibegraph.abuse")
+    @Import({
+        SupabaseDatabaseConfig.class,
+        JdbcRequestEventRepository.class,
+        JdbcSecurityEventRepository.class,
+        JdbcProjectRuntimeStatusRepository.class
+    })
     static class TestConfig {
     }
 
     @Autowired RequestEventRepository repository;
-    @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired SecurityEventRepository securityEventRepository;
+    @Autowired
+    @Qualifier("supabaseJdbcTemplate")
+    NamedParameterJdbcTemplate jdbcTemplate;
+    @Autowired ProjectRuntimeStatusRepository runtimeStatusRepository;
 
     @BeforeEach
     void clearRequestEvents() {
-        jdbcTemplate.update("DELETE FROM request_events");
+        jdbcTemplate.getJdbcTemplate().update("DELETE FROM request_events");
+        jdbcTemplate.getJdbcTemplate().update("DELETE FROM security_events");
+    }
+
+    @Test
+    @DisplayName("saving a request event twice with the same id keeps one row and returns it")
+    void saveRequestEvent_repeatedId_isIdempotent() {
+        RequestEvent event = requestEvent(UUID.randomUUID());
+
+        RequestEvent inserted = repository.save(event);
+        RequestEvent replayed = repository.save(event);
+
+        assertThat(inserted).isNotNull();
+        assertThat(replayed).isNotNull();
+        assertThat(replayed.getId()).isEqualTo(event.getId());
+        assertThat(replayed.getRoute()).isEqualTo("/api/projects/{id}");
+        assertThat(countRequestEvents(event.getId())).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("replaying a batch with already stored ids neither fails nor duplicates")
+    void saveAllRequestEvents_repeatedIds_isIdempotent() {
+        RequestEvent first = requestEvent(UUID.randomUUID());
+        RequestEvent second = requestEvent(UUID.randomUUID());
+
+        repository.saveAll(java.util.List.of(first, second));
+        repository.saveAll(java.util.List.of(first, second));
+
+        assertThat(countRequestEvents(first.getId())).isEqualTo(1L);
+        assertThat(countRequestEvents(second.getId())).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("saving a security event twice with the same id keeps one row and returns it")
+    void saveSecurityEvent_repeatedId_isIdempotent() {
+        SecurityEvent event = securityEvent(UUID.randomUUID());
+
+        SecurityEvent inserted = securityEventRepository.save(event);
+        SecurityEvent replayed = securityEventRepository.save(event);
+
+        assertThat(inserted).isNotNull();
+        assertThat(replayed).isNotNull();
+        assertThat(replayed.getId()).isEqualTo(event.getId());
+        assertThat(replayed.getEventType()).isEqualTo("RATE_LIMIT");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM security_events WHERE id = :id",
+                java.util.Map.of("id", event.getId()), Long.class)).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("replaying a security batch with already stored ids neither fails nor duplicates")
+    void saveAllSecurityEvents_repeatedIds_isIdempotent() {
+        SecurityEvent event = securityEvent(UUID.randomUUID());
+
+        securityEventRepository.saveAll(java.util.List.of(event));
+        securityEventRepository.saveAll(java.util.List.of(event, event));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM security_events WHERE id = :id",
+                java.util.Map.of("id", event.getId()), Long.class)).isEqualTo(1L);
+    }
+
+    private RequestEvent requestEvent(UUID id) {
+        return RequestEvent.builder()
+                .id(id)
+                .ipAddress("203.0.113.77")
+                .route("/api/projects/{id}")
+                .method("GET")
+                .status(200)
+                .eventType("REQUEST")
+                .occurredAt(Instant.now())
+                .build();
+    }
+
+    private SecurityEvent securityEvent(UUID id) {
+        return SecurityEvent.builder()
+                .id(id)
+                .eventType("RATE_LIMIT")
+                .severity("WARNING")
+                .source("HTTP")
+                .description("Request rate limit exceeded")
+                .build();
+    }
+
+    private long countRequestEvents(UUID id) {
+        return jdbcTemplate.queryForObject("SELECT count(*) FROM request_events WHERE id = :id",
+                java.util.Map.of("id", id), Long.class);
     }
 
     @Test
     @DisplayName("top users keep API keys and no-key traffic in separate groups")
     void topUsers_groupsByUserAndApiKey() {
         UUID userId = UUID.randomUUID();
-        String email = "admin-" + userId + "@example.com";
-        seedUser(userId, "VibeGraph Admin", email);
         seedRequests(userId, "key-1:vbg_ab12safe", "203.0.113.10", 2);
         seedRequests(userId, "key-2:vbg_cd34safe", "203.0.113.10", 1);
         seedRequests(userId, null, "203.0.113.10", 3);
@@ -81,8 +191,9 @@ class RequestEventRepositoryIT {
                 .singleElement()
                 .satisfies(row -> {
                     assertThat(row.getRequestCount()).isEqualTo(2);
-                    assertThat(row.getUserDisplayName()).isEqualTo("VibeGraph Admin");
-                    assertThat(row.getUserEmail()).isEqualTo(email);
+                    assertThat(row.getUserId()).isEqualTo(userId);
+                    assertThat(row.getUserDisplayName()).isNull();
+                    assertThat(row.getUserEmail()).isNull();
                 });
     }
 
@@ -91,8 +202,6 @@ class RequestEventRepositoryIT {
     void topIps_returnsCollapsedCountsAndBreakdown() {
         UUID adminId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        seedUser(adminId, "VibeGraph Admin", "admin-" + adminId + "@example.com");
-        seedUser(userId, "VibeGraph User", "user-" + userId + "@example.com");
         seedRequests(adminId, null, "198.51.100.42", 3);
         seedRequests(userId, "key-1:vbg_ab12safe", "198.51.100.42", 2);
 
@@ -107,7 +216,8 @@ class RequestEventRepositoryIT {
         });
         assertThat(breakdown).hasSize(2);
         assertThat(breakdown).anySatisfy(row -> {
-            assertThat(row.getUserDisplayName()).isEqualTo("VibeGraph Admin");
+            assertThat(row.getUserId()).isEqualTo(adminId);
+            assertThat(row.getUserDisplayName()).isNull();
             assertThat(row.getApiKeyRef()).isNull();
             assertThat(row.getRequests()).isEqualTo(3);
         });
@@ -116,14 +226,27 @@ class RequestEventRepositoryIT {
                 .containsExactlyInAnyOrder(null, "vbg_ab12****");
     }
 
-    private void seedUser(UUID userId, String displayName, String email) {
-        jdbcTemplate.update("INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
-                userId, email, displayName);
+    @Test
+    @DisplayName("runtime status keeps one latest row per project")
+    void runtimeStatus_upsertsLatestValue() {
+        Instant first = Instant.parse("2026-08-08T10:00:00Z");
+        Instant second = first.plusSeconds(30);
+        runtimeStatusRepository.upsert(new ProjectStatusEvent(
+                "project-1", "ANALYZING", 20, null, first));
+        runtimeStatusRepository.upsert(new ProjectStatusEvent(
+                "project-1", "ANALYZED", 100, "Complete", second));
+
+        var row = jdbcTemplate.queryForMap(
+                "SELECT status, progress, message FROM project_runtime_status WHERE project_id = :id",
+                java.util.Map.of("id", "project-1"));
+        assertThat(row).containsEntry("status", "ANALYZED")
+                .containsEntry("progress", 100)
+                .containsEntry("message", "Complete");
     }
 
     private void seedRequests(UUID userId, String apiKeyRef, String ipAddress, int count) {
         for (int index = 0; index < count; index++) {
-            jdbcTemplate.update("""
+            jdbcTemplate.getJdbcTemplate().update("""
                     INSERT INTO request_events
                         (user_id, api_key_ref, ip_address, route, http_method, status, event_type, occurred_at)
                     VALUES (?, ?, ?, '/api/projects', 'GET', 200, 'REQUEST', now())

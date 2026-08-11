@@ -14,20 +14,19 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.repository.FeedbackReportRepository;
 import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
+import com.vibegraph.auth.service.RefreshSessionService;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 
 import io.jsonwebtoken.JwtException;
-import lombok.RequiredArgsConstructor;
-
 /** Authenticates STOMP sessions and revalidates project access for every realtime delivery. */
 @Component
-@RequiredArgsConstructor
 public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
 
     private static final String PROJECT_TOPIC_PREFIX = "/topic/projects/";
@@ -40,10 +39,35 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
     private final AccountAccessGuard accountAccessGuard;
     private final ProjectOwnershipGuard ownershipGuard;
     private final FeedbackReportRepository feedbackReportRepository;
+    private final RefreshSessionService refreshSessionService;
     private final Map<String, UUID> userIdsBySession = new ConcurrentHashMap<>();
+    private final Map<String, UUID> authSessionIdsBySession = new ConcurrentHashMap<>();
     private final Map<String, Boolean> adminSessionsBySession = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> projectIdsBySession = new ConcurrentHashMap<>();
     private final Map<String, Set<UUID>> reportIdsBySession = new ConcurrentHashMap<>();
+
+    @Autowired
+    public RealtimeAccountAccessInterceptor(
+            JwtService jwtService,
+            AccountAccessGuard accountAccessGuard,
+            ProjectOwnershipGuard ownershipGuard,
+            FeedbackReportRepository feedbackReportRepository,
+            RefreshSessionService refreshSessionService) {
+        this.jwtService = jwtService;
+        this.accountAccessGuard = accountAccessGuard;
+        this.ownershipGuard = ownershipGuard;
+        this.feedbackReportRepository = feedbackReportRepository;
+        this.refreshSessionService = refreshSessionService;
+    }
+
+    /** Compatibility constructor for focused realtime tests. */
+    public RealtimeAccountAccessInterceptor(
+            JwtService jwtService,
+            AccountAccessGuard accountAccessGuard,
+            ProjectOwnershipGuard ownershipGuard,
+            FeedbackReportRepository feedbackReportRepository) {
+        this(jwtService, accountAccessGuard, ownershipGuard, feedbackReportRepository, null);
+    }
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -83,7 +107,7 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             String projectId
     ) {
         UUID userId = sessionId == null ? null : userIdsBySession.get(sessionId);
-        if (!accountAccessGuard.canAccessRealtime(userId)) {
+        if (!isAuthSessionActive(sessionId, userId) || !accountAccessGuard.canAccessRealtime(userId)) {
             return rejectOrSuppress(command);
         }
         if (command == StompCommand.SUBSCRIBE) {
@@ -102,7 +126,7 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             UUID reportId
     ) {
         UUID userId = sessionId == null ? null : userIdsBySession.get(sessionId);
-        if (!accountAccessGuard.canAccessSupportRealtime(userId)) {
+        if (!isAuthSessionActive(sessionId, userId) || !accountAccessGuard.canAccessSupportRealtime(userId)) {
             return rejectOrSuppress(command);
         }
         if (command == StompCommand.SEND) {
@@ -123,11 +147,17 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
         }
         try {
             AuthenticatedUser user = authenticatedUser(accessor);
+            if (!isAccessSessionActive(user)) {
+                throw new AccessDeniedException(RESTRICTED_MESSAGE);
+            }
             if (!accountAccessGuard.canAccessSupportRealtime(user.id())) {
                 throw new AccessDeniedException(RESTRICTED_MESSAGE);
             }
             accessor.setUser(new UsernamePasswordAuthenticationToken(user, null, java.util.List.of()));
             userIdsBySession.put(sessionId, user.id());
+            if (user.sessionId() != null) {
+                authSessionIdsBySession.put(sessionId, user.sessionId());
+            }
             adminSessionsBySession.put(sessionId, user.role() == Role.ADMIN);
         } catch (JwtException | IllegalArgumentException ex) {
             throw new AccessDeniedException(RESTRICTED_MESSAGE, ex);
@@ -189,10 +219,24 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
     private void removeSession(String sessionId) {
         if (sessionId != null) {
             userIdsBySession.remove(sessionId);
+            authSessionIdsBySession.remove(sessionId);
             adminSessionsBySession.remove(sessionId);
             projectIdsBySession.remove(sessionId);
             reportIdsBySession.remove(sessionId);
         }
+    }
+
+    private boolean isAccessSessionActive(AuthenticatedUser user) {
+        return refreshSessionService == null
+                || refreshSessionService.isAccessSessionActive(user.sessionId(), user.id());
+    }
+
+    private boolean isAuthSessionActive(String stompSessionId, UUID userId) {
+        if (refreshSessionService == null || stompSessionId == null || userId == null) {
+            return true;
+        }
+        UUID authSessionId = authSessionIdsBySession.get(stompSessionId);
+        return authSessionId == null || refreshSessionService.isAccessSessionActive(authSessionId, userId);
     }
 
     private String projectId(String destination) {

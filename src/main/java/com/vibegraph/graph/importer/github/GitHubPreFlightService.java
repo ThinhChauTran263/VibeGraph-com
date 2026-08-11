@@ -46,6 +46,10 @@ public class GitHubPreFlightService {
     }
 
     public GitHubRepositoryRef validatePublicRepository(GitHubRepositoryRef ref) {
+        return validatePublicRepository(ref, properties.getMaxSize().toBytes());
+    }
+
+    public GitHubRepositoryRef validatePublicRepository(GitHubRepositoryRef ref, long maxBytes) {
         HttpRequest request = HttpRequest.newBuilder(repositoryApiUri(ref))
                 .timeout(preflightRequestTimeout)
                 .header("Accept", "application/vnd.github+json")
@@ -80,10 +84,11 @@ public class GitHubPreFlightService {
         }
 
         long repoSizeKb = metadata.path("size").asLong(0L);
-        long maxKb = properties.getMaxSize().toKilobytes();
+        long maxKb = Math.max(0L, maxBytes / 1024L);
         if (repoSizeKb > maxKb) {
-            DataSize maxSize = properties.getMaxSize();
-            throw new GithubImportException("GitHub repository is larger than the configured limit (" + maxSize + ")");
+            DataSize maxSize = DataSize.ofBytes(maxBytes);
+            throw new GithubImportException(
+                    "GitHub repository is larger than the account's remaining storage quota (" + maxSize + ")");
         }
 
         String defaultBranch = metadata.path("default_branch").asText(null);

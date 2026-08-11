@@ -104,6 +104,8 @@ vibegraph:
     jwt:
       secret: overridden-per-run-by-DynamicPropertySource-64-byte-placeholder-for-tests
       expiration-ms: 3600000
+      refresh-expiration-ms: 604800000
+      secure-cookies: false
 
 # Chỉ expose health cho actuator IT (nếu có).
 management:

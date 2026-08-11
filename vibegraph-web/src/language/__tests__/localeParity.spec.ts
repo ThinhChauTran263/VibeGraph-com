@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import en from '@/language/locales/en-US.json'
 import vi from '@/language/locales/vi-VN.json'
 
@@ -40,6 +40,7 @@ describe('locale messages', () => {
 
   it('includes the user dashboard and registration message contract', () => {
     const paths = new Set(keyPaths(en))
+    expect(paths.has('common.view')).toBe(true)
     expect(paths.has('auth.registerTitle')).toBe(true)
     expect(paths.has('user.layout.openNavigation')).toBe(true)
     expect(paths.has('user.overview.quickActions')).toBe(true)

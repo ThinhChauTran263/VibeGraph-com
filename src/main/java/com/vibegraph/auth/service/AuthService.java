@@ -13,7 +13,6 @@ import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.Role;
 import com.vibegraph.auth.domain.User;
 import com.vibegraph.auth.domain.UserIdentity;
-import com.vibegraph.auth.dto.AuthResponse;
 import com.vibegraph.auth.dto.LoginRequest;
 import com.vibegraph.auth.dto.RegisterRequest;
 import com.vibegraph.auth.dto.UserResponse;
@@ -24,17 +23,16 @@ import com.vibegraph.common.exception.EmailAlreadyExistsException;
 import com.vibegraph.common.exception.InvalidCredentialsException;
 import com.vibegraph.common.exception.UnauthorizedException;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Local (email + password) authentication plus OAuth profile linking.
  *
  * <p>Field validation is enforced by Bean Validation at the controller boundary (400) before any
- * method here runs, so {@link #register} can assume well-formed input and the duplicate-email
+ * method here runs, so {@link #registerSession} can assume well-formed input and the duplicate-email
  * lookup never precedes validation. Passwords are BCrypt-hashed; the hash is never returned.
  */
 @Service
-@RequiredArgsConstructor
 public class AuthService {
 
     private static final String DUMMY_PASSWORD_HASH =
@@ -51,14 +49,43 @@ public class AuthService {
     private final AccountSettingsService accountSettingsService;
     private final FeatureGateService featureGateService;
     private final AuditService auditService;
+    private final RefreshSessionService refreshSessionService;
+
+    /** Production constructor with server-side refresh-session management. */
+    @Autowired
+    public AuthService(
+            UserRepository userRepository,
+            UserIdentityRepository userIdentityRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            CurrentUser currentUser,
+            AccountSettingsService accountSettingsService,
+            FeatureGateService featureGateService,
+            AuditService auditService,
+            RefreshSessionService refreshSessionService) {
+        this.userRepository = userRepository;
+        this.userIdentityRepository = userIdentityRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.currentUser = currentUser;
+        this.accountSettingsService = accountSettingsService;
+        this.featureGateService = featureGateService;
+        this.auditService = auditService;
+        this.refreshSessionService = refreshSessionService;
+    }
 
     /**
      * Create a local account and return a fresh token + safe user projection.
      *
      * @throws EmailAlreadyExistsException if the email is already registered (case-insensitive) → 409
      */
+    /** Register and create a rotating refresh session for the browser/API client. */
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public AuthenticationResult registerSession(RegisterRequest request) {
+        return toSessionResult(registerUser(request));
+    }
+
+    private User registerUser(RegisterRequest request) {
         featureGateService.assertEnabled(FeatureGateService.REGISTRATION);
         String email = request.email().trim();
         if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -73,7 +100,7 @@ public class AuthService {
                 .build();
         User saved = userRepository.save(user);
         accountSettingsService.createDefaultSettings(saved);
-        return toAuthResponse(saved);
+        return saved;
     }
 
     /**
@@ -82,8 +109,13 @@ public class AuthService {
      * @throws InvalidCredentialsException on unknown email, OAuth-only account (no local password),
      *                                     or wrong password → 401 (generic, no user enumeration)
      */
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
+    /** Verify credentials and create a rotating refresh session. */
+    @Transactional
+    public AuthenticationResult loginSession(LoginRequest request) {
+        return toSessionResult(authenticateCredentials(request));
+    }
+
+    private User authenticateCredentials(LoginRequest request) {
         User user = userRepository.findByEmailIgnoreCase(request.email().trim()).orElse(null);
         String passwordHash = user != null && user.getPasswordHash() != null
                 ? user.getPasswordHash()
@@ -95,10 +127,9 @@ public class AuthService {
                     java.util.Map.of("reason", "INVALID_CREDENTIALS"));
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        AuthResponse response = toAuthResponse(user);
         auditService.record("LOGIN", user.getId(), user.getId(), "USER", user.getId().toString(), "SUCCESS",
                 java.util.Map.of("email", user.getEmail()));
-        return response;
+        return user;
     }
 
     /**
@@ -106,8 +137,13 @@ public class AuthService {
      *
      * @throws OAuth2AuthenticationException if the provider profile cannot be linked safely
      */
+    /** Link OAuth identity and create a rotating refresh session. */
     @Transactional
-    public AuthResponse oauthLogin(OAuthAccountProfile profile) {
+    public AuthenticationResult oauthLoginSession(OAuthAccountProfile profile) {
+        return toSessionResult(linkOAuthUser(profile));
+    }
+
+    private User linkOAuthUser(OAuthAccountProfile profile) {
         if (profile.email() == null || profile.email().isBlank()) {
             throw oauthError(OAUTH_EMAIL_UNAVAILABLE);
         }
@@ -125,7 +161,7 @@ public class AuthService {
             auditService.record("OAUTH_LOGIN", saved.getId(), saved.getId(), "USER",
                     saved.getId().toString(), "SUCCESS",
                     java.util.Map.of("provider", profile.provider().name(), "email", saved.getEmail()));
-            return toAuthResponse(saved);
+            return saved;
         } catch (DataIntegrityViolationException ex) {
             User recovered = recoverAfterConflict(profile);
             updateTrustedProfileFields(recovered, profile);
@@ -133,7 +169,7 @@ public class AuthService {
             auditService.record("OAUTH_LOGIN", saved.getId(), saved.getId(), "USER",
                     saved.getId().toString(), "SUCCESS",
                     java.util.Map.of("provider", profile.provider().name(), "email", saved.getEmail()));
-            return toAuthResponse(saved);
+            return saved;
         }
     }
 
@@ -150,8 +186,26 @@ public class AuthService {
         return toUserResponse(user);
     }
 
-    private AuthResponse toAuthResponse(User user) {
-        return new AuthResponse(jwtService.issue(user), toUserResponse(user));
+    /** Rotate a refresh token while preserving replay revocation on a rejected request. */
+    @Transactional(noRollbackFor = UnauthorizedException.class)
+    public AuthenticationResult refreshSession(String rawRefreshToken) {
+        RefreshSessionService.RotatedSession rotated = refreshSessionService.rotate(rawRefreshToken);
+        return new AuthenticationResult(
+                jwtService.issue(rotated.user(), rotated.token().sessionId()),
+                rotated.token().rawToken(),
+                toUserResponse(rotated.user()));
+    }
+
+    /** Revoke the refresh-token family represented by a logout cookie. */
+    @Transactional
+    public void revokeRefreshSession(String rawRefreshToken) {
+        refreshSessionService.revoke(rawRefreshToken, "LOGOUT");
+    }
+
+    private AuthenticationResult toSessionResult(User user) {
+        RefreshSessionService.SessionToken refresh = refreshSessionService.issue(user);
+        return new AuthenticationResult(
+                jwtService.issue(user, refresh.sessionId()), refresh.rawToken(), toUserResponse(user));
     }
 
     private UserResponse toUserResponse(User user) {

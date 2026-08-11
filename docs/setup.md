@@ -33,5 +33,6 @@ npm run dev                   # Vite dev server on http://localhost:5173
 ## Related
 
 - [../README.md](../README.md) — project overview
+- [codex/README.md](codex/README.md) — Codex senior workflow, commands, prompts, multi-agent, sessions and VibeGraph verification
 - [../MCP_INTEGRATION.md](../MCP_INTEGRATION.md) — connecting an MCP client
 - [mcp-integration.md](mcp-integration.md) — MCP integration details

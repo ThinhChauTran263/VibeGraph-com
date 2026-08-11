@@ -12,10 +12,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
-import com.vibegraph.auth.dto.AuthResponse;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.config.JwtProperties;
 import com.vibegraph.auth.service.AuthCookieService;
+import com.vibegraph.auth.service.AuthenticationResult;
 import com.vibegraph.auth.service.AuthService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,7 +33,8 @@ class OAuth2LoginSuccessHandlerTest {
     void onAuthenticationSuccess_setsCookieAndRedirects() throws Exception {
         AuthService authService = mock(AuthService.class);
         JwtProperties jwtProperties = new JwtProperties();
-        jwtProperties.setExpirationMs(86_400_000L);
+        jwtProperties.setExpirationMs(1_800_000L);
+        jwtProperties.setRefreshExpirationMs(604_800_000L);
         AuthCookieService cookieService = new AuthCookieService(jwtProperties);
         OAuthRedirectProperties redirectProperties = new OAuthRedirectProperties();
         redirectProperties.setFrontendUrl("http://frontend.local");
@@ -60,8 +61,9 @@ class OAuth2LoginSuccessHandlerTest {
                 new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub"),
                 List.of(new SimpleGrantedAuthority("ROLE_USER")),
                 "google");
-        when(authService.oauthLogin(any())).thenReturn(new AuthResponse(
+        when(authService.oauthLoginSession(any())).thenReturn(new AuthenticationResult(
                 "jwt-token",
+                "refresh-token",
                 new UserResponse(UUID.randomUUID().toString(), "oauth@test.local", "OAuth User", "USER", "ACTIVE", null)));
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/login/oauth2/code/google");
@@ -71,6 +73,6 @@ class OAuth2LoginSuccessHandlerTest {
 
         assertEquals("http://frontend.local/dashboard", response.getRedirectedUrl());
         assertTrue(response.getHeaders("Set-Cookie").stream().anyMatch(value -> value.contains("vg_session=jwt-token")));
-        verify(authService).oauthLogin(any());
+        verify(authService).oauthLoginSession(any());
     }
 }

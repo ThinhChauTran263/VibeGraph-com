@@ -24,6 +24,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.service.ProjectRuntimeStatusService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 import com.vibegraph.graph.websocket.GraphUpdateEvent;
@@ -148,10 +149,18 @@ class FileWatcherE2ETest {
         }
 
         @Bean
-        GraphUpdateController graphUpdateController(SimpMessagingTemplate messagingTemplate) {
+        GraphUpdateController graphUpdateController(
+                SimpMessagingTemplate messagingTemplate,
+                ProjectRuntimeStatusService runtimeStatusService) {
             return new GraphUpdateController(messagingTemplate,
                     new com.vibegraph.graph.service.impl.GraphPayloadGuard(),
-                    new com.vibegraph.graph.config.GraphPayloadProperties());
+                    new com.vibegraph.graph.config.GraphPayloadProperties(),
+                    runtimeStatusService);
+        }
+
+        @Bean
+        ProjectRuntimeStatusService projectRuntimeStatusService() {
+            return mock(ProjectRuntimeStatusService.class);
         }
 
         @Bean

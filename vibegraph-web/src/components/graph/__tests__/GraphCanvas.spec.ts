@@ -56,9 +56,9 @@ vi.mock('@/composables/useGraphExpand', () => ({
 }))
 
 // Stable spy + captured camera handler for the edge-label toggle test. A
-// non-null graphInstance is required: applyFocusReducers/focusOn early-return
-// when there is no graph, so setEdgeLabelsVisible would otherwise never be hit.
-const setEdgeLabelsVisible = vi.fn<(visible: boolean) => void>()
+// non-null graphInstance is required because focus reducers early-return when
+// there is no graph.
+const setReducers = vi.fn<(reducers: unknown, edgeLabelsVisible?: boolean) => void>()
 const graphInstanceRef = ref<Graph | null>(new Graph({ type: 'directed', multi: true }))
 let capturedCameraRatioChange: ((ratio: number) => void) | undefined
 
@@ -68,8 +68,7 @@ vi.mock('@/composables/useSigma', () => ({
     return {
       init: vi.fn<() => void>(),
       graphInstance: graphInstanceRef,
-      setReducers: vi.fn<() => void>(),
-      setEdgeLabelsVisible,
+      setReducers,
       setGhostPartition: vi.fn<() => void>(),
       refresh: vi.fn<() => void>(),
       resetLayout: vi.fn<() => void>(),
@@ -103,6 +102,7 @@ vi.mock('@/composables/useFilters', () => ({
   useFilters: () => ({
     hiddenNodeTypes: computed(() => new Set<string>()),
     hiddenEdgeTypes: computed(() => new Set<string>()),
+    hideIsolatedNodes: computed(() => false),
   }),
 }))
 
@@ -238,8 +238,8 @@ describe('GraphCanvas', () => {
  * Edge-label toggle. The "Edge labels" button flips `edgeLabelsEnabled`, and
  * both focus paths (selection focus and the default no-selection view) gate edge
  * label rendering on `edgeLabelsEnabled && labelDensity === 'edges'`. With no node
- * selected the default path forwards that exact boolean to Sigma via
- * `setEdgeLabelsVisible`, so we assert against it directly. Driving the captured
+ * selected the default path batches that exact boolean with the reducer settings,
+ * so we assert against the second argument. Driving the captured
  * `onCameraRatioChange` handler sets the zoom density deterministically (no real
  * Sigma camera / timers), keeping the test non-flaky.
  */
@@ -253,32 +253,32 @@ describe('GraphCanvas edge label toggle', () => {
     error.value = null
 
     // The zoom-driven density change applies its reducer swap synchronously, so the
-    // captured onCameraRatioChange handler drives setEdgeLabelsVisible immediately.
+    // captured onCameraRatioChange handler drives the batched setting immediately.
     const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
     await flushPromises()
-    setEdgeLabelsVisible.mockClear()
+    setReducers.mockClear()
 
     expect(capturedCameraRatioChange).toBeTypeOf('function')
 
-    // Zoom in past the edge-label ratio (0.45) -> density 'edges'. Toggle defaults
-    // OFF, so edge labels stay hidden until the user explicitly enables them.
+    // Zoom in past the edge-label ratio (0.45) -> density 'edges'. Labels are on
+    // by default, so they are visible at this density.
     capturedCameraRatioChange?.(0.3)
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), true)
 
-    // Toggle ON -> edge labels become visible because we are already zoomed in.
+    // Toggle OFF -> edge labels disappear while the camera remains zoomed in.
     const toggle = wrapper.get('.graph-edge-label-toggle')
     await toggle.trigger('click')
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(true)
-    expect(toggle.attributes('aria-pressed')).toBe('true')
-    expect(toggle.text()).toBe('Edge labels: On')
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    expect(toggle.text()).toBe('Edge labels: Off')
 
-    // Toggle back OFF -> hidden again at edges density.
+    // Toggle back ON -> visible again at edges density.
     await toggle.trigger('click')
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), true)
 
     // AND-gate: zoom back out to 'nodes' density. Even with the toggle OFF, edge
     // labels stay off because the density half of the gate is false.
     capturedCameraRatioChange?.(0.9)
-    expect(setEdgeLabelsVisible).toHaveBeenLastCalledWith(false)
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
   })
 })

@@ -106,7 +106,12 @@ class JwtServiceTest {
     }
 
     private static String tamper(String token) {
-        char replacement = token.charAt(token.length() - 1) == 'a' ? 'b' : 'a';
-        return token.substring(0, token.length() - 1) + replacement;
+        String[] segments = token.split("\\.", -1);
+        String signature = segments[2];
+        int index = signature.length() / 2;
+        char current = signature.charAt(index);
+        char replacement = current == 'A' ? 'B' : 'A';
+        segments[2] = signature.substring(0, index) + replacement + signature.substring(index + 1);
+        return String.join(".", segments);
     }
 }

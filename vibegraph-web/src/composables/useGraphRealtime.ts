@@ -23,6 +23,7 @@ import {
 } from '@/composables/useWebSocket'
 import { applyGraphUpdate, parseGraphUpdateEvent } from '@/lib/graphPatch'
 import { bumpGraphVersion } from '@/lib/graphVersion'
+import { withoutPackageFromEvent } from '@/lib/graphSanitizer'
 import type { GraphUpdateEvent } from '@/types/graph'
 
 export interface UseGraphRealtimeOptions {
@@ -61,16 +62,17 @@ export function useGraphRealtime(
     }
     // Stale guard: ignore events whose projectId is not the one we watch now.
     if (event.projectId !== currentProjectId) return
-    if (event.type === 'FULL_UPDATE') {
+    const sanitizedEvent = withoutPackageFromEvent(event)
+    if (sanitizedEvent.type === 'FULL_UPDATE') {
       // The payload is capped at the WebSocket boundary; carry its truncation meta into the
       // shared payloadMeta flow so the Safe Mode banner / renderInfo stay truthful.
-      store.payloadMeta = event.graph.meta ?? null
+      store.payloadMeta = sanitizedEvent.graph.meta ?? null
     }
-    store.graphData = applyGraphUpdate(store.graphData, event)
+    store.graphData = applyGraphUpdate(store.graphData, sanitizedEvent)
     // A live graph change invalidates derived diagram caches.
     bumpGraphVersion()
     // Let the canvas mirror this change in place on the live Sigma graph.
-    options.onPatched?.(event)
+    options.onPatched?.(sanitizedEvent)
   }
 
   function teardownSubscription(): void {

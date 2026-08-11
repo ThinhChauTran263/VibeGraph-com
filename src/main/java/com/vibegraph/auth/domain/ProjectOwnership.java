@@ -59,4 +59,18 @@ public class ProjectOwnership {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
+    /**
+     * When the owner moved this project to trash, or {@code null} while it is live.
+     *
+     * <p>Owner-scoped queries filter on this, so a trashed project vanishes from listings while its
+     * graph and extracted sources stay intact for the retention window. It keeps counting toward
+     * the owner's quota until the scheduled purge removes it for real.
+     */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    public boolean isTrashed() {
+        return deletedAt != null;
+    }
 }

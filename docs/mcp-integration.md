@@ -69,7 +69,8 @@ MCP does not scan arbitrary folders. It only reads source files that belong to a
 
 ## Available tools
 
-All tools require a `projectId` from an imported and analyzed project.
+All tools except `list_projects` require a `projectId` from an imported and analyzed project —
+call `list_projects` first to discover valid ids.
 
 | Tool | Purpose |
 | --- | --- |
@@ -88,6 +89,9 @@ All tools require a `projectId` from an imported and analyzed project.
 | `plan_code_change` | Produce a conservative code-change plan with candidate files, risks, and tests. |
 | `explain_failure_path` | Map stacktrace frames to in-project graph/source context. |
 | `get_project_conventions` | Return durable repo conventions from `VibeGraph-specs-2month/ai-memory.md`. |
+| `list_projects` | List the analyzed projects owned by the caller — the discovery entry point for `projectId`. |
+| `verify_change` | Changed files → graph symbols, reachable API routes, related tests, suggested commands. |
+| `explain_compile_error` | Map javac/Maven output to enclosing symbols with caller counts and fix hints. |
 
 ## Recommended AI workflow
 
@@ -113,7 +117,7 @@ The in-memory project registry is not the source of truth. On restart:
 ## CPG and flow behavior
 
 - CPG-lite edges such as `TYPE_OF`, `PARAMETER_TYPE`, `RETURNS`, `HAS_FIELD`, `INJECTS`, `INSTANTIATES`, `THROWS`, and `ANNOTATED_BY` are emitted by default when present.
-- Deep CPG (`LocalVariable`, `READS`, `WRITES`, `CATCHES`) is opt-in through `VIBEGRAPH_PARSER_DEEP_CPG=true`.
+- Deep CPG (`LocalVariable`, `READS`, `WRITES`, `CATCHES`) is ON by default; set `VIBEGRAPH_PARSER_DEEP_CPG=false` to opt out on very large repositories. Projects analyzed before the default flipped need a re-analyze to gain the deep edges.
 - `STEP_IN_FLOW` is inferred from resolved in-project `CALLS` reachable from route handlers. It is a deduplicated flow view, not exact runtime tracing.
 - Java `java.lang` types such as `String`, `Long`, and `Object` are qualified as `java.lang.*` instead of being mis-qualified into the current package.
 
@@ -123,7 +127,7 @@ The in-memory project registry is not the source of truth. On restart:
 - Live Docker Compose and Testcontainers verification depends on Docker Desktop or another Docker daemon being available.
 - Production auth and rate-limit hardening remain deployment concerns unless explicitly enabled by the environment.
 - MCP responses are only useful after the target project has been imported and analyzed; empty graphs produce empty or warning-heavy results.
-- Deep CPG data-flow groups are legitimately empty when `VIBEGRAPH_PARSER_DEEP_CPG` is false.
+- Deep CPG data-flow groups are legitimately empty when the project was analyzed with `VIBEGRAPH_PARSER_DEEP_CPG=false` (or before the on-by-default change).
 - `find_related_tests`, `suggest_test_plan`, and `plan_code_change` use evidence plus heuristics; agents should verify before editing.
 
 ## Troubleshooting

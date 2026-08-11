@@ -27,8 +27,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
-      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_REQUEST_SIZE:105MB}
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE:2050MB}
 
   security:
     oauth2:
@@ -71,7 +71,7 @@ vibegraph:
 
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_MAX_SIZE:100MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:/app/data/uploads}
 
   watcher:

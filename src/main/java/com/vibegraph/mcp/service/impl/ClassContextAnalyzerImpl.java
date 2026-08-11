@@ -2,12 +2,9 @@ package com.vibegraph.mcp.service.impl;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.function.Predicate;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
@@ -18,6 +15,7 @@ import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
 import com.vibegraph.mcp.service.ClassContextAnalyzer;
+import com.vibegraph.mcp.source.GraphView;
 import com.vibegraph.mcp.source.SourceGraphSupport;
 
 import lombok.RequiredArgsConstructor;
@@ -31,11 +29,10 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
     private static final int MAX_METHODS = 50;
     private static final int MAX_FIELDS = 50;
     private static final int MAX_RELATIONS = 50;
-    private static final int MAX_NODES_TO_PROCESS = 10_000;
-    private static final int MAX_EDGES_TO_PROCESS = 50_000;
-    private static final List<String> CLASS_NODE_TYPES = List.of("Class", "Interface", "Enum");
-    private static final List<String> METHOD_EDGE_TYPES = List.of("HAS_METHOD");
-    private static final List<String> FIELD_EDGE_TYPES = List.of("HAS_FIELD", "HAS_FIELD_DECLARATION");
+    private static final int MAX_CANDIDATES = 20;
+    private static final Set<String> CLASS_NODE_TYPES = Set.of("Class", "Interface", "Enum");
+    private static final Set<String> METHOD_EDGE_TYPES = Set.of("HAS_METHOD");
+    private static final Set<String> FIELD_EDGE_TYPES = Set.of("HAS_FIELD", "HAS_FIELD_DECLARATION");
 
     private final GraphService graphService;
 
@@ -43,40 +40,42 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
     public ClassContextResponse analyzeClass(String projectId, String classQuery) {
         String normalizedProjectId = validate(projectId, "projectId", MAX_PROJECT_ID_LENGTH);
         String normalizedQuery = validate(classQuery, "classQuery", MAX_QUERY_LENGTH);
-        GraphDataResponse graph;
+        GraphDataResponse graphData;
         try {
-            graph = graphService.getFullGraph(normalizedProjectId);
+            graphData = graphService.getFullGraph(normalizedProjectId);
         } catch (ProjectNotFoundException ex) {
             throw ex;
         } catch (RuntimeException ex) {
             return unavailableResponse(normalizedProjectId, normalizedQuery);
         }
-        List<NodeDto> nodes = safeNodes(graph);
-        List<EdgeDto> edges = safeEdges(graph);
-        if (nodes.size() > MAX_NODES_TO_PROCESS || edges.size() > MAX_EDGES_TO_PROCESS) {
-            return tooLargeResponse(normalizedProjectId, normalizedQuery, nodes.size(), edges.size());
+        int nodeCount = graphData == null || graphData.getNodes() == null ? 0 : graphData.getNodes().size();
+        int edgeCount = graphData == null || graphData.getEdges() == null ? 0 : graphData.getEdges().size();
+        // Same bounds as every other GraphView-based tool (SourceGraphSupport) so
+        // get_class_context does not refuse graphs its sibling tools accept.
+        if (nodeCount > SourceGraphSupport.MAX_NODES_TO_PROCESS || edgeCount > SourceGraphSupport.MAX_EDGES_TO_PROCESS) {
+            return tooLargeResponse(normalizedProjectId, normalizedQuery, nodeCount, edgeCount);
         }
-        Map<String, NodeDto> nodesById = indexNodes(nodes);
-        Optional<NodeDto> matchedClass = findClass(nodes, normalizedQuery);
+        GraphView graph = new GraphView(
+                graphData == null ? null : graphData.getNodes(),
+                graphData == null ? null : graphData.getEdges());
 
-        if (matchedClass.isEmpty()) {
-            return ClassContextResponse.builder()
-                    .projectId(normalizedProjectId)
-                    .query(normalizedQuery)
-                    .methods(List.of())
-                    .fields(List.of())
-                    .incomingRelations(List.of())
-                    .outgoingRelations(List.of())
-                    .warnings(List.of("Class not found: " + normalizedQuery))
-                    .build();
+        GraphView.Resolution resolution = graph.resolve(normalizedQuery, CLASS_NODE_TYPES);
+        if (resolution.kind() == GraphView.Resolution.Kind.NOT_FOUND) {
+            return emptyResponse(normalizedProjectId, normalizedQuery,
+                    List.of("Class not found: " + normalizedQuery), List.of());
+        }
+        if (resolution.kind() == GraphView.Resolution.Kind.AMBIGUOUS) {
+            return ambiguousResponse(normalizedProjectId, normalizedQuery, resolution.candidates());
         }
 
-        NodeDto classNode = matchedClass.get();
-        List<ClassContextResponse.MemberInfo> methods = relatedMembers(classNode, edges, nodesById, METHOD_EDGE_TYPES, MAX_METHODS);
-        List<ClassContextResponse.MemberInfo> fields = relatedMembers(classNode, edges, nodesById, FIELD_EDGE_TYPES, MAX_FIELDS);
-        List<ClassContextResponse.RelationInfo> incoming = relations(classNode, edges, nodesById, edge -> classNode.getId().equals(edge.getTarget()), MAX_RELATIONS);
-        List<ClassContextResponse.RelationInfo> outgoing = relations(classNode, edges, nodesById, edge -> classNode.getId().equals(edge.getSource()), MAX_RELATIONS);
-        List<String> warnings = warnings(methods, fields, incoming, outgoing, classNode, edges);
+        NodeDto classNode = resolution.node();
+        List<EdgeDto> outgoingEdges = graph.outgoing(classNode.getId());
+        List<EdgeDto> incomingEdges = graph.incoming(classNode.getId());
+        List<ClassContextResponse.MemberInfo> methods = relatedMembers(graph, outgoingEdges, METHOD_EDGE_TYPES, MAX_METHODS);
+        List<ClassContextResponse.MemberInfo> fields = relatedMembers(graph, outgoingEdges, FIELD_EDGE_TYPES, MAX_FIELDS);
+        List<ClassContextResponse.RelationInfo> incoming = relations(graph, incomingEdges, MAX_RELATIONS);
+        List<ClassContextResponse.RelationInfo> outgoing = relations(graph, outgoingEdges, MAX_RELATIONS);
+        List<String> warnings = warnings(methods, fields, incoming, outgoing, outgoingEdges, incomingEdges);
 
         return ClassContextResponse.builder()
                 .projectId(normalizedProjectId)
@@ -86,23 +85,38 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
                 .fields(fields)
                 .incomingRelations(incoming)
                 .outgoingRelations(outgoing)
+                .candidates(List.of())
                 .warnings(warnings)
                 .build();
     }
 
     private ClassContextResponse unavailableResponse(String projectId, String query) {
-        return ClassContextResponse.builder()
-                .projectId(projectId)
-                .query(query)
-                .methods(List.of())
-                .fields(List.of())
-                .incomingRelations(List.of())
-                .outgoingRelations(List.of())
-                .warnings(List.of("Class context is temporarily unavailable."))
-                .build();
+        return emptyResponse(projectId, query, List.of("Class context is temporarily unavailable."), List.of());
     }
 
     private ClassContextResponse tooLargeResponse(String projectId, String query, int nodeCount, int edgeCount) {
+        return emptyResponse(projectId, query,
+                List.of("Graph is too large for class context: " + nodeCount + " nodes, " + edgeCount + " edges."),
+                List.of());
+    }
+
+    private ClassContextResponse ambiguousResponse(String projectId, String query, List<NodeDto> candidates) {
+        List<ClassContextResponse.Candidate> mapped = candidates.stream()
+                .limit(MAX_CANDIDATES)
+                .map(node -> ClassContextResponse.Candidate.builder()
+                        .id(node.getId())
+                        .type(node.getType())
+                        .name(node.getName())
+                        .fullName(node.getFullName())
+                        .build())
+                .toList();
+        return emptyResponse(projectId, query,
+                List.of("Class query is ambiguous; refine using the full name. Candidates: " + mapped.size()),
+                mapped);
+    }
+
+    private ClassContextResponse emptyResponse(String projectId, String query, List<String> warnings,
+            List<ClassContextResponse.Candidate> candidates) {
         return ClassContextResponse.builder()
                 .projectId(projectId)
                 .query(query)
@@ -110,7 +124,8 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
                 .fields(List.of())
                 .incomingRelations(List.of())
                 .outgoingRelations(List.of())
-                .warnings(List.of("Graph is too large for class context: " + nodeCount + " nodes, " + edgeCount + " edges."))
+                .candidates(candidates)
+                .warnings(warnings)
                 .build();
     }
 
@@ -125,56 +140,14 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
         return value.chars().anyMatch(Character::isISOControl);
     }
 
-    private List<NodeDto> safeNodes(GraphDataResponse graph) {
-        if (graph == null || graph.getNodes() == null) {
-            return List.of();
-        }
-        return graph.getNodes().stream()
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    private List<EdgeDto> safeEdges(GraphDataResponse graph) {
-        if (graph == null || graph.getEdges() == null) {
-            return List.of();
-        }
-        return graph.getEdges().stream()
-                .filter(Objects::nonNull)
-                .filter(edge -> edge.getSource() != null && edge.getTarget() != null)
-                .toList();
-    }
-
-    private Map<String, NodeDto> indexNodes(List<NodeDto> nodes) {
-        Map<String, NodeDto> nodesById = new LinkedHashMap<>();
-        nodes.stream()
-                .filter(node -> node.getId() != null && !node.getId().isBlank())
-                .sorted(nodeComparator())
-                .forEach(node -> nodesById.putIfAbsent(node.getId(), node));
-        return nodesById;
-    }
-
-    private Optional<NodeDto> findClass(List<NodeDto> nodes, String query) {
-        return nodes.stream()
-                .filter(this::isClassNode)
-                .filter(node -> query.equals(node.getId()) || query.equals(node.getFullName()) || query.equals(node.getName()))
-                .sorted(nodeComparator())
-                .findFirst();
-    }
-
-    private boolean isClassNode(NodeDto node) {
-        return CLASS_NODE_TYPES.contains(node.getType());
-    }
-
     private List<ClassContextResponse.MemberInfo> relatedMembers(
-            NodeDto classNode,
-            List<EdgeDto> edges,
-            Map<String, NodeDto> nodesById,
-            List<String> edgeTypes,
+            GraphView graph,
+            List<EdgeDto> outgoingEdges,
+            Set<String> edgeTypes,
             int limit) {
-        return edges.stream()
-                .filter(edge -> classNode.getId().equals(edge.getSource()))
+        return outgoingEdges.stream()
                 .filter(edge -> edgeTypes.contains(edge.getType()))
-                .map(edge -> nodesById.get(edge.getTarget()))
+                .map(edge -> graph.byId(edge.getTarget()))
                 .filter(Objects::nonNull)
                 .map(this::toMemberInfo)
                 .distinct()
@@ -183,15 +156,9 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
                 .toList();
     }
 
-    private List<ClassContextResponse.RelationInfo> relations(
-            NodeDto classNode,
-            List<EdgeDto> edges,
-            Map<String, NodeDto> nodesById,
-            Predicate<EdgeDto> predicate,
-            int limit) {
+    private List<ClassContextResponse.RelationInfo> relations(GraphView graph, List<EdgeDto> edges, int limit) {
         return edges.stream()
-                .filter(predicate)
-                .map(edge -> toRelationInfo(edge, nodesById))
+                .map(edge -> toRelationInfo(graph, edge))
                 .filter(Objects::nonNull)
                 .sorted(relationComparator())
                 .limit(limit)
@@ -221,9 +188,9 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
                 .build();
     }
 
-    private ClassContextResponse.RelationInfo toRelationInfo(EdgeDto edge, Map<String, NodeDto> nodesById) {
-        NodeDto source = nodesById.get(edge.getSource());
-        NodeDto target = nodesById.get(edge.getTarget());
+    private ClassContextResponse.RelationInfo toRelationInfo(GraphView graph, EdgeDto edge) {
+        NodeDto source = graph.byId(edge.getSource());
+        NodeDto target = graph.byId(edge.getTarget());
         if (source == null || target == null) {
             return null;
         }
@@ -259,13 +226,13 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
             List<ClassContextResponse.MemberInfo> fields,
             List<ClassContextResponse.RelationInfo> incoming,
             List<ClassContextResponse.RelationInfo> outgoing,
-            NodeDto classNode,
-            List<EdgeDto> edges) {
+            List<EdgeDto> outgoingEdges,
+            List<EdgeDto> incomingEdges) {
         List<String> warnings = new ArrayList<>();
-        addLimitWarning(warnings, "methods", methods.size(), countRelated(edges, classNode, METHOD_EDGE_TYPES));
-        addLimitWarning(warnings, "fields", fields.size(), countRelated(edges, classNode, FIELD_EDGE_TYPES));
-        addLimitWarning(warnings, "incomingRelations", incoming.size(), countRelations(edges, edge -> classNode.getId().equals(edge.getTarget())));
-        addLimitWarning(warnings, "outgoingRelations", outgoing.size(), countRelations(edges, edge -> classNode.getId().equals(edge.getSource())));
+        addLimitWarning(warnings, "methods", methods.size(), countByType(outgoingEdges, METHOD_EDGE_TYPES));
+        addLimitWarning(warnings, "fields", fields.size(), countByType(outgoingEdges, FIELD_EDGE_TYPES));
+        addLimitWarning(warnings, "incomingRelations", incoming.size(), incomingEdges.size());
+        addLimitWarning(warnings, "outgoingRelations", outgoing.size(), outgoingEdges.size());
         return warnings;
     }
 
@@ -275,21 +242,8 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
         }
     }
 
-    private long countRelated(List<EdgeDto> edges, NodeDto classNode, List<String> edgeTypes) {
-        return edges.stream()
-                .filter(edge -> classNode.getId().equals(edge.getSource()))
-                .filter(edge -> edgeTypes.contains(edge.getType()))
-                .count();
-    }
-
-    private long countRelations(List<EdgeDto> edges, Predicate<EdgeDto> predicate) {
-        return edges.stream().filter(predicate).count();
-    }
-
-    private Comparator<NodeDto> nodeComparator() {
-        return Comparator.comparing((NodeDto node) -> safeString(node.getFullName()))
-                .thenComparing(node -> safeString(node.getName()))
-                .thenComparing(node -> safeString(node.getId()));
+    private long countByType(List<EdgeDto> edges, Set<String> edgeTypes) {
+        return edges.stream().filter(edge -> edgeTypes.contains(edge.getType())).count();
     }
 
     private Comparator<ClassContextResponse.MemberInfo> memberComparator() {

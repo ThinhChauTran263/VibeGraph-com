@@ -56,7 +56,17 @@ public class ArchiveExtractor {
      * @param type detected via {@link ArchiveTypeDetector} from the upload's original filename
      */
     public ArchiveExtractionResult extract(Path archivePath, ArchiveType type, Path destinationRoot) {
-        long maxBytes = properties.getMaxSize().toBytes();
+        return extract(archivePath, type, destinationRoot, properties.getMaxSize().toBytes());
+    }
+
+    /**
+     * Extract with a caller-provided byte ceiling, typically the account's remaining quota.
+     */
+    public ArchiveExtractionResult extract(Path archivePath, ArchiveType type, Path destinationRoot,
+            long maxBytes) {
+        if (maxBytes <= 0) {
+            throw new ArchiveImportException(Reason.OVERSIZE, "No storage quota remains for this import");
+        }
         Path destRoot = destinationRoot.toAbsolutePath().normalize();
         Set<String> ignored = Set.copyOf(properties.getIgnoredPaths());
         List<Path> javaFiles = new ArrayList<>();

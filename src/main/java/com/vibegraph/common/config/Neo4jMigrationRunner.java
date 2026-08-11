@@ -22,17 +22,26 @@ public class Neo4jMigrationRunner implements ApplicationRunner {
 
     private final Driver neo4jDriver;
 
+    /** Ordered migration scripts; each is idempotent (IF NOT EXISTS / guarded backfills). */
+    private static final List<String> MIGRATIONS = List.of(
+            "db/migration/V1__init_schema.cypher",
+            "db/migration/V2__symbol_label.cypher");
+
     @Override
     public void run(ApplicationArguments args) {
         log.info("Applying Neo4j schema migrations...");
         try {
-            List<String> statements = loadStatements("db/migration/V1__init_schema.cypher");
+            int applied = 0;
             try (Session session = neo4jDriver.session()) {
-                for (String stmt : statements) {
-                    session.run(stmt);
+                for (String migration : MIGRATIONS) {
+                    for (String stmt : loadStatements(migration)) {
+                        session.run(stmt);
+                        applied++;
+                    }
                 }
             }
-            log.info("Neo4j schema migration complete — {} statements applied", statements.size());
+            log.info("Neo4j schema migration complete — {} statements applied from {} scripts",
+                    applied, MIGRATIONS.size());
         } catch (Exception e) {
             log.error("Neo4j schema migration failed", e);
             throw new RuntimeException("Failed to apply Neo4j schema migration", e);

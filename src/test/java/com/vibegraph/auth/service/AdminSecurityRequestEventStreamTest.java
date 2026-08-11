@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 class AdminSecurityRequestEventStreamTest {
@@ -48,5 +49,7 @@ class AdminSecurityRequestEventStreamTest {
                 "/api/projects", "GET", 200, "REQUEST", Instant.parse("2026-07-19T10:00:00Z")));
 
         assertThat(stream.subscriberCount()).isZero();
+        // After a transport error, the servlet container owns the completion dispatch.
+        verify(emitter, never()).complete();
     }
 }
