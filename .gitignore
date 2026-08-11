@@ -109,3 +109,15 @@ task/final/
 /graph_check.json
 /uc_check.json
 /uc_new*.json
+
+# Local environment backups. The `.env` rule above matches that exact name only,
+# so copies such as `.env.codex-backup-...` would otherwise be committable.
+.env.*
+!.env.example
+
+# Run logs and debug artefacts produced while working locally.
+*-run.out
+*-run.err
+*.stackdump
+graph-check-cookies.txt
+vibegraph-web/graph-check.png

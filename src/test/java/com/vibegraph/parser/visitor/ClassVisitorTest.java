@@ -70,6 +70,7 @@ class ClassVisitorTest {
             assertEquals("public", property(classNode, "visibility"));
             assertFalse((boolean) property(classNode, "abstract"));
             assertFalse((boolean) property(classNode, "final"));
+            assertEquals(List.of(), property(classNode, "annotations"));
         }
 
         @Test
@@ -120,6 +121,29 @@ class ClassVisitorTest {
             List<NodeData> nodes = visitor.getExtractedNodes();
 
             assertTrue(nodes.size() >= 2, "Should extract multiple classes");
+        }
+
+        @Test
+        @DisplayName("should skip JDK/framework inheritance edges and keep only project types")
+        void shouldSkipJdkAndFrameworkInheritanceTypes() {
+            String code = """
+                package com.example;
+                import java.io.Serializable;
+                import java.lang.Comparable;
+
+                public class Sub extends Base implements Serializable, Comparable<Sub> {
+                }
+
+                class Base {}
+                """;
+            CompilationUnit cu = parse(code);
+
+            visitor.visit(cu, null);
+
+            assertEquals(2, visitor.getExtractedNodes().size());
+            assertEquals(1, visitor.getExtractedEdges().size());
+            assertEquals("EXTENDS", visitor.getExtractedEdges().get(0).type());
+            assertEquals("com.example.Base", visitor.getExtractedEdges().get(0).targetFullName());
         }
     }
 
@@ -273,6 +297,7 @@ class ClassVisitorTest {
 
             assertEquals("DBModel", nodes.get(0).type());
             assertEquals("ENTITY", property(nodes.get(0), "springLayer"));
+            assertEquals(List.of("Entity", "Table"), property(nodes.get(0), "annotations"));
         }
         @Test
         @DisplayName("should return NONE for unannotated class")

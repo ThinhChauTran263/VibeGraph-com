@@ -67,10 +67,5 @@ public class AdminSecurityRequestEventStream {
 
     private void remove(SseEmitter emitter) {
         emitters.remove(emitter);
-        try {
-            emitter.complete();
-        } catch (IllegalStateException ignored) {
-            // The emitter is already closed by the servlet container.
-        }
     }
 }

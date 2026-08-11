@@ -28,6 +28,7 @@ import com.vibegraph.auth.repository.FeedbackReportRepository;
 import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.AuthenticatedUser;
 import com.vibegraph.auth.service.JwtService;
+import com.vibegraph.auth.service.RefreshSessionService;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +42,7 @@ class RealtimeAccountAccessInterceptorTest {
     @Mock private AccountAccessGuard accountAccessGuard;
     @Mock private ProjectOwnershipGuard ownershipGuard;
     @Mock private FeedbackReportRepository feedbackReportRepository;
+    @Mock private RefreshSessionService refreshSessionService;
     @Mock private MessageChannel channel;
 
     private static final UUID REPORT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -85,6 +87,32 @@ class RealtimeAccountAccessInterceptorTest {
         interceptor.preSend(subscribeMessage(PROJECT_ID, "status"), channel);
 
         assertThat(interceptor.preSend(outboundMessage(PROJECT_ID, "status"), channel)).isNull();
+    }
+
+    @Test
+    @DisplayName("a revoked auth session suppresses existing realtime delivery")
+    void preSend_revokedAuthSession_suppressesProjectUpdate() {
+        UUID authSessionId = UUID.randomUUID();
+        RealtimeAccountAccessInterceptor sessionAwareInterceptor =
+                new RealtimeAccountAccessInterceptor(
+                        jwtService,
+                        accountAccessGuard,
+                        ownershipGuard,
+                        feedbackReportRepository,
+                        refreshSessionService);
+        when(jwtService.parse("jwt-token"))
+                .thenReturn(new AuthenticatedUser(
+                        userId, "user@test.local", Role.USER, authSessionId));
+        when(refreshSessionService.isAccessSessionActive(authSessionId, userId))
+                .thenReturn(true, true, false);
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true);
+
+        sessionAwareInterceptor.preSend(connectMessage(), channel);
+        sessionAwareInterceptor.preSend(subscribeMessage(PROJECT_ID, "updates"), channel);
+
+        assertThat(sessionAwareInterceptor.preSend(outboundMessage(PROJECT_ID, "updates"), channel))
+                .isNull();
     }
 
     @Test

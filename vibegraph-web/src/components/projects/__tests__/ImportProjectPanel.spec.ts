@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ImportProjectPanel from '../ImportProjectPanel.vue'
 import i18n from '@/language'

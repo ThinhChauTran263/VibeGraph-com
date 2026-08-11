@@ -70,19 +70,36 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
 
   function draw(): void {
     if (!context) return
-    clear()
+    // The layer is already clear in normal mode. Only redraw while focus mode
+    // has background content, avoiding a clearRect on every ordinary frame.
     if (!partition || partition.backgroundNodes.size === 0) return
+    clear()
 
     const cameraRatio = sigma.getCamera().ratio
+    const { width, height } = sigma.getDimensions()
+    const viewportMargin = 24
+
+    const isOutsideViewport = (x: number, y: number, radius: number): boolean =>
+      x < -radius - viewportMargin ||
+      x > width + radius + viewportMargin ||
+      y < -radius - viewportMargin ||
+      y > height + radius + viewportMargin
 
     // Edges first so background nodes sit above background edges (within this
     // layer only — the whole layer is still below the foreground edges).
     context.lineCap = 'round'
     partition.backgroundEdges.forEach((edge) => {
       if (!graph.hasEdge(edge)) return
+      if (graph.getEdgeAttribute(edge, 'filterHidden') === true) return
       const source = graph.source(edge)
       const target = graph.target(edge)
       if (!graph.hasNode(source) || !graph.hasNode(target)) return
+      if (
+        graph.getNodeAttribute(source, 'filterHidden') === true ||
+        graph.getNodeAttribute(target, 'filterHidden') === true
+      ) {
+        return
+      }
 
       const start = sigma.graphToViewport({
         x: graph.getNodeAttribute(source, 'x') as number,
@@ -92,6 +109,15 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
         x: graph.getNodeAttribute(target, 'x') as number,
         y: graph.getNodeAttribute(target, 'y') as number,
       })
+
+      if (
+        (start.x < -viewportMargin && end.x < -viewportMargin) ||
+        (start.x > width + viewportMargin && end.x > width + viewportMargin) ||
+        (start.y < -viewportMargin && end.y < -viewportMargin) ||
+        (start.y > height + viewportMargin && end.y > height + viewportMargin)
+      ) {
+        return
+      }
 
       context.strokeStyle = ghostEdgeColor(graph.getEdgeAttribute(edge, 'color'))
       context.lineWidth = sigma.scaleSize(
@@ -106,6 +132,7 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
 
     partition.backgroundNodes.forEach((node) => {
       if (!graph.hasNode(node)) return
+      if (graph.getNodeAttribute(node, 'filterHidden') === true) return
       const position = sigma.graphToViewport({
         x: graph.getNodeAttribute(node, 'x') as number,
         y: graph.getNodeAttribute(node, 'y') as number,
@@ -114,6 +141,7 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
         ghostNodeSize(graph.getNodeAttribute(node, 'size')),
         cameraRatio,
       )
+      if (isOutsideViewport(position.x, position.y, radius)) return
       context.fillStyle = ghostNodeColor(graph.getNodeAttribute(node, 'color'))
       context.beginPath()
       context.arc(position.x, position.y, radius, 0, Math.PI * 2)
@@ -127,6 +155,10 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
   return {
     setPartition(next: FocusPartition | null) {
       partition = next
+      if (!next || next.backgroundNodes.size === 0) {
+        clear()
+        return
+      }
       draw()
     },
     destroy() {

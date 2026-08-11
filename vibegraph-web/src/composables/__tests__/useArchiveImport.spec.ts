@@ -82,14 +82,13 @@ describe('useArchiveImport - validation guards', () => {
     expect(uploadArchiveMock).not.toHaveBeenCalled()
   })
 
-  it('rejects an oversized file before the network call', async () => {
+  it('allows a large file to reach the backend quota check', async () => {
+    uploadArchiveMock.mockResolvedValueOnce(fakeProject())
     const composable = useArchiveImport()
     const huge = makeFile('huge.zip', 200 * 1024 * 1024)
     const result = await composable.uploadArchive('demo', huge)
-    expect(result).toBeNull()
-    expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toMatch(/100 MB/)
-    expect(uploadArchiveMock).not.toHaveBeenCalled()
+    expect(result).not.toBeNull()
+    expect(uploadArchiveMock).toHaveBeenCalledWith('demo', huge)
   })
 })
 
@@ -141,8 +140,8 @@ describe('useArchiveImport - error mapping', () => {
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toMatch(/too large/i)
-    expect(composable.errorMessage.value).toMatch(/100 MB/)
+    expect(composable.errorMessage.value).toMatch(/quota|safety/i)
+    expect(composable.errorMessage.value).toMatch(/too large|quota|safety/i)
   })
 
   it('maps server 5xx to an "unavailable" message when no body text', async () => {
@@ -494,7 +493,7 @@ describe('useArchiveImport - async upload', () => {
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toMatch(/too large/i)
+    expect(composable.errorMessage.value).toMatch(/quota|safety/i)
     expect(ws.connect).not.toHaveBeenCalled()
   })
 })

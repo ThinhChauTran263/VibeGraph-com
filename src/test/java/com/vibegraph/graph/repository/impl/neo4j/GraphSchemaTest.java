@@ -14,7 +14,7 @@ class GraphSchemaTest {
     class NodeLabels {
 
         @Test
-        @DisplayName("accepts known labels including the External stub")
+    @DisplayName("accepts known labels including the legacy placeholder label")
         void acceptsKnownLabels() {
             assertThat(GraphSchema.nodeLabel("Class")).isEqualTo("Class");
             assertThat(GraphSchema.nodeLabel("Record")).isEqualTo("Record");
@@ -44,6 +44,12 @@ class GraphSchemaTest {
         void acceptsKnownTypes() {
             assertThat(GraphSchema.relationshipType("HANDLES_ROUTE")).isEqualTo("HANDLES_ROUTE");
             assertThat(GraphSchema.relationshipType("CALLS")).isEqualTo("CALLS");
+            assertThat(GraphSchema.relationshipType("HAS_RELATION")).isEqualTo("HAS_RELATION");
+            assertThat(GraphSchema.relationshipType("PUBLISHES_EVENT")).isEqualTo("PUBLISHES_EVENT");
+            assertThat(GraphSchema.relationshipType("LISTENS_EVENT")).isEqualTo("LISTENS_EVENT");
+            assertThat(GraphSchema.relationshipType("TRIGGERS")).isEqualTo("TRIGGERS");
+            assertThat(GraphSchema.relationshipType("RESOLVES_TO")).isEqualTo("RESOLVES_TO");
+            assertThat(GraphSchema.relationshipType("DISPATCH_CANDIDATES")).isEqualTo("DISPATCH_CANDIDATES");
         }
 
         @Test

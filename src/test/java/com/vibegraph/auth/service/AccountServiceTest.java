@@ -68,6 +68,9 @@ class AccountServiceTest {
     @Mock
     private FeatureGateService featureGateService;
 
+    @Mock
+    private RefreshSessionService refreshSessionService;
+
     private AccountService accountService;
 
     @BeforeEach
@@ -80,7 +83,8 @@ class AccountServiceTest {
                 creditLedgerRepository,
                 projectOwnershipRepository,
                 passwordEncoder,
-                featureGateService);
+                featureGateService,
+                refreshSessionService);
         lenient().when(featureGateService.capabilities()).thenReturn(java.util.Map.of());
     }
 
@@ -278,6 +282,7 @@ class AccountServiceTest {
 
         assertEquals("new-hash", user.getPasswordHash());
         verify(userRepository).save(user);
+        verify(refreshSessionService).revokeAllForUser(userId, "PASSWORD_CHANGED");
     }
 
     @Test
@@ -397,7 +402,7 @@ class AccountServiceTest {
         AccountProjectPageRequest request = new AccountProjectPageRequest(0, 20);
         when(currentUser.id()).thenReturn(userId);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(projectOwnershipRepository.findByOwnerId(userId, request.toPageable()))
+        when(projectOwnershipRepository.findByOwnerIdAndDeletedAtIsNull(userId, request.toPageable()))
                 .thenReturn(new PageImpl<>(java.util.List.of(owned), PageRequest.of(0, 20), 1));
 
         AccountProjectsPageResponse projects = accountService.projects(request);

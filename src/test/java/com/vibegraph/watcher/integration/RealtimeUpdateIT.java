@@ -52,7 +52,11 @@ import com.vibegraph.watcher.service.FileWatcherService;
         classes = VibeGraphApplication.class,
         properties = {
                 "vibegraph.watcher.debounce-ms=100",
-                "spring.main.allow-bean-definition-overriding=true"
+                "spring.main.allow-bean-definition-overriding=true",
+                // This test boots the whole application, which imports the developer's local .env.
+                // Pin Supabase off so a half-configured .env cannot fail the context here: realtime
+                // file-watcher broadcasting has nothing to do with Supabase.
+                "vibegraph.supabase.enabled=false"
         })
 @Testcontainers(disabledWithoutDocker = true)
 @DisplayName("T70 realtime FileWatcher DELETE E2E (STOMP + Testcontainers Neo4j)")

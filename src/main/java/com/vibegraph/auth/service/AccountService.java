@@ -8,6 +8,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.User;
@@ -28,10 +29,7 @@ import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.UnauthorizedException;
 import com.vibegraph.common.exception.InvalidCredentialsException;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class AccountService {
 
     private final CurrentUser currentUser;
@@ -42,6 +40,44 @@ public class AccountService {
     private final ProjectOwnershipRepository projectOwnershipRepository;
     private final PasswordEncoder passwordEncoder;
     private final FeatureGateService featureGateService;
+    private final RefreshSessionService refreshSessionService;
+
+    @Autowired
+    public AccountService(
+            CurrentUser currentUser,
+            UserRepository userRepository,
+            AccountSettingsService accountSettingsService,
+            CreditBalanceService creditBalanceService,
+            CreditLedgerRepository creditLedgerRepository,
+            ProjectOwnershipRepository projectOwnershipRepository,
+            PasswordEncoder passwordEncoder,
+            FeatureGateService featureGateService,
+            RefreshSessionService refreshSessionService) {
+        this.currentUser = currentUser;
+        this.userRepository = userRepository;
+        this.accountSettingsService = accountSettingsService;
+        this.creditBalanceService = creditBalanceService;
+        this.creditLedgerRepository = creditLedgerRepository;
+        this.projectOwnershipRepository = projectOwnershipRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.featureGateService = featureGateService;
+        this.refreshSessionService = refreshSessionService;
+    }
+
+    /** Compatibility constructor for existing focused unit tests. */
+    public AccountService(
+            CurrentUser currentUser,
+            UserRepository userRepository,
+            AccountSettingsService accountSettingsService,
+            CreditBalanceService creditBalanceService,
+            CreditLedgerRepository creditLedgerRepository,
+            ProjectOwnershipRepository projectOwnershipRepository,
+            PasswordEncoder passwordEncoder,
+            FeatureGateService featureGateService) {
+        this(currentUser, userRepository, accountSettingsService, creditBalanceService,
+                creditLedgerRepository, projectOwnershipRepository, passwordEncoder,
+                featureGateService, null);
+    }
 
     @Transactional(readOnly = true)
     public UserResponse profile() {
@@ -89,6 +125,9 @@ public class AccountService {
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        if (refreshSessionService != null) {
+            refreshSessionService.revokeAllForUser(user.getId(), "PASSWORD_CHANGED");
+        }
     }
 
     @Transactional
@@ -128,7 +167,7 @@ public class AccountService {
     public AccountProjectsPageResponse projects(AccountProjectPageRequest request) {
         UUID userId = currentUserEntity().getId();
         return AccountProjectsPageResponse.from(projectOwnershipRepository
-                .findByOwnerId(userId, request.toPageable())
+                .findByOwnerIdAndDeletedAtIsNull(userId, request.toPageable())
                 .map(AccountProjectResponse::from));
     }
 

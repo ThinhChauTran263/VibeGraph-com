@@ -55,15 +55,22 @@ public class JwtService {
 
     /** Issue a signed token for the given user. */
     public String issue(User user) {
+        return issue(user, null);
+    }
+
+    /** Issue a signed token bound to a refresh session. */
+    public String issue(User user, UUID sessionId) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole() != null ? user.getRole().name() : Role.USER.name())
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusMillis(expirationMs)))
-                .signWith(key, SIGNATURE_ALGORITHM)
-                .compact();
+                .expiration(Date.from(now.plusMillis(expirationMs)));
+        if (sessionId != null) {
+            builder.claim("sid", sessionId.toString());
+        }
+        return builder.signWith(key, SIGNATURE_ALGORITHM).compact();
     }
 
     /**
@@ -83,7 +90,13 @@ public class JwtService {
         UUID id = UUID.fromString(claims.getSubject());
         String email = claims.get("email", String.class);
         Role role = parseRole(claims.get("role", String.class));
-        return new AuthenticatedUser(id, email, role);
+        UUID sessionId = parseSessionId(claims.get("sid", String.class));
+        return new AuthenticatedUser(id, email, role, sessionId);
+    }
+
+    /** Exposes the configured access lifetime for policy and diagnostics tests. */
+    public long expirationMs() {
+        return expirationMs;
     }
 
     private Role parseRole(String raw) {
@@ -94,6 +107,17 @@ public class JwtService {
             return Role.valueOf(raw);
         } catch (IllegalArgumentException ex) {
             return Role.USER;
+        }
+    }
+
+    private UUID parseSessionId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new JwtException("Invalid JWT session id", ex) { };
         }
     }
 }

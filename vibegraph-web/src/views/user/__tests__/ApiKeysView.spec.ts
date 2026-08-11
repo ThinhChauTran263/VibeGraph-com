@@ -1,9 +1,9 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ApiKeysView from '../ApiKeysView.vue'
 import { useAccountStore } from '@/stores/account'
-import i18n, { setLocale } from '@/language'
+import i18n from '@/language'
 
 const featureMocks = vi.hoisted(() => ({
   enabled: true,

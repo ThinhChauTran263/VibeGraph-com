@@ -14,8 +14,8 @@ import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.DefaultRedirectStrategy;
 import org.springframework.stereotype.Component;
 
-import com.vibegraph.auth.dto.AuthResponse;
 import com.vibegraph.auth.service.AuthCookieService;
+import com.vibegraph.auth.service.AuthenticationResult;
 import com.vibegraph.auth.service.AuthService;
 
 import jakarta.servlet.ServletException;
@@ -48,10 +48,13 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         }
         try {
             authorizationRequestRepository.removeAuthorizationRequest(request, response);
-            AuthResponse authResponse = authService.oauthLogin(OAuthProfileExtractor.from(oauth2Authentication));
+            AuthenticationResult authResult = authService.oauthLoginSession(
+                    OAuthProfileExtractor.from(oauth2Authentication));
             response.addHeader(HttpHeaders.SET_COOKIE,
-                    authCookieService.sessionCookie(authResponse.token(), request).toString());
-            String role = authResponse.user() != null ? authResponse.user().role() : null;
+                    authCookieService.sessionCookie(authResult.accessToken(), request).toString());
+            response.addHeader(HttpHeaders.SET_COOKIE,
+                    authCookieService.refreshCookie(authResult.refreshToken(), request).toString());
+            String role = authResult.user() != null ? authResult.user().role() : null;
             redirectStrategy.sendRedirect(request, response, redirects.successUrlForRole(role));
         } catch (OAuth2AuthenticationException ex) {
             log.warn("OAuth login failed during local account mapping: {}", ex.getError().getErrorCode());

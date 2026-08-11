@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import AppIcon from '@/components/ui/AppIcon.vue'
 import { ApiError, accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n({ useScope: 'global' })
+const { t, locale } = useI18n({ useScope: 'global' })
 const items = ref<UserNotification[]>([])
 const selected = ref<UserNotification | null>(null)
 const available = ref(true)
@@ -15,6 +16,8 @@ const loading = ref(true)
 const busyId = ref<string | null>(null)
 const errorMsg = ref('')
 let selectionVersion = 0
+
+const unreadCount = computed(() => items.value.filter((item) => !item.read).length)
 
 onMounted(loadNotifications)
 
@@ -78,62 +81,153 @@ function replaceNotification(updated: UserNotification): void {
 }
 
 function creatorLabel(item: UserNotification): string {
-  return item.creatorDisplayName || item.creatorName || item.creatorEmail || t('user.notifications.creatorFallback')
+  return (
+    item.creatorDisplayName ||
+    item.creatorName ||
+    item.creatorEmail ||
+    t('user.notifications.creatorFallback')
+  )
+}
+
+function severityOf(item: UserNotification): string {
+  return item.severity.toLowerCase()
+}
+
+function severityIcon(item: UserNotification): string {
+  const level = severityOf(item)
+  return level === 'critical' ? 'critical' : level === 'warning' ? 'warning' : 'info'
+}
+
+/** Compact relative time for the list; the full timestamp stays in `title`/`datetime`. */
+function relativeTime(iso: string): string {
+  const target = Date.parse(iso)
+  if (Number.isNaN(target)) return ''
+  const diffSeconds = Math.round((target - Date.now()) / 1000)
+  const absolute = Math.abs(diffSeconds)
+  if (absolute < 60) return t('user.notifications.relativeNow')
+
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['day', 86_400],
+    ['hour', 3600],
+    ['minute', 60],
+  ]
+  const formatter = new Intl.RelativeTimeFormat(locale.value, { numeric: 'auto' })
+  for (const [unit, seconds] of units) {
+    if (absolute >= seconds) return formatter.format(Math.round(diffSeconds / seconds), unit)
+  }
+  return t('user.notifications.relativeNow')
+}
+
+function fullTime(iso: string): string {
+  const parsed = new Date(iso)
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleString(locale.value)
 }
 </script>
 
 <template>
   <section class="notifications" aria-labelledby="notifications-title">
-    <header>
-      <span>{{ t('user.notifications.inbox') }}</span>
-      <h1 id="notifications-title">{{ t('user.notifications.title') }}</h1>
-      <p>{{ t('user.notifications.description') }}</p>
+    <header class="page-head">
+      <div>
+        <span class="eyebrow">{{ t('user.notifications.inbox') }}</span>
+        <h1 id="notifications-title">{{ t('user.notifications.title') }}</h1>
+        <p class="lede">{{ t('user.notifications.description') }}</p>
+      </div>
+      <span v-if="unreadCount" class="unread-pill">
+        {{ t('user.notifications.unreadCount', { count: unreadCount }) }}
+      </span>
     </header>
+
     <p v-if="errorMsg" class="notice error" role="alert">{{ errorMsg }}</p>
-    <section v-if="loading" class="empty">{{ t('user.notifications.loading') }}</section>
-    <section v-else-if="!available" class="empty">
+
+    <section v-if="loading" class="state" aria-busy="true">
+      <span class="state-icon"><AppIcon name="inbox" :size="22" /></span>
+      <p>{{ t('user.notifications.loading') }}</p>
+    </section>
+
+    <section v-else-if="!available" class="state">
+      <span class="state-icon"><AppIcon name="warning" :size="22" /></span>
       <h2>{{ t('user.notifications.unavailableTitle') }}</h2>
       <p>{{ t('user.notifications.unavailableDescription') }}</p>
     </section>
-    <section v-else-if="!items.length" class="empty">
+
+    <section v-else-if="!items.length" class="state">
+      <span class="state-icon"><AppIcon name="check" :size="22" /></span>
       <h2>{{ t('user.notifications.emptyTitle') }}</h2>
       <p>{{ t('user.notifications.emptyDescription') }}</p>
     </section>
+
     <div v-else class="grid">
-      <ol :aria-label="t('user.notifications.listLabel')">
+      <ol class="list" :aria-label="t('user.notifications.listLabel')">
         <li v-for="item in items" :key="item.id">
           <button
             type="button"
-            :class="{ active: selected?.id === item.id, unread: !item.read }"
+            class="row"
+            :class="[`sev-${severityOf(item)}`, { active: selected?.id === item.id }]"
             :aria-current="selected?.id === item.id ? 'true' : undefined"
             :disabled="busyId === item.id"
             @click="selectNotification(item)"
           >
-            <span class="list-heading">
-              <i :class="`severity-${item.severity.toLowerCase()}`">{{ item.severity }}</i>
-              <strong>{{ item.title }}</strong>
+            <span class="row-glyph"><AppIcon :name="severityIcon(item)" :size="16" /></span>
+            <span class="row-main">
+              <span class="row-title">
+                <span class="text">{{ item.title }}</span>
+                <span v-if="!item.read" class="dot" :aria-label="t('user.notifications.newBadge')" />
+              </span>
+              <span class="row-meta">
+                <span class="who">{{ creatorLabel(item) }}</span>
+                <time :datetime="item.createdAt" :title="fullTime(item.createdAt)">
+                  {{ relativeTime(item.createdAt) }}
+                </time>
+              </span>
             </span>
-            <span>{{ creatorLabel(item) }} - {{ new Date(item.createdAt).toLocaleString() }}</span>
           </button>
         </li>
       </ol>
-      <article v-if="selected" class="detail">
-        <div class="detail-meta">
-          <span>{{ creatorLabel(selected) }}</span>
-          <time :datetime="selected.createdAt">{{ new Date(selected.createdAt).toLocaleString() }}</time>
+
+      <article
+        v-if="selected"
+        class="detail"
+        :class="`sev-${severityOf(selected)}`"
+        :aria-label="t('user.notifications.detailLabel')"
+      >
+        <div class="detail-head">
+          <span class="detail-glyph"><AppIcon :name="severityIcon(selected)" :size="18" /></span>
+          <div class="detail-heading">
+            <span class="kind">{{ selected.type.replace(/_/g, ' ') }}</span>
+            <h2>{{ selected.title }}</h2>
+          </div>
         </div>
-        <span class="detail-type">{{ selected.type.replace(/_/g, ' ') }}</span>
-        <h2>{{ selected.title }}</h2>
-        <p>{{ selected.body }}</p>
-        <button
-          v-if="selected.dismissible"
-          type="button"
-          class="dismiss"
-          :disabled="busyId === selected.id"
-          @click="dismissSelected"
-        >
-          {{ busyId === selected.id ? t('user.notifications.updating') : t('user.notifications.dismiss') }}
-        </button>
+
+        <div class="detail-meta">
+          <span class="who">{{ creatorLabel(selected) }}</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <time :datetime="selected.createdAt" :title="fullTime(selected.createdAt)">
+            {{ fullTime(selected.createdAt) }}
+          </time>
+        </div>
+
+        <p class="detail-body">{{ selected.body }}</p>
+
+        <footer v-if="selected.dismissible" class="detail-foot">
+          <button
+            type="button"
+            class="dismiss"
+            :disabled="busyId === selected.id"
+            @click="dismissSelected"
+          >
+            {{
+              busyId === selected.id
+                ? t('user.notifications.updating')
+                : t('user.notifications.dismiss')
+            }}
+          </button>
+        </footer>
+      </article>
+
+      <article v-else class="detail detail-empty">
+        <p>{{ t('user.notifications.selectPrompt') }}</p>
       </article>
     </div>
   </section>
@@ -145,144 +239,293 @@ function creatorLabel(item: UserNotification): string {
   flex-direction: column;
   gap: var(--vg-space-5);
 }
-header > span,
-.detail-type {
-  color: var(--vg-blue-bright);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-h1,
-h2 {
-  font-family: var(--vg-font-display);
-  color: var(--vg-text);
-}
-h1 {
-  margin: 0.25rem 0;
-  font-size: clamp(1.625rem, 2.2vw, 1.875rem);
-}
-h2 {
-  margin: 0.45rem 0 var(--vg-space-3);
-  font-size: var(--vg-text-lg);
-}
-p,
-.detail-meta {
-  color: var(--vg-text-muted);
-}
-.notice,
-.empty {
-  padding: var(--vg-space-4);
-  border: 1px dashed var(--vg-border);
-  border-radius: var(--vg-radius);
-  background: var(--vg-surface);
-}
-.error {
-  color: var(--vg-danger);
-}
-.grid {
-  display: grid;
-  grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.2fr);
+
+/* ---- Page header ---- */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: var(--vg-space-4);
 }
-ol {
-  max-height: calc(100vh - 13rem);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
+.eyebrow,
+.kind {
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0.3rem 0 0;
+  font-size: clamp(1.5rem, 2vw, 1.75rem);
+  color: var(--vg-text);
+}
+.lede {
+  max-width: 62ch;
+  margin: 0.35rem 0 0;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+}
+.unread-pill {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--vg-blue-bright) 40%, transparent);
+  border-radius: var(--vg-radius-pill);
+  background: color-mix(in srgb, var(--vg-blue-bright) 14%, transparent);
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Notices and empty/loading states ---- */
+.notice {
+  padding: var(--vg-space-3) var(--vg-space-4);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
-}
-li + li {
-  border-top: 1px solid var(--vg-border);
-}
-li button {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: var(--vg-space-4);
-  border: 0;
-  border-left: 3px solid transparent;
   background: var(--vg-surface);
+  font-size: var(--vg-text-sm);
+}
+.error {
+  border-color: color-mix(in srgb, var(--vg-danger) 45%, transparent);
+  color: var(--vg-danger);
+}
+.state {
+  display: grid;
+  justify-items: center;
+  gap: var(--vg-space-2);
+  padding: var(--vg-space-12) var(--vg-space-4);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+  text-align: center;
+}
+.state-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--vg-space-1);
+  border-radius: var(--vg-radius-pill);
+  background: var(--vg-surface-3);
+  color: var(--vg-text-muted);
+}
+.state h2 {
+  margin: 0;
+  font-size: var(--vg-text-lg);
+  color: var(--vg-text);
+}
+.state p {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+}
+
+/* ---- Two-pane layout ---- */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.75fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: var(--vg-space-4);
+}
+
+/* ---- List ---- */
+.list {
+  max-height: calc(100vh - 14rem);
+  margin: 0;
+  padding: var(--vg-space-1);
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+}
+.row {
+  --sev: var(--vg-blue-bright);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--vg-space-3);
+  width: 100%;
+  padding: var(--vg-space-3);
+  border: 0;
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
   color: var(--vg-text);
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--vg-dur-fast) var(--vg-ease-out);
 }
-li button.unread {
-  border-left-color: var(--vg-blue-bright);
-  background: color-mix(in srgb, var(--vg-blue) 7%, var(--vg-surface));
+.row:hover:not(:disabled) {
+  background: var(--vg-surface-2);
 }
-li button.active,
-li button:hover {
+.row.active {
   background: var(--vg-surface-3);
 }
-li button:disabled {
-  cursor: wait;
+.row:disabled {
+  cursor: progress;
 }
-.list-heading {
+.sev-warning {
+  --sev: var(--vg-warning);
+}
+.sev-critical {
+  --sev: var(--vg-danger);
+}
+.row-glyph {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--vg-radius-sm);
+  background: color-mix(in srgb, var(--sev) 14%, transparent);
+  color: var(--sev);
+}
+.row-main {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.row-title {
   display: flex;
   align-items: center;
   gap: var(--vg-space-2);
+  min-width: 0;
 }
-.list-heading i {
+.row-title .text {
+  overflow: hidden;
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Unread marker: a dot, so "new" is not signalled by colour alone. */
+.dot {
   flex: 0 0 auto;
-  padding: 0.18rem 0.4rem;
+  width: 7px;
+  height: 7px;
   border-radius: var(--vg-radius-pill);
-  background: rgba(96, 165, 250, 0.12);
-  color: var(--vg-blue-bright);
-  font-size: 0.65rem;
-  font-style: normal;
-  font-weight: 800;
+  background: var(--vg-blue-bright);
 }
-.list-heading .severity-warning {
-  color: var(--vg-warning);
-}
-.list-heading .severity-critical {
-  color: var(--vg-danger);
-}
-li button > span:last-child {
-  color: var(--vg-text-muted);
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-2);
+  min-width: 0;
+  color: var(--vg-text-dim);
   font-size: var(--vg-text-xs);
 }
+.row-meta .who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-meta time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Detail ---- */
 .detail {
+  --sev: var(--vg-blue-bright);
   align-self: start;
   padding: var(--vg-space-5);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   background: var(--vg-surface);
 }
+.detail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--vg-space-3);
+}
+.detail-glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vg-radius-sm);
+  background: color-mix(in srgb, var(--sev) 14%, transparent);
+  color: var(--sev);
+}
+.detail-heading .kind {
+  color: var(--sev);
+}
+.detail-heading h2 {
+  margin: 0.2rem 0 0;
+  font-size: var(--vg-text-lg);
+  color: var(--vg-text);
+}
 .detail-meta {
   display: flex;
-  justify-content: space-between;
-  gap: var(--vg-space-3);
-  margin-bottom: var(--vg-space-4);
-  font-size: var(--vg-text-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vg-space-2);
+  margin-top: var(--vg-space-3);
+  padding-bottom: var(--vg-space-4);
+  border-bottom: 1px solid var(--vg-border);
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
 }
-.detail p {
-  white-space: pre-wrap;
+.detail-meta time {
+  font-variant-numeric: tabular-nums;
+}
+.sep {
+  color: var(--vg-border-strong);
+}
+.detail-body {
+  margin: var(--vg-space-4) 0 0;
+  max-width: 70ch;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
   line-height: 1.7;
+  white-space: pre-wrap;
+}
+.detail-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--vg-space-5);
+  padding-top: var(--vg-space-4);
+  border-top: 1px solid var(--vg-border);
 }
 .dismiss {
-  min-height: 38px;
-  margin-top: var(--vg-space-4);
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--vg-border);
+  min-height: 36px;
+  padding: 0 var(--vg-space-4);
+  border: 1px solid var(--vg-border-strong);
   border-radius: var(--vg-radius-sm);
   background: transparent;
   color: var(--vg-text);
   font: inherit;
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color var(--vg-dur-fast) var(--vg-ease-out);
 }
-@media (max-width: 720px) {
+.dismiss:hover:not(:disabled) {
+  background: var(--vg-surface-3);
+}
+.dismiss:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.detail-empty {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-sm);
+}
+
+@media (max-width: 860px) {
   .grid {
     grid-template-columns: 1fr;
   }
-  ol {
-    max-height: 40vh;
+  .list {
+    max-height: 22rem;
   }
-  .detail-meta {
+  .page-head {
     flex-direction: column;
   }
 }

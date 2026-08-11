@@ -3,6 +3,8 @@ package com.vibegraph.parser.visitor;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
 import com.github.javaparser.ast.CompilationUnit;
+import com.vibegraph.parser.ProjectSymbolRegistry;
+import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -118,6 +120,7 @@ class FieldVisitorTest {
 
         NodeData repo = fields.stream().filter(field -> field.name().equals("userRepository")).findFirst().orElseThrow();
         assertTrue((boolean) property(repo, "injected"));
+        assertEquals(List.of("Autowired"), property(repo, "annotations"));
 
         NodeData plain = fields.stream().filter(field -> field.name().equals("plainField")).findFirst().orElseThrow();
         assertFalse((boolean) property(plain, "injected"));
@@ -166,5 +169,55 @@ class FieldVisitorTest {
 
         NodeData props = fields.stream().filter(field -> field.name().equals("properties")).findFirst().orElseThrow();
         assertTrue(((String) property(props, "declaredType")).contains("Map"));
+    }
+
+    @Test
+    @DisplayName("should emit verified JPA HAS_RELATION class-to-class edge")
+    void shouldEmitVerifiedJpaRelation() {
+        CompilationUnit cu = parse("""
+            package com.example;
+            import jakarta.persistence.OneToMany;
+            import java.util.List;
+
+            public class User {
+                @OneToMany
+                private List<Order> orders;
+            }
+            class Order {}
+            """);
+
+        try (ProjectSymbolRegistry.Scope ignored = ProjectSymbolRegistry.open(ProjectSymbolRegistry.fromCompilationUnits(List.of(cu)))) {
+            visitor.visit(cu, null);
+        }
+
+        assertTrue(visitor.getExtractedEdges().stream()
+                .anyMatch(edge -> edge.type().equals("HAS_RELATION")
+                        && edge.sourceFullName().equals("com.example.User")
+                        && edge.targetFullName().equals("com.example.Order")
+                        && edge.properties().get("cardinality").equals("ONE_TO_MANY")
+                        && edge.properties().get("fieldName").equals("orders")));
+    }
+
+    @Test
+    @DisplayName("should not emit JPA relation to unverified external type")
+    void shouldNotEmitUnverifiedJpaRelation() {
+        CompilationUnit cu = parse("""
+            package com.example;
+            import jakarta.persistence.ManyToOne;
+
+            public class User {
+                @ManyToOne
+                private MissingAccount account;
+            }
+            """);
+
+        try (ProjectSymbolRegistry.Scope ignored = ProjectSymbolRegistry.open(ProjectSymbolRegistry.fromCompilationUnits(List.of(cu)))) {
+            visitor.visit(cu, null);
+        }
+
+        assertTrue(visitor.getExtractedEdges().stream()
+                .filter(edge -> edge.type().equals("HAS_RELATION"))
+                .map(EdgeData::targetFullName)
+                .noneMatch(target -> target.equals("com.example.MissingAccount") || target.equals("MissingAccount")));
     }
 }

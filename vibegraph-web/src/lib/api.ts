@@ -5,6 +5,7 @@
 
 import { API_BASE_URL } from './constants'
 import http from './http'
+import { clearStoredSession, fetchWithSessionRefresh, redirectToLogin } from './authRefresh'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
 import type { ApiErrorCode, ApiErrorPayload } from '@/types/api'
@@ -163,11 +164,8 @@ export interface CliRepositorySetup {
  * Clears stored auth session and redirects to /login (unless already there).
  */
 function handleUnauthorized(): void {
-  localStorage.removeItem('vg_token')
-  localStorage.removeItem('vg_user')
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
-  }
+  clearStoredSession()
+  redirectToLogin()
 }
 
 async function unwrap<T>(res: Response): Promise<T> {
@@ -231,7 +229,7 @@ export const api = {
   },
 
   async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       credentials: 'include',
       headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
@@ -239,7 +237,7 @@ export const api = {
   },
 
   async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -253,7 +251,7 @@ export const api = {
   },
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -267,7 +265,7 @@ export const api = {
   },
 
   async put<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       method: 'PUT',
       credentials: 'include',
       headers: {
@@ -287,7 +285,7 @@ export const api = {
    */
   async postMultipart<T>(path: string, form: FormData): Promise<T> {
     const authHeaders = this._authHeaders()
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'X-VibeGraph-Client': 'web', ...authHeaders },
@@ -296,36 +294,103 @@ export const api = {
     return unwrap<T>(res)
   },
 
+  /**
+   * POST an action endpoint that answers `204 No Content`.
+   *
+   * Separate from {@link post} because `unwrap` always parses a JSON envelope, which throws on an
+   * empty body.
+   */
+  async postNoContent(path: string, body?: unknown): Promise<void> {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VibeGraph-Client': 'web',
+        ...this._authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    await assertNoContentOk(res)
+  },
+
   async delete(path: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await fetchWithSessionRefresh(`${this.baseUrl}${path}`, {
       method: 'DELETE',
       credentials: 'include',
       headers: { 'X-VibeGraph-Client': 'web', ...this._authHeaders() },
     })
-    if (!res.ok) {
-      if (res.status === 401) {
-        handleUnauthorized()
-      }
-      const error = await extractApiError(res)
-      throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
-    }
+    await assertNoContentOk(res)
   },
 }
 
+/** Shared failure handling for endpoints whose success answer carries no body. */
+async function assertNoContentOk(res: Response): Promise<void> {
+  if (res.ok) {
+    return
+  }
+  if (res.status === 401) {
+    handleUnauthorized()
+  }
+  const error = await extractApiError(res)
+  throw new ApiError(res.status, res.statusText, error.message, error.code, error.details)
+}
+
+export type GraphFetchMode = 'baseline' | 'deep'
+
+export interface FetchGraphOptions {
+  mode?: GraphFetchMode
+}
+
 /**
- * Fetch the full graph for a project.
+ * Fetch the graph for a project.
  * GET /api/projects/{projectId}/graph
  */
-export async function fetchFullGraph(projectId: string): Promise<GraphData> {
-  return api.get<GraphData>(`/api/projects/${projectId}/graph`)
+export async function fetchFullGraph(
+  projectId: string,
+  options: FetchGraphOptions = {},
+): Promise<GraphData> {
+  // Default to the architecture view so the backend projector can emit the
+  // file-level dependency projection used by the main graph canvas.
+  const query = new URLSearchParams({
+    mode: options.mode ?? 'baseline',
+    nodeLimit: '0',
+    edgeLimit: '0',
+  })
+  return api.get<GraphData>(`/api/projects/${projectId}/graph?${query}`)
 }
 
 // Project endpoints
+/**
+ * A project the owner deleted, still restorable until the retention window expires.
+ *
+ * A trashed project keeps occupying storage, and therefore keeps counting toward the owner's
+ * quota, until it is purged — `purge` frees that space immediately instead of waiting.
+ */
+export interface TrashedProject {
+  id: string
+  name: string
+  /** Backend `ProjectSourceType`: `GITHUB`, `ARCHIVE`, `LOCAL`, or `CLI`. */
+  sourceType: string | null
+  sizeBytes: number
+  /** ISO-8601 timestamp string (Java `Instant`). */
+  deletedAt: string
+  /** ISO-8601 timestamp string; when the retention sweep will delete this for good. */
+  purgeAt: string
+  /** Whole days left before `purgeAt`; `0` means it goes on the next sweep. */
+  daysRemaining: number
+}
+
 export const projectApi = {
   list: () => api.get<Project[]>('/api/projects'),
   get: (id: string) => api.get<Project>(`/api/projects/${id}`),
   create: (data: unknown) => api.post<Project>('/api/projects', data),
+  /** Moves the project to trash. Reversible with `restore` until it is purged. */
   remove: (id: string) => api.delete(`/api/projects/${encodeURIComponent(id)}`),
+  trash: () => api.get<TrashedProject[]>('/api/projects/trash'),
+  restore: (id: string) => api.postNoContent(`/api/projects/${encodeURIComponent(id)}/restore`),
+  /** Permanently deletes a trashed project without waiting for the retention sweep. */
+  purge: (id: string) => api.delete(`/api/projects/${encodeURIComponent(id)}/purge`),
 }
 
 /**

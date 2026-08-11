@@ -1,11 +1,13 @@
 package com.vibegraph.graph.dto.response;
 
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 /**
  * Node detail with INCOMING and OUTGOING connections.
@@ -15,6 +17,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class NodeDetailResponse {
     private NodeDto node;
     private List<ConnectionDto> incoming;
@@ -24,6 +27,7 @@ public class NodeDetailResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class ConnectionDto {
         private NodeDto otherNode;
         private String relationshipType;

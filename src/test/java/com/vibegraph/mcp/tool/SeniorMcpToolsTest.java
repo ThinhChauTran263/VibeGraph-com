@@ -103,7 +103,7 @@ class SeniorMcpToolsTest {
         SourceFileServiceImpl fileService = new SourceFileServiceImpl(projectService);
         SourceGraphSupport support = new SourceGraphSupport(graphService);
         SourceSearchAnalyzerImpl searchAnalyzer = new SourceSearchAnalyzerImpl(fileService, support);
-        TestIntelligenceAnalyzerImpl testIntel = new TestIntelligenceAnalyzerImpl(support);
+        TestIntelligenceAnalyzerImpl testIntel = new TestIntelligenceAnalyzerImpl(support, fileService);
 
         methodCpgTool = new MethodCpgTool(new MethodCpgAnalyzerImpl(support, fileService));
         findRelatedTestsTool = new FindRelatedTestsTool(testIntel);

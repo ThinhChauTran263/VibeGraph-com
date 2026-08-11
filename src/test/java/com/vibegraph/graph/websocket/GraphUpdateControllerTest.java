@@ -21,6 +21,7 @@ import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.service.ProjectRuntimeStatusService;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,6 +30,8 @@ class GraphUpdateControllerTest {
 
     @Mock
     SimpMessagingTemplate messagingTemplate;
+    @Mock
+    ProjectRuntimeStatusService runtimeStatusService;
 
     private GraphUpdateController controller;
     private GraphPayloadProperties payloadProperties;
@@ -36,7 +39,8 @@ class GraphUpdateControllerTest {
     @BeforeEach
     void setUp() {
         payloadProperties = new GraphPayloadProperties();
-        controller = new GraphUpdateController(messagingTemplate, new GraphPayloadGuard(), payloadProperties);
+        controller = new GraphUpdateController(
+                messagingTemplate, new GraphPayloadGuard(), payloadProperties, runtimeStatusService);
     }
 
     @Test
@@ -51,6 +55,7 @@ class GraphUpdateControllerTest {
         assertThat(event.status()).isEqualTo("ANALYZING");
         assertThat(event.progress()).isZero();
         assertThat(event.timestamp()).isNotNull();
+        verify(runtimeStatusService).record(event);
     }
 
     @Test

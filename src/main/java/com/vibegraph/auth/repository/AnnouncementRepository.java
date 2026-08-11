@@ -1,10 +1,21 @@
 package com.vibegraph.auth.repository;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
-
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.vibegraph.auth.domain.Announcement;
 
-public interface AnnouncementRepository extends JpaRepository<Announcement, UUID> {
+public interface AnnouncementRepository {
+
+    List<Announcement> findAll();
+
+    Optional<Announcement> findById(UUID id);
+
+    Announcement save(Announcement announcement);
+
+    void deleteById(UUID id);
+
+    int deleteExpiredBefore(Instant cutoff);
 }

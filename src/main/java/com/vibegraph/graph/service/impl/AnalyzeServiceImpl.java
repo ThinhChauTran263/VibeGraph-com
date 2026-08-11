@@ -10,6 +10,8 @@ import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
+import com.vibegraph.parser.flow.DynamicDispatchResolver;
+import com.vibegraph.parser.flow.EventFlowResolver;
 import com.vibegraph.parser.flow.FlowAnalyzer;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -81,6 +83,12 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // Additive only: existing nodes/edges are untouched.
         allEdges.addAll(projectContainsPackageEdges(projectId, allNodes));
 
+        // Global inference passes run only after the full project AST has been
+        // parsed. Raw parser facts remain untouched; inferred relationships carry
+        // explicit metadata and are appended as separate edge types.
+        allEdges.addAll(EventFlowResolver.inferTriggers(allNodes, allEdges));
+        allEdges.addAll(DynamicDispatchResolver.inferDispatch(allNodes, allEdges));
+
         // STEP_IN_FLOW: inferred execution-flow steps from route handlers through the
         // already-resolved in-project CALLS graph. Computed from the CALLS/HANDLES_ROUTE
         // edges gathered above (before this line), then appended. Additive only — CALLS
@@ -98,9 +106,9 @@ public class AnalyzeServiceImpl implements AnalyzeService {
 
         progress.onProgress(94, "Saving relationships");
 
-        // upsertEdges returns the number of edges actually persisted (including
-        // any that required an External stub target). This is the truthful count
-        // to report — allEdges.size() would over-report if anything were dropped.
+        // upsertEdges returns the number of edges actually persisted after
+        // missing endpoints are skipped. This is the truthful count to report —
+        // allEdges.size() would over-report if anything were dropped.
         int edgesPersisted = graphRepository.upsertEdges(projectId, allEdges);
 
         progress.onProgress(98, "Finalizing");

@@ -43,7 +43,7 @@ export function resetEdgeLabelBudget(cap: number): void {
 
 // Whether edge labels append the TARGET node's kind (e.g. "IMPORTS Class"), with
 // the kind word tinted to that node's legend color. Toggled from the UI.
-let showEdgeKind = true
+let showEdgeKind = false
 export function setShowEdgeKind(show: boolean): void {
   showEdgeKind = show
 }

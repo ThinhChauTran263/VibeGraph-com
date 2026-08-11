@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.vibegraph.common.dto.response.ApiResponse;
@@ -118,6 +119,15 @@ class ExceptionsTest {
         assertNotNull(body);
         assertFalse(body.isSuccess());
         assertEquals("ARCHIVE_OVERSIZE", body.getError().getCode());
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler ignores disconnected async responses")
+    void globalHandlerIgnoresDisconnectedAsyncResponses() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        assertDoesNotThrow(() -> handler.handleDisconnectedAsyncRequest(
+                new AsyncRequestNotUsableException("client disconnected")));
     }
 
     @Test

@@ -102,7 +102,7 @@ describe('capGraphData', () => {
     expect(result.renderedNodes).toBe(5)
   })
 
-  it('exposes a sane default limit', () => {
-    expect(GRAPH_SAFE_NODE_LIMIT).toBeGreaterThan(0)
+  it('disables the frontend cap by default', () => {
+    expect(GRAPH_SAFE_NODE_LIMIT).toBe(0)
   })
 })

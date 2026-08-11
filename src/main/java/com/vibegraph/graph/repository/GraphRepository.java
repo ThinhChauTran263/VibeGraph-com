@@ -38,9 +38,8 @@ public interface GraphRepository {
     void upsertNodes(String projectId, List<NodeData> nodes);
 
     /**
-     * Persist edges. Any edge whose target node does not exist as a parsed node
-     * gets a minimal {@code External} stub node created on demand so the edge is
-     * never silently dropped.
+     * Persist edges between nodes that already exist in the parsed graph. Missing
+     * endpoints are skipped rather than materialized as {@code External} stubs.
      *
      * @return the number of edges actually persisted (MERGE'd), which the caller
      *         should report instead of the raw input size.

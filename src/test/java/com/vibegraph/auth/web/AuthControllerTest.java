@@ -15,11 +15,16 @@ import com.vibegraph.auth.dto.AuthResponse;
 import com.vibegraph.auth.dto.UserResponse;
 import com.vibegraph.auth.config.JwtProperties;
 import com.vibegraph.auth.service.AuthCookieService;
+import com.vibegraph.auth.service.AuthenticationResult;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ClientAddressResolver;
+import com.vibegraph.abuse.LoginThrottleGuard;
 import com.vibegraph.auth.service.AuthService;
 import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -39,9 +44,13 @@ class AuthControllerTest {
         authService = Mockito.mock(AuthService.class);
         AuditService auditService = Mockito.mock(AuditService.class);
         JwtProperties jwtProperties = new JwtProperties();
-        jwtProperties.setExpirationMs(86_400_000L);
+        jwtProperties.setExpirationMs(1_800_000L);
+        jwtProperties.setRefreshExpirationMs(604_800_000L);
         AuthCookieService cookieService = new AuthCookieService(jwtProperties);
-        AuthController controller = new AuthController(authService, cookieService, auditService);
+        AbuseProperties abuseProperties = new AbuseProperties();
+        AuthController controller = new AuthController(authService, cookieService, auditService,
+                new LoginThrottleGuard(abuseProperties, java.time.Clock.systemUTC()),
+                new ClientAddressResolver(abuseProperties));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -57,7 +66,8 @@ class AuthControllerTest {
                 "USER",
                 "ACTIVE",
                 null);
-        when(authService.login(any())).thenReturn(new AuthResponse("jwt-token", user));
+        when(authService.loginSession(any())).thenReturn(
+                new AuthenticationResult("jwt-token", "refresh-token", user));
 
         mockMvc.perform(post("/api/auth/login")
                         .header("X-VibeGraph-Client", "web")
@@ -81,7 +91,8 @@ class AuthControllerTest {
                 "USER",
                 "ACTIVE",
                 null);
-        when(authService.login(any())).thenReturn(new AuthResponse("jwt-token", user));
+        when(authService.loginSession(any())).thenReturn(
+                new AuthenticationResult("jwt-token", "refresh-token", user));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,6 +110,8 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("vg_session=")))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
+                .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                        hasItem(containsString("vg_refresh="))))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, not(containsString("jwt-token"))));
     }
 }

@@ -118,6 +118,10 @@ public class ClientAddressResolver {
             return "unknown";
         }
         String candidate = address.trim();
+        int scopeSeparator = candidate.indexOf('%');
+        if (scopeSeparator > 0 && candidate.indexOf(':') >= 0) {
+            candidate = candidate.substring(0, scopeSeparator);
+        }
         boolean ipv4Shape = candidate.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}");
         boolean ipv6Shape = candidate.contains(":") && candidate.matches("[0-9a-fA-F:.]+");
         if (!ipv4Shape && !ipv6Shape) {

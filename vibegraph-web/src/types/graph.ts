@@ -33,6 +33,7 @@ export type EdgeType =
   | 'HAS_METHOD'
   | 'HAS_FIELD'
   | 'HAS_INNER'
+  | 'HAS_RELATION'
   | 'EXTENDS'
   | 'IMPLEMENTS'
   | 'OVERRIDES'
@@ -50,6 +51,12 @@ export type EdgeType =
   | 'WRITES'
   | 'CATCHES'
   | 'STEP_IN_FLOW'
+  | 'PUBLISHES_EVENT'
+  | 'LISTENS_EVENT'
+  | 'TRIGGERS'
+  | 'RESOLVES_TO'
+  | 'CALLS_DYNAMIC'
+  | 'DISPATCH_CANDIDATES'
 
 export interface GraphNode {
   id: string
@@ -69,6 +76,9 @@ export interface GraphEdge {
   type: EdgeType
   confidence?: number
   lineNumber?: number
+  weight?: number
+  occurrences?: number[]
+  properties?: Record<string, unknown>
 }
 
 export interface GraphData {

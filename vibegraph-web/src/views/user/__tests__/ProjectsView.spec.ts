@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
@@ -9,6 +9,7 @@ import i18n from '@/language'
 const apiMocks = vi.hoisted(() => ({
   list: vi.fn(),
   remove: vi.fn(),
+  restore: vi.fn<(id: string) => Promise<void>>(),
 }))
 const featureMocks = vi.hoisted(() => ({
   enabled: true,
@@ -19,7 +20,12 @@ vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
     ...actual,
-    projectApi: { ...actual.projectApi, list: apiMocks.list, remove: apiMocks.remove },
+    projectApi: {
+      ...actual.projectApi,
+      list: apiMocks.list,
+      remove: apiMocks.remove,
+      restore: apiMocks.restore,
+    },
   }
 })
 
@@ -71,6 +77,7 @@ async function mountView(path = '/projects', pinia = createTestingPinia({ create
     routes: [
       { path: '/projects', name: 'projects', component: ProjectsView },
       { path: '/projects/:projectId/graph', name: 'graph', component: { template: '<div />' } },
+      { path: '/trash', name: 'trash', component: { template: '<div />' } },
     ],
   })
   await router.push(path)
@@ -92,6 +99,8 @@ describe('ProjectsView', () => {
   beforeEach(() => {
     apiMocks.list.mockReset()
     apiMocks.remove.mockReset()
+    apiMocks.restore.mockReset()
+    apiMocks.restore.mockResolvedValue(undefined)
     featureMocks.enabled = true
     featureMocks.reason = null
     apiMocks.list.mockResolvedValue([
@@ -176,8 +185,44 @@ describe('ProjectsView', () => {
     resolveDelete?.()
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('VibeGraph Web')
-    expect(wrapper.text()).toContain('VibeGraph CLI')
+    // The card is gone from the grid; the name survives only in the undo bar.
+    expect(wrapper.findAll('.repo-card').map((card) => card.text())).toHaveLength(1)
+    expect(wrapper.get('.repo-card').text()).toContain('VibeGraph CLI')
+    expect(wrapper.get('[data-test="undo-delete"]').text()).toContain('VibeGraph Web')
+  })
+
+  it('undoes a delete and puts the repository back in the list', async () => {
+    apiMocks.remove.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+
+    await wrapper.get('button[aria-label="Delete VibeGraph Web"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="undo-delete"] .undo-bar__undo').trigger('click')
+    await flushPromises()
+
+    expect(apiMocks.restore).toHaveBeenCalledWith('project-1')
+    expect(wrapper.find('[data-test="undo-delete"]').exists()).toBe(false)
+    expect(wrapper.findAll('.repo-card').map((card) => card.text()).join(' ')).toContain(
+      'VibeGraph Web',
+    )
+  })
+
+  it('keeps the undo bar and surfaces the reason when the restore fails', async () => {
+    apiMocks.remove.mockResolvedValue(undefined)
+    apiMocks.restore.mockRejectedValueOnce(new Error('Trashed project not found'))
+    const { wrapper } = await mountView()
+
+    await wrapper.get('button[aria-label="Delete VibeGraph Web"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="undo-delete"] .undo-bar__undo').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Trashed project not found')
+    expect(wrapper.find('[data-test="undo-delete"]').exists()).toBe(true)
   })
 
   it('fails closed when import capabilities are unavailable', async () => {

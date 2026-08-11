@@ -19,6 +19,10 @@ public class ImpactAnalysisContextResponse {
     private ImpactSummary summary;
     private List<NodeImpact> directImpact;
     private List<NodeImpact> transitiveImpact;
+    /** API routes whose handlers can reach the target — the user-visible blast radius. */
+    private List<RouteImpact> affectedRoutes;
+    /** Interface/override counterparts also analyzed alongside the literal target. */
+    private List<String> relatedRoots;
     private String riskLevel;
     private List<String> notes;
     private List<String> warnings;
@@ -34,6 +38,16 @@ public class ImpactAnalysisContextResponse {
         private String targetFullName;
         private int directDependents;
         private int totalDependents;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RouteImpact {
+        private String httpMethod;
+        private String routePath;
+        private String handlerFullName;
     }
 
     @Data

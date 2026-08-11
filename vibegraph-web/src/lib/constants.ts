@@ -16,6 +16,82 @@ import {
   FOCUS_OPACITY_ACTIVE,
   FOCUS_OPACITY_DIMMED,
 } from '@/lib/runtimeConfig'
+
+export const ALL_NODE_TYPES: readonly NodeType[] = Object.freeze([
+  'Project',
+  'File',
+  'Class',
+  'Interface',
+  'Enum',
+  'Record',
+  'DBModel',
+  'Method',
+  'Constructor',
+  'Field',
+  'Annotation',
+  'LocalVariable',
+  'Route',
+  'APIEndpoint',
+  'External',
+])
+
+export const ALL_EDGE_TYPES: readonly EdgeType[] = Object.freeze([
+  'OWNS',
+  'CONTAINS',
+  'DEFINES',
+  'HAS_METHOD',
+  'HAS_FIELD',
+  'HAS_INNER',
+  'HAS_RELATION',
+  'EXTENDS',
+  'IMPLEMENTS',
+  'OVERRIDES',
+  'IMPORTS',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'CALLS',
+  'INSTANTIATES',
+  'INJECTS',
+  'HANDLES_ROUTE',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'STEP_IN_FLOW',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'RESOLVES_TO',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
+
+export const DEEP_LOAD_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'Project',
+  'Field',
+  'Annotation',
+  'LocalVariable',
+  'External',
+])
+
+export const DEEP_LOAD_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'HAS_FIELD',
+  'TYPE_OF',
+  'RETURNS',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'INSTANTIATES',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
 // Node colors by type - matches NodeType from graph.ts.
 // Chosen for MAXIMUM distinctness: each type sits on a clearly different hue (and
 // the frequent types are spread far apart) so they're recognizable at a glance.
@@ -50,6 +126,7 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   CONTAINS: '#9333EA', // purple
   HAS_METHOD: '#0891B2', // cyan
   HAS_INNER: '#DB2777', // magenta
+  HAS_RELATION: '#FACC15', // bright yellow domain relation
   EXTENDS: '#EA580C', // orange
   IMPLEMENTS: '#CA8A04', // gold
   OVERRIDES: '#7C3AED', // violet
@@ -67,6 +144,12 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   WRITES: '#FB923C', // light orange
   CATCHES: '#A78BFA', // light violet
   STEP_IN_FLOW: '#E879F9', // light fuchsia
+  PUBLISHES_EVENT: '#F97316', // orange event publish
+  LISTENS_EVENT: '#22D3EE', // cyan event listener
+  TRIGGERS: '#F43F5E', // rose inferred flow
+  RESOLVES_TO: '#A855F7', // purple dispatch resolution
+  CALLS_DYNAMIC: '#60A5FA', // blue dynamic call
+  DISPATCH_CANDIDATES: '#94A3B8', // slate ambiguous candidates
   OWNS: '#6366F1', // indigo
 }
 
@@ -84,8 +167,9 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
 // Only relationship types the parser actually emits are listed. OWNS exists in
 // the schema/contract enum but is NOT currently produced by any parser visitor,
 // so it is intentionally absent from both sets (it would never have a count > 0).
-// As of Phase 2, the parser additionally emits CONTAINS (Package hierarchy),
-// OVERRIDES, ANNOTATED_BY, and INSTANTIATES.
+// As of Phase 2+, the parser additionally emits CONTAINS (Package hierarchy),
+// OVERRIDES, INSTANTIATES, and guarded HAS_RELATION domain edges. Annotation
+// usages are node metadata, not ANNOTATED_BY graph edges.
 
 // Default-VISIBLE structural relationships (architecture graph).
 export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
@@ -93,6 +177,7 @@ export const STRUCTURAL_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
   'DEFINES',
   'HAS_METHOD',
   'HAS_INNER',
+  'HAS_RELATION',
   'EXTENDS',
   'IMPLEMENTS',
   'OVERRIDES',
@@ -119,12 +204,34 @@ export const CPG_LITE_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
   'CATCHES',
   // Phase 4 inferred execution flow: default-hidden, revealed via "Show all".
   'STEP_IN_FLOW',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'RESOLVES_TO',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
 ])
 
 // Edge types hidden by default. The filter store initializes `hiddenEdgeTypes`
 // from this set so the default graph stays readable while every type with a
 // count > 0 remains revealable.
-export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TYPES
+export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = new Set<EdgeType>([
+  'HAS_FIELD',
+  'RETURNS',
+  'TYPE_OF',
+  'PARAMETER_TYPE',
+  'THROWS',
+  'INSTANTIATES',
+  'ANNOTATED_BY',
+  'READS',
+  'WRITES',
+  'CATCHES',
+  'PUBLISHES_EVENT',
+  'LISTENS_EVENT',
+  'TRIGGERS',
+  'CALLS_DYNAMIC',
+  'DISPATCH_CANDIDATES',
+])
 
 // Node types hidden by default so the architecture graph stays readable, matching
 // the density of comparable tools. These low-signal leaf/structural types add most
@@ -134,14 +241,13 @@ export const DEFAULT_HIDDEN_EDGE_TYPES: ReadonlySet<EdgeType> = CPG_LITE_EDGE_TY
 //   - LocalVariable: deep-CPG detail (only present with the backend deep-cpg flag)
 //   - Field / Annotation: member-level noise that clutters every class
 //   - External: third-party symbols outside the project
-//   - Package / Project: structural containers (the Explorer tree already shows these)
+//   - Project: structural container (the Explorer tree already shows it)
 export const DEFAULT_HIDDEN_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
-  'LocalVariable',
   'Field',
+  'LocalVariable',
   'Annotation',
-  'External',
-  'Package',
   'Project',
+  'External',
 ])
 
 // Default node sizes (sourced from env via runtimeConfig)
@@ -195,8 +301,35 @@ export const HIGHLIGHT_LABEL_COLOR = '#facc15' // amber-400 / yellow
 export const DEFAULT_LABEL_COLOR = '#e5e7eb' // gray-200
 
 // API base URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export function resolveLocalhostAwareUrl(
+  value: string | undefined,
+  fallback: string,
+  browserHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost',
+): string {
+  const url = value || fallback
+  if (browserHost !== '127.0.0.1') return url
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'localhost') {
+      parsed.hostname = '127.0.0.1'
+      return parsed.toString().replace(/\/$/, '')
+    }
+  } catch {
+    return url
+  }
+
+  return url
+}
+
+export const API_BASE_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_API_URL,
+  'http://localhost:8080',
+)
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws/graph-updates'
+export const WS_URL = resolveLocalhostAwareUrl(
+  import.meta.env.VITE_WS_URL,
+  'http://localhost:8080/ws/graph-updates',
+)

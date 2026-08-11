@@ -1,6 +1,8 @@
 package com.vibegraph.mcp.service.impl;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -15,6 +17,9 @@ import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.mcp.dto.response.ImpactAnalysisContextResponse;
 import com.vibegraph.mcp.service.ImpactAnalysisAnalyzer;
+import com.vibegraph.mcp.source.GraphTraversals;
+import com.vibegraph.mcp.source.GraphView;
+import com.vibegraph.mcp.source.SourceGraphSupport;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,9 +31,14 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
     private static final int MAX_NODE_QUERY_LENGTH = 512;
     private static final int MAX_DIRECT_IMPACT = 50;
     private static final int MAX_TRANSITIVE_IMPACT = 100;
+    private static final int MAX_COUNTERPART_ROOTS = 3;
+    private static final int MAX_AFFECTED_ROUTES = 20;
+    private static final int MAX_ROUTE_DEPTH = 8;
     private static final Set<Integer> ALLOWED_DEPTHS = Set.of(1, 2, 3, 5);
+    private static final Set<String> CLASSLIKE = Set.of("Class", "Interface", "Enum", "Record");
 
     private final GraphService graphService;
+    private final SourceGraphSupport graphSupport;
 
     @Override
     public ImpactAnalysisContextResponse analyzeImpact(String projectId, String nodeQuery, int depth, String profile) {
@@ -38,7 +48,8 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
         ImpactProfile impactProfile = ImpactProfile.fromApiValue(profile);
         try {
             ImpactAnalysisResponse impact = resolveImpact(normalizedProjectId, normalizedNodeQuery, depth, impactProfile);
-            return toResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile, impact);
+            Enrichment enrichment = enrich(normalizedProjectId, impactProfile, impact);
+            return toResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile, impact, enrichment);
         } catch (ProjectNotFoundException ex) {
             throw ex;
         } catch (NodeNotFoundException ex) {
@@ -46,6 +57,104 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
         } catch (RuntimeException ex) {
             return unavailableResponse(normalizedProjectId, normalizedNodeQuery, depth, impactProfile);
         }
+    }
+
+    // ---- Java-aware enrichment ---------------------------------------------------------------
+
+    /** Extra Java-semantics context layered over the base traversal. Never breaks the base contract. */
+    private record Enrichment(
+            List<ImpactAnalysisContextResponse.RouteImpact> affectedRoutes,
+            List<String> relatedRoots,
+            List<ImpactAnalysisContextResponse.NodeImpact> counterpartImpacts,
+            List<String> notes) {
+
+        static Enrichment empty() {
+            return new Enrichment(List.of(), List.of(), List.of(), List.of());
+        }
+    }
+
+    private Enrichment enrich(String projectId, ImpactProfile profile, ImpactAnalysisResponse impact) {
+        try {
+            GraphView graph = graphSupport.load(projectId);
+            NodeDto targetRef = impact.getTarget();
+            if (graph == null || targetRef == null) {
+                return Enrichment.empty();
+            }
+            NodeDto target = graph.byId(targetRef.getId());
+            if (target == null) {
+                target = graph.byFullName(targetRef.getFullName());
+            }
+            if (target == null) {
+                return Enrichment.empty();
+            }
+
+            List<String> notes = new ArrayList<>();
+            Set<String> seedIds = new LinkedHashSet<>();
+            seedIds.add(target.getId());
+
+            // Interface/override counterparts: changing this method also breaks callers that go
+            // through the interface declaration or sibling implementations.
+            List<String> counterparts = GraphTraversals.overrideCounterparts(graph, target, MAX_COUNTERPART_ROOTS);
+            List<ImpactAnalysisContextResponse.NodeImpact> counterpartImpacts = new ArrayList<>();
+            for (String counterpart : counterparts) {
+                NodeDto counterpartNode = graph.byFullName(counterpart);
+                if (counterpartNode != null) {
+                    seedIds.add(counterpartNode.getId());
+                }
+                try {
+                    ImpactAnalysisResponse counterpartImpact = resolveImpact(projectId, counterpart, 1, profile);
+                    for (NodeDto dependent : safeList(counterpartImpact.getWillBreak())) {
+                        counterpartImpacts.add(toNodeImpact(dependent, "VIA_OVERRIDE", 1));
+                    }
+                } catch (RuntimeException ignored) {
+                    // A missing counterpart never degrades the base analysis.
+                }
+            }
+            if (!counterparts.isEmpty()) {
+                notes.add("Target participates in an override/implements hierarchy; direct callers of "
+                        + counterparts + " are included with impactLevel VIA_OVERRIDE.");
+            }
+
+            List<ImpactAnalysisContextResponse.RouteImpact> routes =
+                    GraphTraversals.affectedRoutes(graph, seedIds, MAX_ROUTE_DEPTH, MAX_AFFECTED_ROUTES).stream()
+                            .map(route -> ImpactAnalysisContextResponse.RouteImpact.builder()
+                                    .httpMethod(route.httpMethod())
+                                    .routePath(route.routePath())
+                                    .handlerFullName(route.handlerFullName())
+                                    .build())
+                            .toList();
+            if (!routes.isEmpty()) {
+                notes.add(routes.size() + " API route(s) can reach this symbol - treat as an API-affecting change.");
+            }
+
+            NodeDto owner = ownerClassOf(graph, target);
+            if (owner != null) {
+                long injections = graph.incoming(owner.getId()).stream()
+                        .filter(edge -> "INJECTS".equals(edge.getType()))
+                        .count();
+                if (injections > 0) {
+                    notes.add("Owner bean " + owner.getName() + " is injected in " + injections
+                            + " place(s); public API changes ripple through Spring wiring.");
+                }
+            }
+
+            return new Enrichment(routes, counterparts, counterpartImpacts, notes);
+        } catch (RuntimeException ex) {
+            return Enrichment.empty();
+        }
+    }
+
+    private NodeDto ownerClassOf(GraphView graph, NodeDto target) {
+        if (CLASSLIKE.contains(target.getType())) {
+            return target;
+        }
+        String bare = GraphView.stripParens(target.getFullName() == null ? "" : target.getFullName());
+        int lastDot = bare.lastIndexOf('.');
+        return lastDot <= 0 ? null : graph.byFullName(bare.substring(0, lastDot));
+    }
+
+    private List<NodeDto> safeList(List<NodeDto> nodes) {
+        return nodes == null ? List.of() : nodes;
     }
 
     private ImpactAnalysisResponse resolveImpact(String projectId, String nodeQuery, int depth, ImpactProfile profile) {
@@ -56,10 +165,14 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
         return graphService.getImpactAnalysis(projectId, nodeQuery, depth, profile);
     }
 
-    private ImpactAnalysisContextResponse toResponse(String projectId, String nodeQuery, int depth, ImpactProfile profile, ImpactAnalysisResponse impact) {
+    private ImpactAnalysisContextResponse toResponse(String projectId, String nodeQuery, int depth,
+            ImpactProfile profile, ImpactAnalysisResponse impact, Enrichment enrichment) {
         NodeDto target = impact.getTarget();
         List<ImpactAnalysisContextResponse.NodeImpact> directImpact = impactNodes(impact.getWillBreak(), "WILL_BREAK", 1, MAX_DIRECT_IMPACT);
-        List<ImpactAnalysisContextResponse.NodeImpact> transitiveImpact = transitiveImpact(impact);
+        List<ImpactAnalysisContextResponse.NodeImpact> transitiveImpact =
+                mergeCounterparts(directImpact, transitiveImpact(impact), enrichment.counterpartImpacts());
+        List<String> notes = new ArrayList<>(notes(profile));
+        notes.addAll(enrichment.notes());
         return ImpactAnalysisContextResponse.builder()
                 .projectId(projectId)
                 .nodeQuery(nodeQuery)
@@ -75,10 +188,35 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                         .build())
                 .directImpact(directImpact)
                 .transitiveImpact(transitiveImpact)
+                .affectedRoutes(enrichment.affectedRoutes())
+                .relatedRoots(enrichment.relatedRoots())
                 .riskLevel(impact.getRiskLevel())
-                .notes(notes(profile))
+                .notes(List.copyOf(notes))
                 .warnings(warnings(impact, directImpact, transitiveImpact))
                 .build();
+    }
+
+    /** Append counterpart (override) impacts not already present, within the transitive cap. */
+    private List<ImpactAnalysisContextResponse.NodeImpact> mergeCounterparts(
+            List<ImpactAnalysisContextResponse.NodeImpact> direct,
+            List<ImpactAnalysisContextResponse.NodeImpact> transitive,
+            List<ImpactAnalysisContextResponse.NodeImpact> counterparts) {
+        if (counterparts.isEmpty()) {
+            return transitive;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        direct.forEach(node -> seen.add(node.getId()));
+        transitive.forEach(node -> seen.add(node.getId()));
+        List<ImpactAnalysisContextResponse.NodeImpact> merged = new ArrayList<>(transitive);
+        for (ImpactAnalysisContextResponse.NodeImpact counterpart : counterparts) {
+            if (merged.size() >= MAX_TRANSITIVE_IMPACT) {
+                break;
+            }
+            if (seen.add(counterpart.getId())) {
+                merged.add(counterpart);
+            }
+        }
+        return List.copyOf(merged);
     }
 
     private ImpactAnalysisContextResponse notFoundResponse(String projectId, String nodeQuery, int depth, ImpactProfile profile) {
@@ -89,6 +227,8 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                 .profile(profile.apiValue())
                 .directImpact(List.of())
                 .transitiveImpact(List.of())
+                .affectedRoutes(List.of())
+                .relatedRoots(List.of())
                 .notes(List.of())
                 .warnings(List.of("Impact target not found: " + nodeQuery))
                 .build();
@@ -102,6 +242,8 @@ public class ImpactAnalysisAnalyzerImpl implements ImpactAnalysisAnalyzer {
                 .profile(profile.apiValue())
                 .directImpact(List.of())
                 .transitiveImpact(List.of())
+                .affectedRoutes(List.of())
+                .relatedRoots(List.of())
                 .notes(List.of())
                 .warnings(List.of("Impact analysis is temporarily unavailable."))
                 .build();
