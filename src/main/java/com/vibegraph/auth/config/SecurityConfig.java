@@ -124,16 +124,16 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers
-                        // This service answers JSON, not pages — the SPA is served separately, and
-                        // its own server still needs a CSP of its own. What this policy protects is
-                        // the HTML Spring itself can emit (error pages, OAuth redirect stops): if
-                        // one of those ever reflected input, nothing here would be allowed to load
-                        // or execute.
-                        .contentSecurityPolicy(csp -> csp.policyDirectives(String.join("; ",
-                                "default-src 'none'",
-                                "frame-ancestors 'none'",
-                                "base-uri 'none'",
-                                "form-action 'self'")))
+                        // No Content-Security-Policy here on purpose. CSP only takes effect when the
+                        // browser builds a document, and this service never returns one: /error
+                        // answers JSON even for Accept: text/html, and the OAuth redirect has no
+                        // body. A header that protects nothing is worse than none — a reviewer sees
+                        // "CSP present" and stops asking where the real one is.
+                        //
+                        // The policy that matters belongs to whatever serves the SPA:
+                        // vibegraph-web/nginx.conf.template. Add one here too if this application
+                        // ever starts returning HTML (Swagger UI, an admin console, or the SPA
+                        // packaged into the jar).
                         .referrerPolicy(referrer -> referrer.policy(
                                 ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                         // Sent only over HTTPS by Spring, so it stays inert in local HTTP dev.
