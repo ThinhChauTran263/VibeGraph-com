@@ -1121,12 +1121,10 @@ onUnmounted(() => {
   /* Single source of truth for the floating detail column width. The toolbar
      reserves the same value, so the two can never drift apart. */
   --detail-width: 23rem;
-  /* Narrower than this and the toolbar cannot keep a usable search box beside the
-     panel. The number is the sum, not a guess:
-       1rem left + 12rem search floor + 0.75rem gap + 23rem panel + 1rem right
-       = 37.75rem, rounded up to 40rem for slack.
-     The toggles may wrap onto their own line, so the search floor is what binds. */
-  --detail-side-by-side-min: 40rem;
+  /* The side-by-side threshold is written literally in the @container rules below,
+     not held in a custom property: container and media queries cannot read var().
+     A variable here would look like it drove the breakpoint while changing it did
+     nothing. The derivation lives in a comment beside the literal instead. */
   /* Queried instead of the viewport because the stage is what actually has to fit
      both. The left sidebar is user-resizable, so viewport width says nothing about
      how much room is left here — that mismatch is what let the panel cover the
@@ -1391,6 +1389,10 @@ onUnmounted(() => {
    it on a narrow stage left the toolbar ~90px wide, and the search box — floored at
    min-width: 12rem — then overflowed its own container straight under the panel.
    Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
+/* 40rem is the sum, not a guess: 1rem left + 12rem search floor + 0.75rem gap
+   + 23rem panel + 1rem right = 37.75rem, rounded up for slack. The toggles may
+   wrap onto their own line, so the search floor is what binds. Keep this literal
+   and the one below in step — a query cannot read a custom property. */
 @container (min-width: 40rem) {
   .graph-canvas__stage--detail-open .graph-top-controls {
     right: calc(1rem + var(--detail-width) + 0.75rem);

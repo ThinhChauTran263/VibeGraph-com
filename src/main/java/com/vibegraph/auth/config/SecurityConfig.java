@@ -139,9 +139,10 @@ public class SecurityConfig {
                         // Sent only over HTTPS by Spring, so it stays inert in local HTTP dev.
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
-                                .maxAgeInSeconds(31_536_000L))
-                        .permissionsPolicyHeader(permissions -> permissions.policy(
-                                "camera=(), microphone=(), geolocation=(), interest-cohort=()")))
+                                .maxAgeInSeconds(31_536_000L)))
+                        // Permissions-Policy is absent for the same reason as CSP: it governs a
+                        // document and the features its frames may use, and this service returns
+                        // no documents. It lives on the SPA's server, where it can actually apply.
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .securityContext(sc -> sc.securityContextRepository(new NullSecurityContextRepository()))
                 .requestCache(cache -> cache.disable())
