@@ -165,6 +165,10 @@ services:
     environment:
       VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in .env}
       VITE_WS_URL: ${VITE_WS_URL:?Set VITE_WS_URL in .env}
+      # Origins the page may call, injected into the CSP connect-src at container
+      # start. Must list the API and WebSocket origins whenever they differ from the
+      # origin serving the SPA, or the browser blocks every request the app makes.
+      CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-${VITE_API_URL} ${VITE_WS_URL}}
 
 volumes:
   postgres-data:

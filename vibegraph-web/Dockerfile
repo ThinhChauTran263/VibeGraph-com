@@ -15,6 +15,7 @@ RUN npm run build
 
 FROM nginx:alpine
 COPY --from=builder /build/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Rendered by the image entrypoint so ${CSP_CONNECT_SRC} can name the API origin
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
