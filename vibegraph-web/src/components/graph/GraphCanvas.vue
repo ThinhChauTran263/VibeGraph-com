@@ -1167,8 +1167,11 @@ onUnmounted(() => {
      capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
   overflow-y: auto;
-  /* The cards carry their own shadow; a scrollbar gutter keeps them from being
-     clipped against the stage edge when the column overflows. */
+  /* Reserves the scrollbar's width up front so the cards keep one width whether or
+     not the column currently overflows. Measured: with overflow the content box is
+     353px either way — this changes nothing at that point. What it prevents is the
+     15px jump at the moment a scrollbar appears, which happens often here because
+     Impact Analysis results grow the column after it has already rendered. */
   scrollbar-gutter: stable;
 }
 
