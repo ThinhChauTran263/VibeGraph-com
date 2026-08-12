@@ -75,6 +75,12 @@ class AdminSecurityIT {
         }
 
         @org.springframework.context.annotation.Bean
+        public com.vibegraph.abuse.RegistrationThrottleGuard registrationThrottleGuard() {
+            return new com.vibegraph.abuse.RegistrationThrottleGuard(
+                    new com.vibegraph.abuse.AbuseProperties(), java.time.Clock.systemUTC());
+        }
+
+        @org.springframework.context.annotation.Bean
         public jakarta.persistence.EntityManagerFactory entityManagerFactory() {
             return org.mockito.Mockito.mock(jakarta.persistence.EntityManagerFactory.class);
         }
