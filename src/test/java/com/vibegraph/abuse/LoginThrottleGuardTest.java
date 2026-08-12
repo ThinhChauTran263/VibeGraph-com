@@ -167,6 +167,55 @@ class LoginThrottleGuardTest {
     }
 
     @Test
+    @DisplayName("an unbounded ceiling never overflows the lockout into the past")
+    void escalationDoesNotOverflow() {
+        // Regression: the doubling used to clamp with Math.min(duration * 2, max), so the
+        // multiplication overflowed before the clamp ran. Past ~44 rounds it wrapped negative,
+        // lockedUntilMs landed in the past, and the lockout silently stopped working.
+        properties.getLoginThrottle().setMaxLockoutMs(Long.MAX_VALUE);
+        guard = new LoginThrottleGuard(properties, clock);
+
+        for (int round = 0; round < 60; round++) {
+            for (int i = 0; i < 10; i++) {
+                guard.recordFailure(IP, "user" + round + "-" + i + "@test.local");
+            }
+        }
+
+        // Still locked, and the wait is a sane positive number rather than a negative one. The
+        // ceiling is capped at 30 days, so it also has to be no larger than that.
+        assertThatThrownBy(() -> guard.assertAllowed(IP, "fresh@test.local"))
+                .isInstanceOf(TooManyLoginAttemptsException.class)
+                .satisfies(ex -> assertThat(
+                        ((TooManyLoginAttemptsException) ex).getRetryAfterSeconds())
+                        .isBetween(1L, 30L * 24 * 60 * 60));
+    }
+
+    @Test
+    @DisplayName("a non-positive lockout is rejected at startup instead of never locking anyone out")
+    void rejectsUnusableLockoutConfiguration() {
+        properties.getLoginThrottle().setLockoutMs(0);
+
+        assertThatThrownBy(() -> new LoginThrottleGuard(properties, clock))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("lockout-ms");
+    }
+
+    @Test
+    @DisplayName("a ceiling below the base wait cannot shorten the lockout")
+    void ceilingNeverShortensTheBaseWait() {
+        properties.getLoginThrottle().setLockoutMs(900_000L);
+        properties.getLoginThrottle().setMaxLockoutMs(1_000L);
+        guard = new LoginThrottleGuard(properties, clock);
+
+        fail(IP, EMAIL, 5);
+
+        // A misconfigured ceiling must not silently turn a 15-minute lockout into one second.
+        clock.advance(Duration.ofSeconds(30));
+        assertThatThrownBy(() -> guard.assertAllowed(IP, EMAIL))
+                .isInstanceOf(TooManyLoginAttemptsException.class);
+    }
+
+    @Test
     @DisplayName("the account lockout stays flat so it cannot be used to lock a victim out")
     void accountLockoutDoesNotEscalate() {
         // An attacker who knows the email can fail on purpose. If this escalated, they could keep a

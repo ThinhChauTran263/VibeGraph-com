@@ -40,16 +40,40 @@ public class LoginThrottleGuard {
 
     private static final Logger log = LoggerFactory.getLogger(LoginThrottleGuard.class);
 
+    /**
+     * Upper bound for any configured lockout, 30 days.
+     *
+     * <p>Nothing legitimate needs a longer sign-in lockout, and bounding it here is what keeps every
+     * later {@code now + duration} well clear of overflow.
+     */
+    private static final long MAX_SANE_LOCKOUT_MS = 30L * 24 * 60 * 60 * 1000;
+
     private final AbuseProperties.LoginThrottle settings;
     private final Clock clock;
     private final Cache<String, Attempts> attempts;
+    private final long baseLockoutMs;
+    private final long maxLockoutMs;
 
     public LoginThrottleGuard(AbuseProperties properties, Clock clock) {
         this.settings = properties.getLoginThrottle();
         this.clock = clock;
+        // Bound the inputs once instead of chasing overflow through each arithmetic step. With an
+        // unbounded ceiling the doubling wrapped negative, and even a correctly clamped duration
+        // then overflowed `now + duration`, putting the unlock time in the past and switching the
+        // lockout off entirely. Capping the ceiling removes the whole class.
+        this.baseLockoutMs = Math.min(
+                requirePositive(settings.getLockoutMs(), "lockout-ms"), MAX_SANE_LOCKOUT_MS);
+        this.maxLockoutMs = Math.max(
+                Math.min(requirePositive(settings.getMaxLockoutMs(), "max-lockout-ms"),
+                        MAX_SANE_LOCKOUT_MS),
+                this.baseLockoutMs);
+        if (settings.getMaxLockoutMs() > MAX_SANE_LOCKOUT_MS) {
+            log.warn("login-throttle.max-lockout-ms capped at {} ms; {} was configured",
+                    MAX_SANE_LOCKOUT_MS, settings.getMaxLockoutMs());
+        }
         // Entries must outlive the longest lockout, otherwise the escalation count would be
         // forgotten and every round would start again at the base wait.
-        long retention = Math.max(settings.getWindowMs(), settings.getMaxLockoutMs());
+        long retention = Math.max(settings.getWindowMs(), maxLockoutMs);
         this.attempts = Caffeine.newBuilder()
                 .maximumSize(Math.max(1, settings.getMaximumTrackedKeys()))
                 // Ticker in nanoseconds, driven by the injected clock so tests control expiry.
@@ -117,14 +141,17 @@ public class LoginThrottleGuard {
 
     private long lockoutDuration(int lockouts, boolean escalating) {
         if (!escalating) {
-            return settings.getLockoutMs();
+            return baseLockoutMs;
         }
-        // Doubling, guarded against overflow on a long-lived key rather than trusting the shift.
-        long duration = settings.getLockoutMs();
-        for (int i = 1; i < lockouts && duration < settings.getMaxLockoutMs(); i++) {
-            duration = Math.min(duration * 2, settings.getMaxLockoutMs());
+        // Clamp BEFORE doubling, not after. `Math.min(duration * 2, max)` overflows on the
+        // multiplication whenever max is large enough to keep the loop running — with an
+        // unbounded max it wraps negative on the 44th round, and a negative duration puts
+        // lockedUntilMs in the past, which silently turns the lockout off.
+        long duration = baseLockoutMs;
+        for (int i = 1; i < lockouts && duration < maxLockoutMs; i++) {
+            duration = duration > maxLockoutMs / 2 ? maxLockoutMs : duration * 2;
         }
-        return Math.min(duration, settings.getMaxLockoutMs());
+        return duration;
     }
 
     private long remainingLockMs(String key) {
@@ -145,6 +172,14 @@ public class LoginThrottleGuard {
     private String accountKey(String email) {
         String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
         return "account:" + normalized;
+    }
+
+    private static long requirePositive(long value, String property) {
+        if (value <= 0) {
+            throw new IllegalStateException(
+                    "vibegraph.abuse.login-throttle." + property + " must be positive");
+        }
+        return value;
     }
 
     /** Guarded by its own monitor; failures on one key can arrive from several threads at once. */

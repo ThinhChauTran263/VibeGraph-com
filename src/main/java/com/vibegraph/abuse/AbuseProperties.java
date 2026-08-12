@@ -33,8 +33,66 @@ public class AbuseProperties {
     /** Credential-stuffing controls for the sign-in endpoint. */
     private final LoginThrottle loginThrottle = new LoginThrottle();
 
+    /** Account-creation controls for the sign-up endpoint. */
+    private final RegistrationThrottle registrationThrottle = new RegistrationThrottle();
+
     public LoginThrottle getLoginThrottle() {
         return loginThrottle;
+    }
+
+    public RegistrationThrottle getRegistrationThrottle() {
+        return registrationThrottle;
+    }
+
+    /**
+     * Budget for {@code POST /api/auth/register}.
+     *
+     * <p>The general limit of 120 requests a minute per address allows roughly 7,200 accounts an
+     * hour from one host. Junk accounts are not harmless: each carries its own storage quota and can
+     * be used to file reports or import projects.
+     *
+     * <p>Unlike the sign-in budget this counts <b>every</b> attempt, not just failures. The abuse
+     * here is successful account creation, and counting failures too caps the other trick the
+     * endpoint enables — probing which addresses are already registered.
+     *
+     * <p>Sized with shared addresses in mind. A classroom or an office behind one NAT gateway looks
+     * like a single caller, so the default leaves room for a demo while still cutting scripted
+     * signups by two orders of magnitude. Raise it where many genuine users share an address.
+     */
+    public static class RegistrationThrottle {
+
+        /** Sign-up attempts allowed from one address per window. */
+        private int maxPerIp = 10;
+
+        /** Length of the window. */
+        private long windowMs = 3_600_000L;
+
+        /** Bounds the counter cache so a spray across many addresses cannot exhaust memory. */
+        private int maximumTrackedKeys = 100_000;
+
+        public int getMaxPerIp() {
+            return maxPerIp;
+        }
+
+        public void setMaxPerIp(int maxPerIp) {
+            this.maxPerIp = maxPerIp;
+        }
+
+        public long getWindowMs() {
+            return windowMs;
+        }
+
+        public void setWindowMs(long windowMs) {
+            this.windowMs = windowMs;
+        }
+
+        public int getMaximumTrackedKeys() {
+            return maximumTrackedKeys;
+        }
+
+        public void setMaximumTrackedKeys(int maximumTrackedKeys) {
+            this.maximumTrackedKeys = maximumTrackedKeys;
+        }
     }
 
     /**

@@ -19,6 +19,7 @@ import com.vibegraph.auth.service.AuthenticationResult;
 import com.vibegraph.abuse.AbuseProperties;
 import com.vibegraph.abuse.ClientAddressResolver;
 import com.vibegraph.abuse.LoginThrottleGuard;
+import com.vibegraph.abuse.RegistrationThrottleGuard;
 import com.vibegraph.auth.service.AuthService;
 import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
@@ -50,6 +51,7 @@ class AuthControllerTest {
         AbuseProperties abuseProperties = new AbuseProperties();
         AuthController controller = new AuthController(authService, cookieService, auditService,
                 new LoginThrottleGuard(abuseProperties, java.time.Clock.systemUTC()),
+                new RegistrationThrottleGuard(abuseProperties, java.time.Clock.systemUTC()),
                 new ClientAddressResolver(abuseProperties));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
