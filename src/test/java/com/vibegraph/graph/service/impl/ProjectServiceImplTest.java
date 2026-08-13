@@ -18,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.vibegraph.auth.domain.ProjectOwnership;
@@ -37,7 +38,21 @@ class ProjectServiceImplTest {
     @TempDir
     Path tempDir;
 
-    private final ProjectServiceImpl service = new ProjectServiceImpl();
+    // B-L7: constructor injection — optional collaborators are empty providers here; tests
+    // that need them swap the final fields via reflection below.
+    private final ProjectServiceImpl service = new ProjectServiceImpl(
+            "",
+            new ArchiveImportProperties(),
+            emptyProvider(),
+            emptyProvider(),
+            emptyProvider(),
+            emptyProvider());
+
+    /** Spring 7's ObjectProvider has no static factories; a mock returns null from getIfAvailable(). */
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> emptyProvider() {
+        return mock(ObjectProvider.class);
+    }
 
     @BeforeEach
     void setUp() {

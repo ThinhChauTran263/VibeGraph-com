@@ -14,6 +14,7 @@ import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
 import AddProjectCli from '@/components/projects/AddProjectCli.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
+import AppIcon from '@/components/ui/AppIcon.vue'
 
 type Method = 'cli' | 'archive' | 'github'
 
@@ -88,17 +89,12 @@ function selectMethod(method: Method): void {
   if (!props.disabledMethods[method]) active.value = method
 }
 
-// Each method gets a distinct icon so the segmented control reads at a glance.
-function iconPath(id: Method): string {
-  switch (id) {
-    case 'cli':
-      return 'M4 5h16v14H4z M8 9l3 3-3 3 M13 15h4'
-    case 'archive':
-      return 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10'
-    case 'github':
-    default:
-      return 'M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21'
-  }
+// F-L4: each method gets a distinct icon so the segmented control reads at a
+// glance; the SVG paths themselves live in the shared AppIcon registry.
+const ICON_NAMES: Record<Method, string> = {
+  cli: 'terminal',
+  archive: 'package',
+  github: 'github',
 }
 </script>
 
@@ -135,20 +131,7 @@ function iconPath(id: Method): string {
         :data-test="`import-tab-${tab.id}`"
         @click="selectMethod(tab.id)"
       >
-        <svg
-          class="import-panel__tab-icon"
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path :d="iconPath(tab.id)" />
-        </svg>
+        <AppIcon class="import-panel__tab-icon" :name="ICON_NAMES[tab.id]" :size="18" />
         <span class="import-panel__tab-label">{{ tab.label }}</span>
         <span class="import-panel__tab-label-short" aria-hidden="true">{{ tab.short }}</span>
       </button>

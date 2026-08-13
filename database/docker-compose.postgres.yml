@@ -23,6 +23,10 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
+      # D-L2: the vibegraph/vibegraph fallbacks are for LOCAL DEV ONLY. Never point this
+      # compose file at anything shared or production-shaped; real stacks must set
+      # POSTGRES_USER/POSTGRES_PASSWORD explicitly (the root docker-compose.yml already
+      # fails fast with ${VAR:?...} instead of defaulting).
       POSTGRES_USER: ${POSTGRES_USER:-vibegraph}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibegraph}
       POSTGRES_DB: ${POSTGRES_DB:-vibegraph}

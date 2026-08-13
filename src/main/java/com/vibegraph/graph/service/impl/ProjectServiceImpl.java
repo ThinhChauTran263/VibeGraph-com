@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -36,37 +36,39 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final Map<String, ProjectResponse> projects = new ConcurrentHashMap<>();
 
-    @Value("${vibegraph.projects.allowed-root:}")
-    private String allowedRoot;
-
-    @Autowired(required = false)
-    private com.vibegraph.graph.service.LocalProjectPathValidator localProjectPathValidator;
-
-    @Autowired
-    private ArchiveImportProperties archiveImportProperties;
-
+    private final String allowedRoot;
+    private final ArchiveImportProperties archiveImportProperties;
+    private final com.vibegraph.graph.service.LocalProjectPathValidator localProjectPathValidator;
     /**
      * Optional: lets the service recover persisted project metadata (source root) after a
      * backend restart, when the in-memory registry is empty but the Neo4j {@code Project}
-     * node still exists. Left null in plain unit tests that construct this service directly.
+     * node still exists. Null when the bean is absent (some test slices).
      */
-    @Autowired(required = false)
-    private GraphRepository graphRepository;
-
-    /**
-     * Optional: present in the running app to stop the file watcher when a project is deleted.
-     * Left null in plain unit tests that construct this service directly.
-     */
-    @Autowired(required = false)
-    private FileWatcherService fileWatcherService;
-
+    private final GraphRepository graphRepository;
+    /** Optional: present in the running app to stop the file watcher when a project is deleted. */
+    private final FileWatcherService fileWatcherService;
     /**
      * Optional: Postgres ownership plane — the source of truth for a project's name/status
      * (H6). The in-memory map stays a read cache for transient fields (progress, rootPath).
-     * Left null in plain unit tests that construct this service directly.
      */
-    @Autowired(required = false)
-    private ProjectOwnershipRepository ownershipRepository;
+    private final ProjectOwnershipRepository ownershipRepository;
+
+    // B-L7: constructor injection; optional collaborators arrive as ObjectProviders so a
+    // missing bean resolves to null at bootstrap instead of failing the context.
+    public ProjectServiceImpl(
+            @Value("${vibegraph.projects.allowed-root:}") String allowedRoot,
+            ArchiveImportProperties archiveImportProperties,
+            ObjectProvider<com.vibegraph.graph.service.LocalProjectPathValidator> localProjectPathValidator,
+            ObjectProvider<GraphRepository> graphRepository,
+            ObjectProvider<FileWatcherService> fileWatcherService,
+            ObjectProvider<ProjectOwnershipRepository> ownershipRepository) {
+        this.allowedRoot = allowedRoot;
+        this.archiveImportProperties = archiveImportProperties;
+        this.localProjectPathValidator = localProjectPathValidator.getIfAvailable();
+        this.graphRepository = graphRepository.getIfAvailable();
+        this.fileWatcherService = fileWatcherService.getIfAvailable();
+        this.ownershipRepository = ownershipRepository.getIfAvailable();
+    }
 
     @Override
     public ProjectResponse createProject(CreateProjectRequest request) {

@@ -85,7 +85,8 @@ public class ParserServiceImpl implements ParserService {
 
         // Use provided parser (project-wide) or create file-local one
         if (parser == null) {
-            parser = createParser(filePath.getParent());
+            Path parent = filePath.getParent();
+            parser = createParser(parent == null ? List.of() : List.of(parent));
         }
 
         try {
@@ -444,42 +445,18 @@ public class ParserServiceImpl implements ParserService {
         return results;
     }
 
-    private JavaParser createParser(Path sourceRoot) {
-        CombinedTypeSolver typeSolver = new CombinedTypeSolver();
-        typeSolver.add(new ReflectionTypeSolver());
-
-        // Add source root for resolving project types
-        if (sourceRoot != null && Files.isDirectory(sourceRoot)) {
-            try {
-                typeSolver.add(new JavaParserTypeSolver(sourceRoot));
-            } catch (Exception e) {
-                log.debug("Could not add source root to type solver: {}", sourceRoot);
-            }
-        }
-
-        JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
-        ParserConfiguration config = new ParserConfiguration()
-                .setSymbolResolver(symbolSolver)
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
-        return new JavaParser(config);
-    }
-
     /**
-     * Builds a parser whose type solver indexes every source root in the project.
-     * This is what enables cross-class CALLS edges to resolve - without it,
-     * the type solver can only see types in the same directory as the file being parsed.
-     *
-     * Detection strategy:
-     * 1. Look for standard layouts: src/main/java, src/test/java, src/main/kotlin (multi-module too).
-     * 2. Fallback: derive source roots from each .java file's package declaration path.
+     * B-L1: the single parser builder for both code paths. The type solver indexes exactly the
+     * given source roots — one root for the file-local fallback, every detected root for a
+     * project-wide parse (cross-class CALLS edges).
      */
-    private JavaParser createProjectParser(Path projectRoot, List<Path> javaFiles) {
+    private JavaParser createParser(java.util.Collection<Path> sourceRoots) {
         CombinedTypeSolver typeSolver = new CombinedTypeSolver();
         typeSolver.add(new ReflectionTypeSolver());
-
-        java.util.Set<Path> sourceRoots = detectSourceRoots(projectRoot, javaFiles);
         for (Path root : sourceRoots) {
+            if (root == null || !Files.isDirectory(root)) {
+                continue;
+            }
             try {
                 typeSolver.add(new JavaParserTypeSolver(root));
                 log.debug("Added type-solver source root: {}", root);
@@ -487,14 +464,22 @@ public class ParserServiceImpl implements ParserService {
                 log.debug("Could not add source root {}: {}", root, e.getMessage());
             }
         }
-        log.info("Type solver indexed {} source root(s)", sourceRoots.size());
-
         JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
         ParserConfiguration config = new ParserConfiguration()
                 .setSymbolResolver(symbolSolver)
                 .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         return new JavaParser(config);
+    }
+
+    /**
+     * Project-wide parser: every detected source root is indexed so cross-class calls resolve.
+     * Detection: standard layouts (src/main/java, src/test/java, multi-module) first, then
+     * roots derived from each file's package declaration.
+     */
+    private JavaParser createProjectParser(Path projectRoot, List<Path> javaFiles) {
+        java.util.Set<Path> sourceRoots = detectSourceRoots(projectRoot, javaFiles);
+        log.info("Type solver indexed {} source root(s)", sourceRoots.size());
+        return createParser(sourceRoots);
     }
 
     /**

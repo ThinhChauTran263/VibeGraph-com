@@ -222,6 +222,33 @@ class RequestEventServiceTest {
     }
 
     @Test
+    @DisplayName("B-L8: a full queue of plain telemetry keeps an incoming security event, not the oldest byte")
+    void record_queueFullOfPlainEvents_securityEventSurvives() {
+        RecordingWriter writer = new RecordingWriter();
+        RequestEventService service = service(
+                properties(telemetry -> telemetry.setQueueCapacity(100)), writer, new MutableClock(START));
+
+        // Fill the queue entirely with NON-security events.
+        for (int index = 0; index < 100; index++) {
+            service.record(null, null, "203.0.113.1", "/api/a", "GET", 200, START, "REQUEST");
+        }
+        double droppedBefore = counter(RequestEventService.DROPPED_METRIC);
+        double securityDroppedBefore = counter(RequestEventService.SECURITY_DROPPED_METRIC);
+
+        // Now the queue is full and a security event arrives.
+        service.record(null, null, "203.0.113.1", "/api/a", "GET", 429, START, "RATE_LIMIT");
+
+        assertThat(service.queuedEvents()).isEqualTo(100);
+        assertThat(service.hasQueuedSecurityEvent())
+                .as("the security event must have displaced a plain event, not been dropped")
+                .isTrue();
+        assertThat(counter(RequestEventService.DROPPED_METRIC)).isEqualTo(droppedBefore + 1);
+        assertThat(counter(RequestEventService.SECURITY_DROPPED_METRIC))
+                .as("no security event may be lost when plain telemetry is available to shed")
+                .isEqualTo(securityDroppedBefore);
+    }
+
+    @Test
     @DisplayName("a concurrent flush is skipped rather than overlapping")
     void flush_reentrantCall_isSkippedAndCounted() {
         RecordingWriter writer = new RecordingWriter();

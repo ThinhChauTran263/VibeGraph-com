@@ -354,7 +354,61 @@ docker compose down -v
 docker compose up -d --build
 ```
 
-This removes Neo4j data, Neo4j logs, and upload workspace volumes.
+⚠️ `down -v` removes ALL named volumes — including `postgres-data`, the control
+plane (users, ownership, API keys, quotas, audit logs). That data is NOT
+rebuildable. Take a backup first (next section) unless loss is truly acceptable.
+
+## Backup and restore
+
+Three data stores persist in named volumes. They are NOT equal:
+
+| Store | Volume | Class | If lost |
+| --- | --- | --- | --- |
+| Postgres | `postgres-data` | **Control plane** | Gone for good — users, project ownership, API keys, credits, quotas, audit logs, refresh sessions. Cannot be rebuilt by re-analyzing source. |
+| Neo4j | `neo4j-data` | Data plane | Rebuildable: re-run analysis on each imported project. Costs time, not data. |
+| Uploads | `upload-workspaces` | Source cache | Rebuildable only by re-uploading the original archives, which the operator may no longer have. |
+
+Both scripts live in `scripts/` and never read, print, or write credential VALUES:
+Postgres credentials resolve inside the container from its own environment
+(`POSTGRES_USER` / `POSTGRES_DB` / `POSTGRES_PASSWORD`), Neo4j from its own
+`NEO4J_AUTH`. Never hardcode passwords into cron jobs or wrapper scripts — that
+recreates exactly the secret-leak class of incident the rotation checklist fights.
+
+### Take a backup
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1
+# optional: powershell ... backup.ps1 -SkipNeo4j
+# optional: powershell ... backup.ps1 -OutRoot D:\vg-backups
+```
+
+- Postgres: `pg_dump` while the container keeps serving (no downtime).
+- Neo4j: `neo4j-admin database dump` — Neo4j refuses to dump a database mounted
+  in a running server, so the script STOPS the neo4j container, dumps, and starts
+  it again. Expect a short outage of graph reads.
+- Uploads: tar.gz from a throwaway container.
+- Output lands OUTSIDE the repository by default (dumps contain password hashes,
+  API-key hashes and audit data). Treat the output directory as a secret.
+- A `manifest.json` records table counts so a restore can verify itself.
+
+### Restore (drill or real)
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/restore.ps1 -BackupDir <dir> -Confirm
+```
+
+`restore.ps1` restores into NEW volumes — it refuses to target the running
+`vibegraph_postgres-data` volume and requires `-Confirm`. After the script:
+
+1. Compare the restored counts against `manifest.json` (the script does this).
+2. Bring the stack up against the restored volumes and check `docker compose ps`
+   shows every service `healthy`.
+3. Log in with an account that existed before the backup — expect HTTP 200 and a
+   `vg_session` cookie. That is the acceptance signal, not a green script exit.
+4. Record the wall-clock restore time; that number is the real RTO.
+
+Do not rehearse against the volumes a live stack is using. The drill's entire
+value is proving the backup loads somewhere else.
 
 ## CI note
 
