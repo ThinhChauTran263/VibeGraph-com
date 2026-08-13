@@ -56,8 +56,12 @@ export function envBool(key: string, fallback: boolean): boolean {
 }
 
 // ── Graph rendering ──────────────────────────────────────────────────────────
-/** Max nodes handed to the renderer before Safe Mode caps the view; 0 disables the cap. */
-export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 0, { min: 0 })
+/**
+ * Max nodes handed to the renderer before Safe Mode caps the view; 0 disables the cap.
+ * B-M10: the default is POSITIVE so a huge graph can no longer freeze the browser — set
+ * 0 explicitly only to disable Safe Mode deliberately.
+ */
+export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 3000, { min: 0 })
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
@@ -94,14 +98,6 @@ export const IMPORT_STALL_TIMEOUT_MS = envInt('VITE_IMPORT_STALL_TIMEOUT_MS', 30
 export const IMPORT_ABSOLUTE_TIMEOUT_MS = envInt('VITE_IMPORT_ABSOLUTE_TIMEOUT_MS', 3_600_000, {
   min: 1000,
 })
-
-// ── Project list ─────────────────────────────────────────────────────────────
-/** Background refresh cadence for the "Your projects" list on the home page. */
-export const PROJECTS_AUTO_REFRESH_INTERVAL_MS = envInt(
-  'VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS',
-  5000,
-  { min: 1000 },
-)
 
 // ── WebSocket (STOMP/SockJS) ─────────────────────────────────────────────────
 /** Reconnect delay after a dropped socket. */

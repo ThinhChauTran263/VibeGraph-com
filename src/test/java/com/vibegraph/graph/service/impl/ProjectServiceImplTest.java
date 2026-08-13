@@ -3,6 +3,9 @@ package com.vibegraph.graph.service.impl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,11 +13,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.ProjectOwnershipStatus;
+import com.vibegraph.auth.domain.ProjectSourceType;
+import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.common.exception.ProjectNotFoundException;
 import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
@@ -232,6 +241,121 @@ class ProjectServiceImplTest {
         service.deleteProject(id);
 
         assertThatThrownBy(() -> service.getProject(id)).isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("H7: project ids are full UUIDs and never collide across consecutive creates")
+    void shouldAllocateFullUuidProjectIds() throws IOException {
+        String id1 = createProject("p1");
+        String id2 = createProject("p2");
+
+        assertThat(id1).hasSize(36); // full UUID with hyphens, not the old 8-char prefix
+        assertThat(id2).hasSize(36);
+        assertThat(id1).isNotEqualTo(id2);
+    }
+
+    @Test
+    @DisplayName("H6: getProject reads name/status from the Postgres ownership row, keeps transient state")
+    void shouldReadNameAndStatusFromOwnershipRow() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("original");
+        ProjectResponse cached = service.getProject(id);
+        ProjectOwnership row = ownershipRow(id, "renamed-in-db", ProjectOwnershipStatus.FAILED);
+        when(repo.findById(id)).thenReturn(Optional.of(row));
+
+        ProjectResponse p = service.getProject(id);
+
+        assertThat(p.getName()).isEqualTo("renamed-in-db");
+        assertThat(p.getStatus()).isEqualTo("FAILED");
+        assertThat(p.getRootPath()).isEqualTo(cached.getRootPath()); // transient state preserved
+    }
+
+    @Test
+    @DisplayName("H6: markAnalyzed persists ANALYZED to the ownership row")
+    void shouldPersistAnalyzedStatusToOwnershipRow() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("synced");
+        ProjectOwnership row = ownershipRow(id, "synced", ProjectOwnershipStatus.ANALYZING);
+        when(repo.findById(id)).thenReturn(Optional.of(row));
+
+        service.markAnalyzed(id, 2, 5, 3);
+
+        verify(repo).save(row);
+        assertThat(row.getStatus()).isEqualTo(ProjectOwnershipStatus.ANALYZED);
+    }
+
+    @Test
+    @DisplayName("H6: markFailed persists FAILED to the ownership row")
+    void shouldPersistFailedStatusToOwnershipRow() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("failing");
+        ProjectOwnership row = ownershipRow(id, "failing", ProjectOwnershipStatus.ANALYZING);
+        when(repo.findById(id)).thenReturn(Optional.of(row));
+
+        service.markFailed(id, "boom");
+
+        verify(repo).save(row);
+        assertThat(row.getStatus()).isEqualTo(ProjectOwnershipStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("H6: listProjects overlays ownership name/status on the merged listing")
+    void shouldOverlayOwnershipTruthOnListing() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("listed");
+        ProjectOwnership row = ownershipRow(id, "listed-renamed", ProjectOwnershipStatus.ANALYZED);
+        when(repo.findAllById(any())).thenReturn(List.of(row));
+
+        List<ProjectResponse> listed = service.listProjects();
+
+        assertThat(listed).hasSize(1);
+        assertThat(listed.getFirst().getName()).isEqualTo("listed-renamed");
+        assertThat(listed.getFirst().getStatus()).isEqualTo("ANALYZED");
+        assertThat(listed.getFirst().getProgress()).isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("H6: a trashed ownership row falls back to the legacy resolution order")
+    void shouldFallBackWhenOwnershipRowTrashed() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("trashed");
+        ProjectOwnership row = ownershipRow(id, "trashed", ProjectOwnershipStatus.ANALYZED);
+        row.setDeletedAt(java.time.Instant.now());
+        when(repo.findById(id)).thenReturn(Optional.of(row));
+
+        ProjectResponse p = service.getProject(id);
+
+        assertThat(p.getName()).isEqualTo("trashed"); // cache value, no DB overlay
+        assertThat(p.getStatus()).isEqualTo("CREATED");
+    }
+
+    @Test
+    @DisplayName("H6: ownership DB outage degrades to the in-memory registry instead of failing")
+    void shouldDegradeWhenOwnershipRepositoryUnavailable() throws IOException {
+        ProjectOwnershipRepository repo = mock(ProjectOwnershipRepository.class);
+        ReflectionTestUtils.setField(service, "ownershipRepository", repo);
+        String id = createProject("resilient");
+        when(repo.findById(id)).thenThrow(new RuntimeException("db down"));
+
+        ProjectResponse p = service.getProject(id);
+
+        assertThat(p.getName()).isEqualTo("resilient");
+        assertThat(p.getStatus()).isEqualTo("CREATED");
+    }
+
+    private ProjectOwnership ownershipRow(String projectId, String name, ProjectOwnershipStatus status) {
+        return ProjectOwnership.builder()
+                .projectId(projectId)
+                .ownerId(UUID.randomUUID())
+                .name(name)
+                .sourceType(ProjectSourceType.LOCAL)
+                .status(status)
+                .build();
     }
 
     private String createProject(String name) throws IOException {

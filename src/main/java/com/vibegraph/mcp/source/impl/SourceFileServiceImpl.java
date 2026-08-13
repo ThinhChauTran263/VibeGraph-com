@@ -9,6 +9,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -66,6 +67,16 @@ public class SourceFileServiceImpl implements SourceFileService {
 
     private static final Pattern AWS_ACCESS_KEY = Pattern.compile("AKIA[0-9A-Z]{16}");
     private static final Pattern PRIVATE_KEY_HEADER = Pattern.compile("-----BEGIN [A-Z ]*PRIVATE KEY-----");
+    /** H15: match the whole PEM block, not just the header line — non-greedy so a file with
+     * several keys does not swallow the legitimate content between them. */
+    private static final Pattern PRIVATE_KEY_BLOCK = Pattern.compile(
+            "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----");
+    /** A BEGIN header whose END fell outside the served range — redact to the end of the range. */
+    private static final Pattern PRIVATE_KEY_OPEN_ENDED = Pattern.compile(
+            "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*$");
+    /** An END footer whose BEGIN sits before the served range — redact the orphan body. */
+    private static final Pattern PRIVATE_KEY_ORPHAN_END = Pattern.compile(
+            "\\A[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----");
     private static final String REDACTED = "[REDACTED]";
 
     private final ProjectService projectService;
@@ -107,6 +118,16 @@ public class SourceFileServiceImpl implements SourceFileService {
             return notServed(relativePath, "File appears to be binary and is not served as source.");
         }
 
+        // H14: cap the size BEFORE loading the file into RAM (same guard scanFile() uses).
+        // A multi-GB text file must not be read whole just to serve the first 300 lines.
+        try {
+            if (Files.size(candidate) > MAX_FILE_BYTES_TO_SCAN) {
+                return notServed(relativePath, "File too large for source reading.");
+            }
+        } catch (IOException ex) {
+            return notServed(relativePath, "File could not be read as UTF-8 text.");
+        }
+
         List<String> lines = readAllLines(candidate);
         if (lines == null) {
             return notServed(relativePath, "File could not be read as UTF-8 text.");
@@ -127,15 +148,20 @@ public class SourceFileServiceImpl implements SourceFileService {
 
         StringBuilder builder = new StringBuilder();
         int lastIncludedLine = start - 1;
-        for (int lineNo = start; lineNo <= end; lineNo++) {
-            String redacted = redact(lines.get(lineNo - 1));
-            if (builder.length() + redacted.length() + 1 > MAX_BYTES) {
-                truncated = true;
-                truncationReason = "Content capped at " + MAX_BYTES + " bytes.";
-                break;
+        if (start <= end) {
+            // H15: block-level redaction runs on the joined range text so the base64 body of a
+            // private key disappears together with its BEGIN/END headers, not just the header line.
+            String rangeText = String.join("\n", lines.subList(start - 1, end));
+            for (String rangeLine : redactPrivateKeyBlocks(rangeText).split("\n", -1)) {
+                String redacted = redact(rangeLine);
+                if (builder.length() + redacted.length() + 1 > MAX_BYTES) {
+                    truncated = true;
+                    truncationReason = "Content capped at " + MAX_BYTES + " bytes.";
+                    break;
+                }
+                builder.append(redacted).append('\n');
+                lastIncludedLine++;
             }
-            builder.append(redacted).append('\n');
-            lastIncludedLine = lineNo;
         }
         if (lastIncludedLine < start) {
             lastIncludedLine = start;
@@ -300,6 +326,44 @@ public class SourceFileServiceImpl implements SourceFileService {
         } catch (IOException ex) {
             return true;
         }
+    }
+
+    /**
+     * H15: redacts PEM private-key blocks over the joined range text rather than line by line,
+     * so the base64 body between the BEGIN and END headers is removed along with the headers.
+     * Also covers ranges that cut a block in half: an open BEGIN with the END beyond the range,
+     * and an orphan END whose BEGIN sits before the range.
+     */
+    String redactPrivateKeyBlocks(String content) {
+        String result = redactPreservingLineCount(PRIVATE_KEY_BLOCK, content);
+        if (PRIVATE_KEY_HEADER.matcher(result).find()) {
+            result = redactPreservingLineCount(PRIVATE_KEY_OPEN_ENDED, result);
+        }
+        if (PRIVATE_KEY_HEADER.matcher(result).find()) {
+            return result;
+        }
+        return redactPreservingLineCount(PRIVATE_KEY_ORPHAN_END, result);
+    }
+
+    /**
+     * Replaces every match with one {@code [REDACTED]} per line the match spanned, so the
+     * redacted text has exactly as many lines as the input.
+     *
+     * <p>Collapsing a 28-line PEM block into a single token shortened the served text, and the
+     * caller advances {@code lastIncludedLine} once per emitted line — so the reported
+     * {@code endLine} came back short by however many lines the key occupied. MCP clients
+     * paginate on that value, so an under-reported end line makes them re-read or skip a range.
+     */
+    private static String redactPreservingLineCount(Pattern pattern, String content) {
+        Matcher matcher = pattern.matcher(content);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            int lines = (int) matcher.group().chars().filter(ch -> ch == '\n').count() + 1;
+            matcher.appendReplacement(out, Matcher.quoteReplacement(
+                    String.join("\n", Collections.nCopies(lines, REDACTED))));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     String redact(String line) {

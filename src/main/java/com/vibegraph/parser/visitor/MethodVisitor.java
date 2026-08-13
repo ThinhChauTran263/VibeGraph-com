@@ -65,7 +65,10 @@ public class MethodVisitor extends VoidVisitorAdapter<Object> {
     }
 
     public MethodVisitor(boolean deepCpg) {
-        this(deepCpg, Boolean.getBoolean("vibegraph.parser.emit-unresolved-call-stubs"));
+        // B-M3: no JVM system-property read here — the running app injects the flag from
+        // Spring config (vibegraph.parser.emit-unresolved-call-stubs) via ParserServiceImpl;
+        // plain constructor users keep the historical default (off).
+        this(deepCpg, false);
     }
 
     public MethodVisitor(boolean deepCpg, boolean emitUnresolvedCallStubs) {

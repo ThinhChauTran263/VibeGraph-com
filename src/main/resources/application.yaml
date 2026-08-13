@@ -6,6 +6,14 @@ spring:
   application:
     name: VibeGraph
 
+  # H17: the 7 @Scheduled jobs must not share the single default scheduler thread —
+  # a long trash purge would otherwise block the telemetry flush until the queue sheds
+  # security events. 4 threads keep the short, time-critical jobs off the long ones.
+  task:
+    scheduling:
+      pool:
+        size: 4
+
   # ── Control plane (Postgres) — auth / ownership. Data plane stays Neo4j. ──
   # Flyway owns the schema (V1__init_auth_schema.sql); JPA only VALIDATES it, never
   # generates DDL (ddl-auto=validate). Connection comes from POSTGRES_* env; a local
@@ -265,12 +273,14 @@ vibegraph:
       - http://127.0.0.1:5173
       - http://localhost:3000
 
-  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph). Default 0 disables
-  # truncation so filter counts and rendered graph data stay aligned. Set positive values in
-  # deployment if a browser safety cap is needed.
+  # HTTP full-graph payload guardrails (GET /api/projects/{id}/graph).
+  # B-M10: default HTTP graph cap is POSITIVE so oversized graphs are truncated with a
+  # truthful meta/truncation warning instead of freezing the browser (T7). Explicit
+  # nodeLimit=0/edgeLimit=0 requests fall back to these defaults. Set 0 only to disable
+  # the server-side cap deliberately; values are clamped to the max-*-limit rails below.
   graph:
-    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:0}
-    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:0}
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:5000}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:15000}
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 
@@ -284,6 +294,9 @@ vibegraph:
   parser:
     use-cache: ${VIBEGRAPH_PARSER_USE_CACHE:true}
     cache-dir: ${VIBEGRAPH_PARSER_CACHE_DIR:.vibegraph/parse-cache}
+    # B-M3: low-confidence unresolved-call stubs for CPG investigation. Bound from Spring
+    # config (was a JVM system property the yaml could never change). Default off.
+    emit-unresolved-call-stubs: ${VIBEGRAPH_PARSER_EMIT_UNRESOLVED_CALL_STUBS:false}
     # Phase 3 deep CPG (LocalVariable nodes + READS/WRITES/CATCHES edges). Default
     # ON: body-level data-flow is VibeGraph's core Java advantage — the MCP
     # method-CPG/data-flow tools are empty without it. Set
@@ -310,10 +323,12 @@ vibegraph:
       queue-capacity: ${VIBEGRAPH_ANALYSIS_QUEUE_CAPACITY:50}
       thread-name-prefix: ${VIBEGRAPH_ANALYSIS_THREAD_PREFIX:analysis-}
 
+# B-M7: the default profile logs INFO. DEBUG for com.vibegraph lives ONLY in the dev
+# profile (application-dev.yaml) — run with --spring.profiles.active=dev to get it.
 logging:
   level:
     root: INFO
-    com.vibegraph: DEBUG
+    com.vibegraph: INFO
     org.springframework.data.neo4j: INFO
 
 management:

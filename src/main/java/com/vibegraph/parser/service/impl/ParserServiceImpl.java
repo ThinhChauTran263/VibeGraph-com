@@ -59,6 +59,14 @@ public class ParserServiceImpl implements ParserService {
     @Value("${vibegraph.parser.deep-cpg-enabled:true}")
     private boolean deepCpgEnabled;
 
+    /**
+     * B-M3: unresolved-call stub emission, bound from Spring config so application.yaml
+     * actually takes effect (the old {@code Boolean.getBoolean} read a JVM system property
+     * and silently ignored the yaml). Default false = historical behavior.
+     */
+    @Value("${vibegraph.parser.emit-unresolved-call-stubs:false}")
+    private boolean emitUnresolvedCallStubs;
+
     @Override
     public ParseResult parseFile(Path filePath) {
         // Single-file parsing without project context - limited symbol resolution
@@ -107,7 +115,7 @@ public class ParserServiceImpl implements ParserService {
             // Apply visitors
             try (ProjectSymbolRegistry.Scope ignored = ProjectSymbolRegistry.open(activeSymbols)) {
                 ClassVisitor classVisitor = new ClassVisitor();
-                MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
+                MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled, emitUnresolvedCallStubs);
                 FieldVisitor fieldVisitor = new FieldVisitor();
                 SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
                 SpringImplicitFlowVisitor springImplicitFlowVisitor = new SpringImplicitFlowVisitor();

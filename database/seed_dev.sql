@@ -7,7 +7,8 @@
 -- LƯU Ý về mật khẩu:
 --   password_hash phải là BCrypt hash THẬT. Không tự bịa chuỗi.
 --   Cách lấy hash cho mật khẩu "admin123":
---     - Để backend tự tạo admin lúc khởi động (khuyến nghị — bootstrap trong code), HOẶC
+--     - Để backend tự tạo admin lúc khởi động qua AdminBootstrapRunner (khuyến nghị —
+--       bootstrap trong code, đọc ADMIN_* từ .env; không cần sửa file này), HOẶC
 --     - Sinh bằng công cụ BCrypt bất kỳ rồi dán vào dưới.
 --   Hash ví dụ dưới đây là PLACEHOLDER — THAY trước khi dùng, nếu không sẽ không đăng nhập được.
 -- =====================================================================

@@ -101,15 +101,16 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // user-provided name for archive). The stable graph id stays projectId. Fall back
         // to projectId if no name was supplied so the node is never left without a label.
         String displayName = (projectName != null && !projectName.isBlank()) ? projectName : projectId;
-        graphRepository.upsertProject(projectId, displayName, projectPath);
-        graphRepository.upsertNodes(projectId, allNodes);
 
         progress.onProgress(94, "Saving relationships");
 
-        // upsertEdges returns the number of edges actually persisted after
-        // missing endpoints are skipped. This is the truthful count to report —
-        // allEdges.size() would over-report if anything were dropped.
-        int edgesPersisted = graphRepository.upsertEdges(projectId, allEdges);
+        // B-M11: one write transaction for the whole analysis graph — a mid-write failure
+        // rolls back everything instead of leaving a half-written project graph in Neo4j.
+        // The returned count is the number of edges actually persisted after missing
+        // endpoints are skipped — the truthful count to report (allEdges.size() would
+        // over-report if anything were dropped).
+        int edgesPersisted = graphRepository.upsertAnalysis(
+                projectId, displayName, projectPath, allNodes, allEdges);
 
         progress.onProgress(98, "Finalizing");
 

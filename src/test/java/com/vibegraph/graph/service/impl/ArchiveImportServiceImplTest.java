@@ -76,6 +76,7 @@ class ArchiveImportServiceImplTest {
     @Mock CurrentUser currentUser;
     @Mock ProjectOwnershipRegistrar ownershipRegistrar;
     @Mock FeatureGateService featureGateService;
+    @Mock com.vibegraph.graph.repository.GraphRepository graphRepository;
 
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
@@ -94,7 +95,7 @@ class ArchiveImportServiceImplTest {
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
                 accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService,
-                new ConcurrentImportGuard(new AbuseProperties()));
+                new ConcurrentImportGuard(new AbuseProperties()), graphRepository);
     }
 
     @Test
@@ -225,6 +226,9 @@ class ArchiveImportServiceImplTest {
 
         verify(projectService).markFailed("p1", "neo4j down");
         verify(graphUpdateController).broadcastStatus("p1", "FAILED", 0, "neo4j down");
+        // B-M11: the FAILED project keeps its row but its (possibly partial) graph is removed,
+        // since the workspace backing it is gone.
+        verify(graphRepository).deleteProject("p1");
         verify(projectService, never()).deleteProject("p1");
         verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         assertNoWorkspaceLeftover();

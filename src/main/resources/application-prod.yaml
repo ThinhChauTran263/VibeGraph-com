@@ -112,9 +112,12 @@ management:
   endpoint:
     health:
       show-details: when-authorized
-  metrics:
-    export:
-      prometheus:
+  # Spring Boot 3.0 moved this key from `management.metrics.export.prometheus.*` to
+  # `management.prometheus.metrics.export.*`. On Boot 4 the old spelling is silently
+  # ignored, so it read as "Prometheus is on" while the endpoint was never enabled.
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 logging:

@@ -235,12 +235,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
-        // A precondition/feature-state failure the caller can act on (e.g. directory browsing
-        // disabled because no allowed-root is configured). Surface the real reason as a 409
-        // instead of a generic 500 so the client can show actionable guidance.
+        // B-M12: a conflict-state failure stays a 409, but the raw exception message often
+        // carries internal paths/state that must not reach the client — log it internally
+        // with the stacktrace and answer a generic, safe message instead.
+        log.warn("Request failed on a conflict state: {}", ex.getMessage(), ex);
         ErrorResponse error = ErrorResponse.builder()
                 .code("PRECONDITION_FAILED")
-                .message(ex.getMessage())
+                .message("Operation is not valid in the current state.")
                 .build();
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
     }

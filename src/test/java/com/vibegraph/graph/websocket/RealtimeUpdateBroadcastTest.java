@@ -91,7 +91,7 @@ class RealtimeUpdateBroadcastTest {
         String path = storedPath("src/Bar.java");
         NodeDto bar = NodeDto.builder().id("com.example.Bar").type("Class").name("Bar")
                 .fullName("com.example.Bar").filePath(path).build();
-        when(graphRepository.getFullGraph("p1"))
+        when(graphRepository.getFileSlice("p1", path))
                 .thenReturn(graph(List.of(bar), List.of()))   // before
                 .thenReturn(graph(List.of(), List.of()));      // after prune
 
@@ -117,7 +117,7 @@ class RealtimeUpdateBroadcastTest {
 
         NodeDto added = NodeDto.builder().id("com.example.New").type("Class").name("New")
                 .fullName("com.example.New").filePath(path).build();
-        when(graphRepository.getFullGraph("p1"))
+        when(graphRepository.getFileSlice("p1", path))
                 .thenReturn(graph(List.of(), List.of()))        // before (A,B only — empty here)
                 .thenReturn(graph(List.of(added), List.of()));  // after upsert (+C)
 

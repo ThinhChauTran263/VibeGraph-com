@@ -1,6 +1,7 @@
 # Multi-stage build for Vue frontend
 
-FROM node:22-alpine AS builder
+# D-M2: pin the minor/patch tag so builds are reproducible.
+FROM node:22.11.0-alpine AS builder
 WORKDIR /build
 ARG VITE_API_URL
 ARG VITE_WS_URL
@@ -13,7 +14,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+FROM nginx:1.27-alpine
 COPY --from=builder /build/dist /usr/share/nginx/html
 # Rendered by the image entrypoint so ${CSP_CONNECT_SRC} can name the API origin
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

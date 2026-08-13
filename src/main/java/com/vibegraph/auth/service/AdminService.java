@@ -4,7 +4,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.vibegraph.auth.domain.AccountStatus;
 import com.vibegraph.auth.domain.CreditLedger;
 import com.vibegraph.auth.domain.CreditPricingRule;
 import com.vibegraph.auth.domain.FeedbackCategory;
@@ -59,6 +63,7 @@ import com.vibegraph.auth.repository.projection.AdminDistributionRow;
 import com.vibegraph.auth.repository.projection.AdminSecurityAlertRow;
 import com.vibegraph.auth.repository.projection.AdminSeriesRow;
 import com.vibegraph.auth.repository.projection.AdminStorageSubjectRow;
+import com.vibegraph.auth.repository.projection.StorageSum;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.QuotaBelowCurrentUsageException;
@@ -225,8 +230,19 @@ public class AdminService {
     public Page<AdminUserResponse> getUsers(String search, String status, String plan, Pageable pageable) {
         validateUserStatus(status);
         validatePlanCode(plan);
-        return userRepository.findAllWithFilters(search, status, plan, pageable)
-                .map(this::toAdminUserResponse);
+        Page<User> page = userRepository.findAllWithFilters(search, status, plan, pageable);
+        if (page.isEmpty()) {
+            return page.map(this::toAdminUserResponse);
+        }
+        // H9: two batch queries for the whole page instead of 2 per user (settings + storage SUM).
+        List<UUID> ids = page.getContent().stream().map(User::getId).toList();
+        Map<UUID, UserAccountSettings> settingsById = settingsRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(UserAccountSettings::getUserId, Function.identity()));
+        Map<UUID, Long> storageById = projectUsageRepository.sumStorageByOwners(ids).stream()
+                .collect(Collectors.toMap(StorageSum::getOwnerId, StorageSum::getTotal));
+        return page.map(user -> toAdminUserResponse(user,
+                settingsById.get(user.getId()),
+                storageById.getOrDefault(user.getId(), 0L)));
     }
 
     @Transactional
@@ -484,7 +500,9 @@ public class AdminService {
         if (status == null || status.isBlank()) {
             return;
         }
-        if (!List.of("ACTIVE", "BLOCKED", "DEACTIVATED").contains(status.toUpperCase())) {
+        // B-M4: validate against the AccountStatus enum instead of a hardcoded list, so the
+        // filter vocabulary cannot drift from the statuses UserResponse actually emits.
+        if (AccountStatus.fromString(status).isEmpty()) {
             throw new IllegalArgumentException("Unsupported user status filter");
         }
     }
@@ -493,8 +511,9 @@ public class AdminService {
         if (planCode == null || planCode.isBlank()) {
             return;
         }
-        if (!List.of("FREE", "PRO", "PRO_PLUS", "MAX", "ENTERPRISE")
-                .contains(planCode.toUpperCase())) {
+        // B-M4: validate against the plans table instead of a hardcoded list — adding a new
+        // plan in the DB requires no code change here, and unknown codes are rejected.
+        if (!planRepository.existsByCode(planCode.trim().toUpperCase())) {
             throw new IllegalArgumentException("Unsupported plan filter");
         }
     }
@@ -516,7 +535,14 @@ public class AdminService {
     }
 
     private AdminUserResponse toAdminUserResponse(User user) {
+        // Single-user paths (block/unban/plan updates, detail view): per-user lookups are fine;
+        // the paged listing uses the batch overload below (H9).
         UserAccountSettings settings = settingsRepository.findById(user.getId()).orElse(null);
+        long sourceUsageBytes = projectUsageRepository.sumStorageBytesByOwnerId(user.getId());
+        return toAdminUserResponse(user, settings, sourceUsageBytes);
+    }
+
+    private AdminUserResponse toAdminUserResponse(User user, UserAccountSettings settings, long sourceUsageBytes) {
         String planCode = (settings != null && settings.getPlan() != null) ? settings.getPlan().getCode() : null;
         Long storageQuotaOverrideBytes = settings != null ? settings.getStorageQuotaOverrideBytes() : null;
         Integer creditQuotaOverride = settings != null ? settings.getCreditQuotaOverride() : null;
@@ -527,7 +553,6 @@ public class AdminService {
         long effectiveQuotaBytes = settings != null && settings.getPlan() != null
                 ? AccountSettingsService.effectiveLimitBytes(settings)
                 : user.getQuotaBytes();
-        long sourceUsageBytes = projectUsageRepository.sumStorageBytesByOwnerId(user.getId());
 
         return new AdminUserResponse(
                 user.getId(),

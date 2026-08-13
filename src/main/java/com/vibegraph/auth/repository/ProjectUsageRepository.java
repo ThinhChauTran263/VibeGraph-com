@@ -1,5 +1,6 @@
 package com.vibegraph.auth.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 
 import com.vibegraph.auth.domain.ProjectUsage;
 import com.vibegraph.auth.repository.projection.AdminStorageSubjectRow;
+import com.vibegraph.auth.repository.projection.StorageSum;
 
 public interface ProjectUsageRepository extends JpaRepository<ProjectUsage, String> {
 
@@ -21,6 +23,15 @@ public interface ProjectUsageRepository extends JpaRepository<ProjectUsage, Stri
 
     @Query("SELECT COALESCE(SUM(p.storageBytes), 0) FROM ProjectUsage p WHERE p.ownerId = :ownerId")
     long sumStorageBytesByOwnerId(@Param("ownerId") UUID ownerId);
+
+    /**
+     * Batch storage totals for a set of owners (H9): one GROUP BY query for a whole admin
+     * page instead of one SUM query per user. Owners without usage rows are simply absent.
+     */
+    @Query("""
+            SELECT p.ownerId AS ownerId, SUM(p.storageBytes) AS total
+            FROM ProjectUsage p WHERE p.ownerId IN :ids GROUP BY p.ownerId""")
+    List<StorageSum> sumStorageByOwners(@Param("ids") Collection<UUID> ids);
 
     @Query("SELECT COALESCE(SUM(p.storageBytes), 0) FROM ProjectUsage p")
     long sumStorageBytes();

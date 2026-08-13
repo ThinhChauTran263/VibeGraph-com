@@ -38,6 +38,29 @@ export function createViteConfig(mode: string) {
       vue(),
       enableVueDevTools ? vueDevTools() : null,
     ],
+    // F-M5: split the heavy vendor libs into their own long-lived chunks so route
+    // chunks stay small and browser caching survives app-code changes. The graph
+    // stack (sigma/graphology) only loads with the graph route; charts load where
+    // ECharts is used.
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id: string): string | undefined {
+            if (!id.includes('node_modules')) return undefined
+            // Match on the package directory, not a bare substring of the whole path:
+            // `id.includes('sigma')` also matched unrelated packages whose path happens to
+            // contain the word, and `id.includes('echarts')` swallowed `vue-echarts`.
+            if (/node_modules\/(sigma|graphology)/.test(id)) return 'vendor-graph'
+            // ECharts is deliberately NOT given a manual chunk. It is imported only by the
+            // lazy admin DashboardView, so leaving it alone lets it ride that route's chunk.
+            // Naming it here promoted it into a shared chunk that the entry imported
+            // statically, which made dist/index.html modulepreload 671 kB of charts on the
+            // landing page — the opposite of what H12 set out to do.
+            return undefined
+          },
+        },
+      },
+    },
     // `sockjs-client` (used by the STOMP WebSocket transport) is a CommonJS lib
     // that references the Node-style `global`. In the browser there is no
     // `global`, only `globalThis`, so dev (and prod) builds throw

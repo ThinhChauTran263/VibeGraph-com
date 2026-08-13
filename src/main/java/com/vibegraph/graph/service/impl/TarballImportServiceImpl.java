@@ -35,6 +35,7 @@ import com.vibegraph.graph.importer.github.GitHubPreFlightService;
 import com.vibegraph.graph.importer.github.GitHubRepositoryRef;
 import com.vibegraph.graph.importer.github.GitHubTarballClient;
 import com.vibegraph.graph.importer.github.GitHubUrlParser;
+import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ProjectService;
@@ -69,6 +70,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final FeatureGateService featureGateService;
     private final ConcurrentImportGuard concurrentImportGuard;
     private final ProjectTrashService trashService;
+    private final GraphRepository graphRepository;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
             GitHubPreFlightService preFlightService,
@@ -86,7 +88,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             ProjectOwnershipRegistrar ownershipRegistrar,
             FeatureGateService featureGateService,
             ConcurrentImportGuard concurrentImportGuard,
-            ProjectTrashService trashService) {
+            ProjectTrashService trashService,
+            GraphRepository graphRepository) {
         this.urlParser = urlParser;
         this.preFlightService = preFlightService;
         this.tarballClient = tarballClient;
@@ -104,6 +107,7 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.featureGateService = featureGateService;
         this.concurrentImportGuard = concurrentImportGuard;
         this.trashService = trashService;
+        this.graphRepository = graphRepository;
     }
 
     @Override
@@ -217,6 +221,14 @@ public class TarballImportServiceImpl implements TarballImportService {
         } catch (RuntimeException e) {
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
+            // B-M11: the FAILED project's workspace is removed below, so any graph the
+            // analysis managed to write would dangle orphaned — remove it proactively.
+            try {
+                graphRepository.deleteProject(ctx.projectId());
+            } catch (RuntimeException graphCleanupFailure) {
+                log.warn("Could not remove graph of failed GitHub project {}: {}",
+                        ctx.projectId(), graphCleanupFailure.getMessage());
+            }
             cleanup(ctx.workspace(), null); // keep the FAILED project visible to callers
             log.error("GitHub analysis failed for project {}: {}", ctx.projectId(), e.getMessage(), e);
         } finally {

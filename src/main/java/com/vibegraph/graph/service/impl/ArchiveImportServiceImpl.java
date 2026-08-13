@@ -32,6 +32,7 @@ import com.vibegraph.graph.importer.ArchiveExtractor;
 import com.vibegraph.graph.importer.ArchiveType;
 import com.vibegraph.graph.importer.ArchiveTypeDetector;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
+import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ArchiveImportService;
@@ -66,6 +67,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final FeatureGateService featureGateService;
     private final ConcurrentImportGuard concurrentImportGuard;
+    private final GraphRepository graphRepository;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -79,7 +81,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     CurrentUser currentUser,
                                     ProjectOwnershipRegistrar ownershipRegistrar,
                                     FeatureGateService featureGateService,
-                                    ConcurrentImportGuard concurrentImportGuard) {
+                                    ConcurrentImportGuard concurrentImportGuard,
+                                    GraphRepository graphRepository) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -93,6 +96,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.ownershipRegistrar = ownershipRegistrar;
         this.featureGateService = featureGateService;
         this.concurrentImportGuard = concurrentImportGuard;
+        this.graphRepository = graphRepository;
     }
 
     @Override
@@ -240,6 +244,14 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         } catch (RuntimeException e) {
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
+            // B-M11: the FAILED project's workspace is removed below, so any graph the
+            // analysis managed to write would dangle orphaned — remove it proactively.
+            try {
+                graphRepository.deleteProject(ctx.projectId());
+            } catch (RuntimeException graphCleanupFailure) {
+                log.warn("Could not remove graph of failed archive project {}: {}",
+                        ctx.projectId(), graphCleanupFailure.getMessage());
+            }
             cleanup(ctx.workspace(), null); // keep the FAILED project; only remove the now-stale workspace
             log.error("Async analysis failed for project {}: {}", ctx.projectId(), e.getMessage(), e);
         } finally {

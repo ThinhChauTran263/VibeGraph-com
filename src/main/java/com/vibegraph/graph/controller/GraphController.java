@@ -36,10 +36,12 @@ public class GraphController {
     private final ProjectOwnershipGuard ownershipGuard;
 
     /**
-     * Full project graph. By default the HTTP payload is uncapped; deployments can configure
-     * positive defaults, and callers can request positive {@code nodeLimit}/{@code edgeLimit}
-     * values clamped to the configured server maximums. A non-positive explicit limit disables
-     * that cap. The response carries {@code meta} describing any truncation.
+     * Full project graph. The HTTP payload is capped by the configured server defaults
+     * ({@code vibegraph.graph.node-limit}/{@code edge-limit}, B-M10); callers can request
+     * positive {@code nodeLimit}/{@code edgeLimit} values clamped to the configured server
+     * maximums. A non-positive explicit limit falls back to the server default instead of
+     * disabling the cap, so a {@code nodeLimit=0} request can no longer bypass it.
+     * The response carries {@code meta} describing any truncation.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<GraphDataResponse>> getFullGraph(
@@ -74,15 +76,14 @@ public class GraphController {
     }
 
     /**
-     * Clamp a requested positive limit to {@code [1, max]}, falling back to {@code defaultValue}
-     * when the caller did not request one. A non-positive request disables the cap.
+     * Clamp a requested positive limit to {@code [1, max]}. An absent OR non-positive request
+     * falls back to the configured default cap (B-M10): {@code nodeLimit=0} used to mean
+     * "uncapped", which let any client bypass the safety rail — the default cap now always
+     * applies on the HTTP boundary.
      */
     private int clamp(Integer requested, int defaultValue, int max) {
-        if (requested == null) {
+        if (requested == null || requested <= 0) {
             return defaultValue <= 0 ? 0 : Math.min(defaultValue, max);
-        }
-        if (requested <= 0) {
-            return 0;
         }
         return Math.min(requested, max);
     }

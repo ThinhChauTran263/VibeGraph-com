@@ -1,10 +1,14 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.11-alpine
     container_name: vibegraph-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # H3: DB ports stay loopback-only; the backend reaches Postgres over the
+      # compose network hostname, so nothing outside this host needs 5432.
+      # Host side defaults to 5433 because dev machines often run a native
+      # Postgres on 5432; override POSTGRES_PORT if the host port is free.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -18,16 +22,19 @@ services:
       retries: 5
 
   neo4j:
-    image: neo4j:5-community
+    # D-M2: pin the minor tag so the stack is reproducible.
+    image: neo4j:5.26-community
     container_name: vibegraph-neo4j
     restart: unless-stopped
     ports:
-      - "7474:7474"   # HTTP browser
-      - "7687:7687"   # Bolt protocol
+      # H3: loopback-only; the backend connects via bolt://neo4j:7687 internally.
+      - "127.0.0.1:7474:7474"   # HTTP browser
+      - "127.0.0.1:7687:7687"   # Bolt protocol
     environment:
       NEO4J_AUTH: ${NEO4J_USERNAME:?Set NEO4J_USERNAME in .env}/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}
       NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      # H3: NEO4J_dbms_security_procedures_unrestricted=apoc.* removed — unrestricted
+      # APOC can read files and execute code; the app only needs the default safe set.
       # Bound Neo4j JVM + page cache so a heavy analyze run can't exhaust host RAM
       # and freeze the whole machine. Tune up if you have headroom.
       NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_SIZE:-1G}
@@ -99,7 +106,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-1800000}
       JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS:-604800000}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      # H4: session cookies default to Secure; set AUTH_COOKIE_SECURE=false in .env
+      # only for plain-HTTP environments without TLS termination.
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Lax}
       VIBEGRAPH_REALTIME_DEMO_PERMIT: ${VIBEGRAPH_REALTIME_DEMO_PERMIT:-false}
       VIBEGRAPH_AUTH_BOOTSTRAP_ENABLED: ${VIBEGRAPH_AUTH_BOOTSTRAP_ENABLED:-false}
@@ -124,8 +133,21 @@ services:
       VIBEGRAPH_RATE_LIMIT_WINDOW_MAX_SIZE: ${VIBEGRAPH_RATE_LIMIT_WINDOW_MAX_SIZE:-100000}
       VIBEGRAPH_RATE_LIMIT_WINDOW_TTL_MS: ${VIBEGRAPH_RATE_LIMIT_WINDOW_TTL_MS:-180000}
       FRONTEND_URL: ${FRONTEND_URL:?Set FRONTEND_URL in .env}
+      # OAuth and Gemini were the only variables the removed .env mount still supplied.
+      # application.yaml defaults them to `__disabled__` / empty, and nothing in the code
+      # detects that placeholder — LoginView always renders the Google and GitHub buttons,
+      # so without these the provider redirect fails with invalid_client. Passed explicitly
+      # (not via a whole-file mount) with soft defaults so a stack without OAuth still boots.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
     volumes:
-      - ./.env:/app/.env:ro
+      # H2: the .env mount is gone — every variable the app needs is passed explicitly in
+      # the environment block above (spring.config.import is optional:), so the container
+      # no longer carries the whole secret file for every process in it to read.
       # Writable local-path projects: the CLI Local Patch flow
       # (POST /api/projects/{id}/patch) applies file changes under /projects,
       # so this mount must be writable (was :ro, which blocked PATCH writes).

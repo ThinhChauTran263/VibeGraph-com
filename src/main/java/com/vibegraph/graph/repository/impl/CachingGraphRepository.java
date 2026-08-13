@@ -113,6 +113,14 @@ public class CachingGraphRepository implements GraphRepository {
     }
 
     @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges) {
+        int persisted = delegate.upsertAnalysis(projectId, name, path, nodes, edges);
+        invalidate(projectId);
+        return persisted;
+    }
+
+    @Override
     public void deleteProject(String projectId) {
         delegate.deleteProject(projectId);
         invalidate(projectId);
@@ -134,6 +142,12 @@ public class CachingGraphRepository implements GraphRepository {
     @Override
     public List<ProjectMetadata> findAllProjects() {
         return delegate.findAllProjects();
+    }
+
+    @Override
+    public GraphDataResponse getFileSlice(String projectId, String filePath) {
+        // Point-read for the per-file diff (B-M5): index-backed, not worth snapshot caching.
+        return delegate.getFileSlice(projectId, filePath);
     }
 
     @Override

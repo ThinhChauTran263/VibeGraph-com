@@ -4,7 +4,6 @@
  */
 
 import { API_BASE_URL } from './constants'
-import http from './http'
 import { clearStoredSession, fetchWithSessionRefresh, redirectToLogin } from './authRefresh'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
@@ -602,8 +601,9 @@ export const diagramApi = {
 // ─── Auth API ──────────────────────────────────────────────────────────────────
 
 /**
- * Auth endpoints. login/register use the base `api` object (no Bearer token needed,
- * no 401 redirect for invalid credentials). `me()` uses the authenticated `http` instance.
+ * Auth endpoints. All of them go through the base fetch wrapper — its
+ * `fetchWithSessionRefresh` handles the 401 → refresh → retry cycle the old
+ * axios interceptor used to provide (F-M3: axios removed).
  */
 export const authApi = {
   register(data: RegisterRequest): Promise<AuthResponse> {
@@ -618,10 +618,8 @@ export const authApi = {
     return api.post<void>('/api/auth/logout')
   },
 
-  async me(): Promise<User> {
-    const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
-    // Tùy thuộc vào cấu trúc trả về của backend, có thể là res.data hoặc res.data.data
-    return res.data.data
+  me(): Promise<User> {
+    return api.get<User>('/api/auth/me')
   },
 }
 
