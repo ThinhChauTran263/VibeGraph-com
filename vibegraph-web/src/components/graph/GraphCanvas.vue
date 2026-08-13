@@ -1121,12 +1121,10 @@ onUnmounted(() => {
   /* Single source of truth for the floating detail column width. The toolbar
      reserves the same value, so the two can never drift apart. */
   --detail-width: 23rem;
-  /* Narrower than this and the toolbar cannot keep a usable search box beside the
-     panel. The number is the sum, not a guess:
-       1rem left + 12rem search floor + 0.75rem gap + 23rem panel + 1rem right
-       = 37.75rem, rounded up to 40rem for slack.
-     The toggles may wrap onto their own line, so the search floor is what binds. */
-  --detail-side-by-side-min: 40rem;
+  /* The side-by-side threshold is written literally in the @container rules below,
+     not held in a custom property: container and media queries cannot read var().
+     A variable here would look like it drove the breakpoint while changing it did
+     nothing. The derivation lives in a comment beside the literal instead. */
   /* Queried instead of the viewport because the stage is what actually has to fit
      both. The left sidebar is user-resizable, so viewport width says nothing about
      how much room is left here — that mismatch is what let the panel cover the
@@ -1169,8 +1167,11 @@ onUnmounted(() => {
      capped at 38vh and its header/controls ate all of it, hiding the results). */
   min-height: 0;
   overflow-y: auto;
-  /* The cards carry their own shadow; a scrollbar gutter keeps them from being
-     clipped against the stage edge when the column overflows. */
+  /* Reserves the scrollbar's width up front so the cards keep one width whether or
+     not the column currently overflows. Measured: with overflow the content box is
+     353px either way — this changes nothing at that point. What it prevents is the
+     15px jump at the moment a scrollbar appears, which happens often here because
+     Impact Analysis results grow the column after it has already rendered. */
   scrollbar-gutter: stable;
 }
 
@@ -1391,6 +1392,10 @@ onUnmounted(() => {
    it on a narrow stage left the toolbar ~90px wide, and the search box — floored at
    min-width: 12rem — then overflowed its own container straight under the panel.
    Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
+/* 40rem is the sum, not a guess: 1rem left + 12rem search floor + 0.75rem gap
+   + 23rem panel + 1rem right = 37.75rem, rounded up for slack. The toggles may
+   wrap onto their own line, so the search floor is what binds. Keep this literal
+   and the one below in step — a query cannot read a custom property. */
 @container (min-width: 40rem) {
   .graph-canvas__stage--detail-open .graph-top-controls {
     right: calc(1rem + var(--detail-width) + 0.75rem);
