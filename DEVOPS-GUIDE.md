@@ -58,6 +58,93 @@ Set at least the Neo4j credentials in `.env`:
 
 Do not commit `.env` or real secrets.
 
+## Running behind a reverse proxy
+
+Two variables decide how the backend derives a client IP. Every per-IP control depends on that
+value: the per-IP rate limit (`VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP`, default 120/min), the admin
+IP-block list, and the guard that stops a wrong API key from burning BCrypt rounds before the
+limiter sees it.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `VIBEGRAPH_TRUST_PROXY` | `false` | When `false` the backend uses the socket peer address and ignores `X-Forwarded-For` entirely. Safe default — leave it off unless a reverse proxy actually fronts the backend. |
+| `VIBEGRAPH_TRUSTED_PROXIES` | empty | Exact IPs and/or CIDRs of the proxies allowed to supply `X-Forwarded-For`, e.g. `127.0.0.1,172.18.0.0/16`. Only consulted when `VIBEGRAPH_TRUST_PROXY=true`. |
+
+`X-Forwarded-For` is read only when **both** hold: the flag is `true`, and the socket peer is itself
+in `VIBEGRAPH_TRUSTED_PROXIES`. A direct caller that reaches the backend port without going through
+a listed proxy can never influence the resolved address, whatever headers it sends. Keep the list as
+narrow as the real topology allows — widening it to a whole bridge network (`172.18.0.0/16`) means
+any container on that network can supply the header.
+
+### Requirement before enabling trust-proxy
+
+`VIBEGRAPH_TRUST_PROXY=true` is only safe if the proxy in front **appends** the connecting client's
+address to `X-Forwarded-For`. The backend walks the header right-to-left and takes the right-most
+entry that is not a trusted proxy. When the proxy appends, the address it observed sits to the right
+of anything the client sent, so client-supplied entries are ignored.
+
+If the proxy passes `X-Forwarded-For` through unchanged — or does not set it at all — then a
+single-entry header sent by the client becomes the right-most untrusted entry, and the client picks
+its own IP. Consequences, all silent:
+
+- Per-IP rate limiting stops working: a new value per request means a fresh bucket per request.
+- Admin IP blocks stop working for anyone who sends the header.
+- The wrong-API-key BCrypt cost is paid on every request again, because the limiter never reaches
+  its threshold.
+
+Nginx appends correctly with `$proxy_add_x_forwarded_for`:
+
+```nginx
+location / {
+    proxy_pass http://backend:8080;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Host $host;
+}
+```
+
+Do **not** use `proxy_set_header X-Forwarded-For $http_x_forwarded_for` — that forwards the client's
+header verbatim and is exactly the misconfiguration described above.
+
+### Verify it before trusting it
+
+The resolved address is not written to the backend log, so `docker compose logs` will not show it.
+It is recorded in request telemetry and surfaced to admins, so check it there.
+
+**Attribution check.** Send a forged header from outside the proxy, then read back what the backend
+recorded (requires an admin session):
+
+```bash
+curl -s -o /dev/null -H 'X-Forwarded-For: 1.2.3.4' https://your-host/api/projects
+curl -s -b admin-cookies.txt 'https://your-host/api/admin/security/request-events?limit=5'
+```
+
+The newest entry's `ipAddress` must be the real client address, never `1.2.3.4`. Use
+`/request-events` and not `/events` — the latter returns security events, which carry no client
+address.
+
+**Functional check** — faster, and needs no admin session. Lower
+`VIBEGRAPH_REQUESTS_PER_MINUTE_PER_IP` temporarily, then send more requests than the limit while
+rotating `X-Forwarded-For` on each one:
+
+```bash
+for i in $(seq 1 40); do
+  curl -s -o /dev/null -w '%{http_code} ' -H "X-Forwarded-For: 203.0.113.$i" https://your-host/api/projects
+done
+```
+
+A correctly configured deployment still reaches `429`. If every request returns the same non-429
+status, the header is being trusted verbatim — set `VIBEGRAPH_TRUST_PROXY=false` until the proxy is
+fixed, then restore the original limit.
+
+Use a public range such as `203.0.113.0/24` (reserved for documentation) rather than `10.x` or
+`192.168.x`. Private and loopback addresses are skipped while resolving, so a private forged value
+falls back to the peer address and the test would pass even on a misconfigured deployment.
+
+Note that enforcement is per instance: N replicas allow up to N times the configured rate. Per-user
+and per-API-key limits are unaffected by this setting, since they key on the authenticated identity
+rather than the address.
+
 ## Run the stack
 
 Build images and start all services in the foreground:

@@ -1,0 +1,20 @@
+V1.1 - B-M11 static verification
+Date: 2026-08-12
+Conclusion: CONFIRMED
+
+Evidence
+1. Neo4jGraphRepository.upsertProject uses session.run at lines 51-61.
+2. Neo4jGraphRepository.upsertNodes groups by distinct node label and calls session.run once per
+   label group at lines 135-184. No session.executeWrite or explicit Transaction wraps the loop.
+3. Neo4jGraphRepository.upsertEdges groups by distinct relationship type and calls session.run once
+   per relationship-type group at lines 188-231. No transaction function wraps the loop.
+4. AnalyzeServiceImpl invokes upsertProject, upsertNodes, then upsertEdges sequentially at lines
+   104-112.
+5. Therefore one analysis performs a data-dependent number of auto-commit statements:
+   1 project statement + one statement per distinct node label + one statement per distinct
+   relationship type. This is more precise than describing it as a fixed three statements.
+6. ArchiveImportServiceImpl lines 240-243 and TarballImportServiceImpl lines 217-220 mark the
+   project FAILED, then call cleanup(workspace, null). Their cleanup methods delete the project only
+   when projectId is non-null, so an already-persisted partial graph is not removed on this path.
+
+No source files were modified for this verification.
