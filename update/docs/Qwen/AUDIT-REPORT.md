@@ -464,7 +464,7 @@ Agent test Chrome độc lập đã chạy 8 test runtime (Chrome 151.0.7922.110
 | V2.2 | H13 (chi phí bcrypt trước rate-limit) | **CONFIRMED** | Median 30 request/nhóm: không key 4,25ms / prefix ngẫu nhiên 4,64ms / **trùng prefix 54,84ms** (+~50,20ms); 90/90 trả 401, 0 trả 429 |
 | V2.3 | H13 (thứ tự filter) | **CONFIRMED** | API-key filter chạy TRƯỚC rate-limit filter (rate-limit chỉ ràng buộc trước `AuthorizationFilter`) |
 
-**Lưu ý:** File tạm 200MiB của T6 vẫn được giữ tại `.vibegraph/uploads/github-04e0b065-39f6-484b-bc84-7bf25f8b2704/source/ThinhChauTran263-fatc-Grocery-Store-ce1c762/runtime-t6-large.txt` (chưa xóa — người dùng tự quyết định dọn).
+**Lưu ý (đính chính 13/08/2026):** File 200MiB của T6 nằm tại `.vibegraph/uploads/github-04e0b065-39f6-484b-bc84-7bf25f8b2704/source/ThinhChauTran263-fatc-Grocery-Store-ce1c762/runtime-t6-large.txt`. Workspace này thuộc project sống `ThinhChauTran263/fatc-Grocery-Store` (chủ tài khoản thật — xem đính chính mục "Tàn dư test T6" dưới §10). **RÚT khuyến nghị xóa**: file có thể là rác đo lường, nhưng nó nằm trong workspace của project thật; quyết định thuộc operator, và chỉ sau khi đã xác nhận không công cụ nào còn đọc nó.
 
 **Lưu ý (vòng V1/V2, 12/08/2026):** Key test `runtime-h13-20260812` của V2 đã được tạo rồi xóa qua UI — PostgreSQL xác nhận `deleted_at IS NOT NULL`. Chi tiết đầy đủ 4 test: `runtime-evidence/VERIFICATION-BM11-H13-REPORT.md` (kèm `V1-static.txt`, `V1-runtime-cypher.txt`, `V2-timing.txt`, `V2-filter-order.txt`).
 
@@ -501,7 +501,7 @@ Agent triển khai bên ngoài đã hoàn thành Đợt 1 (REMEDIATION-PLAN §3)
 ### Mục mở chuyển sang Backlog/Đợt 0
 
 - **H4/T2 chờ TLS termination:** `AUTH_COOKIE_SECURE` đã mặc định `true` nhưng kiểm chứng T2 end-to-end (cookie có cờ Secure qua HTTPS) chưa chạy được vì môi trường chưa có reverse proxy TLS.
-- **Tàn dư test T6:** 2 tài khoản disposable `runtime-t6-2026081220*@example.com` + project `be9ab43e`, `d0b1f52d` — chờ operator duyệt dọn.
+- **Tàn dư test T6 — ĐÍNH CHÍNH BẮT BUỘC (13/08/2026), RÚT khuyến nghị dọn:** dòng cũ ghi "2 tài khoản disposable `runtime-t6-*` + project `be9ab8150`/`431ee9dc` chờ operator duyệt dọn" là **suy đoán sai, hai lần liền**. Truy vấn thật: `SELECT p.project_id, u.email FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.project_id IN ('b9ab8150','431ee9dc')` → `user@vibegraph.com` và `thinhtran09177@gmail.com` (tài khoản của chủ repo); `SELECT count(*) FROM users WHERE email LIKE 'runtime-t6%'` → **0** — không tồn tại tài khoản `runtime-t6-*` nào trong DB. Hai project là dữ liệu người dùng thật; workspace `ThinhChauTran263-fatc-Grocery-Store-ce1c762` khớp tuyệt đối tên repo của chúng. **KHÔNG XÓA.** Câu hỏi quy trình phải trả lời: cả hai lần kết luận "rác test" đều suy ra từ HÌNH DẠNG id (8 ký tự, tiền tố `github-`) thay vì JOIN bảng `users` để đọc chủ sở hữu — quy trình suy luận-from-mẫu đã bỏ qua bước tra cứu 1 dòng; từ nay mọi đề xuất dọn dữ liệu phải kèm kết quả JOIN chủ sở hữu thật.
 - **Đợt 0 (S1/S2) chưa làm:** xoay secret và dọn git object vẫn chờ xác nhận (xem REMEDIATION-PLAN §2).
 - **GitNexus MCP không kết nối:** trong đợt này việc tìm tham chiếu thực hiện thủ công thay vì qua GitNexus; khuyến nghị chạy `npx gitnexus analyze` sau loạt sửa để đối chiếu tham chiếu tự động.
 
