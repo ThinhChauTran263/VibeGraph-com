@@ -130,7 +130,24 @@
 ## 8. Tàn dư & dọn dẹp
 
 - **Đã dọn trong phiên 13/08 (kiểm bằng lệnh):** toàn bộ tài khoản/project/workspace/Neo4j của `rt-b5-*` và `rt-b6-*` (psql `DELETE 1` từng bảng; Neo4j `remaining=0`; `find /uploads -name Hello.java` = 0; `/uploads` chỉ còn 3 workspace hợp lệ cũ); cookie/zip cục bộ; `TRUST_PROXY` container trả về `false` của `.env`.
-- **Còn chờ operator duyệt dọn (từ AUDIT-REPORT §10):** tàn dư T6 — 2 tài khoản `runtime-t6-*` + project `be9ab43e`/`d0b1f52d` (trong DB hiện thấy `b9ab8150`/`431ee9dc` tên Grocery thuộc chủ `runtime-t6-*` — id 8 ký tự cũ, cùng nhóm); file 200 MiB `.vibegraph/uploads/github-04e0b065-…/runtime-t6-large.txt`.
+- **Còn chờ operator duyệt dọn (từ AUDIT-REPORT §10):** file 200 MiB `.vibegraph/uploads/github-04e0b065-…/runtime-t6-large.txt`.
+
+  > ⛔ **ĐÍNH CHÍNH BẮT BUỘC — reviewer, 13/08/2026. KHÔNG XOÁ 2 PROJECT NÀY.**
+  >
+  > Bản đầu của mục này đề nghị dọn project `b9ab8150` / `431ee9dc` vì cho rằng chúng "thuộc chủ `runtime-t6-*` — id 8 ký tự cũ, cùng nhóm". **Đó là suy đoán, không phải quan sát DB.** Query thật:
+  >
+  > ```sql
+  > SELECT p.project_id, u.email FROM projects p JOIN users u ON u.id = p.owner_id
+  > WHERE p.project_id IN ('b9ab8150','431ee9dc');
+  > --  431ee9dc | user@vibegraph.com
+  > --  b9ab8150 | thinhtran09177@gmail.com      ← tài khoản của chủ repo
+  >
+  > SELECT count(*) FROM users WHERE email LIKE 'runtime-t6%' OR email LIKE 'rt-b%';  -- 0
+  > ```
+  >
+  > **Không tồn tại tài khoản `runtime-t6-*` nào trong DB.** Hai project đó thuộc tài khoản thật, một trong đó là của chính chủ repo. Làm theo khuyến nghị cũ = xoá dữ liệu người dùng thật.
+  >
+  > Bài học: khi kết luận một bản ghi là "rác test", phải JOIN sang `users` để đọc chủ sở hữu. Suy ra từ hình dạng id (8 ký tự, "cùng nhóm") không phải bằng chứng.
 
 ## 9. Chưa làm / bàn giao
 
