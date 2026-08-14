@@ -1,0 +1,73 @@
+<mxfile host="app.diagrams.net" modified="2026-08-14T10:50:04.4560277+07:00" agent="VibeGraph evidence generator" version="24.7.17">
+  <diagram id="component" name="Page-1">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2500" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="VibeGraph Component and Docker Deployment" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="2300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="clients" value="Browser / CLI / AI client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="80" y="350" width="300" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="fe" value="Frontend container&#xD;&#xA;nginx:1.27-alpine&#xD;&#xA;host 3000 -&gt; 80&#xD;&#xA;Vue 3 + Vite + Sigma.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ecfeff;strokeColor=#0891b2;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="100" width="420" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="be" value="Backend container&#xD;&#xA;Spring Boot 4.0.6 / Java 21&#xD;&#xA;REST + Auth + Parser + Graph/Watcher/STOMP + UML + MCP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="100" width="600" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="repo" value="GraphRepository facade&#xD;&#xA;Neo4jGraphRepository owns raw Driver" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="400" width="440" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="pg" value="PostgreSQL 16.11&#xD;&#xA;127.0.0.1:5433 -&gt; 5432&#xD;&#xA;control-plane/auth/status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#dc2626;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1850" y="100" width="420" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="neo" value="Neo4j 5.26&#xD;&#xA;127.0.0.1:7474 / 7687&#xD;&#xA;code graph" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#dc2626;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1850" y="360" width="420" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="mounts" value="Writable bind mounts&#xD;&#xA;./projects -&gt; /app/projects&#xD;&#xA;./uploads -&gt; /app/uploads" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="650" width="500" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="supa" value="Optional realtime/high-volume&#xD;&#xA;PostgreSQL-compatible storage&#xD;&#xA;disabled by default" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#9333ea;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1750" y="690" width="560" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c-fe" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="clients" target="fe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c-be" value="REST / MCP X-API-Key" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="clients" target="be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-be" value="REST JSON + STOMP /ws/graph-updates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="fe" target="be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="be-repo" value="Parser/Graph/MCP via repository/services" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="be" target="repo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="repo-neo" value="raw Driver isolated here" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="repo" target="neo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="be-pg" value="JDBC / Flyway / ownership/status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="be" target="pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mounts-be" value="writable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="mounts" target="be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="health-pg" value="depends_on healthy" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;endArrow=open;" edge="1" parent="1" source="be" target="pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="health-neo" value="depends_on healthy" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;endArrow=open;" edge="1" parent="1" source="be" target="neo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="health-fe" value="depends_on healthy" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;endArrow=open;" edge="1" parent="1" source="fe" target="be">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="be-supa" value="optional when enabled" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;endArrow=open;" edge="1" parent="1" source="be" target="supa">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Evidence: docker-compose.yml, backend/frontend Dockerfiles, application.yaml, WebSocketConfig and MCP module guide. This is the checked local topology, not an external production deployment claim." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="950" width="1450" height="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
