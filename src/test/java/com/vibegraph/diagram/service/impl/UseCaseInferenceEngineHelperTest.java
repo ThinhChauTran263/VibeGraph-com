@@ -2,7 +2,6 @@ package com.vibegraph.diagram.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.Set;
@@ -22,21 +21,18 @@ class UseCaseInferenceEngineHelperTest {
 
     private final UseCaseInferenceEngine engine = new UseCaseInferenceEngine();
 
-    // ---- reflection plumbing (Endpoint/DomainGuess are private records) -------------------------
+    // ---- reflection plumbing (post B-M2 split: Endpoint lives in UseCaseEndpointRules,
+    //      string helpers in UseCaseNameNormalizer; the engine keeps thin delegators) --------------
 
-    private static Object endpoint(String method, String path, String controller, String role) throws Exception {
-        Class<?> cls = Class.forName(
-                "com.vibegraph.diagram.service.impl.UseCaseInferenceEngine$Endpoint");
-        Constructor<?> ctor = cls.getDeclaredConstructor(
-                String.class, String.class, String.class, String.class, String.class, String.class);
-        ctor.setAccessible(true);
-        return ctor.newInstance("route-" + path, method, path, controller, controller, role);
+    private static Object endpoint(String method, String path, String controller, String role) {
+        // Same package as the record, so no reflection is needed to construct it.
+        return new UseCaseEndpointRules.Endpoint(
+                "route-" + path, method, path, controller, controller, role);
     }
 
     private static Object domainGuess(UseCaseInferenceEngine engine, Object ep) throws Exception {
-        Class<?> epCls = Class.forName(
-                "com.vibegraph.diagram.service.impl.UseCaseInferenceEngine$Endpoint");
-        Method m = UseCaseInferenceEngine.class.getDeclaredMethod("inferDomainGuess", epCls);
+        Method m = UseCaseInferenceEngine.class.getDeclaredMethod(
+                "inferDomainGuess", UseCaseEndpointRules.Endpoint.class);
         m.setAccessible(true);
         return m.invoke(engine, ep);
     }
@@ -54,9 +50,8 @@ class UseCaseInferenceEngineHelperTest {
     }
 
     private static Object inferActor(UseCaseInferenceEngine engine, Object ep) throws Exception {
-        Class<?> epCls = Class.forName(
-                "com.vibegraph.diagram.service.impl.UseCaseInferenceEngine$Endpoint");
-        Method m = UseCaseInferenceEngine.class.getDeclaredMethod("inferActor", epCls);
+        Method m = UseCaseInferenceEngine.class.getDeclaredMethod(
+                "inferActor", UseCaseEndpointRules.Endpoint.class);
         m.setAccessible(true);
         return m.invoke(engine, ep);
     }
@@ -66,15 +61,15 @@ class UseCaseInferenceEngineHelperTest {
     }
 
     private static String invokeStr(String method, String arg) throws Exception {
-        Method m = UseCaseInferenceEngine.class.getDeclaredMethod(method, String.class);
+        Method m = UseCaseNameNormalizer.class.getDeclaredMethod(method, String.class);
         m.setAccessible(true);
-        return (String) m.invoke(new UseCaseInferenceEngine(), arg);
+        return (String) m.invoke(null, arg);
     }
 
     private static String invokeStr(String method, String arg, Set<String> used) throws Exception {
-        Method m = UseCaseInferenceEngine.class.getDeclaredMethod(method, String.class, Set.class);
+        Method m = UseCaseNameNormalizer.class.getDeclaredMethod(method, String.class, Set.class);
         m.setAccessible(true);
-        return (String) m.invoke(new UseCaseInferenceEngine(), arg, used);
+        return (String) m.invoke(null, arg, used);
     }
 
     // ---- singularize ----------------------------------------------------------------------------
@@ -283,9 +278,8 @@ class UseCaseInferenceEngineHelperTest {
         @Test
         void inferDomainWrapperDelegatesToGuessName() throws Exception {
             // pins the package-private wrapper used by callers that only want the name
-            Class<?> epCls = Class.forName(
-                    "com.vibegraph.diagram.service.impl.UseCaseInferenceEngine$Endpoint");
-            Method m = UseCaseInferenceEngine.class.getDeclaredMethod("inferDomain", epCls);
+            Method m = UseCaseInferenceEngine.class.getDeclaredMethod(
+                    "inferDomain", UseCaseEndpointRules.Endpoint.class);
             m.setAccessible(true);
             Object ep = endpoint("GET", "/api/orders", null, null);
             assertThat((String) m.invoke(engine, ep)).isEqualTo("Order");
