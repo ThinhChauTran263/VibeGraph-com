@@ -30,9 +30,8 @@ import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.CliRepositoryCreateRequest;
 import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
 import com.vibegraph.graph.dto.response.ProjectResponse;
-import com.vibegraph.graph.service.AnalyzeService;
-import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.CliRepositoryService;
+import com.vibegraph.graph.service.ProjectAnalysisScheduler;
 import com.vibegraph.graph.service.ProjectService;
 
 import jakarta.validation.Valid;
@@ -44,7 +43,7 @@ import lombok.RequiredArgsConstructor;
 public class ProjectController {
 
     private final ProjectService projectService;
-    private final AnalyzeService analyzeService;
+    private final ProjectAnalysisScheduler projectAnalysisScheduler;
     private final ProjectOwnershipRegistrar ownershipRegistrar;
     private final ProjectOwnershipGuard ownershipGuard;
     private final ProjectOwnershipQuery ownershipQuery;
@@ -103,20 +102,23 @@ public class ProjectController {
         return ResponseEntity.ok(ApiResponse.success(projectService.getProject(id)));
     }
 
+    /**
+     * Accepts the analysis and runs it in the background (H8): the heavy parse + graph upsert
+     * no longer occupies a Tomcat thread (minutes on large repos, reverse-proxy timeouts, no
+     * cancellation). Progress arrives over WebSocket {@code /topic/projects/{id}/status}.
+     */
     @PostMapping("/{id}/analyze")
-    public ResponseEntity<ApiResponse<AnalysisResult>> analyze(@PathVariable String id) {
+    public ResponseEntity<Void> analyze(@PathVariable String id) {
         ownershipGuard.assertOwner(id);
         featureGateService.assertEnabled(FeatureGateService.PROJECT_ANALYZE);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
 
-        ProjectResponse project = projectService.getProject(id);
-        AnalysisResult result = analyzeService.analyzeProject(id, project.getName(), project.getRootPath());
+        // Existence check up front so an unknown id still gets a 404, not an accepted no-op.
+        projectService.getProject(id);
+        projectAnalysisScheduler.schedule(id);
 
-        // Persist analysis stats through the interface contract — no impl downcast.
-        projectService.updateProjectStats(id, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
-
-        return ResponseEntity.ok(ApiResponse.success(result));
+        return ResponseEntity.accepted().build();
     }
 
     /**

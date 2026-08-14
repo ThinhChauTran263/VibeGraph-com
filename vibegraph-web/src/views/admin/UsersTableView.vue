@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import { ApiError } from '@/lib/api'
 import type { AdminUserResponse } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import UserDetailDrawer from './UserDetailDrawer.vue'
@@ -67,17 +68,44 @@ const currentPageSize = computed(
   () => adminStore.usersPagination.pageSize ?? adminStore.usersPagination.size ?? 20,
 )
 
-onMounted(async () => {
-  await Promise.all([adminStore.fetchUsers(), adminStore.fetchPlans()])
+onMounted(() => {
+  void loadUsers(0)
+  void loadPlansSafe()
 })
 
-const applyFilters = async () => {
-  await adminStore.fetchUsers({
-    search: searchQuery.value || undefined,
-    status: statusFilter.value || undefined,
-    plan: planFilter.value || undefined,
-  })
+const loadError = ref('')
+
+/**
+ * H11: every user-list fetch goes through this guarded loader so a backend 500 or a
+ * network outage surfaces an i18n error banner instead of an unhandled promise
+ * rejection and a silently empty table.
+ */
+const loadUsers = async (page = currentPage.value) => {
+  loadError.value = ''
+  try {
+    await adminStore.fetchUsers({
+      search: searchQuery.value || undefined,
+      status: statusFilter.value || undefined,
+      plan: planFilter.value || undefined,
+      page,
+      size: currentPageSize.value,
+    })
+  } catch (e: unknown) {
+    // Backend error messages are safe to surface; raw network errors get the i18n copy.
+    loadError.value =
+      e instanceof ApiError && e.message ? e.message : t('admin.users.errors.loadFailed')
+  }
 }
+
+const loadPlansSafe = async () => {
+  try {
+    await adminStore.fetchPlans()
+  } catch {
+    // Plan list only feeds the filter/create form; the table must still render.
+  }
+}
+
+const applyFilters = () => void loadUsers(0)
 
 const openDetail = async (user: AdminUserResponse) => {
   selectedUser.value = user
@@ -103,13 +131,7 @@ const syncSelectedUser = () => {
 /** After the detail panel performs an action, keep the open detail in sync immediately. */
 const onUserUpdated = async () => {
   syncSelectedUser()
-  await adminStore.fetchUsers({
-    search: searchQuery.value || undefined,
-    status: statusFilter.value || undefined,
-    plan: planFilter.value || undefined,
-    page: currentPage.value,
-    size: currentPageSize.value,
-  })
+  await loadUsers(currentPage.value)
   syncSelectedUser()
 }
 
@@ -243,6 +265,9 @@ function userStatusLabel(u: AdminUserResponse): string {
     </div>
 
     <div class="card">
+      <div v-if="loadError" class="inline-error" role="alert" style="margin: 12px 16px 0">
+        {{ loadError }}
+      </div>
       <div class="table-responsive">
         <table class="users-table">
           <thead>
@@ -313,15 +338,7 @@ function userStatusLabel(u: AdminUserResponse): string {
             type="button"
             class="btn-secondary btn-sm"
             :disabled="currentPage <= 0"
-            @click="
-              adminStore.fetchUsers({
-                search: searchQuery || undefined,
-                status: statusFilter || undefined,
-                plan: planFilter || undefined,
-                page: currentPage - 1,
-                size: currentPageSize,
-              })
-            "
+            @click="loadUsers(currentPage - 1)"
           >
             {{ t('admin.users.actions.previous') }}
           </button>
@@ -337,15 +354,7 @@ function userStatusLabel(u: AdminUserResponse): string {
             type="button"
             class="btn-secondary btn-sm"
             :disabled="currentPage + 1 >= adminStore.usersPagination.totalPages"
-            @click="
-              adminStore.fetchUsers({
-                search: searchQuery || undefined,
-                status: statusFilter || undefined,
-                plan: planFilter || undefined,
-                page: currentPage + 1,
-                size: currentPageSize,
-              })
-            "
+            @click="loadUsers(currentPage + 1)"
           >
             {{ t('admin.users.actions.next') }}
           </button>

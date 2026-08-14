@@ -1,9 +1,12 @@
 package com.vibegraph.graph.repository.impl;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Repository;
 
@@ -18,7 +21,6 @@ import com.vibegraph.graph.repository.impl.neo4j.Neo4jGraphRepository;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -41,7 +43,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Repository
 @Primary
-@RequiredArgsConstructor
 @Slf4j
 public class CachingGraphRepository implements GraphRepository {
 
@@ -51,13 +52,25 @@ public class CachingGraphRepository implements GraphRepository {
     static final int MAX_ENTRIES = 32;
 
     private final Neo4jGraphRepository delegate;
+    private final LongSupplier clock;
     private final Map<String, CacheEntry> snapshots = new ConcurrentHashMap<>();
+
+    @Autowired
+    public CachingGraphRepository(Neo4jGraphRepository delegate) {
+        this(delegate, System::currentTimeMillis);
+    }
+
+    /** Test seam: an injectable clock makes eviction order deterministic. */
+    CachingGraphRepository(Neo4jGraphRepository delegate, LongSupplier clock) {
+        this.delegate = delegate;
+        this.clock = clock;
+    }
 
     // ---- cached read -------------------------------------------------------------------------
 
     @Override
     public GraphDataResponse getFullGraph(String projectId) {
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         CacheEntry entry = snapshots.get(projectId);
         if (entry != null && now - entry.loadedAt < TTL_MILLIS) {
             return entry.graph;
@@ -72,23 +85,22 @@ public class CachingGraphRepository implements GraphRepository {
         snapshots.remove(projectId);
     }
 
-    /** Bound memory by dropping the oldest snapshots when too many projects are cached. */
+    /**
+     * Bound memory by dropping the oldest snapshot when too many projects are cached.
+     * B-L2: a put() adds at most one entry, so a single oldest-eviction pass is enough —
+     * the previous while-nested-for rescanned the whole map per evicted entry.
+     */
     private void pruneIfOverflowing() {
-        while (snapshots.size() > MAX_ENTRIES) {
-            String oldestKey = null;
-            long oldestLoadedAt = Long.MAX_VALUE;
-            for (Map.Entry<String, CacheEntry> candidate : snapshots.entrySet()) {
-                if (candidate.getValue().loadedAt < oldestLoadedAt) {
-                    oldestLoadedAt = candidate.getValue().loadedAt;
-                    oldestKey = candidate.getKey();
-                }
-            }
-            if (oldestKey == null) {
-                return;
-            }
-            snapshots.remove(oldestKey);
-            log.debug("Evicted oldest graph snapshot from cache: {}", oldestKey);
+        if (snapshots.size() <= MAX_ENTRIES) {
+            return;
         }
+        snapshots.entrySet().stream()
+                .min(Map.Entry.comparingByValue(Comparator.comparingLong(CacheEntry::loadedAt)))
+                .map(Map.Entry::getKey)
+                .ifPresent(oldestKey -> {
+                    snapshots.remove(oldestKey);
+                    log.debug("Evicted oldest graph snapshot from cache: {}", oldestKey);
+                });
     }
 
     // ---- writes: delegate then invalidate ----------------------------------------------------
@@ -108,6 +120,14 @@ public class CachingGraphRepository implements GraphRepository {
     @Override
     public int upsertEdges(String projectId, List<EdgeData> edges) {
         int persisted = delegate.upsertEdges(projectId, edges);
+        invalidate(projectId);
+        return persisted;
+    }
+
+    @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges) {
+        int persisted = delegate.upsertAnalysis(projectId, name, path, nodes, edges);
         invalidate(projectId);
         return persisted;
     }
@@ -134,6 +154,12 @@ public class CachingGraphRepository implements GraphRepository {
     @Override
     public List<ProjectMetadata> findAllProjects() {
         return delegate.findAllProjects();
+    }
+
+    @Override
+    public GraphDataResponse getFileSlice(String projectId, String filePath) {
+        // Point-read for the per-file diff (B-M5): index-backed, not worth snapshot caching.
+        return delegate.getFileSlice(projectId, filePath);
     }
 
     @Override

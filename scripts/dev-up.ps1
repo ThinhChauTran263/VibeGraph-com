@@ -2,7 +2,9 @@
   VibeGraph - one-command dev startup (demo-safe).
 
   Brings the whole local stack up in the right order and verifies each step:
-    1. Neo4j (docker compose) -> wait until the HTTP port answers.
+    1. Postgres + Neo4j (docker compose) -> wait until pg_isready passes and the
+       Neo4j HTTP port answers. D-M1: the backend requires Postgres (Flyway +
+       ddl-auto: validate), so starting Neo4j alone leaves it unable to boot.
     2. Backend (mvnw spring-boot:run, detached window) -> wait for /api/projects = 200.
     3. Frontend (npm run dev, detached window)          -> wait for :5173 = 200.
 
@@ -29,13 +31,27 @@ function Http200($url, $timeoutSec) {
     return $false
 }
 
-Write-Host "==> [1/3] Neo4j (docker compose up -d neo4j)" -ForegroundColor Cyan
+Write-Host "==> [1/3] Postgres + Neo4j (docker compose up -d postgres neo4j)" -ForegroundColor Cyan
 Push-Location $Root
 try {
-    docker compose up -d neo4j | Out-Null
+    docker compose up -d postgres neo4j | Out-Null
 } finally {
     Pop-Location
 }
+# D-M1: backend needs Postgres BEFORE it starts (Flyway + ddl-auto: validate).
+Write-Host "    waiting for Postgres (pg_isready)..."
+$pgDeadline = (Get-Date).AddSeconds(60)
+$pgReady = $false
+while ((Get-Date) -lt $pgDeadline) {
+    docker compose exec -T postgres pg_isready -q 2>$null
+    if ($LASTEXITCODE -eq 0) { $pgReady = $true; break }
+    Start-Sleep -Seconds 2
+}
+if (-not $pgReady) {
+    Write-Host "    Postgres did not become ready in 60s. Check: docker logs vibegraph-postgres" -ForegroundColor Red
+    exit 1
+}
+Write-Host "    Postgres is up." -ForegroundColor Green
 Write-Host "    waiting for Neo4j HTTP (:7474)..."
 if (-not (Http200 "http://localhost:7474" 60)) {
     Write-Host "    Neo4j did not become ready in 60s. Check: docker logs vibegraph-neo4j" -ForegroundColor Red

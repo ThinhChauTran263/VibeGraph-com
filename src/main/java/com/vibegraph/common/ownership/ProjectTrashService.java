@@ -8,6 +8,8 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +40,9 @@ import lombok.RequiredArgsConstructor;
 public class ProjectTrashService {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectTrashService.class);
+
+    /** B-M14: sweep batch size — keeps each trash query/transaction bounded. */
+    private static final int PURGE_BATCH_SIZE = 200;
 
     private final ProjectOwnershipRepository ownershipRepository;
     private final ProjectDeletionOrchestrator deletionOrchestrator;
@@ -104,22 +109,44 @@ public class ProjectTrashService {
      * <p>Runs per project so one failure — most often an administrator lock placed after the owner
      * trashed the project — cannot stop the rest of the sweep. A project that keeps failing simply
      * stays in trash and is retried on the next run rather than being silently lost.
+     *
+     * <p>B-M14 (with H17): the sweep pages through expired rows in bounded batches instead of
+     * loading the whole trash into one query/transaction, and carries no transaction of its own —
+     * each purge runs in the orchestrator's own short transaction, so a huge trash can no longer
+     * occupy the scheduler thread (or one giant transaction) for the whole sweep.
      */
     @Scheduled(cron = "${vibegraph.projects.trash-sweep-cron:0 30 3 * * ?}")
-    @Transactional
     public void purgeExpiredProjects() {
         Instant cutoff = Instant.now(clock)
                 .minus(projectsProperties.getTrashRetentionDays(), ChronoUnit.DAYS);
-        List<ProjectOwnership> expired = ownershipRepository.findByDeletedAtLessThan(cutoff);
-        if (expired.isEmpty()) {
-            return;
+        // Fixed up front so rows trashed mid-sweep are left for the next run.
+        long expired = 0;
+        long purged = 0;
+        while (true) {
+            // Always page 0: successful purges remove their rows, so page 0 advances on its own.
+            Page<ProjectOwnership> batch = ownershipRepository
+                    .findByDeletedAtLessThan(cutoff, PageRequest.of(0, PURGE_BATCH_SIZE));
+            if (batch.isEmpty()) {
+                break;
+            }
+            expired += batch.getNumberOfElements();
+            long purgedInBatch = batch.stream()
+                    .map(ProjectOwnership::getProjectId)
+                    .filter(this::purgeQuietly)
+                    .count();
+            purged += purgedInBatch;
+            if (purgedInBatch == 0) {
+                // Nothing in this batch could be purged (e.g. admin locks). Stop instead of
+                // re-fetching the same rows forever; they are retried on the next scheduled run.
+                log.warn("Trash retention sweep stopped early: {} expired project(s) keep failing to purge",
+                        batch.getNumberOfElements());
+                break;
+            }
         }
-        long purged = expired.stream()
-                .map(ProjectOwnership::getProjectId)
-                .filter(this::purgeQuietly)
-                .count();
-        log.info("Trash retention sweep purged {} of {} expired projects (retention {} days)",
-                purged, expired.size(), projectsProperties.getTrashRetentionDays());
+        if (expired > 0) {
+            log.info("Trash retention sweep purged {} of {} expired projects (retention {} days)",
+                    purged, expired, projectsProperties.getTrashRetentionDays());
+        }
     }
 
     private boolean purgeQuietly(String projectId) {

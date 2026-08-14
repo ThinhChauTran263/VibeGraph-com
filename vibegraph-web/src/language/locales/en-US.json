@@ -431,6 +431,7 @@
       "githubUrl": "GitHub repository URL",
       "githubPlaceholder": "https://github.com/owner/repo",
       "importGithub": "Import GitHub repo",
+      "success": "Import completed for {name} (status: {status}).",
       "reset": "Reset",
       "cli": {
         "title": "Create a CLI-synced repository",
@@ -1120,6 +1121,7 @@
       "errors": {
         "blockUser": "Failed to block user.",
         "createUser": "Failed to create user.",
+        "loadFailed": "Failed to load users.",
         "unblockUser": "Failed to unblock user."
       },
       "fallback": {

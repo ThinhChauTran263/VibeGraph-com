@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import type { GraphNode } from '@/types/graph'
 import { SEARCH_SUGGESTIONS_LIMIT } from '@/lib/runtimeConfig'
 
@@ -18,8 +18,30 @@ const resultsId = useId()
 const query = ref('')
 const isOpen = ref(false)
 
+// F-L3: the O(all nodes) filter below runs against the DEBOUNCED query, not on
+// every keystroke — burst typing collapses into one scan after the input rests.
+// Clearing is applied immediately so the dropdown never lags behind an empty box.
+const SEARCH_DEBOUNCE_MS = 150
+const debouncedQuery = ref('')
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(query, (value) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (!value.trim()) {
+    debouncedQuery.value = value
+    return
+  }
+  debounceTimer = setTimeout(() => {
+    debouncedQuery.value = value
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+})
+
 const results = computed(() => {
-  const term = query.value.trim().toLowerCase()
+  const term = debouncedQuery.value.trim().toLowerCase()
   if (!term) return []
 
   return props.nodes

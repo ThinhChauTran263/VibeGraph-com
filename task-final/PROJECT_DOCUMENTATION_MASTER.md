@@ -1,324 +1,369 @@
-# VibeGraph - Master Project Documentation (FINAL)
+# VibeGraph - Master Project Documentation
 
-> **Bản FINAL — Cập nhật: 2026-07-26.** Đây là **nguồn sự thật mới nhất** về tiến độ dự án, thay thế toàn bộ tài liệu trong `task/` (bản 2026-06/07) và `task-update/` (các phase 1–9). Hai folder cũ chỉ giữ làm **lưu trữ lịch sử**, không cập nhật nữa.
+> **Audit snapshot:** 2026-08-14 (`Asia/Bangkok`)
 >
-> **Cách tài liệu này được lập:** đối chiếu chéo giữa (1) tài liệu Scrum gốc `task/`, (2) toàn bộ phase docs + session handoffs trong `task-update/`, (3) trạng thái **thực tế của codebase** ngày 2026-07-26 (cấu trúc package, 15 Flyway migrations, controllers, views, CLI, git log tới 25/07), và (4) các phiên QA live gần nhất (2026-07-14, 2026-07-18/19).
+> **Branch:** `backup-full-fixed-20260728`
+>
+> **Committed HEAD:** `d5154c4c368d7ca89fabb8da91a79858bea7af7b` - `docs: add the graph-rendering investigation handoff`
+>
+> **Backlog snapshot after the 2026-08-14 reconciliation:** Product `24 Done / 2 In Progress`; Release `55 Done / 8 In Progress / 3 New`; Sprint `160 Done / 10 In Progress / 22 New`.
 
-*Tài liệu tổng hợp dự án — Maintained cùng `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` (bảng task chi tiết)*
+Tài liệu này mô tả trạng thái có thể chứng minh của repository tại thời điểm audit. Bảng task chi tiết vẫn nằm trong `task-final/VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`; bằng chứng, lệnh tái hiện và giới hạn xác minh nằm trong `task-final/AUDIT-EVIDENCE-2026-08-14.md`. Các tài liệu trong `task/` và `task-update/` là lịch sử, không phải nguồn trạng thái hiện tại.
 
----
+Audit đã inventory `100%` tracked paths (`1,246` đường dẫn từ `git ls-files`) rồi review sâu theo module/risk. Đây không phải claim đã đọc thủ công từng dòng của mọi report lịch sử, eval/spec, CLI, sample project hoặc untracked asset; giới hạn đó được ghi rõ trong evidence ledger.
 
-## 📚 MỤC LỤC
+## 0. Quy ước bằng chứng
 
-1. [Executive Summary](#1-executive-summary)
-2. [Implementation Status](#2-implementation-status)
-3. [Sprint Progress & Updates](#3-sprint-progress--updates)
-4. [Task Distribution](#4-task-distribution)
-5. [CSV Export Guide](#5-csv-export-guide)
-6. [Update Instructions](#6-update-instructions)
-
----
-
-# 1. EXECUTIVE SUMMARY
-
-## 🎯 TÓM TẮT QUAN TRỌNG
-
-### Team Structure (5 người)
-
-| Thành viên | Vai trò                                 | Chuyên môn                       |
-| ---------- | --------------------------------------- | -------------------------------- |
-| **Thái**   | Business Analyst, Product Owner, Tester | Requirements, acceptance testing |
-| **Thịnh**  | Leader, Quản lý dự án, Vibecode         | Project management, coordination |
-| **Khoa**   | Fullstack Developer                     | BE + FE, parser, controllers     |
-| **Danh**   | Fullstack Developer                     | BE + FE, services, UI            |
-| **Vinh**   | Backend Developer, Scrum Master         | BE, Neo4j, Postgres, DevOps      |
-
-### Dự án đã đi qua 2 giai đoạn
-
-**Giai đoạn 1 — MVP (Sprint 1–2, kết thúc ~cuối tháng 6):** Parse Java → Neo4j knowledge graph → Sigma.js visualization, 3 luồng import (local/archive/GitHub), realtime File Watcher + WebSocket, Impact Analysis, MCP tools, Docker + CI. **Review Giai đoạn 1 đạt kết quả tốt**; hội đồng yêu cầu bổ sung **xác thực + người dùng đăng nhập**.
-
-**Giai đoạn 2 — Multi-user SaaS (tháng 7, đang hoàn thiện):** Auth (email + Google, JWT cookie HttpOnly), PostgreSQL control plane (15 Flyway migrations), ownership + quota + plan/credit, user workspace + admin console đầy đủ, anti-abuse, audit log realtime, CLI `@vibegraph/cli`, i18n EN/VI, Use Case UML SVG + AI refine (Gemini).
-
-### Tiến độ realtime (tính từ bảng Sprint Backlog, 2026-07-26)
-
-| Chỉ số | Giá trị |
+| Nhãn | Ý nghĩa trong tài liệu này |
 | --- | --- |
-| **Task Done** | **158 / 192 (82%)** — verify code lần cuối 26/07 |
-| Task In Progress | 10 (graph polish, QA cuối, demo, USER_GUIDE) |
-| Task New (chưa làm) | 24 (deploy VPS/SSL, demo video, OpenAPI, parser robustness, caching…) |
-| Product Backlog Done | 24 / 26 (PB23 i18n + PB26 graph polish đang làm) |
-| Release Backlog Done | 54 / 66 |
-| Tổng giờ ước tính | 945h (578h kế hoạch gốc thực tính — bản cũ ghi 598h nhưng cộng lệch — + 367h Giai đoạn 2) |
+| **Committed** | Có trong `HEAD d5154c4` và đối chiếu được bằng source, config hoặc Git history. |
+| **Working tree** | Có trong checkout hiện tại nhưng chưa commit; không được mô tả là merged, released hay production. |
+| **Historical** | Có trong report, commit body hoặc QA session trước đó; không được coi là lần chạy mới trên checkout hiện tại. |
+| **Fresh** | Được đọc lại từ source/artifact hoặc chạy lại trong phiên audit 2026-08-14. |
+| **Unverified** | Chưa có bằng chứng runtime/acceptance trực tiếp; giữ trạng thái mở. |
 
-### Sprint Status
+### Ranh giới working tree tại snapshot
 
-| Sprint       | Phạm vi chính                                              | Done / Tổng task | Trạng thái |
-| ------------ | ---------------------------------------------------------- | ---------------- | ---------- |
-| **Sprint 1** | MVP nền tảng: import archive, parser, Neo4j, graph render  | 31/31            | ✅ 100%     |
-| **Sprint 2** | GitHub import, realtime, diagram, MCP 4 tools, Docker/CI   | 41/41            | ✅ 100%     |
-| **Sprint 3** | MCP 15 tools, source viewer, deep CPG + **GĐ2: auth, ownership, CLI** | 35/50 | 🚧 70% (15 task New: OpenAPI, parser robustness, caching, publish npm…) |
-| **Sprint 4** | **GĐ2: user/admin console, plan/credit, anti-abuse, audit, i18n** + deploy/demo | 51/70 | 🚧 73% Done + 10 In Progress |
+Checkout không sạch. Các thay đổi tracked đã tồn tại ở diagram inference, `Neo4jGraphRepository`, test diagram, Scrum Markdown, Qwen report và hai màn admin cùng test của chúng. Các file untracked đáng kể gồm helper diagram mới, graph fixture test, `Diagram/`, `scripts/drills/`, các helper/test admin dashboard và hai session report 2026-08-14. Vì vậy:
 
-### Các luồng đã chạy end-to-end (đã QA live)
-
-```
-1) MVP:   Import (local/archive/GitHub) → Parse → Neo4j → REST → Sigma.js graph
-          → File Watcher → WebSocket INCREMENTAL patch (không reset camera)
-2) SaaS:  Register/Login (email/Google) → Cookie HttpOnly → User workspace
-          (repositories/API keys/usage/subscription/reports) → quota + credit ledger
-3) Admin: Login admin → /admin → Overview ECharts số liệu thật → Users/Plans/
-          Security/Feature Flags/Announcements/Audit (SSE realtime)
-4) CLI:   vibegraph login → push delta .java → analyze → graph cập nhật
-5) MCP:   AI tool → /mcp (15 tools, API key gắn project) → context/impact/source
-```
-
-**Bằng chứng gần nhất:** 2026-07-14 Docker stack live healthy (BE/FE/Postgres/Neo4j), backend `mvnw verify` PASS, FE 49 files/378 tests PASS, browser QA 0 console error. 2026-07-19 audit + SSE focused tests PASS.
-
-### ⚠️ Việc còn mở (xem chi tiết Sprint 3–4)
-
-1. **Issue người dùng báo 2026-07-19 — còn 2/5** (verify code 26/07: #1 router, #3 i18n user, #4 i18n landing ĐÃ FIX): còn T183 (vị trí language selector user) + T192 (verify audit SSE live trên browser thật).
-2. **Graph polish chưa merge** — nhánh `codex-backup-20260724-graph-lazy-deep` (lazy deep CPG, spring inference, layout/zoom) — T187–T189.
-3. **Deploy production** — VPS/domain/SSL/auto-deploy chưa làm (T99, T103–T105, T108).
-4. **Demo cuối** — video (T111), slides (T112), chốt repo demo (T109); USER_GUIDE cần viết lại cho GĐ2 (T117).
-5. **Nợ kỹ thuật Sprint 3** — OpenAPI/Swagger (T78–T79), parser robustness lambda/method refs (T80–T83), content-hash caching (T84), Neo4j pagination (T86, T88).
+- Không dùng working tree để khẳng định một chức năng đã được phát hành.
+- Các test fresh trên checkout hiện tại có thể bao gồm code chưa commit.
+- GitNexus reports commit metadata at `HEAD d5154c4`, while its local file hashes currently include much of the uncommitted diagram/Neo4j/dashboard snapshot that existed when the index was refreshed. Later changes and unsupported/untracked files are not guaranteed to be indexed; source/Git evidence remains authoritative.
+- `update/docs/Qwen/SO-SANH-TRUOC-SAU-UPGRADE-2026-08-14.md` is explicitly excluded from this audit by the user; it is preserved but supplies no evidence or task claim here.
+- Chi tiết file-level được ghi trong `task-final/AUDIT-EVIDENCE-2026-08-14.md`, tránh lặp một danh sách dễ trôi trong master document.
 
 ---
 
-# 2. IMPLEMENTATION STATUS
+# 1. Executive Summary
 
-## 📊 Kiến trúc tổng thể hiện tại
+## 1.1 Sản phẩm hiện tại
 
+VibeGraph là hệ thống phân tích mã Java theo thời gian thực: import project, parse bằng JavaParser/Symbol Solver, lưu knowledge graph trong Neo4j, cung cấp REST/MCP/realtime APIs và trực quan hóa bằng Vue + Sigma.js. Giai đoạn 2 bổ sung control plane đa người dùng trên PostgreSQL: auth, ownership, quota, plan/credit, API key, user workspace, admin console, anti-abuse, audit và notifications.
+
+Kiến trúc hiện tại không còn là MVP Neo4j-only:
+
+```text
+Browser / CLI / MCP client
+        |
+        +-- REST + Fetch + cookie/API-key auth
+        +-- STOMP: graph updates, report threads
+        +-- SSE: request events, audit logs
+        |
+Spring Boot 4 / Java 21
+        |
+        +-- auth + abuse + patch       -> PostgreSQL control plane
+        +-- parser + graph + diagram   -> Neo4j code graph/data plane
+        +-- mcp                        -> 18 bounded tools
+        +-- watcher                    -> incremental file-change pipeline
+        +-- optional Supabase adapter  -> selected realtime/high-volume tables
 ```
-com.vibegraph
-├── auth/     ← GĐ2: control plane (Postgres/JPA) — user, ownership, plan/credit,
-│               API key, report, notification, announcement, audit, admin APIs
-├── abuse/    ← GĐ2: rate limit, IP block, concurrent import guard, request events
-├── patch/    ← GĐ2: Local Patch API cho CLI (push/watch)
-├── ai/       ← GĐ2: Gemini failover client (AI refine use case)
-├── graph/    ← GĐ1: import, Neo4j repository, REST API, source viewer
-├── parser/   ← GĐ1: JavaParser visitors + FlowAnalyzer (deep CPG opt-in)
-├── mcp/      ← 15 MCP tools (Spring AI)
-├── diagram/  ← Use Case UML SVG 2.5 + AI refine (Mermaid đã gỡ)
-├── watcher/  ← File Watcher realtime
-└── common/   ← config, exception, WebSocket/STOMP
-```
 
-**Nguyên tắc:** Control plane (Postgres/JPA/Flyway) tách data plane (Neo4j raw driver). Ownership lấy từ `projects.owner_id` (Postgres) — nguồn sự thật duy nhất. `graph` không phụ thuộc ngược `auth`.
+## 1.2 Tiến độ backlog đã đối soát
 
-### Backend — Giai đoạn 1 (đã ổn định)
+| Cấp backlog | Tổng | Done | In Progress | New |
+| --- | ---: | ---: | ---: | ---: |
+| Product Backlog | 26 | 24 | 2 | 0 |
+| Release Backlog | 66 | 55 | 8 | 3 |
+| Sprint Backlog | 192 | 160 | 10 | 22 |
 
-| Module | Trạng thái | Ghi chú |
+Tổng estimate là `945h`: `775h Done`, `72h In Progress`, `98h New`. Tỷ lệ task Done là `83.3%`; đây là tỷ lệ theo số task, không phải tuyên bố production readiness.
+
+| Sprint | Phân bố trạng thái | Kết luận |
 | --- | --- | --- |
-| Parser (6 visitors + ParserServiceImpl + Symbol Solver) | ✅ Production | + FlowAnalyzer deep CPG opt-in (`VIBEGRAPH_PARSER_DEEP_CPG`) |
-| Neo4j Repository (upsert/fullGraph/deleteFile/searchNodes/getImpact) | ✅ Production | Impact 3 profile: dependency / structural / type-data-flow; Package/File nodes đã có |
-| REST API (Project/Import/Graph/Source/LocalProject controllers) | ✅ Production | + ownership guard GĐ2 ở mọi endpoint projectId |
-| Realtime (FileWatcher + FileChangeBroadcaster + STOMP) | ✅ Production | CREATE/MODIFY/DELETE incremental, không reset camera |
-| Diagram | ✅ Đổi hướng | **Use Case SVG UML 2.5** (`UmlUseCaseRenderer` + `UseCaseInferenceEngine` + `BaLabelBeautifier`) + AI refine (`LlmUseCaseRefiner`); **Class Diagram Mermaid đã gỡ sau UX review** |
-| MCP (15 tools) | ✅ Production | context/impact/layer + source tools + senior tools (CPG, test plan, code-change plan, failure, conventions); metadata recovery sau restart |
+| Sprint 1 | `31 Done` | Hoàn thành theo backlog. |
+| Sprint 2 | `41 Done` | Hoàn thành theo backlog. |
+| Sprint 3 | `38 Done / 12 New` | Parser/MCP/source/deep CPG/auth/CLI phần lõi đã có; OpenAPI, metrics, cache, benchmark và pagination còn mở. |
+| Sprint 4 | `50 Done / 10 In Progress / 10 New` | User/admin surface đã rộng; final QA, graph polish, docs/demo và production deployment chưa đóng. |
 
-### Backend — Giai đoạn 2 (mới)
+Các thay đổi trạng thái được audit chấp nhận:
 
-| Module | Thành phần chính | Trạng thái |
-| --- | --- | --- |
-| Auth core | `JwtService`, `AuthService`, `AuthController`, `auth/oauth` (Google), `AuthCookieService` + `StatelessSessionCookieFilter` (cookie HttpOnly), `JwtAuthFilter`, `ApiKeyAuthFilter` | ✅ Done |
-| Ownership/Quota | `AccountAccessGuard`, `ProjectUsageService`, `AccountQuotaSnapshot`, `StorageUnitConverter` (MB), blocked → `ACCOUNT_BLOCKED` trước `QUOTA_EXCEEDED` | ✅ Done |
-| Plan/Credit | `CreditPricingService` (công thức từ DB `credit_pricing_rules`, không hardcode giá), `CreditBalanceService`, `CreditPeriodCalculator`, ledger đầy đủ | ✅ Done |
-| User APIs | `AccountController` (profile/usage/projects), `AccountApiKeyController`, `AccountReportController` (thread + close + deletesAfter 7d), `AccountNotificationController`, credit ledger API | ✅ Done |
-| Admin APIs (16 controllers) | Overview (số liệu thật + online history), Users (block/unblock/deactivate/plan/quota/credit), Plans, Pricing, FeatureFlags (+`FeatureGateService` enforce thật), Announcements, Storage (không lộ host path), SecurityMonitor (SSE), Audit (SSE + retention), Reports, ApiKeys, Credits | ✅ Done |
-| Anti-abuse | `RateLimitFilter`, `IpBlockFilter`/`IpBlockService`, `ConcurrentImportGuard`, `RequestEvent*` + SSE realtime | ✅ Done |
-| Audit | `AuditService` + `AuditLogWriter` (REQUIRES_NEW), `AuditRedactor`, coverage matrix đầy đủ admin mutations, V15 hardening, SSE stream | ✅ Done (live browser QA pending — T192) |
-| Local Patch | `LocalPatchController`, `LocalPatchService`, `PatchAnalysisScheduler` (quota + credit + ownership) | ✅ Done |
-| AI | `GeminiFailoverChatClient` (rotation, resilient) + `LlmUseCaseRefiner` | ✅ Done |
+- `T80`, `T81`, `T82`: `New -> Done`, dựa trên implementation committed trong `MethodVisitor` và fresh `MethodVisitorTest` `33/33` pass. Plain visitor constructors suppress unresolved stubs, but the default Spring runtime enables Deep CPG and current constructor logic therefore emits low-confidence unresolved CALL stubs even when the dedicated stub flag is false.
+- `RB32`: `New -> Done`, phản ánh nhóm lambda/method-reference đã được chứng minh.
+- `T100`: `Done -> New`, vì chỉ có `vibegraph-web/nginx.conf.template` phục vụ SPA/security headers; không có `/api` reverse proxy, domain, TLS hoặc Certbot được chứng minh.
 
-### Database
+Lưu ý ngữ nghĩa: trạng thái `Done` ở Product/Release nghĩa là core release item đã được hiện thực; follow-up debt có thể vẫn mở ở Sprint task. Điều này giải thích các cặp như `RB29` với `T78/T79`, `RB56` với `T192`, `RB57` với `T138`, và `RB66` với các issue follow-up còn mở.
 
-| DB | Vai trò | Schema |
-| --- | --- | --- |
-| **PostgreSQL** (control plane) | user, identity, ownership, plan, credit, API key, report, notification, announcement, feature flag, abuse, audit | Flyway **V1–V15**: init_auth → phase4_account → plans_and_credits → credit_override → deactivation → admin_ops → anti_abuse → credit_quota_defaults → audit_notifications → canonical_flags → project_bound_api_keys → api_key_lifecycle → api_key_lock_resolution → audit_log_transaction_hardening |
-| **Neo4j** (data plane) | knowledge graph code (node/edge theo projectId) | `V1__init_schema.cypher` qua `Neo4jMigrationRunner` |
+## 1.3 Kết luận readiness
 
-### Frontend (`vibegraph-web`)
-
-| Khu vực | Thành phần | Trạng thái |
-| --- | --- | --- |
-| Graph core (GĐ1) | GraphCanvas + useSigma + graphAdapter + FilterPanel/SearchBar/NodeDetailPanel/ImpactAnalysisPanel + useGraphRealtime | ✅ Production |
-| Auth | LoginView/RegisterView + stores/auth + router guard role-aware (admin → `/admin`, user → `/dashboard`, không dùng localStorage `vg_user`) | ✅ Done (issue #1 đã fix 22/07 — T190) |
-| User workspace | `UserLayout` (sidebar collapse) + views/user: Overview, Repositories(Projects), ApiKeys, Usage, Subscription, Reports, Notifications, Tutorial, Settings | ✅ Done |
-| Admin console | `AdminLayout` + views/admin: Dashboard (ECharts), UsersTable + UserDetailDrawer, PlansCredits, Security, FeatureFlags, Announcements, Audit (SSE live), Settings, Reports | ✅ Done |
-| i18n | vue-i18n `src/language` (en-US/vi-VN 73KB) + `LanguageSelector` + parity test | ✅ Landing + user dashboard đã dịch xong (verify 26/07 — T182/T191); còn vị trí selector user (T183) |
-| Landing | `LandingView.vue` | ✅ Có; i18n hoàn chỉnh (139 khóa t('landing...') — T191 Done) |
-| Tests | 49 files / 378 tests + type-check + build | ✅ PASS (2026-07-14) |
-
-### CLI (`vibegraph-cli`)
-
-`@vibegraph/cli` 0.1.0 — bin `vibegraph`; lib: scanner/snapshot/push/watch/ignore/project-target. Luồng: `config set-url` → `register/login` → `projects import-local` → `push`/`watch` (delta `.java`, deny-list secret/build). Docs: `docs/local-patch.md`. **Chưa publish npm** (T138).
+| Phạm vi | Trạng thái có thể khẳng định |
+| --- | --- |
+| Local development/runtime | **Fresh:** bốn service Compose healthy; backend/frontend phản hồi đúng các kiểm tra health/auth/CORS cơ bản. |
+| Committed implementation | Phần lớn product surface đã có trong `HEAD`; các giới hạn cụ thể được ghi ở Section 2. |
+| Current working tree | Có refactor diagram/Neo4j/admin chưa commit; test fresh phải được đọc trong ranh giới này. |
+| CI gates | Workflow đã cấu hình; không thể nói mọi gate hiện đang xanh vì latest dirty-worktree ESLint fail một lỗi. |
+| Production deployment | **Chưa sẵn sàng/chưa được chứng minh:** không có production Compose/proxy/domain/TLS/auto-deploy/rollback/public acceptance. |
 
 ---
 
-# 3. SPRINT PROGRESS & UPDATES
+# 2. Implementation Status
 
-## Sprint 1 ✅ 100% (31/31 task) — MVP nền tảng
+## 2.1 Backend architecture
 
-Import archive (zip/tar/tar.gz, chống zip-slip, ≤100MB), 6 parser visitors + structural edges, Neo4j raw driver + migration + upsert/fullGraph, REST API + GlobalExceptionHandler, FE core (api client, Pinia, graphAdapter, useSigma/GraphCanvas, SearchBar, states), Import Archive UI. Vertical slice end-to-end chạy từ tuần 7.
+| Khu vực | Trạng thái và bằng chứng hiện tại |
+| --- | --- |
+| `parser/` | **Committed.** JavaParser visitors, Symbol Solver, Spring inference và deep CPG. Spring runtime mặc định bật deep CPG qua `vibegraph.parser.deep-cpg-enabled:${VIBEGRAPH_PARSER_DEEP_CPG:true}`; đặt `VIBEGRAPH_PARSER_DEEP_CPG=false` để opt out. Plain unit constructors có thể vẫn mặc định false, nên runtime config mới là nguồn sự thật cho application. |
+| `graph/` | **Committed.** Import local/archive/GitHub, analyze, raw Neo4j Java Driver repository, REST graph/source/impact, realtime bridge và project trash. Control-plane service không dùng Neo4j OGM. |
+| `diagram/` | **Committed core + working-tree refactor.** Backend trả canonical `UmlUseCaseResponse`; frontend `DiagramPanel` chuyển model thành SVG UML 2.5 bằng `renderUmlUseCaseSvg`. Deterministic inference đã có và Gemini refinement là tùy chọn. Nhiều helper inference mới trong dirty working tree chưa được coi là released. |
+| `mcp/` | **Committed.** Spring AI MCP streamable HTTP `/mcp`, 18 tools, bounded output, project/ownership/path guards và metadata recovery. |
+| `auth/` | **Committed.** Email/password, Google/GitHub OAuth2 redirect, ownership/quota/plan-credit/API key/user/admin/report/notification/audit surfaces. |
+| `abuse/` | **Committed.** Staged edge/IP và identity/API-key throttling, IP block, registration/login guards, concurrent import guard và request-event telemetry. Window state dùng Caffeine bounded nhưng vẫn per-instance/best-effort, không phải cluster-wide enforcement. |
+| `patch/` | **Committed.** Local Patch API cho CLI push/watch, đi qua auth, ownership, quota, credit và analyze scheduling. |
+| `watcher/` | **Committed.** Recursive WatchService, debounce và incremental create/modify/delete pipeline; graph/report dùng STOMP. |
 
-## Sprint 2 ✅ 100% (41/41 task) — Tính năng MVP còn lại
+### Parser và graph caveats
 
-GitHub import (pre-flight + tarball + DI fix), Symbol Solver CALLS, Node Detail + Impact Analysis (BE+FE), realtime CREATE/MODIFY/DELETE incremental (FileWatcher → FileChangeBroadcaster → STOMP → FE patch tại chỗ), Diagram Mermaid (sau này đổi SVG UML), MCP 4 tools đầu + Spring AI config, FilterPanel + click/select highlight (Focus Mode N-hop đã gỡ sau UX review), Docker + compose + env profiles + CI backend/frontend, verify cuối: BE 279 tests, FE 161 tests.
+- Lambda parsing, method-reference extraction và unresolved-call stub emission đã có. Runtime behavior is coupled to Deep CPG (`deepCpg or explicitFlag`), while plain constructors retain suppression; chưa có metric resolution-rate nên `T83` vẫn `New`.
+- Full-graph snapshot cache/caps tồn tại, nhưng không tương đương content-hash skip unchanged files (`T84`) hay cursor/offset pagination (`T88`).
+- Benchmark 500 file (`T85`) và acceptance 5000-node rendering (`T87`) chưa có fresh measurement.
+- Baseline/lazy deep/Spring filtering/layout tuning đã nằm trong current history; không còn đúng khi gọi chúng là một nhánh chưa merge.
+- `update/graph/03-ROOT-CAUSE.md` chứng minh mismatch đơn vị/zoom của noverlap; `update/graph/05-IMPLEMENTATION-PLAN.md` mới là kế hoạch. Scale-invariant overlap fix và browser acceptance chưa được chứng minh, nên `T187-T189` vẫn `In Progress`.
 
-## Sprint 3 🚧 70% (35/50 Done, 15 New) — MCP mở rộng + nền Giai đoạn 2
+## 2.2 MCP tool surface
 
-**Đã xong (gốc):** 15 MCP tools (source file/search/method, endpoint trace, references, method CPG, related tests, test plan, code-change plan, explain failure, conventions), MCP metadata recovery sau restart, T90–T92 UI polish, T95 Package/File nodes, T96–T98 testing (JaCoCo gate, visitor tests, IT Testcontainers).
+`src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md` liệt kê đúng 18 tool được đăng ký:
 
-**Đã xong (GĐ2 bổ sung vào Sprint 3):**
-- **Auth & Ownership (T122–T133):** Postgres + Flyway, JPA entities, JWT + BCrypt + cookie HttpOnly, Google OAuth + account linking, ownership guard toàn API, migrate project cũ + admin bootstrap, FE auth, WS/STOMP auth, MCP/API key auth, quota nền, test matrix A-không-đọc-được-B.
-- **CLI & Local Patch (T134–T137):** `@vibegraph/cli` + backend patch API.
-- **Source viewer + Deep CPG (T139–T143):** SourceController + CodeViewerModal redact secret; deep CPG opt-in.
-- **UML SVG (T184–T185):** renderer + inference + BA labels.
+| Nhóm | Tools |
+| --- | --- |
+| Architecture/context | `get_project_architecture`, `get_class_context`, `get_impact_analysis`, `get_layer_pattern` |
+| Source/navigation | `trace_endpoint`, `find_references`, `get_source_file`, `search_source`, `get_method_source` |
+| CPG/testing/change support | `get_method_cpg_context`, `find_related_tests`, `suggest_test_plan`, `plan_code_change`, `explain_failure_path`, `get_project_conventions` |
+| Discovery/verification | `list_projects`, `verify_change`, `explain_compile_error` |
 
-**Còn New (15):** OpenAPI/Swagger (T78–T79), parser robustness lambda/method refs/stub-on-failure/resolution rate (T80–T83), content-hash caching (T84), benchmark 500 file (T85), Neo4j optimize + pagination (T86, T88), 5000-node render test (T87), tech debt D1/D2 (T93–T94), publish npm CLI (T138).
+Các tool đọc Neo4j và source root đã được validate; output của test/change-plan vẫn dựa trên graph evidence kết hợp heuristic, nên người dùng/agent vẫn phải verify trước khi sửa. Tài liệu pointer `MCP_INTEGRATION.md` còn câu cũ “15 available tools”; đây là documentation drift, không thay đổi runtime surface 18 tool.
 
-## Sprint 4 🚧 69% Done + 11 In Progress (48 Done / 11 In Progress / 11 New trên 70 task) — Product surface GĐ2 + bàn giao
+## 2.3 Data stores và migrations
 
-**Đã xong:**
-- **User workspace BE (T144–T150):** account APIs, API key, reports thread, notifications, credit ledger API, quota enforcement toàn luồng.
-- **Plan/Credit (T151–T155):** schema V3/V4/V9, pricing theo DB, trừ credit MCP/CLI/analyze/import, admin plan/pricing CRUD, credit override/adjust.
-- **Admin BE (T156–T162):** overview số liệu thật, users management (block hiệu lực ngay), feature flags enforce thật, announcements, storage overview, reports, focused tests.
-- **Anti-abuse (T163–T166):** rate limit, IP block, concurrent import guard, request events SSE.
-- **Audit (T167–T169):** coverage matrix đầy đủ, REQUIRES_NEW + V15 + retention, SSE + AuditView live.
-- **FE user/admin (T170–T176):** shells + sidebar collapse, toàn bộ views, ECharts dashboard, notifications bell, blocked UX, 378 tests + QA live.
-- **API key lifecycle (T177–T179):** project-bound, 1 key/project, admin lock/resolution.
-- **i18n (T180–T182 + T191):** foundation + dịch xong landing, user dashboard, shells (verify code 26/07). **AI refine Gemini (T186).**
-- **Fix issue #1 (T190):** router guard role-aware, bỏ localStorage `vg_user` (22/07).
-- Hạ tầng/tài liệu gốc đã xong: nginx (T100), prod profile (T101), DEPLOYMENT.md (T102), CI (T106–T107), DEMO_SCRIPT (T110), README CLI-first (T113), MCP guide (T114), architecture.md (T115).
+| Store | Vai trò | Migration/state |
+| --- | --- | --- |
+| PostgreSQL primary | User, identity, ownership, refresh session, plan/credit, API key, report/notification, feature/admin/audit/abuse control plane. | **19 SQL files:** `V1-V15`, `V17-V20`; không có `V16`. |
+| Neo4j | Knowledge graph theo `projectId`; raw driver + parameterized Cypher. | **2 Cypher files:** `V1__init_schema.cypher`, `V2__symbol_label.cypher`. |
+| Supabase-compatible PostgreSQL | Optional target cho selected realtime/high-volume tables: reports/messages, runtime status, request/security events, announcements, notifications. | **1 SQL migration:** `db/supabase/V1__init_realtime_storage.sql`. `VIBEGRAPH_SUPABASE_ENABLED=false` mặc định. |
 
-**In Progress (10):** T109 chốt repo demo, T112 slides (nền presentation.html), T117 USER_GUIDE GĐ2, T118 bug backlog (còn 2/5 issue), T119 final E2E, T120–T121 perf/polish, T187–T189 graph lazy deep + layout (nhánh backup 24–25/07, chưa merge `poc`).
+Supabase code có disabled fallback về primary datasource và có lựa chọn tách migration/runtime credentials. Audit không có bằng chứng production credential, remote migration hoặc cutover; vì vậy chỉ được gọi là optional implementation, không phải production storage đang hoạt động.
 
-**New (9):** T99 compose prod, T103–T105 domain/SSL, T108 auto-deploy, T111 video, T116 API reference, T183 vị trí selector, T192 verify audit SSE live.
+## 2.4 Authentication, authorization và session model
 
-## 📊 Thay đổi lớn so với kế hoạch gốc
+| Thành phần | Trạng thái thực tế |
+| --- | --- |
+| Local auth | `POST /api/auth/register`, `/login`, `/refresh`, `/logout`; `GET /api/auth/me`. BCrypt cho password. |
+| OAuth | Spring Security `oauth2Login` redirect flow cho Google và GitHub, callback `/login/oauth2/code/{registrationId}`, account-linking/email checks. Không có custom `POST /api/auth/google`. |
+| Access token | HS512 JWT, key tối thiểu 64 UTF-8 bytes, cookie HttpOnly; access lifetime default 30 phút. |
+| Refresh session | Opaque token; database chỉ lưu SHA-256 hash, có `family_id`, single-use rotation, replay/family revocation và khoảng grace 30 giây cho concurrent tabs; absolute lifetime mặc định 7 ngày. |
+| Browser API | Fetch wrapper với `credentials: 'include'`, `X-VibeGraph-Client: web`, one refresh-and-retry cycle; Axios không có trong `package.json`. |
+| CSRF boundary | Spring CSRF mặc định bị disable nhưng unsafe browser-cookie requests được `CookieCsrfFilter` ràng buộc bằng custom client header. Đây là application boundary hiện tại, không nên ghi đơn giản là “không có CSRF”. |
+| Client cache caveat | JWT không nằm trong localStorage, nhưng `stores/auth.ts` vẫn cache non-sensitive user JSON ở `vg_user` để bootstrap/router trước `/api/auth/me`. Do đó chưa thể khẳng định session bootstrap hoàn toàn server-authoritative. |
+| API key | Project-bound, secret chỉ hiện một lần, hash-only storage, one active key/project và admin lock/resolution flow. |
 
-1. **Thêm nguyên Giai đoạn 2** (71 task T122–T192, 367h) sau review GĐ1 — không có trong kế hoạch ~578h ban đầu.
-2. **Diagram đổi hướng:** Mermaid Use Case + Class → **SVG UML 2.5 Use Case + AI refine**; Class Diagram gỡ hẳn.
-3. **Auth model:** JWT localStorage (kế hoạch ban đầu của phase-1 doc) → **cookie HttpOnly** (quyết định cuối, an toàn hơn).
-4. **Realtime tách 2 kênh:** STOMP (graph, reports) và SSE (request events, audit logs).
-5. **RULE cập nhật:** PostgreSQL/JPA/Flyway giờ là stack chính thức của control plane (trước đây nằm ngoài scope MVP); Redis/Kafka vẫn không dùng.
+## 2.5 Project lifecycle, notifications và realtime
+
+- Delete project chuyển sang trash, retention mặc định 3 ngày; API có list trash, restore và irreversible purge, cùng scheduled sweep.
+- Project trong trash vẫn giữ graph/source và tiếp tục tính quota; chỉ purge mới giải phóng resource.
+- Re-import GitHub có xử lý purge duplicate đã nằm trong trash trước khi tính quota cho bản thay thế.
+- Announcements sinh user notifications; account API/store hỗ trợ list, mark read và dismiss; UI có notification bell/banner.
+- Graph updates và report threads dùng WebSocket/STOMP. Request security events và audit log dùng SSE.
+- Audit SSE có backend/FE tests và polling/reconnect fallback, nhưng chưa có fresh browser EventSource/network trace; `T192` vẫn `New`.
+
+## 2.6 Frontend và CLI
+
+| Khu vực | Trạng thái hiện tại |
+| --- | --- |
+| Graph/explorer | Vue 3 + Sigma.js/Graphology; search/filter/detail/impact/source/diagram/realtime surfaces tồn tại. Graph overlap acceptance vẫn mở. |
+| User workspace | Account/repositories, trash, API keys, usage/subscription, reports, notifications, tutorial/settings và responsive layout đã có. |
+| Admin console | Overview/ECharts, users, plans/credits, security, flags, announcements, audit/settings/reports đã có. Dashboard/user-detail đang có refactor uncommitted và helper/test mới. |
+| HTTP | Native Fetch + shared session-refresh wrapper; không dùng Axios. |
+| i18n | `vue-i18n`, `en-US`/`vi-VN`, parity test; user selector vẫn ở sidebar trong khi admin ở header (`T183`). Graph/explorer còn technical/UI English, nên không có claim “zero hardcoded English”. |
+| CLI | `vibegraph-cli` v0.1.0 hỗ trợ config/register/login/import-local/push/watch và local patch flow. Chưa có bằng chứng publish npm (`T138`). |
 
 ---
 
-# 4. TASK DISTRIBUTION
+# 3. Verification Snapshot
 
-## 👥 Workload theo thành viên (tính từ bảng Sprint Backlog FINAL, task chung chia đều)
+## 3.1 Fresh checks - current checkout
 
-| Thành viên | Tổng giờ | Giờ đã Done | S1 | S2 | S3 | S4 | Ghi chú phân công GĐ2 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| **Khoa**  | 229h | 196h | 32 | 47 | 86 | 64 | Auth core, ownership, quota, credit service, MCP senior tools, deep CPG, CLI push/watch, feature flags |
-| **Vinh**  | 219h | 157h | 20 | 22 | 76 | 101 | Postgres/Flyway, security filter chain, WS auth, admin BE (overview/users/storage), anti-abuse, audit, plan/pricing CRUD |
-| **Danh**  | 194h | 165h | 24 | 44 | 62 | 64 | Google OAuth, patch API, source viewer, UML SVG + inference, user views, admin dashboard ECharts, users UI, i18n |
-| **Thịnh** | 182h | 163h | 34 | 42 | 32 | 74 | FE auth + shells + admin ops views, notifications/blocked UX, FE QA gates, graph polish, docs/README, điều phối |
-| **Thái**  | 120h | 81h  | 10 | 15 | 24 | 71 | Test auth/ownership IT, user reports/notifications, announcements, admin reports, test suites BE, demo docs |
+| Phạm vi | Kết quả | Giới hạn cần giữ nguyên |
+| --- | --- | --- |
+| Backend Surefire artifacts | `1067` tests, `0` failures, `0` errors, `1` skipped; 144 XML files. | Timestamp trải từ 02:07 đến 02:50 và bao gồm nhiều lệnh; không phải một pristine run trên committed HEAD. |
+| Backend Failsafe artifacts | `71` tests, `0` failures, `0` errors, `1` skipped; 12 XML files. | Artifact window riêng; không ghép tùy tiện thành một lệnh duy nhất. |
+| Parser robustness | `MethodVisitorTest`: `33/33` pass in the current XML result. | Chạy trên current checkout; artifact proves the test result, not a standalone preserved full-console build line; dùng làm bằng chứng trực tiếp cho T80-T82. |
+| Diagram helpers | `36/36` pass in current XML artifacts. | Có uncommitted diagram refactor trong checkout; no single pristine full-suite claim. |
+| Auth/anti-abuse focused evidence | Relevant focused tests and current aggregate reports are present. | Focused tests were observed in-session, but no retained command/output artifact proves an independently reproducible total count, so no numeric focused-suite count is claimed. |
+| Frontend type-check | PASS. | Current dirty working tree. |
+| Frontend Oxlint | PASS, 0 warning/error. | Không thay ESLint gate. |
+| Frontend Vitest | PASS, `67` files / `570` tests. | Có non-fatal warnings về test-router routes, unresolved `RouterLink` và thiếu `ErrorAlert` message prop. |
+| Frontend coverage | Lines `70.95%`, statements `68.38%`, branches `59.07%`, functions `63.13%`. | Không có bằng chứng đây là 80% gate; chỉ là artifact fresh. |
+| Frontend build | PASS, `960` modules in the latest fingerprint-stable rerun; `dashboard-echarts` chunk about `561.43 kB`. | Chunk lớn là quan sát build, chưa phải benchmark/performance acceptance. |
+| Dependency audit | `npm audit --audit-level=high`: PASS, 0 high vulnerabilities. | Chỉ phản ánh npm audit ở thời điểm chạy. |
+| Frontend ESLint | **FAIL**, exactly one error in the latest stable rerun: unused `ChartTone` at `DashboardView.vue:22`. | No `isExpired` error remains in the latest snapshot; frontend lint is still not green. |
 
-**Tổng: 945h.** Năng lực tham chiếu: 5 người × 8h × 12 ngày = 480h/sprint (dư năng lực; thực tế GĐ2 dồn vào tháng 7).
+## 3.2 Fresh local runtime
 
-**Lưu ý:** Giờ còn lại chưa Done tập trung ở: Thái (demo video/slides/final QA ~39h), Vinh (deploy VPS/SSL/auto-deploy ~62h — phần lớn là task New chờ hạ tầng), Danh (i18n landing/polish còn lại ~29h), Thịnh (graph polish + vị trí selector ~19h), Khoa (parser robustness/caching ~33h).
+- `docker compose ps`: Postgres, Neo4j, backend và frontend đều healthy/up.
+- Backend actuator trả HTTP `200` với `UP`.
+- Frontend trả HTTP `200` và có CSP/security headers từ Nginx SPA container.
+- `/api/account/profile` không auth trả HTTP `401`.
+- CORS cho phép `http://localhost:3000` với credentials và từ chối `https://evil.example`.
+- `docker compose --env-file .env.example config --quiet` **fail** vì `VIBEGRAPH_TRUSTED_PROXIES` để trống trong template nhưng Compose yêu cầu giá trị non-empty.
 
-## 📋 Task còn mở theo nhóm (ưu tiên đề xuất)
+Đây là local runtime evidence. Nó không chứng minh VPS, public domain, TLS, reverse proxy, external OAuth callback hay production load.
 
-| Ưu tiên | Nhóm | Task | Người |
-| --- | --- | --- | --- |
-| 🔥 1 | Fix 2 issue còn lại | T183 (vị trí selector), T192 (verify audit SSE live) | Thịnh, Vinh |
-| 🔥 2 | Merge graph polish về `poc` | T187–T189 (review + merge nhánh backup) | Thịnh, Khoa |
-| 🔥 3 | Final QA + demo | T109, T110 (bổ sung GĐ2), T119, T117 | Thái, Thịnh |
-| 🟡 4 | Deploy production | T99, T103–T105, T108 | Vinh |
-| 🟡 5 | Demo video/slides | T111, T112 | Thái |
-| 🟢 6 | Nợ kỹ thuật Sprint 3 | T78–T88, T93–T94, T138 | Khoa, Vinh, Danh |
+## 3.3 Historical evidence
+
+- Các report ngày 2026-08-12 ghi nhận full backend verify, 71 integration tests và JaCoCo gate pass; dùng làm lịch sử, không thay fresh final-tree run.
+- QA 2026-07-14 ghi nhận stack Docker và các browser flows thời điểm đó; số frontend `49 files / 378 tests` đã được supersede bởi fresh `67 / 570`.
+- Report Phase 9 ngày 2026-07-18/19 ghi focused audit/SSE tests pass; live browser audit EventSource vẫn chưa được ghi nhận.
+
+## 3.4 GitNexus
+
+Fresh `npx gitnexus status` reports commit metadata up-to-date at `d5154c4`. Fresh impact analysis for `Neo4jGraphRepository` returned `LOW` with four impacted nodes. The final audit rerun of `npx gitnexus detect-changes --repo VibeGraph-com` succeeded with `MEDIUM` risk, 14 files, 81 symbols and 3 affected processes (`GetFullGraph -> AsString`, `GetFullGraph -> Run`, `OnFileChange -> AsString`); untracked/late files remain outside complete change mapping. Earlier transient Ladybug locks and earlier 9-file/38-symbol and 10-file/81-symbol session outputs are superseded by this final rerun. GitNexus FTS is degraded, so empty concept searches are not evidence of absence. No commit was created.
 
 ---
 
-# 5. CSV EXPORT GUIDE
+# 4. CI, Deployment and Production Gaps
 
-## 📤 Export Status
+## 4.1 CI hiện có
 
-✅ **5 file CSV đã tạo lại (2026-07-26)** trong `task-final/csv_exports/` từ đúng nội dung bản FINAL:
+| Workflow | Gate được cấu hình |
+| --- | --- |
+| `.github/workflows/backend.yml` | Java 21, `./mvnw verify`, upload Surefire/Failsafe report khi fail. |
+| `.github/workflows/frontend.yml` | Node 22, `npm ci`, type-check, unit tests, lint, build, `npm audit --audit-level=high`. |
 
-1. `product_backlog.csv` — Product Backlog (**PB01–PB26**, 26 dòng)
-2. `release_backlog.csv` — Release Backlog (**RB01–RB66**, 66 dòng)
-3. `sprint_backlog.csv` — Sprint Backlog (**T01–T192**, 192 task + header nhóm)
-4. `pps_calculation.csv` — PPS (đã thêm 17 dòng tính năng GĐ2; tổng tính lại = 226.246 PPS / ED 1800 — bản cũ ghi 171.664 nhưng cộng lệch)
-5. `ed_calculation.csv` — Environment Difficulty (giữ nguyên, ED = 30)
+Backend workflow hiện chạy `./mvnw verify`, không phải câu cũ `-DskipITs test`. Frontend workflow có lint, nhưng latest dirty checkout vẫn fail ESLint một lỗi; do đó không có cơ sở tuyên bố mọi merge gate đang xanh. Backend workflow cũng ghi rõ CD build/push chưa được thêm vì registry chưa được operator quyết định.
 
-**Encoding:** UTF-8 with BOM (mở tiếng Việt trong Excel không lỗi font).
+## 4.2 Deployment hiện có và còn thiếu
 
-## 🔄 Usage Workflow
+**Có bằng chứng:**
 
-### Bước 1: Export CSV (sau khi sửa file .md)
+- `docker-compose.yml` chạy bốn service local: PostgreSQL, Neo4j, backend, frontend.
+- `application-prod.yaml`, Dockerfiles và deployment docs tồn tại.
+- `vibegraph-web/nginx.conf.template` phục vụ SPA, cache static assets và security headers.
 
-```bash
-cd <repo>/task-final
-python export_to_csv.py
+**Chưa có bằng chứng:**
+
+- Production-specific Compose được acceptance (`T99`).
+- Nginx `/api`/WebSocket reverse proxy (`T100`).
+- DNS/domain (`T103`), Let's Encrypt/TLS (`T104`), HTTPS acceptance (`T105`).
+- Auto-deploy/rollback workflow (`T108`).
+- Public OAuth callback, production Supabase cutover, production backup/restore drill trong môi trường đích.
+
+Vì Nginx template hiện chỉ phục vụ static SPA và cố ý không gửi HSTS (TLS terminator phải gửi), T100 và production readiness phải giữ mở.
+
+---
+
+# 5. Sprint Progress and Open Work
+
+## 5.1 Những gì đã hoàn thành theo sprint
+
+### Sprint 1 - `31/31 Done`
+
+Archive import/safe extraction, JavaParser visitors, raw Neo4j persistence/migration, REST graph foundation và frontend Sigma core.
+
+### Sprint 2 - `41/41 Done`
+
+GitHub import, CALLS/Symbol Solver, node detail/impact, watcher + incremental STOMP, diagram foundation, MCP core, Docker/CI foundation và graph interaction surfaces.
+
+### Sprint 3 - `38 Done / 12 New`
+
+Đã có 18 MCP tools, source viewer, deep CPG runtime default-on, auth/ownership foundation, CLI/local patch, canonical Use Case model + frontend SVG rendering, lambda/method-reference robustness và low-confidence unresolved stubs (emitted by the default Spring runtime because Deep CPG is on). Mười hai task còn New:
+
+`T78`, `T79`, `T83`, `T84`, `T85`, `T86`, `T87`, `T88`, `T89`, `T93`, `T94`, `T138`.
+
+### Sprint 4 - `50 Done / 10 In Progress / 10 New`
+
+Đã có user/admin workspace, plans/credits/quota, API-key lifecycle, anti-abuse, audit, notifications, i18n scoped surfaces, project trash/refresh sessions và local runtime foundation.
+
+In Progress:
+
+`T109`, `T112`, `T117`, `T118`, `T119`, `T120`, `T121`, `T187`, `T188`, `T189`.
+
+New:
+
+`T99`, `T100`, `T103`, `T104`, `T105`, `T108`, `T111`, `T116`, `T183`, `T192`.
+
+## 5.2 Open work by evidence gap
+
+| Nhóm | Task | Điều kiện đóng còn thiếu |
+| --- | --- | --- |
+| API/docs | `T78`, `T79`, `T116`, `T117` | OpenAPI/Swagger/API reference và user guide phải khớp current auth/user/admin/trash/MCP surface. |
+| Parser/performance | `T83-T89`, `T93`, `T94`, `T120` | Resolution metric, content-hash cache, measured benchmarks, query/pagination work, graph stats/tech-debt evidence và tuning acceptance. |
+| CLI distribution | `T138` | npm publication và acceptance matrix còn thiếu. |
+| Production | `T99`, `T100`, `T103-T105`, `T108` | Production Compose, reverse proxy, DNS, TLS, HTTPS, deploy/rollback evidence. |
+| Demo/handover | `T109`, `T111`, `T112` | Sample repo/demo assets/video/slides được hoàn tất và kiểm tra. |
+| Final QA/polish | `T118`, `T119`, `T121` | Issue closure, full current browser E2E và product-level polish acceptance. |
+| i18n | `T183` | User language selector chuyển/accept ở header, collapsed và mobile. |
+| Graph | `T187-T189` | Implement scale-invariant overlap fix, resolve hit-testing/open questions và browser acceptance across zoom/filter/large graph. |
+| Audit realtime | `T192` | Live browser EventSource/network trace và auth/CORS/lifecycle acceptance. |
+
+---
+
+# 6. Task Distribution
+
+Số liệu phân công dưới đây được tính từ 192 Sprint task; task chung được chia đều như quy ước cũ.
+
+| Thành viên | Tổng estimate | Done hours | Remaining hours | Trọng tâm còn lại |
+| --- | ---: | ---: | ---: | --- |
+| Khoa | ~229h | 196h | ~33h | Parser/cache/query, graph verification. |
+| Vinh | ~219h | 170h | ~49h | Production deployment, parser/perf, audit SSE verification. |
+| Danh | ~194h | 165h | ~29h | OpenAPI/API docs, graph stats, UI/UX polish. |
+| Thịnh | ~182h | 163h | ~19h | Graph polish, selector placement, final QA/demo support. |
+| Thái | ~120h | 81h | ~39h | Demo assets, user guide, final integration testing. |
+
+Các số `~` do task `All`, `Thái + Thịnh` và `Vinh + Khoa` được chia đều; tổng chính thức vẫn là `945h`.
+
+---
+
+# 7. CSV Export and Maintenance
+
+## 7.1 Trạng thái CSV
+
+CSV was regenerated from the reconciled Markdown backlog during this audit and passed the cell/count/ID/estimate/PPS/ED validation recorded in `AUDIT-EVIDENCE-2026-08-14.md`. Không dùng timestamp 2026-07-26 làm bằng chứng current.
+
+```powershell
+Push-Location task-final
+py -3 -X utf8 export_to_csv.py
+Pop-Location
 ```
 
-Script tự đọc `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` cạnh nó và ghi vào `csv_exports/` — không cần sửa đường dẫn.
+Trên máy audit dùng `py -3 -X utf8`; alias `python` trỏ tới Microsoft Store shim không khả dụng, còn bare `py -3` có thể crash khi exporter in emoji qua console `cp1252`.
 
-### Bước 2–4: Upload Drive → Google Sheets → Share team
+Checklist sau export:
 
-Giữ nguyên quy trình cũ: kéo thả 5 CSV vào folder `VibeGraph Project/Sprint Backlogs/` trên Drive → "Open with Google Sheets" → Share cho Khoa, Danh, Vinh, Thái, Thịnh (Editor/Commenter).
+- `product_backlog.csv`: 26 rows, `24 Done / 2 In Progress`.
+- `release_backlog.csv`: 66 rows, `55 Done / 8 In Progress / 3 New`.
+- `sprint_backlog.csv`: 192 unique task IDs, không gap/duplicate, `160 Done / 10 In Progress / 22 New`.
+- Sprint distribution: S1 `31 Done`; S2 `41 Done`; S3 `38 Done / 12 New`; S4 `50 Done / 10 In Progress / 10 New`.
+- Total estimate `945h`; UTF-8 BOM được giữ.
+- PPS row sum hiển thị `226.246`; phép tính exact/unrounded `226.25`; denominator `1800`; ED `30`.
+- Markdown và CSV phải bằng nhau ở các cell nguồn.
 
-### Validation trước khi upload
+## 7.2 Quy trình cập nhật
 
-- [ ] `product_backlog.csv` = 26 dòng, `release_backlog.csv` = 66 dòng, `sprint_backlog.csv` có đủ T192
-- [ ] Tiếng Việt hiển thị đúng trong Excel
-- [ ] Cột State chỉ chứa: New / In Progress / Done (hoặc Removed)
+1. Cập nhật `task-final/VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` với state/note có evidence cụ thể.
+2. Cập nhật `task-final/AUDIT-EVIDENCE-YYYY-MM-DD.md` hoặc ledger hiện hành khi snapshot/evidence boundary thay đổi.
+3. Cập nhật master document này với branch, HEAD, test/runtime và caveat mới.
+4. Chạy exporter bằng `py -3 -X utf8`, rồi validate counts/IDs/estimate/PPS/ED/BOM và cell equality; output `Exported` không tự thay thế validation.
+5. Trước commit: chạy full repository verification theo `RULES.md`, `git diff --check`, `gitnexus_detect_changes()` và review toàn bộ diff. Audit này không tạo commit.
 
----
-
-# 6. UPDATE INSTRUCTIONS
-
-## 🔄 Cách duy trì bản FINAL
-
-1. **Chỉ sửa `task-final/`** — không sửa `task/` và `task-update/` nữa (archive).
-2. Khi một task đổi trạng thái: sửa cột **State** (`New → In Progress → Done`) và **Note** (kèm bằng chứng: file path, ngày test, kết quả lệnh) trong `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`.
-3. Chạy lại `python export_to_csv.py` → upload Drive.
-4. Task mới: đánh số tiếp **T193+** (RB tiếp **RB67+**, PB tiếp **PB27+**), xếp vào sprint phù hợp, có Assign + Estimate + Note.
-5. Cập nhật dòng "**Số liệu realtime**" ở header file WS3 và bảng "Tiến độ realtime" ở Section 1 tài liệu này khi số Done thay đổi đáng kể.
-6. Quy ước Note: bắt đầu bằng ✅ (Done) / 🚧 (In Progress) / ⬜ (New), kèm đường dẫn file code hoặc ngày QA làm bằng chứng.
-
-## 🎯 Milestone đề xuất tiếp theo
-
-1. ⚡ **Tuần này:** Fix 2 issue còn lại (T183, T192) + merge nhánh graph polish (T187–T189) → chạy final E2E (T119).
-2. 🔥 **Trước bàn giao:** USER_GUIDE GĐ2 (T117) + demo script GĐ2 (T110) + chốt repo demo (T109) + video/slides (T111–T112).
-3. 🟡 **Khi có VPS:** T99 → T103–T105 → T108 (deploy + SSL + auto-deploy).
-4. 🟢 **Sau bàn giao:** nợ kỹ thuật Sprint 3 (OpenAPI, parser robustness, caching, pagination, publish npm CLI).
-
-## 📁 File References
-
-### Bản FINAL (nguồn sự thật — CHỈ CẬP NHẬT Ở ĐÂY):
-- `task-final/VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` — Backlog + Sprint chi tiết ⭐
-- `task-final/PROJECT_DOCUMENTATION_MASTER.md` — Tài liệu này
-- `task-final/export_to_csv.py` — Script export CSV
-- `task-final/csv_exports/*.csv` — 5 CSV (sinh tự động, có thể tạo lại)
-
-### Archive (KHÔNG cập nhật nữa):
-- `task/` — bản Scrum gốc (snapshot tới 2026-07-02)
-- `task-update/` — phase docs + handoffs GĐ2 (snapshot tới 2026-07-19)
-
-### Tài liệu kỹ thuật liên quan (ngoài task-final):
-- `README.md` (2026-07-19, CLI-first) · `MCP_INTEGRATION.md` + `docs/mcp-integration.md` · `docs/local-patch.md` · `DEPLOYMENT.md` · `DEVOPS-GUIDE.md` · `DEMO_SCRIPT.md` · `VibeGraph-specs-2month/` (architecture, requirements, neo4j-schema, security-multiuser-roadmap, file-checklist)
+Quy ước task mới: dùng `T193+`, `RB67+`, `PB27+`; không sửa `task/` hoặc `task-update/` để giả làm trạng thái mới.
 
 ---
 
-## 🔍 Where to Find Information
+# 8. Evidence Index
 
-| Cần biết...                        | Xem...                                        |
-| ---------------------------------- | --------------------------------------------- |
-| Tiến độ tổng thể + số liệu         | Section 1 — Executive Summary                 |
-| Chi tiết module đã làm tới đâu     | Section 2 — Implementation Status             |
-| Từng sprint đã/chưa làm gì         | Section 3 — Sprint Progress                   |
-| Ai làm gì, còn bao nhiêu giờ       | Section 4 — Task Distribution                 |
-| Cách export CSV                    | Section 5 — CSV Guide                         |
-| Cách cập nhật tài liệu này         | Section 6 — Update Instructions               |
-| Trạng thái từng task cụ thể        | `VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md`     |
+| Cần kiểm tra | Nguồn bằng chứng chính |
+| --- | --- |
+| Snapshot, worktree, fresh checks, limitations | `task-final/AUDIT-EVIDENCE-2026-08-14.md` |
+| State từng Product/Release/Sprint task | `task-final/VibeGraph_WS3_Sprint-Trello-BBCH-ERD.md` |
+| MCP 18 tools | `src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md`, `docs/mcp-integration.md` |
+| Deep CPG default | `src/main/resources/application.yaml`, `ParserServiceImpl` |
+| Auth/session/OAuth | `auth/config`, `auth/service`, `auth/oauth`, `auth/web`, `V18/V19` migrations |
+| Fetch + session retry + `vg_user` caveat | `vibegraph-web/src/lib/api.ts`, `authRefresh.ts`, `stores/auth.ts`, `package.json` |
+| PostgreSQL/Neo4j/Supabase migrations | `src/main/resources/db/migration`, `src/main/resources/db/supabase` |
+| Trash/restore/purge/quota | `ProjectsProperties`, `ProjectController`, `ProjectTrashService`, `V17__project_trash.sql` |
+| Graph overlap unresolved | `update/graph/03-ROOT-CAUSE.md`, `update/graph/05-IMPLEMENTATION-PLAN.md` |
+| CI/deployment | `.github/workflows`, `docker-compose.yml`, `vibegraph-web/nginx.conf.template`, `.env.example` |
+| Backend test artifacts | `target/surefire-reports`, `target/failsafe-reports`, `target/site/jacoco/jacoco.xml` |
+| Frontend coverage artifact | `vibegraph-web/coverage/coverage-summary.json` |
 
 ---
 
-*Bản FINAL tạo: 2026-07-26 — đối chiếu tài liệu cũ + codebase thực tế + QA sessions*
-*Maintained By: Thịnh (Leader) — cập nhật theo Section 6*
+*Master document refreshed from the 2026-07-26 version by repository-wide audit on 2026-08-14. It intentionally distinguishes committed code, dirty working-tree work, historical reports, fresh checks and unverified production scope.*

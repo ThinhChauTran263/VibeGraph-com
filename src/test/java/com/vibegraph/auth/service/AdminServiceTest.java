@@ -302,16 +302,31 @@ class AdminServiceTest {
         UUID userId = UUID.randomUUID();
         User user = User.builder().id(userId).email("alice@test.local").displayName("Alice").role(Role.USER).build();
         var pageable = PageRequest.of(1, 3);
+        // B-M4: the plan filter is validated against the plans table before the query runs.
+        when(planRepository.existsByCode("PRO")).thenReturn(true);
         when(userRepository.findAllWithFilters("ali", "ACTIVE", "PRO", pageable))
                 .thenReturn(new PageImpl<>(java.util.List.of(user), pageable, 7));
-        when(settingsRepository.findById(userId)).thenReturn(Optional.of(
-                UserAccountSettings.builder().userId(userId).plan(Plan.builder().code("PRO").build()).build()));
+        // H9: the page is enriched via two batch queries, not two queries per user.
+        when(settingsRepository.findAllById(any()))
+                .thenReturn(java.util.List.of(UserAccountSettings.builder()
+                        .userId(userId).plan(Plan.builder().code("PRO").build()).build()));
+        com.vibegraph.auth.repository.projection.StorageSum sum =
+                mock(com.vibegraph.auth.repository.projection.StorageSum.class);
+        when(sum.getOwnerId()).thenReturn(userId);
+        when(sum.getTotal()).thenReturn(2048L);
+        when(projectUsageRepository.sumStorageByOwners(any())).thenReturn(java.util.List.of(sum));
 
         var result = adminService.getUsers("ali", "ACTIVE", "PRO", pageable);
 
         assertEquals(7, result.getTotalElements());
+        assertEquals("PRO", result.getContent().getFirst().planCode());
         verify(userRepository).findAllWithFilters("ali", "ACTIVE", "PRO", pageable);
         verify(userRepository, never()).findAll();
+        verify(settingsRepository).findAllById(any());
+        verify(projectUsageRepository).sumStorageByOwners(any());
+        // No per-user N+1 lookups on the paged path.
+        verify(settingsRepository, never()).findById(any());
+        verify(projectUsageRepository, never()).sumStorageBytesByOwnerId(any());
     }
 
     @Test
@@ -455,5 +470,48 @@ class AdminServiceTest {
         verify(feedbackReportRealtimePublisher).publishMessageAdded(eq(reportId), argThat(message ->
                 message.body().equals("We are checking this now.")
                         && message.senderRole() == FeedbackSenderRole.ADMIN));
+    }
+
+    // ── B-M4: admin user-list filter validation ────────────────────────────
+
+    @Test
+    @DisplayName("getUsers rejects a status outside the AccountStatus enum (B-M4)")
+    void getUsers_rejectsUnknownStatusFilter() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> adminService.getUsers(null, "SUSPENDED", null, PageRequest.of(0, 20)));
+        assertEquals("Unsupported user status filter", ex.getMessage());
+        verify(userRepository, never()).findAllWithFilters(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getUsers accepts enum statuses case-insensitively (B-M4)")
+    void getUsers_acceptsEnumStatusCaseInsensitive() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(userRepository.findAllWithFilters(null, "active", null, pageable))
+                .thenReturn(new PageImpl<>(java.util.List.of(), pageable, 0));
+
+        assertDoesNotThrow(() -> adminService.getUsers(null, "active", null, pageable));
+    }
+
+    @Test
+    @DisplayName("getUsers rejects plan codes missing from the plans table (B-M4)")
+    void getUsers_rejectsUnknownPlanFilter() {
+        when(planRepository.existsByCode("LEGACY")).thenReturn(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> adminService.getUsers(null, null, "legacy", PageRequest.of(0, 20)));
+        assertEquals("Unsupported plan filter", ex.getMessage());
+        verify(userRepository, never()).findAllWithFilters(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("getUsers accepts any plan present in the plans table — no hardcoded list (B-M4)")
+    void getUsers_acceptsPlanFromDatabase() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(planRepository.existsByCode("STARTER")).thenReturn(true);
+        when(userRepository.findAllWithFilters(null, null, "starter", pageable))
+                .thenReturn(new PageImpl<>(java.util.List.of(), pageable, 0));
+
+        assertDoesNotThrow(() -> adminService.getUsers(null, null, "starter", pageable));
     }
 }

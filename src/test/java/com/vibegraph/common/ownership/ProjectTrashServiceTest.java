@@ -13,10 +13,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.ProjectOwnership;
@@ -159,12 +165,14 @@ class ProjectTrashServiceTest {
     }
 
     @Test
-    @DisplayName("the sweep purges every project whose retention window has expired")
+    @DisplayName("the sweep purges every project whose retention window has expired, batch by batch")
     void sweepPurgesExpiredProjects() {
-        when(ownershipRepository.findByDeletedAtLessThan(NOW.minusSeconds(3 * 86400)))
-                .thenReturn(List.of(
-                        trashed("p1", "acme/widgets", NOW.minusSeconds(4 * 86400)),
-                        trashed("p2", "acme/gadgets", NOW.minusSeconds(5 * 86400))));
+        when(ownershipRepository.findByDeletedAtLessThan(eq(NOW.minusSeconds(3 * 86400)), any(Pageable.class)))
+                .thenReturn(
+                        new PageImpl<>(List.of(
+                                trashed("p1", "acme/widgets", NOW.minusSeconds(4 * 86400)),
+                                trashed("p2", "acme/gadgets", NOW.minusSeconds(5 * 86400)))),
+                        Page.empty());
 
         service.purgeExpiredProjects();
 
@@ -173,30 +181,36 @@ class ProjectTrashServiceTest {
     }
 
     @Test
-    @DisplayName("one failing project does not stop the rest of the sweep")
+    @DisplayName("one failing project does not stop the rest of the sweep, and the sweep terminates")
     void sweepContinuesAfterAFailure() {
-        when(ownershipRepository.findByDeletedAtLessThan(NOW.minusSeconds(3 * 86400)))
-                .thenReturn(List.of(
-                        trashed("locked", "acme/widgets", NOW.minusSeconds(4 * 86400)),
-                        trashed("p2", "acme/gadgets", NOW.minusSeconds(5 * 86400))));
+        // Batch 1: locked fails, p2 succeeds (batch made progress → sweep continues).
+        // Batch 2: only locked remains, zero progress → sweep stops instead of looping forever.
+        when(ownershipRepository.findByDeletedAtLessThan(eq(NOW.minusSeconds(3 * 86400)), any(Pageable.class)))
+                .thenReturn(
+                        new PageImpl<>(List.of(
+                                trashed("locked", "acme/widgets", NOW.minusSeconds(4 * 86400)),
+                                trashed("p2", "acme/gadgets", NOW.minusSeconds(5 * 86400)))),
+                        new PageImpl<>(List.of(
+                                trashed("locked", "acme/widgets", NOW.minusSeconds(4 * 86400)))));
         doThrow(new RuntimeException("admin-locked key")).when(deletionOrchestrator).purge("locked");
 
         service.purgeExpiredProjects();
 
         // The failing project stays in trash and is retried next run; the rest is still purged.
         verify(deletionOrchestrator).purge("p2");
+        verify(deletionOrchestrator, times(2)).purge("locked");
     }
 
     @Test
     @DisplayName("the sweep honours a configured retention window")
     void sweepUsesTheConfiguredRetentionWindow() {
         projectsProperties.setTrashRetentionDays(7);
-        when(ownershipRepository.findByDeletedAtLessThan(NOW.minusSeconds(7 * 86400)))
-                .thenReturn(List.of());
+        when(ownershipRepository.findByDeletedAtLessThan(eq(NOW.minusSeconds(7 * 86400)), any(Pageable.class)))
+                .thenReturn(Page.empty());
 
         service.purgeExpiredProjects();
 
-        verify(ownershipRepository).findByDeletedAtLessThan(NOW.minusSeconds(7 * 86400));
+        verify(ownershipRepository).findByDeletedAtLessThan(eq(NOW.minusSeconds(7 * 86400)), any(Pageable.class));
         Mockito.verifyNoInteractions(deletionOrchestrator);
     }
 }

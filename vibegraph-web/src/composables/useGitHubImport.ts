@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref } from 'vue'
 import { ApiError, importApi, projectApi, type Project, type ProjectStatusEvent } from '@/lib/api'
 import { useWebSocket, type UseWebSocketReturn } from '@/composables/useWebSocket'
 import {
@@ -82,7 +82,8 @@ function timeoutMessage(progress: number): string {
 async function waitForGitHubAnalysis(
   project: Project,
   onProgress: (value: number) => void,
-): Promise<Project> {
+  isCancelled: () => boolean,
+): Promise<Project | null> {
   let lastProgress = project.progress ?? 0
 
   if (project.status !== 'ANALYZING') {
@@ -98,8 +99,12 @@ async function waitForGitHubAnalysis(
   // No fixed iteration cap: keep polling as long as the backend keeps advancing. This is what lets
   // a big repo finish (and auto-open its graph) instead of falsely erroring out at ~94%.
   for (;;) {
+    // H10: the form unmounts on tab switch — stop polling instead of running orphaned.
+    if (isCancelled()) return null
     await delay(GITHUB_IMPORT_POLL_INTERVAL_MS)
+    if (isCancelled()) return null
     const latestProject = await projectApi.get(project.id)
+    if (isCancelled()) return null
 
     if (typeof latestProject.progress === 'number') {
       if (latestProject.progress > lastProgress) {
@@ -154,6 +159,17 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
   const errorMessage = ref<string | null>(null)
   const importedProject = ref<Project | null>(null)
   const progress = ref(0)
+
+  // H10: cancellation token for the polling loop. The import form renders via v-else in the
+  // tabbed panel, so switching tabs unmounts it — without this, polling + WebSocket kept
+  // running orphaned and kept writing to refs of a dead component.
+  let cancelled = false
+  function cancel(): void {
+    cancelled = true
+  }
+  if (getCurrentScope()) {
+    onScopeDispose(cancel)
+  }
 
   const isImporting = computed(() => status.value === 'importing')
 
@@ -221,12 +237,15 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     errorMessage.value = null
     importedProject.value = null
     progress.value = 0
+    cancelled = false
 
     try {
       const project = await importApi.importGithub(trimmedUrl)
+      if (cancelled) return null
       const stopLive = project.status === 'ANALYZING' ? startLiveProgress(project.id) : null
       try {
-        const analyzedProject = await waitForGitHubAnalysis(project, setProgress)
+        const analyzedProject = await waitForGitHubAnalysis(project, setProgress, () => cancelled)
+        if (cancelled || analyzedProject === null) return null
         progress.value = 100
         status.value = 'success'
         importedProject.value = analyzedProject
@@ -235,6 +254,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
         stopLive?.()
       }
     } catch (error: unknown) {
+      if (cancelled) return null
       status.value = 'error'
       errorMessage.value = getGitHubImportError(error)
       importedProject.value = null
@@ -256,6 +276,7 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     progress,
     isImporting,
     importGithub,
+    cancel,
     reset,
   }
 }

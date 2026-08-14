@@ -5,7 +5,9 @@
  * The freeze/crash on heavy projects can come from rendering the ENTIRE graph (tens of
  * thousands of nodes) on the browser main thread + WebGL. When enabled, this module keeps only
  * the most architecturally meaningful nodes once the graph exceeds a threshold, so the canvas
- * stays responsive. With the default `0` limit, the renderer receives the full frontend graph.
+ * stays responsive. B-M10: the default limit is POSITIVE (Safe Mode on), so an oversized
+ * graph is truncated with a truthful banner instead of freezing the canvas; set
+ * `VITE_GRAPH_SAFE_NODE_LIMIT=0` to hand the renderer the full frontend graph.
  *
  * Selection strategy when capping:
  *   1. node-type priority (Project/Package/File/Class first, Field/LocalVariable last)
@@ -18,8 +20,9 @@ import type { GraphData, GraphNode, NodeType } from '@/types/graph'
 import { GRAPH_SAFE_NODE_LIMIT } from '@/lib/runtimeConfig'
 
 /**
- * Default render budget. `0` disables Safe Mode; above a positive value the graph enters Safe
- * Mode and only the top-ranked nodes are rendered. Sourced from `VITE_GRAPH_SAFE_NODE_LIMIT`.
+ * Default render budget. A positive value puts the graph in Safe Mode where only the
+ * top-ranked nodes are rendered; `0` disables Safe Mode. Sourced from
+ * `VITE_GRAPH_SAFE_NODE_LIMIT` (positive by default — B-M10).
  */
 export { GRAPH_SAFE_NODE_LIMIT }
 

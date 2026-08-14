@@ -41,9 +41,8 @@ import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
 import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ProjectBindingResponse;
-import com.vibegraph.graph.service.AnalyzeService;
-import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.CliRepositoryService;
+import com.vibegraph.graph.service.ProjectAnalysisScheduler;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -58,7 +57,7 @@ class ProjectControllerTest {
 
     private MockMvc mockMvc;
     private ProjectService projectService;
-    private AnalyzeService analyzeService;
+    private ProjectAnalysisScheduler projectAnalysisScheduler;
     private ProjectOwnershipRegistrar ownershipRegistrar;
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
@@ -73,7 +72,7 @@ class ProjectControllerTest {
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
-        analyzeService = Mockito.mock(AnalyzeService.class);
+        projectAnalysisScheduler = Mockito.mock(ProjectAnalysisScheduler.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
@@ -85,7 +84,7 @@ class ProjectControllerTest {
         projectUsageService = Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class);
         cliRepositoryService = Mockito.mock(CliRepositoryService.class);
         ProjectController controller = new ProjectController(
-                projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
+                projectService, projectAnalysisScheduler, ownershipRegistrar, ownershipGuard, ownershipQuery,
                 deletionOrchestrator, trashService, currentUser, accountSettingsService, featureGateService,
                 projectUsageService, cliRepositoryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
@@ -212,24 +211,20 @@ class ProjectControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/projects/{id}/analyze persists stats via the service contract")
-    void shouldPersistStatsThroughInterface() throws Exception {
+    @DisplayName("POST /api/projects/{id}/analyze accepts immediately and schedules background analysis (H8)")
+    void shouldAcceptAndScheduleBackgroundAnalysis() throws Exception {
         UUID userId = UUID.randomUUID();
         ProjectResponse project = ProjectResponse.builder()
                 .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
         when(currentUser.id()).thenReturn(userId);
         when(projectService.getProject("p1")).thenReturn(project);
-        when(analyzeService.analyzeProject("p1", "p1", "/tmp/p1"))
-                .thenReturn(new AnalysisResult("p1", 3, 10, 7, 0));
 
         mockMvc.perform(post("/api/projects/p1/analyze"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nodesUpserted").value(10))
-                .andExpect(jsonPath("$.data.edgesUpserted").value(7));
+                .andExpect(status().isAccepted());
 
-        // The key regression guard for the removed downcast: stats must be pushed
-        // through the interface method, which a plain mock honors.
-        verify(projectService, times(1)).updateProjectStats("p1", 3, 10, 7);
+        // Existence is checked on the request thread; the heavy work is queued, not run inline.
+        verify(projectService, times(1)).getProject("p1");
+        verify(projectAnalysisScheduler, times(1)).schedule("p1");
     }
 
     @Test
@@ -245,7 +240,7 @@ class ProjectControllerTest {
         verify(ownershipGuard).assertOwner("p1");
         verify(currentUser, never()).id();
         verify(projectService, never()).getProject("p1");
-        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        verify(projectAnalysisScheduler, never()).schedule("p1");
     }
 
     @Test
@@ -263,8 +258,7 @@ class ProjectControllerTest {
 
         verify(ownershipGuard).assertOwner("p1");
         verify(projectService, never()).getProject("p1");
-        verify(analyzeService, never()).analyzeProject(any(), any(), any());
-        verify(projectService, never()).updateProjectStats(eq("p1"), any(Integer.class), any(Integer.class), any(Integer.class));
+        verify(projectAnalysisScheduler, never()).schedule("p1");
     }
 
     @Test

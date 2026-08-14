@@ -431,6 +431,7 @@
       "githubUrl": "URL repository GitHub",
       "githubPlaceholder": "https://github.com/owner/repo",
       "importGithub": "Nhập repo GitHub",
+      "success": "Đã nhập xong {name} (trạng thái: {status}).",
       "reset": "Đặt lại",
       "cli": {
         "title": "Tạo kho dự án đồng bộ bằng CLI",
@@ -1120,6 +1121,7 @@
       "errors": {
         "blockUser": "Không thể chặn người dùng.",
         "createUser": "Không thể tạo người dùng.",
+        "loadFailed": "Không thể tải danh sách người dùng.",
         "unblockUser": "Không thể bỏ chặn người dùng."
       },
       "fallback": {

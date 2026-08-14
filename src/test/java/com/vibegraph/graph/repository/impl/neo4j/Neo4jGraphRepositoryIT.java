@@ -144,6 +144,53 @@ class Neo4jGraphRepositoryIT {
     }
 
     @Test
+    @DisplayName("B-M11: upsertAnalysis persists project + nodes + edges atomically and returns persisted edge count")
+    void upsertAnalysisPersistsWholeGraph() {
+        NodeData clazz = NodeData.of(
+                "Class", "UserService", "com.example.UserService",
+                "src/UserService.java", 1, 50, Map.of("visibility", "public"));
+        NodeData method = NodeData.of(
+                "Method", "save", "com.example.UserService.save(User)",
+                "src/UserService.java", 10, 12, Map.of("visibility", "public"));
+        EdgeData hasMethod = EdgeData.of("HAS_METHOD",
+                "com.example.UserService", "com.example.UserService.save(User)");
+        EdgeData dangling = EdgeData.of("CALLS",
+                "com.example.UserService.save(User)", "org.example.Missing.gone()");
+
+        int persisted = repository.upsertAnalysis(
+                projectId, "Atomic Repo", "/tmp/demo", List.of(clazz, method), List.of(hasMethod, dangling));
+
+        assertThat(persisted).isEqualTo(1); // dangling endpoint skipped, like the old upsertEdges
+        ProjectMetadata metadata = repository.findProject(projectId);
+        assertThat(metadata.name()).isEqualTo("Atomic Repo");
+        assertThat(metadata.totalNodes()).isEqualTo(2);
+        assertThat(metadata.totalEdges()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("B-M11: a mid-write failure rolls the whole analysis graph back (no half-written project)")
+    void upsertAnalysisRollsBackOnMidWriteFailure() {
+        NodeData clazz = NodeData.of(
+                "Class", "UserService", "com.example.UserService",
+                "src/UserService.java", 1, 50, Map.of("visibility", "public"));
+        // The driver refuses to serialize a non-Neo4j property value mid-transaction —
+        // exactly the "failure after nodes were written" shape B-M11 must survive.
+        EdgeData poisoned = EdgeData.of("CALLS",
+                "com.example.UserService", "com.example.UserService",
+                Map.of("poison", new Object()));
+
+        assertThatThrownBy(() -> repository.upsertAnalysis(
+                projectId, "Rollback Repo", "/tmp/demo", List.of(clazz), List.of(poisoned)))
+                .isInstanceOf(RuntimeException.class);
+
+        // Nothing of this analysis survives: no project node, no class node, no edges.
+        assertThat(repository.findProject(projectId)).isNull();
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+        assertThat(graph.getNodes()).isEmpty();
+        assertThat(graph.getEdges()).isEmpty();
+    }
+
+    @Test
     @DisplayName("upsertEdges skips edges with missing endpoints instead of creating placeholders")
     void shouldSkipEdgesWithMissingEndpoint() {
         NodeData caller = NodeData.of(

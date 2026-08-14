@@ -1,0 +1,23 @@
+V2.3 - H13 filter-order verification
+Date: 2026-08-12
+Conclusion: CONFIRMED (combined static mechanism and runtime timing)
+
+ApiKeyAuthFilter evidence
+- API key header is X-API-Key (line 30).
+- Only /mcp*, /api/projects/{id}/patch, and /api/projects/current/patch invoke API-key
+  authentication (lines 116-120). The older /api/projects timing route did not exercise this filter.
+- The first 12 characters are used as key_prefix (line 83).
+- Lookup returns up to six candidates, with more than five rejected (lines 84-87).
+- BCrypt passwordEncoder.matches is called for each remaining candidate (lines 90-94).
+
+SecurityConfig evidence
+- apiKeyAuthFilter is registered after UsernamePasswordAuthenticationFilter (line 183).
+- rateLimitFilter is registered before AuthorizationFilter (line 184).
+- These declarations do not place rateLimitFilter before apiKeyAuthFilter. Runtime timing confirms a
+  matched-prefix invalid key pays the BCrypt cost before any rate-limit response could protect it.
+
+Runtime correlation
+- Random absent prefix median: 4.640 ms.
+- Matching prefix with wrong suffix median: 54.840 ms.
+- Additional matched-prefix cost: 50.200 ms/request.
+- All measured responses were 401, and none were 429.

@@ -38,6 +38,17 @@ public interface GraphRepository {
     void upsertNodes(String projectId, List<NodeData> nodes);
 
     /**
+     * Persist the full graph of one analysis — project node, symbol nodes, and edges — as a
+     * SINGLE atomic write (B-M11). Any failure rolls the whole analysis graph back, so a
+     * half-written project graph can never be observed.
+     *
+     * @return the number of edges actually persisted (missing endpoints skipped), the truthful
+     *         count to report to callers
+     */
+    int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges);
+
+    /**
      * Persist edges between nodes that already exist in the parsed graph. Missing
      * endpoints are skipped rather than materialized as {@code External} stubs.
      *
@@ -50,6 +61,14 @@ public interface GraphRepository {
     void deleteProject(String projectId);
 
     void deleteFile(String projectId, String filePath);
+
+    /**
+     * The graph slice owned by one source file: every node stored under {@code filePath} plus
+     * every edge touching one of those nodes in either direction (so inbound edges from other
+     * files are included and their removal stays observable). Backs the per-file realtime diff
+     * (B-M5) without loading the entire project graph.
+     */
+    GraphDataResponse getFileSlice(String projectId, String filePath);
 
     GraphDataResponse getFullGraph(String projectId);
 
