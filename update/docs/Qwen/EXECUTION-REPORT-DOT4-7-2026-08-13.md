@@ -95,7 +95,7 @@ Giữa hai phép đo: `docker compose build backend` (chứa B-L1) → recreate 
 | `b89107a0` | Lab7_Java6 | 291 | 990 | **3.40** |
 | `2416d6a0` | cli-demo | 13 | 27 | **2.08** |
 
-**Kết luận:** k đo thật ≈ 3.4–3.5 ở project lớn, **cao hơn** ước đoán 2.3 suy từ `CLAUDE.md` (GitNexus index). Bằng chứng định lượng cho Đ7-4 (tách 2 query) đã có. **Trạng thái quyết định: ĐO XONG, CHƯA AI QUYẾT có làm tiếp hay không** — khác bản chất Đ7-1 (Đ7-1 có quyết định DỪNG rõ ràng, QĐ #3; Đ7-4 chỉ mới hoàn tất bước đo, Đ7-4b→4e chưa từng bị từ chối). Khuyến nghị của người thi hành: **nên làm** — driver đang tải ~3.4× số dòng cần thiết, lợi ích thật; nhưng KHÔNG khẩn cấp vì payload HTTP đã được cap ở controller (B-M10), phần lãng phí là băng thông/RAM nội bộ chứ không phải độ trễ người dùng. Rủi ro số 1 khi làm: mất node cô lập (tiêu chí Đ7-4d đã viết sẵn trong EXEC-2).
+**Kết luận:** k đo thật ≈ 3.4–3.5 ở project lớn, **cao hơn** ước đoán 2.3 suy từ `CLAUDE.md` (GitNexus index). Bằng chứng định lượng cho Đ7-4 (tách 2 query) đã có. **Trạng thái quyết định: ĐO XONG, CHƯA AI QUYẾT có làm tiếp hay không** — *[cập nhật 14/08: operator đã duyệt làm tiếp; Đ7-4b→4e đã triển khai và nghiệm thu — kết quả (gồm phát hiện rows truyền TĂNG +13% ngược kỳ vọng) trong `SESSION-REPORT-DOT-4ITEMS-2026-08-14.md`]* — khác bản chất Đ7-1 (Đ7-1 có quyết định DỪNG rõ ràng, QĐ #3; Đ7-4 chỉ mới hoàn tất bước đo, Đ7-4b→4e chưa từng bị từ chối). Khuyến nghị của người thi hành: **nên làm** — driver đang tải ~3.4× số dòng cần thiết, lợi ích thật; nhưng KHÔNG khẩn cấp vì payload HTTP đã được cap ở controller (B-M10), phần lãng phí là băng thông/RAM nội bộ chứ không phải độ trễ người dùng. Rủi ro số 1 khi làm: mất node cô lập (tiêu chí Đ7-4d đã viết sẵn trong EXEC-2).
 
 ---
 
