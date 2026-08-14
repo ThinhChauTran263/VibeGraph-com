@@ -386,41 +386,50 @@ public class Neo4jGraphRepository implements GraphRepository {
     @Override
     public GraphDataResponse getFullGraph(String projectId) {
         try (Session session = neo4jDriver.session()) {
-            // :Symbol-scoped so the (projectId) index applies — the label-less form
-            // degraded to an all-nodes scan across every tenant.
-            var result = session.run(
-                    "MATCH (n:Symbol {projectId: $projectId}) " +
-                    "OPTIONAL MATCH (n)-[r]->(m:Symbol {projectId: $projectId}) " +
-                    "RETURN n, r, m",
-                    Map.of("projectId", projectId)
-            );
+            // Đ7-4: two point queries instead of one OPTIONAL MATCH. The old form
+            // returned one row per OUTGOING EDGE (node duplication collapsed only
+            // client-side), so the driver transferred O(edges) rows; measured k ≈ 3.4
+            // on the largest project. Nodes-only + edges-only transfers O(nodes + edges).
+            // Both run inside ONE read transaction = one consistent snapshot, so an edge
+            // can never reference a node outside the node set; the dangling-endpoint
+            // filter below is defence-in-depth, never silent.
+            return session.executeRead(tx -> {
+                Map<String, NodeDto> nodeMap = new LinkedHashMap<>();
+                Map<String, Integer> nodeStats = new HashMap<>();
+                var nodeResult = tx.run(
+                        "MATCH (n:Symbol {projectId: $projectId}) RETURN n",
+                        Map.of("projectId", projectId)
+                );
+                while (nodeResult.hasNext()) {
+                    // One row per node: isolated nodes (no edges at all) are kept,
+                    // which is exactly why the old query used OPTIONAL MATCH.
+                    addNodeToMap(nodeMap, nodeResult.next().get("n").asNode(), nodeStats);
+                }
 
-            Map<String, NodeDto> nodeMap = new LinkedHashMap<>();
-            List<EdgeDto> edges = new ArrayList<>();
-            Map<String, Integer> nodeStats = new HashMap<>();
-            Map<String, Integer> edgeStats = new HashMap<>();
+                List<EdgeDto> edges = new ArrayList<>();
+                Map<String, Integer> edgeStats = new HashMap<>();
+                var edgeResult = tx.run(
+                        "MATCH (a:Symbol {projectId: $projectId})-[r]->(b:Symbol {projectId: $projectId}) " +
+                        "RETURN a, r, b",
+                        Map.of("projectId", projectId)
+                );
+                while (edgeResult.hasNext()) {
+                    Record record = edgeResult.next();
+                    Node a = record.get("a").asNode();
+                    Node b = record.get("b").asNode();
+                    String sourceId = stableNodeId(a);
+                    String targetId = stableNodeId(b);
+                    if (!nodeMap.containsKey(sourceId) || !nodeMap.containsKey(targetId)) {
+                        log.warn("getFullGraph(projectId={}): dropping edge {} -> {} of type {}: " +
+                                        "endpoint missing from node set",
+                                projectId, sourceId, targetId, record.get("r").asRelationship().type());
+                        continue;
+                    }
 
-            while (result.hasNext()) {
-                Record record = result.next();
-
-                Node n = record.get("n").asNode();
-                addNodeToMap(nodeMap, n, nodeStats);
-
-                Value rVal = record.get("r");
-                Value mVal = record.get("m");
-
-                if (!rVal.isNull() && !mVal.isNull()) {
-                    Node m = mVal.asNode();
-                    addNodeToMap(nodeMap, m, nodeStats);
-
-                    Relationship r = rVal.asRelationship();
+                    Relationship r = record.get("r").asRelationship();
                     String edgeType = r.type();
-                    String sourceId = stableNodeId(n);
-                    String targetId = stableNodeId(m);
-                    String edgeId = stableEdgeId(sourceId, edgeType, targetId);
-
-                    EdgeDto edgeDto = EdgeDto.builder()
-                            .id(edgeId)
+                    edges.add(EdgeDto.builder()
+                            .id(stableEdgeId(sourceId, edgeType, targetId))
                             .source(sourceId)
                             .target(targetId)
                             .type(edgeType)
@@ -429,18 +438,17 @@ public class Neo4jGraphRepository implements GraphRepository {
                             .weight(r.get("weight").isNull() ? 1 : r.get("weight").asInt())
                             .occurrences(readOccurrences(r))
                             .properties(edgeProperties(r))
-                            .build();
-                    edges.add(edgeDto);
+                            .build());
                     edgeStats.merge(edgeType, 1, Integer::sum);
                 }
-            }
 
-            return GraphDataResponse.builder()
-                    .nodes(new ArrayList<>(nodeMap.values()))
-                    .edges(edges)
-                    .nodeStats(nodeStats)
-                    .edgeStats(edgeStats)
-                    .build();
+                return GraphDataResponse.builder()
+                        .nodes(new ArrayList<>(nodeMap.values()))
+                        .edges(edges)
+                        .nodeStats(nodeStats)
+                        .edgeStats(edgeStats)
+                        .build();
+            });
         }
     }
 
