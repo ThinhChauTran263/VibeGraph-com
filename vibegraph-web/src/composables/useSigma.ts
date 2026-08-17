@@ -75,7 +75,12 @@ const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
 const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
 
 const LABEL_RENDERED_SIZE_THRESHOLD = SIGMA_LABEL_RENDERED_SIZE_THRESHOLD
-const ZOOM_SIZE_POWER = 0.75
+// ZOOM_SIZE_POWER is THE zoom lever (02-SIGMA-INTERNALS.md §3–4). p = 1.0 makes the
+// node radius expressed in graph units constant (S/K): the r^(−p) size scaling and
+// the 1/r coordinate scaling cancel, so node overlap becomes scale-invariant at
+// every zoom level. p < 1 (Sigma default 0.5, VibeGraph previously 0.75) makes
+// overlap zoom-dependent. At fit view (r = 1) every p behaves identically.
+const ZOOM_SIZE_POWER = 1.0
 const zoomToSizeRatio = (ratio: number): number =>
   Math.max(0.001, Math.pow(ratio, ZOOM_SIZE_POWER))
 
@@ -157,8 +162,17 @@ export function useSigma(options: UseSigmaOptions) {
       hideEdgesOnMove: false,
       hideLabelsOnMove: false,
       labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
+      // DO NOT change to 'positions'. In Sigma 3.0.3 it does NOT alter zoom scaling —
+      // it only multiplies all sizes by a large constant (~100×+), which looks broken.
+      // The zoom lever is ZOOM_SIZE_POWER. See update/graph/02-SIGMA-INTERNALS.md §2.
       itemSizesReference: 'screen',
       zoomToSizeRatioFunction: zoomToSizeRatio,
+      // Zoom clamps — chosen analytically (02-SIGMA-INTERNALS.md §6), tune via
+      // experiment if needed. Bounds zoom OUT (graph never shrinks past 4× fit scale).
+      maxCameraRatio: 4,
+      // Bounds zoom IN at ~100× magnification — matches the 100× design target of
+      // SIGMA_EDGE_SIZE (edges stay hairline-thin up to this magnification).
+      minCameraRatio: 0.01,
       defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',

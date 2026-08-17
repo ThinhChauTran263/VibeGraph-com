@@ -162,8 +162,18 @@ export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_Z
   min: 1,
 })
 
-/** Rendered edge thickness (screen px, constant across zoom). Lower = thinner lines. */
-export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.25, { min: 0.05 })
+/**
+ * Edge size attribute fed to Sigma's edge programs (NOT the rendered thickness by
+ * itself). With ZOOM_SIZE_POWER = 1.0 an edge starts ballooning once the zoom
+ * factor r^p drops below SIGMA_EDGE_SIZE / SIGMA_MIN_EDGE_THICKNESS. The floor
+ * holds while  SIGMA_EDGE_SIZE < SIGMA_MIN_EDGE_THICKNESS · M^(−p)
+ *              = 2.8 / 100 = 0.028,
+ * so 0.02 keeps edges hairline-thin up to 100× zoom
+ * (update/graph/02-SIGMA-INTERNALS.md §5). The { min } floor MUST stay below the
+ * default, otherwise the default is silently clamped back up and the fix does not
+ * apply.
+ */
+export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.02, { min: 0.005 })
 
 /**
  * Minimum rendered edge thickness (screen px). Sigma floors every edge at this, and
