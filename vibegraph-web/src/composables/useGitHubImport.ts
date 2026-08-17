@@ -22,6 +22,8 @@ const SAFE_ERROR_PATTERNS = [
   /rate limit/i,
   /still analyzing/i,
   /taking longer than expected/i,
+  /^Failed to download GitHub tarball after \d+ attempts:/i,
+  /^GitHub tarball download failed with HTTP (?:408|429|500|502|503|504) after \d+ attempts$/i,
 ]
 const GITHUB_IMPORT_POLL_INTERVAL_MS = IMPORT_POLL_INTERVAL_MS
 // A large repo can analyze for many minutes, so there is no fixed poll cap. Instead we only give

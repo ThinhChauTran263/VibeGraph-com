@@ -298,6 +298,21 @@ describe('useGitHubImport', () => {
     expect(composable.errorMessage.value).toBe('Repository is private.')
   })
 
+  it('shows the bounded retry failure returned by the backend', async () => {
+    const retryMessage =
+      'Failed to download GitHub tarball after 3 attempts: HTTP connect timed out'
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', retryMessage),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/large-repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(retryMessage)
+  })
+
   it('uses a generic message for unexpected API errors', async () => {
     importGithubMock.mockRejectedValueOnce(
       new ApiError(500, 'Internal Server Error', 'Stack trace: /srv/app/importer'),
