@@ -102,11 +102,27 @@ public class SecurityConfig {
         return new IpBlockFilter(resolver, ipBlockService, objectMapper);
     }
 
+    /**
+     * Edge stage: runs before the authentication filters and enforces the per-IP bucket only.
+     * See {@link RateLimitFilter.Stage} for why the identity buckets cannot live here.
+     */
     @Bean
     public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
-        return new RateLimitFilter(abuseProperties, resolver, requestEventService, objectMapper,
-                java.time.Clock.systemUTC(), meterRegistry);
+        return new RateLimitFilter(RateLimitFilter.Stage.EDGE, abuseProperties, resolver,
+                requestEventService, objectMapper, java.time.Clock.systemUTC(), meterRegistry);
+    }
+
+    /**
+     * Identity stage: runs after {@code ApiKeyAuthFilter} so the per-user and per-API-key buckets
+     * see a resolved principal. Placing them at the edge left both identifiers null, which silently
+     * disabled {@code requests-per-minute-per-user} and {@code requests-per-minute-per-api-key}.
+     */
+    @Bean
+    public RateLimitFilter identityRateLimitFilter(ClientAddressResolver resolver,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        return new RateLimitFilter(RateLimitFilter.Stage.IDENTITY, abuseProperties, resolver,
+                requestEventService, objectMapper, java.time.Clock.systemUTC(), meterRegistry);
     }
 
     @Bean
@@ -163,6 +179,10 @@ public class SecurityConfig {
                             "/oauth2/**",
                             "/login/oauth2/**").permitAll();
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
+                    // S-M3: metrics/info/prometheus leak operational data to any signed-in
+                    // USER under the plain authenticated() rule; only health stays public
+                    // (permitted above).
+                    auth.requestMatchers("/actuator/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/mcp/**").permitAll();
                     } else {
@@ -179,9 +199,30 @@ public class SecurityConfig {
                 .addFilterBefore(statelessSessionCookieFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(cookieCsrfFilter, UsernamePasswordAuthenticationFilter.class)
+                // H13: rate-limit must run BEFORE the auth filters. ApiKeyAuthFilter spends up to
+                // 5 BCrypt rounds (~100ms each) per request with a wrong key that matches an
+                // existing prefix; placing the limiter behind it let an attacker burn CPU while
+                // never touching their rate budget. Anonymous requests are bucketed by IP, which
+                // ClientAddressResolver now resolves right-most-untrusted (S-M2).
+                //
+                // FIX-DETAILS suggested anchoring on JwtAuthFilter.class, but Spring Security 7
+                // rejects custom classes as anchors ("does not have a registered order"); the JWT
+                // filter sits at UsernamePasswordAuthenticationFilter via addFilterAt below, so
+                // anchoring there puts the limiter directly in front of the auth filters.
+                .addFilterBefore(rateLimitFilter(clientAddressResolver(), meterRegistry), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(rateLimitFilter(clientAddressResolver(), meterRegistry), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
+                // Identity buckets must sit behind the auth filters: the user id comes from the
+                // SecurityContext jwtAuthFilter populates and the API-key ref from the request
+                // attribute apiKeyAuthFilter sets. Enforcing them at the edge read both as null,
+                // so per-user and per-API-key limits were never applied.
+                //
+                // Anchored on AuthorizationFilter rather than ApiKeyAuthFilter: Spring Security 7
+                // only accepts its own filters as ordering anchors, and AuthorizationFilter sits at
+                // the end of the chain — which is exactly where the limiter used to live, so this
+                // position is already known to assemble.
+                .addFilterBefore(identityRateLimitFilter(clientAddressResolver(), meterRegistry),
+                        org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();
     }

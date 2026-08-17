@@ -1,0 +1,380 @@
+<mxfile host="app.diagrams.net" modified="2026-08-14T10:50:04.4261562+07:00" agent="VibeGraph evidence generator" version="24.7.17">
+  <diagram id="act-auth" name="Authenticate Flow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Authenticate Flow - Local, OAuth and Rotating Session" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="start" value="Register, login or OAuth callback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="80" y="150" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="choice" value="Authentication path?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=13;spacing=5;" vertex="1" parent="1">
+          <mxGeometry x="520" y="140" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="register" value="Register: validate and persist new User/settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="830" y="60" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="login" value="Login: throttle and authenticate existing User" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="830" y="190" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="oauth" value="OAuth handler: link/create verified identity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="830" y="320" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="issue" value="Issue JWT + hashed refresh-session token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="190" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="cookies" value="Controller/handler uses AuthCookieService to set cookies" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="390" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="refresh" value="Refresh: lock/rotate row; replace or clear cookies" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="830" y="590" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="logout" value="Logout: revoke session; controller clears cookies" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="590" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="e0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="start" target="choice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="choice" target="register">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="choice" target="login">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="OAuth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="choice" target="oauth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-register" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="register" target="issue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-login" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="login" target="issue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-oauth" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="oauth" target="issue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="issue" target="cookies">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="token expires" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="cookies" target="refresh">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="logout" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="cookies" target="logout">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="AuthController/AuthService/AuthCookieService/OAuth2LoginSuccessHandler evidence. Login does not unconditionally persist a User." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="350" y="850" width="1100" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="act-import" name="Import Project Flow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Import Project Flow - Synchronous and Asynchronous Branches" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="source" value="Choose archive / GitHub / local source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="80" y="180" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="archive" value="Archive: extract + register project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="60" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="github" value="GitHub: fetch tarball + register project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="200" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="local" value="Local: validate root + register project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="340" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="syncq" value="Synchronous archive?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=13;spacing=5;" vertex="1" parent="1">
+          <mxGeometry x="950" y="80" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="sync" value="Analyze inline and return 200" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="40" width="360" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="submit" value="Submit analysisExecutor before service returns" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="950" y="310" width="400" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="accepted" value="Controller returns 202 ANALYZING/progress=0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="310" width="360" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="analyze" value="AnalyzeService parses and atomically upserts full analysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="950" y="550" width="400" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="terminal" value="Mark ANALYZED/FAILED and broadcast status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="550" width="360" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="source-archive" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="source" target="archive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="source-github" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="source" target="github">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="source-local" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="source" target="local">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="archive-q" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="archive" target="syncq">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="q-sync" value="yes/default" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="syncq" target="sync">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="q-submit" value="async=true" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="syncq" target="submit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="github-submit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="github" target="submit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="local-submit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="local" target="submit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="submit-accepted" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="submit" target="accepted">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="submit-analyze" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="submit" target="analyze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="analyze-terminal" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="analyze" target="terminal">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="The default archive branch returns 200 and does not flow through the async 202 node." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="420" y="820" width="1050" height="85" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="act-analysis" name="Code Analysis Flow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Manual Code Analysis Flow" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="request" value="POST /api/projects/{id}/analyze" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="100" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="guard" value="Ownership/status validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="520" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="scheduler" value="ProjectAnalysisScheduler coalesces duplicate requests" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="940" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="accepted" value="Return 202 Accepted" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="analyze" value="AnalyzeService parse + infer + upsertAnalysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="520" y="480" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="progress" value="Broadcast progress and terminal status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="940" y="480" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="watch" value="Start watcher after successful analysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="480" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="manual-top-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="request" target="guard">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="manual-top-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="guard" target="scheduler">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="manual-top-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="scheduler" target="accepted">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="scheduler-analyze" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="scheduler" target="analyze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="manual-bottom-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="analyze" target="progress">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="manual-bottom-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="progress" target="watch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Import-owned async work does not pass through ProjectAnalysisScheduler; this page is the separate manual-analysis path." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="380" y="760" width="1080" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="act-watch" name="Realtime File Watcher Flow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Realtime File Watcher Flow - Exact Replacement Order" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="event" value="CREATE / MODIFY / DELETE event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="80" y="160" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="filter" value="WatchService filter + debounce" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="450" y="160" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="before" value="getFileSlice(before)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="160" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="delete" value="deleteFile(projectId, path)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="160" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="exists" value="CREATE/MODIFY and file exists?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=13;spacing=5;" vertex="1" parent="1">
+          <mxGeometry x="820" y="390" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="parse" value="parseFile -&gt; upsertNodes -&gt; upsertEdges" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="390" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="after" value="getFileSlice(after)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="650" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="delta" value="Compute added/removed delta" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="650" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="broadcast" value="Broadcast INCREMENTAL update" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="850" width="330" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="event" target="filter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="filter" target="before">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="before" target="delete">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="delete" target="exists">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exists-parse" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="exists" target="parse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="parse-after" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="parse" target="after">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exists-after" value="delete/no file" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="exists" target="after">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-end-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="after" target="delta">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="watch-end-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="delta" target="broadcast">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="FileChangeBroadcaster.java:99-123. The three replacement writes are separate calls; no full rollback is claimed." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="300" y="980" width="1050" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="act-mcp" name="AI Interaction Flow (MCP Protocol)">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI Interaction Flow - MCP Protocol" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="request" value="Streamable HTTP request to /mcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="100" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="auth" value="ApiKeyAuthFilter authenticates key/project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="500" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="resolve" value="Spring AI resolves one of 18 tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="900" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="meter" value="MeteredToolCallback checks feature/ownership/credits" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="170" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="data" value="Selected tool resolves its bounded data source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="700" y="500" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="result" value="Return bounded structured result" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="500" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="request" target="auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="auth" target="resolve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="resolve" target="meter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="meter" target="data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="data" target="result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="A tool may use graph/source/ownership/memory-specific data. The diagram does not claim every tool reads source files or Neo4j directly." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="390" y="760" width="1080" height="100" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="act-admin" name="User Management Flow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Admin Operations and Event Streams" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="1500" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="admin" value="ADMIN-authenticated request" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="80" y="190" width="330" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="kind" value="Operation kind?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=13;spacing=5;" vertex="1" parent="1">
+          <mxGeometry x="500" y="180" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="users" value="User/account state operation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="60" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="security" value="Read abuse/request data or mutate IP block" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="200" width="350" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="audit" value="Read audit log / retention" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="360" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="stream" value="Subscribe audit/security SSE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="820" y="520" width="350" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="result" value="Return sanitized response or SSE event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#2563eb;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="280" width="370" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="admin-kind" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="admin" target="kind">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kind-users" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="kind" target="users">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kind-security" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="kind" target="security">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kind-audit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="kind" target="audit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kind-stream" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="kind" target="stream">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="users-result" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="users" target="result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="security-result" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="security" target="result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="audit-result" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="audit" target="result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="stream-result" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="stream" target="result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="The page preserves the old User Management slot but does not imply all admin CRUD occurs through SSE." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="800" width="1050" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

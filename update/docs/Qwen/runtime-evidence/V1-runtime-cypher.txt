@@ -1,0 +1,35 @@
+V1.2 - B-M11 runtime verification
+Date: 2026-08-12
+Conclusion: BLOCKED
+
+Method attempted
+- Inspected the current PostgreSQL project statuses for a pre-existing FAILED project.
+- Counted Neo4j Symbol nodes and outgoing relationships by projectId to identify persisted graph
+  data that could be correlated with a FAILED project.
+
+PostgreSQL result
+- FAILED project count: 0
+- Status distribution: ANALYZING = 13
+
+Neo4j result
+projectId | nodes | outgoingEdges
+b9ab8150 | 5742 | 16323
+431ee9dc | 2496 | 4998
+b89107a0 | 291 | 845
+14ad3fd7 | 61 | 136
+44b48c71 | 61 | 136
+2416d6a0 | 13 | 22
+83f77774 | 8 | 15
+dd2ea94b | 7 | 11
+feaef81a | 7 | 11
+d2f09c89 | 5 | 4
+3a85dcf7 | 1 | 0
+7084aed1 | 1 | 0
+f3cc8998 | 1 | 0
+
+Why BLOCKED
+- No FAILED row exists to correlate with a partial Neo4j graph for method B.
+- Method A requires deliberately terminating the shared healthy backend during analysis. That would
+  disrupt the active local stack and was not necessary to establish the static defect, so it was
+  not performed.
+- No test project was created, and no existing project or upload workspace was deleted.

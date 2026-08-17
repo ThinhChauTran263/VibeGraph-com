@@ -53,11 +53,6 @@ public class JwtService {
         this.expirationMs = properties.getExpirationMs();
     }
 
-    /** Issue a signed token for the given user. */
-    public String issue(User user) {
-        return issue(user, null);
-    }
-
     /** Issue a signed token bound to a refresh session. */
     public String issue(User user, UUID sessionId) {
         Instant now = Instant.now();

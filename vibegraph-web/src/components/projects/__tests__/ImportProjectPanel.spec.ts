@@ -21,6 +21,22 @@ describe('ImportProjectPanel', () => {
     expect(wrapper.find('[data-test="archive-form"]').exists()).toBe(true)
   })
 
+  it('renders one non-empty icon per import method from the AppIcon registry (F-L4)', () => {
+    const wrapper = mount(ImportProjectPanel, {
+      global: { plugins: [i18n], stubs: formStubs },
+    })
+
+    const icons = wrapper.findAll('.import-panel__tab-icon')
+    expect(icons).toHaveLength(3)
+    for (const icon of icons) {
+      const paths = icon.findAll('path')
+      expect(paths.length).toBeGreaterThan(0)
+      for (const path of paths) {
+        expect(path.attributes('d')).toBeTruthy()
+      }
+    }
+  })
+
   it('renders a clear blocker and no import form when every method is disabled', () => {
     const wrapper = mount(ImportProjectPanel, {
       props: {

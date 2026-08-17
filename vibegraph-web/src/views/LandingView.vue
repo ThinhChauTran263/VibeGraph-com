@@ -214,6 +214,11 @@ const selectedNode = ref<GraphNode | null>(null)
 const activeImpactNodes = ref<string[]>([])
 const hoverNode = ref<string | null>(null)
 const isPropagating = ref(false)
+// F-L1: self-rescheduling timers keep their handles so unmount can stop them;
+// writing to refs of an unmounted component would otherwise keep the chain alive.
+let isAlive = true
+let typingTimer: ReturnType<typeof setTimeout> | null = null
+let propagationTimer: ReturnType<typeof setTimeout> | null = null
 
 function getNode(id: string): GraphNode {
   return nodes.find((n) => n.id === id)!
@@ -260,7 +265,8 @@ function triggerImpact(nodeId: string) {
         }
       })
 
-      setTimeout(step, 180)
+      if (propagationTimer) clearTimeout(propagationTimer)
+      propagationTimer = setTimeout(step, 180)
     } else {
       step()
     }
@@ -347,12 +353,15 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
   let i = 0
 
   function typeCmd() {
+    if (!isAlive) return
     if (i < cmdText.length) {
       terminalInput.value += cmdText[i]
       i++
-      setTimeout(typeCmd, 20)
+      if (typingTimer) clearTimeout(typingTimer)
+      typingTimer = setTimeout(typeCmd, 20)
     } else {
-      setTimeout(() => {
+      if (typingTimer) clearTimeout(typingTimer)
+      typingTimer = setTimeout(() => {
         terminalTyping.value = false
         terminalOutput.value = commandsData[tabKey].output
       }, 250)
@@ -464,6 +473,7 @@ async function playTourStep() {
   }
 
   currentTourStep = (currentTourStep + 1) % tourTargets.length
+  if (tourTimeout) clearTimeout(tourTimeout)
   tourTimeout = setTimeout(playTourStep, 4500)
 }
 
@@ -497,7 +507,18 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  // F-L1: stop every self-rescheduling timer; without the handles the typing
+  // and propagation chains kept writing to refs after unmount.
+  isAlive = false
+  if (typingTimer) clearTimeout(typingTimer)
+  if (propagationTimer) clearTimeout(propagationTimer)
   window.removeEventListener('scroll', onScroll)
+  // F-L2: the four tour listeners are `{ once: true }` so each self-removes after
+  // its first fire — but until that fire they outlive unmount; remove them here.
+  window.removeEventListener('scroll', stopAutoTour)
+  window.removeEventListener('mousemove', stopAutoTour)
+  window.removeEventListener('mousedown', stopAutoTour)
+  window.removeEventListener('keydown', stopAutoTour)
   if (stepInterval) clearInterval(stepInterval)
   stopAutoTour()
 })

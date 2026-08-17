@@ -13,7 +13,7 @@ const nextLocaleName = computed(() =>
 )
 
 function toggleLocale(): void {
-  setLocale(nextLocale.value)
+  void setLocale(nextLocale.value)
 }
 </script>
 

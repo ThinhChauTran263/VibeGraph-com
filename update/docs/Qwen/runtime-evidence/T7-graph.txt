@@ -1,0 +1,6 @@
+T7 runtime evidence:
+Request URLs:
+- /api/projects/431ee9dc/graph?mode=baseline&nodeLimit=0&edgeLimit=0 (200, ~576.8 ms)
+- /api/projects/431ee9dc/graph?mode=deep&nodeLimit=0&edgeLimit=0 (200, ~559.3 ms)
+Rendered node counts from legend: Method 922, Field 891, File 205, Class 161, APIEndpoint 142, Constructor 30, Interface 30, DBModel 13, Enum 5, Record 4, Annotation 1, Project 1 = 2405 displayed typed nodes (project card reports 2495 total nodes).
+No visible truncation or safe-mode warning was observed; query explicitly used nodeLimit=0&edgeLimit=0.

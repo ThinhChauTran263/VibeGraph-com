@@ -1,0 +1,35 @@
+V2.2 - H13 timing verification
+Date: 2026-08-12
+Conclusion: CONFIRMED
+
+Endpoint and method
+- GET http://localhost:8080/api/projects/431ee9dc/patch
+- Header: X-API-Key
+- 3 warm-up requests per group, then 30 measured requests per group.
+- Requests were interleaved A/B/C from the backend host to reduce time drift.
+- No authentication cookie was sent.
+- The test key's complete secret and BCrypt hash are intentionally omitted.
+
+Groups
+- A-NO-KEY: no X-API-Key header.
+- B-RANDOM-PREFIX: valid-format fake key whose first 12 characters do not exist in the live-key
+  lookup. Database collision check returned 0 before the run.
+- C-MATCHED-PREFIX-WRONG-SUFFIX: first 12 characters equal the live test key's stored prefix;
+  remaining characters are deliberately wrong.
+
+Results
+Group | N | median_ms | mean_ms | min_ms | max_ms | statuses
+A-NO-KEY | 30 | 4.250 | 5.840 | 3.436 | 25.090 | 401:30
+B-RANDOM-PREFIX | 30 | 4.640 | 8.060 | 3.426 | 25.840 | 401:30
+C-MATCHED-PREFIX-WRONG-SUFFIX | 30 | 54.840 | 56.760 | 53.316 | 74.511 | 401:30
+
+Derived observations
+- C median minus A median: 50.590 ms/request.
+- C median minus B median: 50.200 ms/request.
+- B median minus A median: 0.390 ms/request.
+- All 90 measured requests returned 401; no sample returned 429.
+
+Cleanup
+- Test API key name: runtime-h13-20260812
+- Deleted through the API Keys UI after measurement.
+- PostgreSQL verification: deleted_at IS NOT NULL = true.

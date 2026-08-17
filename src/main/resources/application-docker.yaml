@@ -5,6 +5,20 @@ spring:
       username: ${NEO4J_USERNAME}
       password: ${NEO4J_PASSWORD}
 
+# B5/H17: expose the Prometheus scrape endpoint on the docker profile too (C2 enabled
+# the export key for prod only). Boot 4 syntax — the Boot 2 key
+# management.metrics.export.prometheus.* is silently ignored. S-M3 keeps every
+# /actuator/** route ADMIN-only except /actuator/health.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
 vibegraph:
   # Uploaded archives are materialized on the writable named volume (see docker-compose.yml),
   # never on the read-only /projects mount.

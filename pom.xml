@@ -49,6 +49,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- The actuator starter brings micrometer-core (so MeterRegistry works and
+             /actuator/metrics serves JSON) but NOT a Prometheus registry. Without this
+             dependency /actuator/prometheus does not exist, and the H17/B-L8 alert rules
+             on security_events.dropped.total have nothing to scrape — the failure mode of
+             that chain is silence, so a missing scrape target hides it twice over. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-neo4j</artifactId>
@@ -239,6 +249,8 @@
     </dependencies>
 
     <build>
+        <!-- D-M3: explicit jar name so the Dockerfile COPY never matches a wildcard. -->
+        <finalName>app</finalName>
         <plugins>
             <!-- JaCoCo - code coverage report + enforce 70% minimum -->
             <plugin>

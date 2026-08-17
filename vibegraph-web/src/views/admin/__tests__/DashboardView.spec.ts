@@ -7,13 +7,25 @@ import type { AdminOverview } from '@/types/api'
 import { useAdminStore } from '@/stores/admin'
 import i18n, { setLocale } from '@/language'
 
-vi.mock('vue-echarts', () => ({
-  default: {
+// render function instead of an inline template: async-component mounting in this
+// suite hit the runtime-compiler path inconsistently; a render fn needs no compiler.
+// vi.hoisted because vi.mock factories are hoisted above module-level consts;
+// h() is imported inside the hoisted scope via the global Vue test environment.
+const { vChartMock } = vi.hoisted(() => ({
+  vChartMock: {
     name: 'VChart',
     props: ['option', 'autoresize', 'updateOptions'],
     template: '<div class="echart-mock" data-test="echart"></div>',
   },
 }))
+
+vi.mock('vue-echarts', () => ({ default: vChartMock }))
+
+// DashboardView loads VChart through this async module (F-M6 split); mock it the
+// same way so the test never pulls real echarts into jsdom. __esModule lets Vue's
+// defineAsyncComponent interop take .default without probing vitest's mock
+// namespace for internal flags (__isTeleport etc. throw when undefined).
+vi.mock('../dashboard-echarts', () => ({ __esModule: true, default: vChartMock }))
 
 describe('Admin DashboardView', () => {
   beforeEach(() => {
@@ -44,7 +56,7 @@ describe('Admin DashboardView', () => {
       },
     })
 
-    await flushPromises()
+    await settleCharts()
     expect(wrapper.text()).toContain('1,500')
     expect(wrapper.text()).toContain('42')
     expect(wrapper.text()).toContain('350')
@@ -92,9 +104,10 @@ describe('Admin DashboardView', () => {
 
   it('renders the same backend online history for separate admin clients', async () => {
     const firstAdmin = mountDashboard(createOverview())
+    await settleCharts()
     const secondAdmin = mountDashboard(createOverview())
 
-    await flushPromises()
+    await settleCharts()
     const firstPoints = onlineSeriesPoints(firstAdmin)
     const secondPoints = onlineSeriesPoints(secondAdmin)
 
@@ -125,7 +138,7 @@ describe('Admin DashboardView', () => {
       },
     })
 
-    await flushPromises()
+    await settleCharts()
     const onlineChart = wrapper.findAllComponents({ name: 'VChart' })[1]
     if (!onlineChart) throw new Error('Online users chart was not rendered')
     const option = onlineChart.props('option') as {
@@ -253,4 +266,19 @@ function setVisibility(value: DocumentVisibilityState): void {
     configurable: true,
     value,
   })
+}
+
+/**
+ * VChart is a defineAsyncComponent (F-M6 split moved echarts into its own async
+ * chunk), so chart rendering settles one dynamic-import hop later than a plain
+ * flushPromises under fake timers.
+ */
+async function settleCharts(): Promise<void> {
+  // Multiple rounds: when several dashboards mount under fake timers, each async
+  // chunk resolution may need its own flush hop.
+  for (let round = 0; round < 3; round++) {
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(0)
+  }
+  await flushPromises()
 }

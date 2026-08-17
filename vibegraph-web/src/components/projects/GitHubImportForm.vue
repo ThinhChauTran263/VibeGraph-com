@@ -134,8 +134,7 @@ function clearForm(): void {
         class="github-import__success"
         role="status"
       >
-        Import completed for <strong>{{ importedProject.name }}</strong> (status:
-        {{ importedProject.status }}).
+        {{ t('user.import.success', { name: importedProject.name, status: importedProject.status }) }}
       </p>
     </form>
   </section>

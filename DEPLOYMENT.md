@@ -23,6 +23,27 @@ docker compose up -d --build
 | Neo4j Browser | http://localhost:7474 | Use `.env` credentials |
 | Neo4j Bolt | bolt://localhost:7687 | Backend DB connection |
 
+## Single-replica only (Đ7-3)
+
+This stack runs **one backend instance**. Do not run `docker compose up -d --scale
+backend=N` (N > 1): it fails outright on the fixed container names, and even with
+those removed the backend holds per-instance state, so N replicas would silently
+multiply rate limits N times (re-opening the DoS surface H13 closed) and split
+WebSocket sessions. The four blockers, named:
+
+1. Rate-limit windows are an in-process Caffeine cache — `RateLimitFilter.java:97`
+   (`src/main/java/com/vibegraph/abuse/RateLimitFilter.java`).
+2. Active-user tracking is a JVM-static map — `JwtAuthFilter.java:41`
+   (`src/main/java/com/vibegraph/auth/web/JwtAuthFilter.java`).
+3. WebSocket uses the in-process SimpleBroker — `WebSocketConfig.java:53`
+   (`src/main/java/com/vibegraph/common/config/WebSocketConfig.java`).
+4. Fixed `container_name` entries make `--scale` fail mechanically —
+   `docker-compose.yml:4,27,58,162`.
+
+Scaling horizontally requires a shared rate-limit store (e.g. Redis), externalized
+WebSocket brokering, and removal of the fixed container names — decide that before
+removing any of the above, not after.
+
 ## Notes
 
 - Vite values (`VITE_API_URL`, `VITE_WS_URL`) are baked in at **build time** — rebuild

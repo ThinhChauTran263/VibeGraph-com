@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -30,7 +31,19 @@ class ProjectServicePersistenceTest {
     @TempDir
     Path tempDir;
 
-    private final ProjectServiceImpl service = new ProjectServiceImpl();
+    private final ProjectServiceImpl service = new ProjectServiceImpl(
+            "",
+            new ArchiveImportProperties(),
+            emptyProvider(),
+            emptyProvider(),
+            emptyProvider(),
+            emptyProvider());
+
+    /** Spring 7's ObjectProvider has no static factories; a mock returns null from getIfAvailable(). */
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> emptyProvider() {
+        return mock(ObjectProvider.class);
+    }
     private final GraphRepository graphRepository = mock(GraphRepository.class);
     private Path workspaceRoot;
 

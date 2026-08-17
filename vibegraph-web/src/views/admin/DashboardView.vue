@@ -1,13 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { BarChart, LineChart, PieChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import VChart from 'vue-echarts'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
+import {
+  MINUTE_MS,
+  buildValueMap,
+  chartPalette,
+  daysInMonth,
+  extractDay,
+  extractMonth,
+  extractQuarter,
+  extractYear,
+  latestSeriesMonth,
+  latestSeriesYear,
+  niceAxisMax,
+  startOfMinute,
+  sumPoints,
+  type ChartId,
+  type ChartMode,
+  type ChartTone,
+  type DashboardChart,
+  type OnlineSample,
+  type Period,
+} from './dashboard-transforms'
 import type {
   AdminDistributionPoint,
   AdminSecurityAlert,
@@ -15,36 +31,9 @@ import type {
   AdminStorageSubject,
 } from '@/types/api'
 
-use([
-  CanvasRenderer,
-  LineChart,
-  BarChart,
-  PieChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-])
-
-type ChartMode = 'line' | 'bar' | 'pie'
-type ChartId = 'totalUsers' | 'onlineUsers' | 'credits' | 'storage'
-type ChartTone = 'blue' | 'green' | 'cyan' | 'amber'
-type Period = 'day' | 'month' | 'quarter' | 'year'
-
-interface DashboardChart {
-  id: ChartId
-  title: string
-  eyebrow: string
-  value: string
-  subtitle: string
-  points: AdminDistributionPoint[]
-  emptyText: string
-  tone: ChartTone
-  valueKind: 'number' | 'bytes'
-}
-
-interface OnlineSample extends AdminSeriesPoint {
-  capturedAt: number
-}
+// F-M6 split: echarts (registration + VChart) loads as its own async chunk so the
+// ~500 kB chart bundle stays out of this route chunk until a chart actually renders.
+const VChart = defineAsyncComponent(() => import('./dashboard-echarts'))
 
 const adminStore = useAdminStore()
 const { locale, t } = useI18n({ useScope: 'global' })
@@ -63,7 +52,6 @@ const chartUpdateOptions = {
 }
 
 let pollInterval: ReturnType<typeof setInterval> | undefined
-const MINUTE_MS = 60 * 1000
 const ONLINE_DISPLAY_BUCKETS = 10
 const POLL_INTERVAL_MS = 30 * 1000
 
@@ -287,10 +275,6 @@ function formatChartValue(value: number, kind: DashboardChart['valueKind']): str
   return kind === 'bytes' ? formatBytes(value) : formatNumber(value)
 }
 
-function sumPoints(points: AdminSeriesPoint[] | AdminDistributionPoint[]): number {
-  return points.reduce((sum, point) => sum + point.value, 0)
-}
-
 function periodBucketText(selectedPeriod: Period, bucketCount?: number): string {
   switch (selectedPeriod) {
     case 'year':
@@ -380,79 +364,6 @@ function bucketSeries(
     label,
     value: values.get((index + 1).toString()) ?? 0,
   }))
-}
-
-function buildValueMap(
-  points: AdminSeriesPoint[],
-  keyForPoint: (point: AdminSeriesPoint) => string | undefined,
-): Map<string, number> {
-  return points.reduce((map, point) => {
-    const key = keyForPoint(point)
-    if (!key) return map
-    map.set(key, (map.get(key) ?? 0) + point.value)
-    return map
-  }, new Map<string, number>())
-}
-
-function latestSeriesYear(points: AdminSeriesPoint[]): number {
-  const years = points
-    .map((point) => extractYear(point.label))
-    .filter((year): year is number => Number.isFinite(year))
-  return years.length ? Math.max(...years) : new Date().getFullYear()
-}
-
-function latestSeriesMonth(points: AdminSeriesPoint[]): { year: number; month: number } {
-  const months = points
-    .map((point) => extractDay(point.label) ?? extractMonth(point.label))
-    .filter((month): month is { year: number; month: number } => Boolean(month))
-    .sort((a, b) => (a.year === b.year ? a.month - b.month : a.year - b.year))
-  const latest = months[months.length - 1]
-  if (latest) return latest
-
-  const now = new Date()
-  return { year: now.getFullYear(), month: now.getMonth() + 1 }
-}
-
-function extractYear(label: string): number | undefined {
-  const match = label.match(/^(\d{4})/)
-  if (!match?.[1]) return undefined
-  return Number(match[1])
-}
-
-function extractMonth(label: string): { year: number; month: number } | undefined {
-  const match = label.match(/^(\d{4})-(\d{2})$/)
-  if (!match?.[1] || !match[2]) return undefined
-  return { year: Number(match[1]), month: Number(match[2]) }
-}
-
-function extractDay(label: string): { year: number; month: number; day: number } | undefined {
-  const match = label.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match?.[1] || !match[2] || !match[3]) return undefined
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate()
-}
-
-function extractQuarter(label: string): { year: number; quarter: number } | undefined {
-  const match = label.match(/^(\d{4})-Q([1-4])$/i)
-  if (!match?.[1] || !match[2]) return undefined
-  return { year: Number(match[1]), quarter: Number(match[2]) }
-}
-
-function chartPalette(tone: ChartTone): string[] {
-  switch (tone) {
-    case 'green':
-      return ['#4ade80', '#22d3ee', '#60a5fa', '#a78bfa']
-    case 'cyan':
-      return ['#22d3ee', '#60a5fa', '#818cf8', '#f59e0b']
-    case 'amber':
-      return ['#f59e0b', '#60a5fa', '#22d3ee', '#4ade80']
-    case 'blue':
-    default:
-      return ['#60a5fa', '#818cf8', '#22d3ee', '#4ade80']
-  }
 }
 
 function chartOption(card: DashboardChart): Record<string, unknown> {
@@ -728,10 +639,6 @@ function onlineSeriesData(): { time: number; value: number | null; label: string
   })
 }
 
-function startOfMinute(value: number): number {
-  return Math.floor(value / MINUTE_MS) * MINUTE_MS
-}
-
 function pieDataPoints(card: DashboardChart): AdminDistributionPoint[] {
   if (card.id === 'onlineUsers') {
     const grouped = new Map<number, number>()
@@ -811,14 +718,6 @@ function formatTimeShort24(value: number): string {
     minute: '2-digit',
     hour12: false,
   })
-}
-
-function niceAxisMax(value: number): number {
-  if (value <= 0) return 5
-  if (value <= 5) return 5
-  if (value <= 10) return 10
-  const magnitude = 10 ** Math.floor(Math.log10(value))
-  return Math.ceil(value / magnitude) * magnitude
 }
 
 function trendLabel(points: AdminDistributionPoint[]): string {

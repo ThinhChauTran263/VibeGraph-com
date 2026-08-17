@@ -1,18 +1,18 @@
 package com.vibegraph.common.config;
 
-import java.util.List;
-
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * CORS configuration.
+ * CORS startup validation.
  *
  * <p>Allowed origins come from {@code vibegraph.cors.allowed-origins}
  * (see {@link CorsProperties}), not hardcoded values — dev defaults to the Vue dev
  * server, prod is driven by the {@code CORS_ALLOWED_ORIGINS} env var.
+ *
+ * <p>B-L5: the actual CORS mapping lives in exactly ONE place —
+ * {@code SecurityConfig.corsConfigurationSource()} — so the two registrations can
+ * never drift apart. This class keeps only the fail-fast guard:
  *
  * <p>Because credentialed requests are enabled ({@code allowCredentials(true)}), a
  * wildcard origin {@code "*"} is rejected at startup: the CORS spec forbids
@@ -21,25 +21,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Configuration
 @EnableConfigurationProperties(CorsProperties.class)
-public class CorsConfig implements WebMvcConfigurer {
-
-    private final List<String> allowedOrigins;
+public class CorsConfig {
 
     public CorsConfig(CorsProperties properties) {
-        this.allowedOrigins = properties.getAllowedOrigins();
-        if (this.allowedOrigins.contains("*")) {
+        if (properties.getAllowedOrigins().contains("*")) {
             throw new IllegalStateException(
                     "vibegraph.cors.allowed-origins must not contain \"*\" because "
                             + "allowCredentials(true) is enabled. List explicit origins instead.");
         }
-    }
-
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigins.toArray(String[]::new))
-                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true);
     }
 }

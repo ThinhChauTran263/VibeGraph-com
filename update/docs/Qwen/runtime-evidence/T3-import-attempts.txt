@@ -1,0 +1,3 @@
+T3 visual evidence was not available because no GitHub import reached ANALYZING.
+Attempt 1: octocat/Hello-World -> HTTP 400.
+Attempt 2: spring-guides/gs-rest-service -> HTTP 422, GITHUB_IMPORT_ERROR: Failed to contact GitHub: request timed out.

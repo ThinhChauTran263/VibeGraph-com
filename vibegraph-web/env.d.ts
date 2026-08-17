@@ -19,9 +19,6 @@ interface ImportMetaEnv {
   readonly VITE_IMPORT_STALL_TIMEOUT_MS?: string
   readonly VITE_IMPORT_ABSOLUTE_TIMEOUT_MS?: string
 
-  // Project list
-  readonly VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS?: string
-
   // Archive upload
 
   // WebSocket (STOMP/SockJS)

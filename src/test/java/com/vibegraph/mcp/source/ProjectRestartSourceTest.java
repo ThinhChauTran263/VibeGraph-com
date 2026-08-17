@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.beans.factory.ObjectProvider;
 
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
@@ -43,14 +43,18 @@ class ProjectRestartSourceTest {
         Files.writeString(javaFile, "package demo;\npublic class Hello {}\n", StandardCharsets.UTF_8);
 
         // Fresh ProjectServiceImpl with an EMPTY in-memory registry (post-restart).
-        ProjectServiceImpl projectService = new ProjectServiceImpl();
         ArchiveImportProperties props = new ArchiveImportProperties();
         props.setWorkspaceRoot(workspaceRoot);
-        ReflectionTestUtils.setField(projectService, "archiveImportProperties", props);
         GraphRepository graphRepository = mock(GraphRepository.class);
         when(graphRepository.findProject("proj-x"))
                 .thenReturn(new ProjectMetadata("proj-x", "Demo", source.toString()));
-        ReflectionTestUtils.setField(projectService, "graphRepository", graphRepository);
+        ProjectServiceImpl projectService = new ProjectServiceImpl(
+                "",
+                props,
+                emptyProvider(),
+                providerOf(graphRepository),
+                emptyProvider(),
+                emptyProvider());
 
         GraphService graphService = mock(GraphService.class);
         when(graphService.getFullGraph("proj-x"))
@@ -65,5 +69,18 @@ class ProjectRestartSourceTest {
         assertThat(result.getRelativePath()).isEqualTo("demo/Hello.java");
         assertThat(result.getContent()).contains("class Hello");
         assertThat(result.toString()).doesNotContain(workspaceRoot.toString());
+    }
+
+    /** Spring 7's ObjectProvider has no static factories; a mock returns null from getIfAvailable(). */
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> emptyProvider() {
+        return mock(ObjectProvider.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> providerOf(T value) {
+        ObjectProvider<T> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(value);
+        return provider;
     }
 }

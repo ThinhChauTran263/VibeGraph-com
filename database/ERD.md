@@ -61,7 +61,9 @@
 - **Thời gian** dùng `TIMESTAMPTZ` (có timezone) — chuẩn cho app đa múi giờ.
 - `status` project đồng bộ với trạng thái phân tích ở Neo4j (ANALYZING/ANALYZED/FAILED).
 
-## Bảng có thể thêm sau (chưa cần Phase 1)
-- `refresh_tokens` — nếu làm refresh token thay vì JWT hết hạn ngắn.
-- `audit_log` — ghi ai gọi gì lúc nào (V16 giám sát vận hành).
+## Bảng đã thêm sau Phase 1 (đã tồn tại trong migration)
+- `refresh_sessions` — refresh token rotation + replay detection (`V18__refresh_sessions.sql`).
+- `audit_logs` + `audit_retention_settings` — ghi ai gọi gì lúc nào (`V10__phase7_support_audit_notifications.sql`).
+
+## Bảng có thể thêm sau (chưa có migration)
 - `teams` / `team_members` — nếu làm tính năng nhóm (lúc đó Postgres phát huy thế mạnh quan hệ).

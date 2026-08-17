@@ -3,7 +3,6 @@ package com.vibegraph.abuse;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Optional;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,14 +24,24 @@ public class ClientAddressResolver {
         if (forwarded == null || forwarded.isBlank()) {
             return remote;
         }
-        return Arrays.stream(forwarded.split(","))
-                .map(String::trim)
-                .filter(token -> !token.isBlank())
-                .map(ClientAddressResolver::tryCanonicalize)
-                .flatMap(Optional::stream)
-                .filter(ClientAddressResolver::isPublicClientAddress)
-                .findFirst()
-                .orElse(remote);
+        // S-M2: walk the chain right-to-left and take the right-most token outside the
+        // trusted proxy range. Each trusted hop appends the address it received on the
+        // right, so the right-most untrusted entry is the closest one a trusted hop still
+        // vouches for — the left-most entries are freely spoofable by the client and must
+        // never drive rate-limit or IP-block decisions.
+        String[] tokens = forwarded.split(",");
+        for (int index = tokens.length - 1; index >= 0; index--) {
+            Optional<String> candidate = tryCanonicalize(tokens[index].trim());
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            String address = candidate.get();
+            if (isTrustedProxy(address) || !isPublicClientAddress(address)) {
+                continue;
+            }
+            return address;
+        }
+        return remote;
     }
 
     private boolean isTrustedProxy(String remote) {

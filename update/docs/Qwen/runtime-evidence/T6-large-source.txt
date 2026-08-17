@@ -1,0 +1,8 @@
+T6 runtime test file (temporary, NOT deleted per prompt constraints):
+/uploads/github-04e0b065-39f6-484b-bc84-7bf25f8b2704/source/ThinhChauTran263-fatc-Grocery-Store-ce1c762/runtime-t6-large.txt
+Size: 200 MiB; text; 3,883,615 lines.
+Request: GET /api/projects/431ee9dc/source?path=ThinhChauTran263-fatc-Grocery-Store-ce1c762/runtime-t6-large.txt&startLine=1&endLine=300
+Result: HTTP 200; 915.2 ms; response 16,769 chars; totalLines=3,883,615; returned lines=300.
+Backend container memory immediately before: 680.6 MiB. Immediately after: 892.2 MiB. Increase: about 211.6 MiB.
+No 500/OOM in backend logs.
+Conclusion: CONFIRMED — a 200 MiB source read caused roughly 212 MiB container memory growth before returning the capped 300-line response.
