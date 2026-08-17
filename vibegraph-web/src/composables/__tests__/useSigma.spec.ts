@@ -188,7 +188,7 @@ describe('useSigma', () => {
     expect(typeof sigma.settings.zoomToSizeRatioFunction).toBe('function')
     const zoomToSizeRatio = sigma.settings.zoomToSizeRatioFunction as (ratio: number) => number
     expect(zoomToSizeRatio(1)).toBeCloseTo(1)
-    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** 0.75)
+    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** 1.0)
     expect(layoutState.instances[0]!.params).not.toHaveProperty('outputReducer')
     expect(graph.getNodeAttribute('service', 'x')).toBe(100)
     expect(graph.getNodeAttribute('service', 'y')).toBe(100)

@@ -19,7 +19,6 @@ import {
   sumPoints,
   type ChartId,
   type ChartMode,
-  type ChartTone,
   type DashboardChart,
   type OnlineSample,
   type Period,
