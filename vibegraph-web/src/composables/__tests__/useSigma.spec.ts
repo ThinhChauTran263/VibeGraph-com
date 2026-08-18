@@ -3,7 +3,13 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSigma } from '../useSigma'
-import { FA2_GRAVITY, FA2_SCALING_RATIO } from '@/lib/runtimeConfig'
+import {
+  FA2_GRAVITY,
+  FA2_SCALING_RATIO,
+  SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+  SIGMA_NODE_GROW_ZOOM,
+  SIGMA_NODE_ZOOM_SIZE_POWER,
+} from '@/lib/runtimeConfig'
 
 interface MockSigmaInstance {
   settings: Record<string, unknown>
@@ -182,13 +188,20 @@ describe('useSigma', () => {
     const sigma = sigmaState.instances[0]!
     expect(sigma.settings.hideEdgesOnMove).toBe(false)
     expect(sigma.settings.hideLabelsOnMove).toBe(false)
-    expect(sigma.settings.labelRenderedSizeThreshold).toBe(8)
+    expect(sigma.settings.labelRenderedSizeThreshold).toBe(SIGMA_LABEL_RENDERED_SIZE_THRESHOLD)
     expect(sigma.settings.defaultEdgeColor).toBe('#475569')
     expect(sigma.settings.itemSizesReference).toBe('screen')
     expect(typeof sigma.settings.zoomToSizeRatioFunction).toBe('function')
     const zoomToSizeRatio = sigma.settings.zoomToSizeRatioFunction as (ratio: number) => number
     expect(zoomToSizeRatio(1)).toBeCloseTo(1)
-    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** 0.75)
+    const steadyZoom = (1 + SIGMA_NODE_GROW_ZOOM) / 2
+    expect(zoomToSizeRatio(1 / steadyZoom)).toBeCloseTo(1)
+    expect(zoomToSizeRatio(1 / SIGMA_NODE_GROW_ZOOM)).toBeCloseTo(1)
+
+    const deepZoom = SIGMA_NODE_GROW_ZOOM * 4
+    const renderedDeepZoomScale = 1 / zoomToSizeRatio(1 / deepZoom)
+    expect(renderedDeepZoomScale).toBeCloseTo(4 ** SIGMA_NODE_ZOOM_SIZE_POWER)
+    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** SIGMA_NODE_ZOOM_SIZE_POWER)
     expect(layoutState.instances[0]!.params).not.toHaveProperty('outputReducer')
     expect(graph.getNodeAttribute('service', 'x')).toBe(100)
     expect(graph.getNodeAttribute('service', 'y')).toBe(100)
