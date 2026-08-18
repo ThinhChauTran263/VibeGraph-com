@@ -648,6 +648,17 @@ function applyFilterVisibility(): void {
 /**
  * Filter toggles should reuse the live Graphology graph whenever possible.
  * A rebuild is only needed when a newly enabled type has not been rendered yet.
+ *
+ * T10: this check must be true whenever the current graph is a SUPERSET of the
+ * filtered view — i.e. every node/edge we WANT visible is already present.
+ * filterGraphData REMOVES hidden nodes from filteredGraphData, so on a HIDE
+ * toggle the filtered set is a strict subset of the live graph (which was built
+ * with the previous, smaller hidden set) and this returns true. The same holds
+ * for re-SHOWING a type: the initial graph was built from the default-filtered
+ * data (defaults hidden already absent), so any type toggle stays within that
+ * universe. A rebuild is then unnecessary — hiding via filterHidden keeps node
+ * positions completely frozen (grapuco behavior, 04-GRAPUCO-REFERENCE.md §6).
+ * The only rebuild case left is a lazy expansion adding genuinely new ids.
  */
 function graphContainsData(graph: NonNullable<typeof graphInstance.value>, data: GraphData): boolean {
   for (const node of data.nodes) {

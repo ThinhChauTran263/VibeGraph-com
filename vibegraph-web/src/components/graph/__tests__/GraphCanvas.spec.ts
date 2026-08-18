@@ -27,10 +27,33 @@ const selectNode = vi.fn<(node: GraphNode | null) => void>((node) => {
 
 let capturedRealtimePatched: ((event: unknown) => void) | undefined
 
+// T10: reactive filter sets + an init spy so the filter-freeze test can drive the
+// component's filter watcher and detect any rebuild (init call).
+const filterHiddenNodeTypes = ref<Set<string>>(new Set())
+const filterHiddenEdgeTypes = ref<Set<string>>(new Set())
+const filterHideIsolated = ref(false)
+const sigmaInitSpy = vi.fn<() => void>()
+
+function applyFilterToData(data: GraphData): GraphData {
+  const visibleNodes = data.nodes.filter((n) => !filterHiddenNodeTypes.value.has(n.type))
+  const visibleIds = new Set(visibleNodes.map((n) => n.id))
+  return {
+    nodes: visibleNodes,
+    edges: data.edges.filter(
+      (e) =>
+        !filterHiddenEdgeTypes.value.has(e.type) &&
+        visibleIds.has(e.source) &&
+        visibleIds.has(e.target),
+    ),
+    nodeStats: data.nodeStats,
+    edgeStats: data.edgeStats,
+  }
+}
+
 vi.mock('@/composables/useGraphData', () => ({
   useGraphData: () => ({
     graphData: computed(() => emptyGraphData),
-    filteredGraphData: computed(() => emptyGraphData),
+    filteredGraphData: computed(() => applyFilterToData(emptyGraphData)),
     loading: computed(() => loading.value),
     error: computed(() => error.value),
     loadGraph: vi.fn<() => Promise<null>>(() => Promise.resolve(null)),
@@ -66,7 +89,7 @@ vi.mock('@/composables/useSigma', () => ({
   useSigma: (config: { onCameraRatioChange?: (ratio: number) => void }) => {
     capturedCameraRatioChange = config?.onCameraRatioChange
     return {
-      init: vi.fn<() => void>(),
+      init: sigmaInitSpy,
       graphInstance: graphInstanceRef,
       setReducers,
       setGhostPartition: vi.fn<() => void>(),
@@ -100,9 +123,9 @@ vi.mock('@/components/panels/FilterPanel.vue', () => ({
 // avoids Pinia; default = nothing hidden.
 vi.mock('@/composables/useFilters', () => ({
   useFilters: () => ({
-    hiddenNodeTypes: computed(() => new Set<string>()),
-    hiddenEdgeTypes: computed(() => new Set<string>()),
-    hideIsolatedNodes: computed(() => false),
+    hiddenNodeTypes: computed(() => filterHiddenNodeTypes.value),
+    hiddenEdgeTypes: computed(() => filterHiddenEdgeTypes.value),
+    hideIsolatedNodes: computed(() => filterHideIsolated.value),
   }),
 }))
 
@@ -282,3 +305,73 @@ describe('GraphCanvas edge label toggle', () => {
     expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
   })
 })
+
+/**
+ * T10: filter toggles must NOT rebuild the Sigma graph (which would restart the
+ * ForceAtlas2 layout and move every node). When the live graph already contains
+ * every id the filtered view wants — i.e. the user is hiding a type, or
+ * re-showing a type that was rendered at load — the filter must be applied
+ * in-place via `filterHidden` attributes (applyFilterVisibility) and `init` must
+ * NOT be called again. A rebuild is only legitimate for lazy expansion adding
+ * genuinely new node ids.
+ */
+describe('GraphCanvas filter freeze (T10)', () => {
+  function addGraphNode(graph: Graph, id: string, type: string, x: number, y: number): void {
+    graph.addNode(id, {
+      label: id,
+      x,
+      y,
+      size: 1,
+      color: '#fff',
+      type: 'circle',
+      nodeType: type,
+      fullName: id,
+      filePath: '',
+      lineNumber: 1,
+      properties: {},
+    })
+  }
+
+  it('hiding an already-rendered node type applies filterHidden in place (no init, no FA2 restart)', async () => {
+    // Live graph contains BOTH types (the superset built at load).
+    const graph = new Graph({ type: 'directed', multi: true })
+    addGraphNode(graph, 'a', 'Class', 100, 200)
+    addGraphNode(graph, 'b', 'Method', 300, 400)
+    graph.addEdgeWithKey('a|HAS_METHOD|b', 'a', 'b', { color: '#93c5fd' })
+    graphInstanceRef.value = graph
+
+    // Start with nothing hidden: filtered == full graph contents.
+    filterHiddenNodeTypes.value = new Set()
+
+    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    await flushPromises()
+    sigmaInitSpy.mockClear()
+
+    const beforeA = { x: graph.getNodeAttribute('a', 'x'), y: graph.getNodeAttribute('a', 'y') }
+    const beforeB = { x: graph.getNodeAttribute('b', 'x'), y: graph.getNodeAttribute('b', 'y') }
+
+    // User hides the Method type. The filtered view is now a strict SUBSET of the
+    // live graph → the watcher must take the in-place branch.
+    filterHiddenNodeTypes.value = new Set(['Method'])
+    await flushPromises()
+    // The rebuild path is debounced 200 ms; let any (incorrectly) scheduled one fire.
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    // 1. Sigma was NOT re-initialized → no new Sigma → no FA2 restart.
+    expect(sigmaInitSpy).not.toHaveBeenCalled()
+    // 2. Node positions are completely frozen.
+    expect({ x: graph.getNodeAttribute('a', 'x'), y: graph.getNodeAttribute('a', 'y') }).toEqual(
+      beforeA,
+    )
+    expect({ x: graph.getNodeAttribute('b', 'x'), y: graph.getNodeAttribute('b', 'y') }).toEqual(
+      beforeB,
+    )
+    // 3. The hidden type is marked filterHidden in place (reducers hide it).
+    expect(graph.getNodeAttribute('b', 'filterHidden')).toBe(true)
+    expect(graph.getNodeAttribute('a', 'filterHidden')).toBe(false)
+    expect(graph.getEdgeAttribute('a|HAS_METHOD|b', 'filterHidden')).toBe(true)
+
+    wrapper.unmount()
+  }, 10000)
+})
+
