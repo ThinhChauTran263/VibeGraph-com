@@ -106,6 +106,22 @@ export const WS_RECONNECT_DELAY_MS = envInt('VITE_WS_RECONNECT_DELAY_MS', 5000, 
 export const WS_HEARTBEAT_INCOMING_MS = envInt('VITE_WS_HEARTBEAT_INCOMING_MS', 10000, { min: 0 })
 export const WS_HEARTBEAT_OUTGOING_MS = envInt('VITE_WS_HEARTBEAT_OUTGOING_MS', 10000, { min: 0 })
 
+// ── Sigma item sizing (zoom-responsive) ──────────────────────────────────────
+/**
+ * Zoom-in factor at which node circles start growing beyond their fit-view size.
+ * Between 1x and this threshold they stay constant; zooming out below 1x still
+ * shrinks them so an overview does not become overcrowded.
+ */
+export const SIGMA_NODE_GROW_ZOOM = envFloat('VITE_SIGMA_NODE_GROW_ZOOM', 2, { min: 1 })
+/**
+ * Growth exponent applied after SIGMA_NODE_GROW_ZOOM. Lower values grow more
+ * gently; 0 keeps node circles constant and 1 grows them linearly.
+ */
+export const SIGMA_NODE_ZOOM_SIZE_POWER = envFloat('VITE_SIGMA_NODE_ZOOM_SIZE_POWER', 0.5, {
+  min: 0,
+  max: 2,
+})
+
 // ── Sigma labels (zoom-responsive sizing) ────────────────────────────────────
 /** Base node / edge label size at ratio=1 zoom. */
 export const SIGMA_BASE_NODE_LABEL_SIZE = envFloat('VITE_SIGMA_BASE_NODE_LABEL_SIZE', 7, { min: 1 })
@@ -162,8 +178,12 @@ export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_Z
   min: 1,
 })
 
-/** Rendered edge thickness (screen px, constant across zoom). Lower = thinner lines. */
-export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.25, { min: 0.05 })
+/**
+ * Edge size attribute fed to Sigma's edge programs. Sigma shares the item-size
+ * zoom curve between nodes and edges, but the minimum edge thickness remains the
+ * effective line width while the scaled edge size stays below that floor.
+ */
+export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.02, { min: 0.005 })
 
 /**
  * Minimum rendered edge thickness (screen px). Sigma floors every edge at this, and
@@ -171,7 +191,27 @@ export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.25, { min: 0.0
  * thin width no matter how far you zoom in (they never balloon with zoom like the
  * default size/√ratio scaling would). This is the effective edge line thickness.
  */
-export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 2.8, { min: 0.5 })
+export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 1.8, { min: 0.5 })
+
+// ── Density-adaptive fit-view node sizing ──────────────────────────────────
+// The fit view can only display as much circle area as the viewport holds.
+// With 1.5k+ visible nodes at the configured 6–18 px radii the demand exceeds
+// the viewport ~2x, so ANY de-overlap pass close-packs the layout into a round
+// disc (the "circular blob"). applyDensitySizeScale (graphAdapter) solves one
+// global factor k from Σ π(sᵢ·k+g)² = COVERAGE·W·H so the total disc area
+// stays within a feasible packing fraction at fit. Small graphs keep their
+// configured sizes (k = 1); large graphs render as dots at fit and grow
+// according to the configured Sigma zoom curve. IMPORTANT: this only scales
+// SIZES, never positions, so the macro silhouette is untouched.
+export const LAYOUT_FIT_SIZE_COVERAGE = envFloat('VITE_LAYOUT_FIT_SIZE_COVERAGE', 0.45, {
+  min: 0.05,
+  max: 0.9,
+})
+/** Floor for the density scale factor so huge graphs stay legible. */
+export const LAYOUT_FIT_SIZE_SCALE_MIN = envFloat('VITE_LAYOUT_FIT_SIZE_SCALE_MIN', 0.25, {
+  min: 0.1,
+  max: 1,
+})
 
 /**
  * Camera-ratio thresholds that stage label reveal (Sigma ratio: LOWER = zoomed IN).
@@ -304,11 +344,10 @@ export const LAYOUT_SCREEN_OVERLAP_ITERATIONS = envInt(
   10,
   { min: 1 },
 )
-export const LAYOUT_SCREEN_OVERLAP_STRENGTH = envFloat(
-  'VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH',
-  0.7,
-  { min: 0, max: 1 },
-)
+export const LAYOUT_SCREEN_OVERLAP_STRENGTH = envFloat('VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH', 0.7, {
+  min: 0,
+  max: 1,
+})
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
