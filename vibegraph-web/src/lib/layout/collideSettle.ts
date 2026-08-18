@@ -91,12 +91,10 @@ export function runCollideSettle(
   const simulation = forceSimulation<CollideNode>(nodes)
     .force('collide', forceCollide<CollideNode>((node) => node.r).strength(COLLIDE_STRENGTH).iterations(2))
     // Keep alpha at 1 for the whole bounded budget so every tick pushes with
-    // full strength; COLLIDE_ITERATIONS is the frame-budget knob.
+    // full strength; COLLIDE_ITERATIONS is the frame-budget knob. Heavy (not
+    // total) damping avoids inertial overshoot while still converging.
     .alphaDecay(0)
-    // Pure position relaxation: heavy damping so pairs converge onto the
-    // collide radius without inertial overshoot (velocityDecay(1) would freeze
-    // all motion in d3 — the integration factor is 1 − decay).
-    .velocityDecay(0.9)
+    .velocityDecay(0.6)
     .stop()
   for (let i = 0; i < COLLIDE_ITERATIONS; i += 1) simulation.tick()
 

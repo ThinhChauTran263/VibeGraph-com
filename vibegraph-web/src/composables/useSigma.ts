@@ -480,6 +480,9 @@ export function useSigma(options: UseSigmaOptions) {
 
     const engine = createLayoutEngine(graph, {
       onTick: () => sigmaInstance.value?.refresh({ skipIndexation: true }),
+      viewport: container.value
+        ? { width: container.value.clientWidth, height: container.value.clientHeight }
+        : undefined,
     })
     engine.start()
     layout.value = engine

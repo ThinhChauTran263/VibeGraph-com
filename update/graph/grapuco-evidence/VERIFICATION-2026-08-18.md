@@ -109,3 +109,24 @@ Env tuning chốt (local `.env`, gitignored): `VITE_LAYOUT_FIT_SIZE_COVERAGE=0.2
 Fix kèm phát hiện khi verify: `runPostLayoutPass` phải gọi `refresh()` FULL
 (không `skipIndexation`) để Sigma re-index bounds — nếu không camera giữ framing
 của vị trí cũ và zoomToFit không khung đúng layout cuối.
+
+### 7.1 Bản chỉnh sửa sau feedback người dùng (core vẫn bết tấm xanh)
+
+Đo lại qua chrome-devtools sau mỗi vòng sửa (project 2c67c31c, fit view):
+
+| Vòng | Thay đổi | Touching pairs | nn P10 (px) |
+|---|---|---|---|
+| 0 | BLOB-1..4 chốt vội | 844 | 2.58 |
+| 1 | revert env tuning (gravity -2.5 nén core sau normalize) | 844→280* | 3.15 |
+| 2 | **collide VÀO trong worker** (post-hoc không tạo được diện tích) + fix d3 **radius cache** (phải gọi lại `force.radius()` sau khi đổi r) | 587 | 4.07 |
+| 3 | strength 1.0, 2 collide ticks/loop vs 2 ngraph steps (springs từng thắng collide), post-pass strength 1 | **53** | **6.76** |
+
+*Vòng 1 đo sau khi worker collide chạy nhưng radii chưa áp dụng (bug cache).
+
+Kết quả cuối: fit = speckle rời rạc có khe đen (không còn tấm xanh đặc);
+6.7× = bóng tách rời + label đọc được. Suite 596/596, vue-tsc clean.
+
+Bài học: (1) collide phải là ràng buộc TRONG simulation như grapuco — post-pass
+chỉ là trang điểm; (2) d3-forceCollide cache radii lúc initialize — mọi lần đổi
+bán kính phải gọi lại `.radius(accessor)`; (3) đừng "chốt" khi chưa soi lại
+bằng devtools sau mỗi vòng sửa.

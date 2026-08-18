@@ -33,6 +33,7 @@ import {
   NGRAPH_DRAG_COEFFICIENT,
   NGRAPH_GRAVITY,
   NGRAPH_THETA,
+  LAYOUT_SCREEN_OVERLAP_GAP_PX,
 } from '@/lib/runtimeConfig'
 import type { NgraphInitMessage } from './ngraphLayoutWorker'
 
@@ -44,6 +45,8 @@ export interface LayoutEngineHandle {
 export interface LayoutEngineOptions {
   /** Called after each progressive position batch so Sigma can repaint. */
   onTick?: () => void
+  /** Viewport box (px) — feeds the in-worker collide radius conversion. */
+  viewport?: { width: number; height: number }
 }
 
 export function createLayoutEngine(graph: Graph, options: LayoutEngineOptions = {}): LayoutEngineHandle {
@@ -89,10 +92,12 @@ function createNgraphEngine(graph: Graph, options: LayoutEngineOptions): LayoutE
       ids = graph.nodes()
       const xs = new Array<number>(ids.length)
       const ys = new Array<number>(ids.length)
+      const sizes = new Array<number>(ids.length)
       for (let i = 0; i < ids.length; i += 1) {
         const id = ids[i]!
         xs[i] = Number(graph.getNodeAttribute(id, 'x')) || 0
         ys[i] = Number(graph.getNodeAttribute(id, 'y')) || 0
+        sizes[i] = Number(graph.getNodeAttribute(id, 'size')) || 4
       }
       const edges = graph.edges().map((edge) => {
         const [from, to] = graph.extremities(edge)
@@ -118,7 +123,11 @@ function createNgraphEngine(graph: Graph, options: LayoutEngineOptions): LayoutE
         ids,
         xs,
         ys,
+        sizes,
         edges,
+        gapPx: LAYOUT_SCREEN_OVERLAP_GAP_PX,
+        viewportWidth: options.viewport?.width ?? 0,
+        viewportHeight: options.viewport?.height ?? 0,
         settings: {
           timeStep: NGRAPH_TIME_STEP,
           springLength: NGRAPH_SPRING_LENGTH,

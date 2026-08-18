@@ -37,10 +37,14 @@ function initMessage() {
     ids: ['a', 'b', 'c'],
     xs: [0, 50, -50],
     ys: [0, 10, -10],
+    sizes: [5, 5, 5],
     edges: [
       { from: 'a', to: 'b' },
       { from: 'a', to: 'c' },
     ],
+    gapPx: 3,
+    viewportWidth: 1000,
+    viewportHeight: 600,
     settings: SETTINGS,
   }
 }

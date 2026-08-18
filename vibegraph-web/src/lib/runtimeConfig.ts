@@ -341,8 +341,8 @@ export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP
 })
 /** Bounded tick budget for the collide relaxation (frame-budget knob). */
 export const COLLIDE_ITERATIONS = envInt('VITE_COLLIDE_ITERATIONS', 60, { min: 1 })
-/** forceCollide strength (0–1); 0.9 converges fast without overshoot. */
-export const COLLIDE_STRENGTH = envFloat('VITE_COLLIDE_STRENGTH', 0.9, { min: 0, max: 1 })
+/** forceCollide strength (0–1); 1.0 lets the pass hold its own in dense cores. */
+export const COLLIDE_STRENGTH = envFloat('VITE_COLLIDE_STRENGTH', 1, { min: 0, max: 1 })
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
