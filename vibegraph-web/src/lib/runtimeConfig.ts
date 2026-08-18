@@ -282,6 +282,26 @@ export const LAYOUT_BRANCH_COMPONENT_GAP = envFloat('VITE_LAYOUT_BRANCH_COMPONEN
   min: 0,
 })
 
+// ── Density-adaptive fit-view node sizing ──────────────────────────────────
+// The fit view can only show as much circle area as the viewport holds: with
+// ~1.5k visible nodes at 6–18 px radii the demand exceeds the viewport ~2×, so
+// ANY de-overlap pass close-packs the layout into a round disc (the "circular
+// blob"). applyDensitySizeScale (graphAdapter) solves one global factor k from
+// Σ π(sᵢ·k+g)² = COVERAGE·W·H so the total disc area stays within a feasible
+// packing fraction at fit view. Small graphs keep their configured sizes
+// (k = 1); large graphs render as dots at fit and grow linearly on zoom
+// (ZOOM_SIZE_POWER = 1.0) — the same calibration measured on grapuco
+// (update/graph/grapuco-evidence/VERIFICATION-2026-08-18.md).
+export const LAYOUT_FIT_SIZE_COVERAGE = envFloat('VITE_LAYOUT_FIT_SIZE_COVERAGE', 0.3, {
+  min: 0.05,
+  max: 0.9,
+})
+/** Floor for the density scale factor so huge graphs stay legible. */
+export const LAYOUT_FIT_SIZE_SCALE_MIN = envFloat('VITE_LAYOUT_FIT_SIZE_SCALE_MIN', 0.25, {
+  min: 0.1,
+  max: 1,
+})
+
 // ── Overlap removal (post-pass) ──────────────────────────────────────────────
 // T8(b): the graphology-noverlap worker was removed entirely. It computed
 // collisions in graph units from raw screen-px `size` attributes, guaranteeing

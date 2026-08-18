@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { apiToGraphology } from '../graphAdapter'
+import Graph from 'graphology'
+import { apiToGraphology, applyDensitySizeScale } from '../graphAdapter'
 import {
   NODE_COLORS,
   EDGE_COLORS,
@@ -313,5 +314,83 @@ describe('graphAdapter supports every backend-emitted edge type', () => {
     for (const type of BACKEND_EMITTED_EDGE_TYPES) {
       expect(partitioned.has(type)).toBe(true)
     }
+  })
+})
+
+describe('applyDensitySizeScale (density-adaptive fit-view sizing)', () => {
+  // Code defaults under vitest: coverage 0.3, scale floor 0.25, gap 3 px.
+  const VIEW_W = 1000
+  const VIEW_H = 600
+
+  function sizedGraph(count: number, size: number): Graph {
+    const graph = new Graph()
+    for (let i = 0; i < count; i += 1) {
+      graph.addNode(`n${i}`, {
+        label: `n${i}`,
+        x: i % 50,
+        y: Math.floor(i / 50),
+        size,
+        color: '#fff',
+        type: 'circle',
+        nodeType: 'Class',
+        fullName: `n${i}`,
+        filePath: '',
+        lineNumber: 0,
+      })
+    }
+    return graph
+  }
+
+  function demand(graph: Graph, gap: number): number {
+    let total = 0
+    graph.forEachNode((_id, attrs) => {
+      if (attrs.filterHidden === true || attrs.hidden === true) return
+      total += Math.PI * ((attrs.size as number) + gap) ** 2
+    })
+    return total
+  }
+
+  it('returns 1 and leaves sizes untouched when demand fits the viewport', () => {
+    const graph = sizedGraph(10, 8)
+    const scale = applyDensitySizeScale(graph, VIEW_W, VIEW_H)
+    expect(scale).toBe(1)
+    expect(graph.getNodeAttribute('n0', 'size')).toBe(8)
+  })
+
+  it('shrinks an over-budget graph so post-scale demand stays within coverage', () => {
+    const graph = sizedGraph(1500, 10)
+    const scale = applyDensitySizeScale(graph, VIEW_W, VIEW_H)
+    expect(scale).toBeLessThan(1)
+    expect(scale).toBeGreaterThanOrEqual(0.25)
+    // Applied sizes + gap must fit the 0.3 coverage budget (float tolerance).
+    expect(demand(graph, 3)).toBeLessThanOrEqual(0.3 * VIEW_W * VIEW_H * 1.0000001)
+  })
+
+  it('excludes hidden nodes from the budget and never resizes them', () => {
+    const graph = sizedGraph(1500, 10)
+    graph.setNodeAttribute('n0', 'filterHidden', true)
+    graph.setNodeAttribute('n1', 'hidden', true)
+    const before0 = graph.getNodeAttribute('n0', 'size')
+    const before1 = graph.getNodeAttribute('n1', 'size')
+    const scale = applyDensitySizeScale(graph, VIEW_W, VIEW_H)
+    expect(scale).toBeLessThan(1)
+    expect(graph.getNodeAttribute('n0', 'size')).toBe(before0)
+    expect(graph.getNodeAttribute('n1', 'size')).toBe(before1)
+    expect(graph.getNodeAttribute('n2', 'size')).toBeLessThan(10)
+  })
+
+  it('never shrinks a rendered size below the 1.5 floor', () => {
+    const graph = sizedGraph(3000, 4)
+    const scale = applyDensitySizeScale(graph, VIEW_W, VIEW_H)
+    expect(scale).toBe(0.25)
+    graph.forEachNode((_id, attrs) => {
+      expect(attrs.size as number).toBeGreaterThanOrEqual(1.5)
+    })
+  })
+
+  it('is a no-op for degenerate viewports and tiny graphs', () => {
+    const graph = sizedGraph(1, 10)
+    expect(applyDensitySizeScale(graph, VIEW_W, VIEW_H)).toBe(1)
+    expect(applyDensitySizeScale(sizedGraph(5, 10), 0, VIEW_H)).toBe(1)
   })
 })

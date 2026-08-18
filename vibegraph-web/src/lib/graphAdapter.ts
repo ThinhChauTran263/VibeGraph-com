@@ -8,7 +8,12 @@
 import Graph from 'graphology'
 import type { GraphData, GraphNode, GraphEdge, NodeType, EdgeType } from '@/types/graph'
 import { NODE_COLORS, EDGE_COLORS, NODE_SIZES, NODE_SIZE_BY_TYPE } from './constants'
-import { SIGMA_EDGE_SIZE } from './runtimeConfig'
+import {
+  SIGMA_EDGE_SIZE,
+  LAYOUT_SCREEN_OVERLAP_GAP_PX,
+  LAYOUT_FIT_SIZE_COVERAGE,
+  LAYOUT_FIT_SIZE_SCALE_MIN,
+} from './runtimeConfig'
 
 export interface SigmaNodeAttributes {
   label: string
@@ -186,4 +191,61 @@ export function getEdgeColor(edgeType: EdgeType): string {
  */
 export function getNodeSize(nodeType: NodeType): number {
   return NODE_SIZE_BY_TYPE[nodeType] ?? NODE_SIZES.default
+}
+
+/**
+ * Density-adaptive fit-view node sizing. The fit view can only display as much
+ * circle area as the viewport holds; when the configured per-type radii would
+ * exceed that budget (large graphs), every node `size` is multiplied by one
+ * global factor k solved from Σ π(sᵢ·k+g)² = COVERAGE·W·H (a quadratic in k),
+ * keeping the total disc area within a feasible packing fraction. Small graphs
+ * return 1 and stay untouched. Hidden (filterHidden/hidden) nodes are excluded
+ * from both the budget and the resize. With ZOOM_SIZE_POWER = 1.0 the shrunken
+ * dots grow back linearly as the user zooms in, so detail views keep full-size
+ * nodes. Returns the applied scale factor (1 = no change).
+ */
+export function applyDensitySizeScale(
+  graph: Graph,
+  viewportWidth: number,
+  viewportHeight: number,
+): number {
+  if (graph.order < 2 || viewportWidth <= 0 || viewportHeight <= 0) return 1
+
+  const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX
+  const budget = (LAYOUT_FIT_SIZE_COVERAGE * viewportWidth * viewportHeight) / Math.PI
+
+  let sumSq = 0
+  let sumS = 0
+  let count = 0
+  graph.forEachNode((_id, attributes) => {
+    if (attributes.filterHidden === true || attributes.hidden === true) return
+    const size = Number(attributes.size ?? 0)
+    if (!Number.isFinite(size) || size <= 0) return
+    sumSq += size * size
+    sumS += size
+    count += 1
+  })
+  if (count < 2) return 1
+
+  // demand(k) = Σ (sᵢ·k + g)² = sumSq·k² + 2·g·sumS·k + count·g²  ≤ budget
+  const a = sumSq
+  const b = 2 * gap * sumS
+  const c = count * gap * gap - budget
+  let scale: number
+  if (a <= 0 || c >= 0) {
+    // Degenerate or already over budget at k=0: take the floor.
+    scale = LAYOUT_FIT_SIZE_SCALE_MIN
+  } else {
+    scale = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a)
+  }
+  scale = Math.min(1, Math.max(LAYOUT_FIT_SIZE_SCALE_MIN, scale))
+  if (scale >= 1) return 1
+
+  graph.updateEachNodeAttributes((_id, attributes) => {
+    if (attributes.filterHidden === true || attributes.hidden === true) return attributes
+    const size = Number(attributes.size ?? 0)
+    if (!Number.isFinite(size) || size <= 0) return attributes
+    return { ...attributes, size: Math.max(1.5, size * scale) }
+  })
+  return scale
 }

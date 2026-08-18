@@ -9,6 +9,7 @@ import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
+import { applyDensitySizeScale } from '@/lib/graphAdapter'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
@@ -140,6 +141,12 @@ export function useSigma(options: UseSigmaOptions) {
     // Seed node positions from the cache so rebuilds keep the last stable placement
     // for known nodes before the worker refines them.
     applyCachedLayout(graph)
+
+    // Density-adaptive fit-view sizing: on large graphs the configured radii
+    // exceed the viewport's circle-area budget and any de-overlap pass would
+    // close-pack the layout into a round disc. Shrink sizes to a feasible
+    // budget before Sigma renders; no-op on small graphs. BLOB-1.
+    applyDensitySizeScale(graph, container.value.clientWidth, container.value.clientHeight)
 
     const sigma = new Sigma(graph, container.value, {
       allowInvalidContainer: true,
