@@ -214,11 +214,13 @@ export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 1500, { min:
 /** Enable Barnes-Hut optimization once node count exceeds this. */
 export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
-/** Synchronous ForceAtlas2 iterations run once before first paint (no live animation). */
-export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 700, { min: 1 })
+// NOTE (T11): FA2_ITERATIONS was deleted — it was referenced nowhere. FA2 runs
+// in an async web worker and is stopped by the LAYOUT_AUTO_STOP_MS timer below,
+// not by a synchronous pre-paint iteration count (the old comment claimed
+// otherwise and was provably false — update/graph/01-EVIDENCE-LOG.md §4).
 
 // ── ForceAtlas2 cluster separation (anti-hairball) ───────────────────────────
-// The reference "grapuco" look is standard ForceAtlas2 (NOT LinLog) with strong
+// Standard ForceAtlas2 (NOT LinLog) with strong
 // repulsion + dissuade-hubs: connected nodes stay close (short, local edges) while
 // unrelated nodes push far apart, so the graph spreads into organic branches
 // instead of one dense hairball. LinLog is intentionally OFF — it lengthens edges
@@ -238,17 +240,10 @@ export const FA2_ADJUST_SIZES = envBool('VITE_FA2_ADJUST_SIZES', false)
  */
 export const FA2_STRONG_GRAVITY_MODE = envBool('VITE_FA2_STRONG_GRAVITY_MODE', false)
 
-/**
- * After layout, pull the farthest nodes (disconnected singletons / tiny orphan
- * components) inward to this radius percentile of the main body. Without this a
- * few edge-less nodes drift far out, forcing zoom-to-fit to shrink the whole graph
- * to a crammed dot. Clamping them to a bounding ring lets the airy body fill the
- * view. Range 0–1; set 0 (or ≥1) to disable.
- */
-export const FA2_OUTLIER_CLAMP_PERCENTILE = envFloat('VITE_FA2_OUTLIER_CLAMP_PERCENTILE', 0.9, {
-  min: 0,
-  max: 1,
-})
+// NOTE (T11): FA2_OUTLIER_CLAMP_PERCENTILE was deleted — it was referenced
+// nowhere. Its doc comment described an outlier-clamping post-pass that does not
+// exist in the code at all (update/graph/01-EVIDENCE-LOG.md §4–§5). Framing is
+// handled by the maxCameraRatio clamp in useSigma instead.
 
 // Adaptive settings: small graphs already spread well with the base values, so we
 // only switch to the heavier, more separated large-graph profile past this size.
@@ -260,16 +255,14 @@ export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD'
  */
 export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 0.001, { min: 0 })
 export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 2000, { min: 0 })
-/** Iterations for the large-graph profile (more passes = better separated). */
-export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 1000, { min: 1 })
 
 /**
  * Rescale the settled layout so its bounding box spans this many layout units.
- * Node sizes are rendered in the SAME layout-coordinate space (see Sigma
- * `itemSizesReference: 'positions'`), so a fixed span makes a node of `size` s
- * render at a predictable pixel radius (≈ s · viewport / span) on EVERY project,
- * regardless of how large the raw force-layout coordinates came out. It also makes
- * the Noverlap `margin` translate to a consistent on-screen gap. Set 0 to disable.
+ * With `itemSizesReference: 'screen'` (see useSigma), node `size` attributes are
+ * screen pixels, but node POSITIONS live in this layout-coordinate space — so a
+ * fixed span makes the graph's extent (and the px↔graph-unit conversion used by
+ * the screen-space de-overlap pass) predictable on EVERY project, regardless of
+ * how large the raw force-layout coordinates came out. Set 0 to disable.
  */
 export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 9000, { min: 0 })
 // Shape-preserving post-layout spread. ForceAtlas2 decides the organic silhouette;
@@ -290,21 +283,16 @@ export const LAYOUT_BRANCH_COMPONENT_GAP = envFloat('VITE_LAYOUT_BRANCH_COMPONEN
 })
 
 // ── Overlap removal (post-pass) ──────────────────────────────────────────────
-// After ForceAtlas2 + normalization, a custom symmetric de-overlap pass separates
-// every pair of nodes closer than (radius_a + radius_b + margin). It runs in the
-// same layout-coordinate space Sigma renders node sizes in, so it GUARANTEES no
-// nodes overlap on screen. `margin` is the minimum clear gap (layout units) kept
-// between node boundaries; at the normalized span it maps to a consistent pixel gap.
-export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
-export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 40, { min: 0 })
-export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 2.7, { min: 0 })
-export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
-export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 22000, { min: 0 })
-
-// Final visual cleanup for Sigma's screen-sized nodes. Graphology noverlap works
-// in graph units, while `itemSizesReference: 'screen'` renders node radii in px;
-// this bounded pass converts px radii to graph units and only pushes still-touching
-// visible nodes apart after the worker stops.
+// T8(b): the graphology-noverlap worker was removed entirely. It computed
+// collisions in graph units from raw screen-px `size` attributes, guaranteeing
+// ~25% under-separation (update/graph/03-ROOT-CAUSE.md Layer 1), and blocked the
+// pipeline behind NOVERLAP_AUTO_STOP_MS = 22 s. `settleScreenOverlaps` below is
+// the single de-overlap pass: it converts px radii to graph units via the live
+// bounding-box factor (unitsPerPixel) and, with ZOOM_SIZE_POWER = 1.0, its result
+// is correct at every zoom level (update/graph/02-SIGMA-INTERNALS.md §4).
+// Final visual cleanup for Sigma's screen-sized nodes. This bounded pass
+// converts px radii to graph units and only pushes still-touching visible nodes
+// apart after the ForceAtlas2 worker stops.
 export const LAYOUT_SCREEN_OVERLAP_ENABLED = envBool('VITE_LAYOUT_SCREEN_OVERLAP_ENABLED', true)
 export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP_GAP_PX', 3, {
   min: 0,
