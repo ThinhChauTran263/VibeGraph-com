@@ -8,7 +8,6 @@ import Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
-import NoverlapLayout from 'graphology-layout-noverlap/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
@@ -32,10 +31,6 @@ import {
   LAYOUT_BRANCH_LEVEL_GAP,
   LAYOUT_BRANCH_JITTER,
   LAYOUT_BRANCH_COMPONENT_GAP,
-  NOVERLAP_ENABLED,
-  NOVERLAP_MARGIN,
-  NOVERLAP_RATIO,
-  NOVERLAP_AUTO_STOP_MS,
   LAYOUT_SCREEN_OVERLAP_ENABLED,
   LAYOUT_SCREEN_OVERLAP_GAP_PX,
   LAYOUT_SCREEN_OVERLAP_ITERATIONS,
@@ -100,8 +95,6 @@ export function useSigma(options: UseSigmaOptions) {
   const graphInstance = shallowRef<Graph | null>(null)
   const layout = shallowRef<FA2Layout | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
-  const overlapLayout = shallowRef<NoverlapLayout | null>(null)
-  const overlapStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
   const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
   // Cleanup for the manual right/middle-button canvas panning listeners.
   const panCleanup = shallowRef<null | (() => void)>(null)
@@ -517,8 +510,6 @@ export function useSigma(options: UseSigmaOptions) {
       layoutStopTimer.value = null
     }
 
-    stopOverlapLayout()
-
     if (layout.value) {
       layout.value.kill()
       layout.value = null
@@ -533,29 +524,31 @@ export function useSigma(options: UseSigmaOptions) {
     }
   }
 
+  /**
+   * Post-layout pipeline: normalize → spread clusters → center → screen-space
+   * de-overlap (settleScreenOverlaps). T8(b): the graphology-noverlap worker was
+   * REMOVED — it computed collisions in graph units from raw screen-px `size`
+   * attributes (~25% under-separation, 03-ROOT-CAUSE.md Layer 1) and blocked the
+   * pipeline on a 22 s timer. settleScreenOverlaps already converts px radii to
+   * graph units correctly (unitsPerPixel) and is zoom-invariant with
+   * ZOOM_SIZE_POWER = 1.0 (02-SIGMA-INTERNALS.md §4), so it now does the whole
+   * de-overlap job synchronously in a few ms.
+   */
   function runPostLayoutPass(graph: Graph): void {
     normalizeLayout(graph)
     spreadLayoutClusters(graph)
     centerLayout(graph)
+    // Test seam (T8): lets unit tests snapshot state right before the settle
+    // pass without mocking the (removed) noverlap worker. No-op in production.
+    ;(
+      (globalThis as Record<string, unknown>).__VIBEGRAPH_PRE_SETTLE_HOOK__ as
+        | ((g: Graph) => void)
+        | undefined
+    )?.(graph)
+    settleScreenOverlaps(graph)
     cacheLayoutPositions(graph)
     sigmaInstance.value?.refresh({ skipIndexation: true })
-
-    if (!NOVERLAP_ENABLED || graph.order < 2) {
-      onLayoutSettled?.()
-      return
-    }
-
-    const overlap = new NoverlapLayout(graph, {
-      settings: {
-        margin: NOVERLAP_MARGIN,
-        ratio: NOVERLAP_RATIO,
-      },
-      onConverged: () => stopOverlapLayout(true),
-    })
-
-    overlapLayout.value = overlap
-    overlap.start()
-    overlapStopTimer.value = setTimeout(() => stopOverlapLayout(true), NOVERLAP_AUTO_STOP_MS)
+    onLayoutSettled?.()
   }
 
   function normalizeLayout(graph: Graph): void {
@@ -893,31 +886,6 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     return true
-  }
-
-  function stopOverlapLayout(runVisualSettle: boolean = false): void {
-    const hadOverlapLayout = overlapLayout.value !== null
-
-    if (overlapStopTimer.value) {
-      clearTimeout(overlapStopTimer.value)
-      overlapStopTimer.value = null
-    }
-
-    if (overlapLayout.value) {
-      overlapLayout.value.kill()
-      overlapLayout.value = null
-    }
-
-    if (runVisualSettle && hadOverlapLayout && graphInstance.value) {
-      settleScreenOverlaps(graphInstance.value)
-    }
-
-    if (graphInstance.value) {
-      cacheLayoutPositions(graphInstance.value)
-    }
-
-    sigmaInstance.value?.refresh({ skipIndexation: true })
-    if (runVisualSettle) onLayoutSettled?.()
   }
 
   /**

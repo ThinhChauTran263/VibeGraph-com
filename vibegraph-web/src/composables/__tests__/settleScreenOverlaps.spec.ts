@@ -4,18 +4,16 @@
  * update/graph/05-IMPLEMENTATION-PLAN.md §Testing.
  *
  * SEAM: `settleScreenOverlaps` is a private closure inside `useSigma` (no export).
- * Its only production path is the post-layout pipeline:
+ * Its only production path is the post-layout pipeline (T8(b) removed the
+ * graphology-noverlap worker entirely — settle is now THE de-overlap pass):
  *
  *   stopLayout(runPostLayout = true)
  *     → runPostLayoutPass()
- *     → Noverlap worker converges (onConverged)
- *     → stopOverlapLayout(true)
+ *     → normalizeLayout / spreadLayoutClusters / centerLayout
  *     → settleScreenOverlaps(graph)
  *
  * These tests drive exactly that seam with the same mocked-Sigma harness as
- * useSigma.spec.ts, plus a Noverlap worker mock that reports convergence
- * synchronously WITHOUT moving nodes — isolating the settle pass as the unit
- * under test.
+ * useSigma.spec.ts.
  *
  * runtimeConfig is overridden the same way the `VITE_*` env vars would:
  * - LAYOUT_NORMALIZE_SPAN = 0 disables the pre-pass rescale (documented env
@@ -73,11 +71,6 @@ interface MockLayoutInstance {
 const sigmaState = vi.hoisted(() => ({ instances: [] as MockSigmaInstance[] }))
 const layoutState = vi.hoisted(() => ({ instances: [] as MockLayoutInstance[] }))
 const syncLayoutState = vi.hoisted(() => ({ assign: vi.fn(), inferSettings: vi.fn() }))
-const noverlapState = vi.hoisted(() => ({
-  // Optional hook invoked right before onConverged fires (i.e. after the
-  // pre-passes, before settleScreenOverlaps runs). Lets tests snapshot state.
-  beforeConverge: null as null | ((graph: import('graphology').default) => void),
-}))
 
 vi.mock('sigma', () => {
   class MockSigma {
@@ -150,32 +143,6 @@ vi.mock('graphology-layout-forceatlas2/worker', () => {
   }
 
   return { default: MockLayout }
-})
-
-// The Noverlap worker "converges" instantly without moving a single node, so the
-// screen-space settle pass runs against exactly the synthetic positions built by
-// each test (Noverlap's own graph-space de-overlap is out of scope here).
-vi.mock('graphology-layout-noverlap/worker', () => {
-  class MockNoverlap {
-    graph: Graph
-    params: { settings?: Record<string, unknown>; onConverged?: () => void }
-    start = vi.fn(function (this: MockNoverlap) {
-      noverlapState.beforeConverge?.(this.graph)
-      this.params.onConverged?.()
-    })
-    stop = vi.fn()
-    kill = vi.fn()
-
-    constructor(
-      graph: Graph,
-      params: { settings?: Record<string, unknown>; onConverged?: () => void },
-    ) {
-      this.graph = graph
-      this.params = params
-    }
-  }
-
-  return { default: MockNoverlap }
 })
 
 vi.mock('@/lib/ghostLayer', () => ({
@@ -334,12 +301,13 @@ describe('useSigma settleScreenOverlaps (screen-space overlap resolution)', () =
   beforeEach(() => {
     sigmaState.instances.length = 0
     layoutState.instances.length = 0
-    noverlapState.beforeConverge = null
+    delete (globalThis as Record<string, unknown>).__VIBEGRAPH_PRE_SETTLE_HOOK__
   })
 
   afterEach(() => {
     vi.clearAllTimers()
     vi.clearAllMocks()
+    delete (globalThis as Record<string, unknown>).__VIBEGRAPH_PRE_SETTLE_HOOK__
   })
 
   it('separates two overlapping nodes until zero collisions remain', () => {
@@ -429,7 +397,7 @@ describe('useSigma settleScreenOverlaps (screen-space overlap resolution)', () =
     // centerLayout translation pre-pass) to isolate what settle itself does.
     let ghostBefore = { x: 0, y: 0 }
     let farBefore = { x: 0, y: 0 }
-    noverlapState.beforeConverge = (g) => {
+    ;(globalThis as Record<string, unknown>).__VIBEGRAPH_PRE_SETTLE_HOOK__ = (g: Graph) => {
       ghostBefore = position(g, 'ghost')
       farBefore = position(g, 'farHidden')
     }
