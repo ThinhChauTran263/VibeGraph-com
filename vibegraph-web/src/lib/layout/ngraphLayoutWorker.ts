@@ -36,6 +36,8 @@ export interface NgraphInitMessage {
   edges: Array<{ from: string; to: string }>
   /** Screen-px gap added to every collide radius. */
   gapPx: number
+  /** Collide radius = (padFactor·size + gap) in fit-screen px. */
+  padFactor: number
   viewportWidth: number
   viewportHeight: number
   settings: {
@@ -60,8 +62,6 @@ interface SimNode extends SimulationNodeDatum {
 const TICKS_PER_LOOP = 2
 const LOOP_MS = 16
 const POST_EVERY_TICKS = 10
-/** Grapuco-calibrated pad: collide radius = 3× draw radius + gap (they used ~2–4×). */
-const COLLIDE_PAD_FACTOR = 3
 
 const scope = self as unknown as {
   onmessage: ((e: MessageEvent<NgraphInitMessage | NgraphStopMessage>) => void) | null
@@ -158,7 +158,7 @@ scope.onmessage = (e) => {
     }
     for (let i = 0; i < simNodes.length; i += 1) {
       const size = init.sizes[i] ?? 4
-      simNodes[i]!.r = (COLLIDE_PAD_FACTOR * size + init.gapPx) * unitsPerPx
+      simNodes[i]!.r = (init.padFactor * size + init.gapPx) * unitsPerPx
     }
     collideForce.radius((node) => node.r) // re-read the rescaled radii
   }

@@ -343,6 +343,13 @@ export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP
 export const COLLIDE_ITERATIONS = envInt('VITE_COLLIDE_ITERATIONS', 60, { min: 1 })
 /** forceCollide strength (0–1); 1.0 lets the pass hold its own in dense cores. */
 export const COLLIDE_STRENGTH = envFloat('VITE_COLLIDE_STRENGTH', 1, { min: 0, max: 1 })
+/**
+ * In-worker collide radius = (PAD·size + gap) in fit-screen px. Grapuco used
+ * ~2–4×; high values guarantee separation but the uniform pressure rounds the
+ * core into a disc, low values keep the organic ngraph silhouette. Tune via
+ * VITE_COLLIDE_PAD_FACTOR.
+ */
+export const COLLIDE_PAD_FACTOR = envFloat('VITE_COLLIDE_PAD_FACTOR', 3, { min: 1, max: 4 })
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })

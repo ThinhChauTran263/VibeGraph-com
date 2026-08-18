@@ -34,6 +34,7 @@ import {
   NGRAPH_GRAVITY,
   NGRAPH_THETA,
   LAYOUT_SCREEN_OVERLAP_GAP_PX,
+  COLLIDE_PAD_FACTOR,
 } from '@/lib/runtimeConfig'
 import type { NgraphInitMessage } from './ngraphLayoutWorker'
 
@@ -126,6 +127,7 @@ function createNgraphEngine(graph: Graph, options: LayoutEngineOptions): LayoutE
         sizes,
         edges,
         gapPx: LAYOUT_SCREEN_OVERLAP_GAP_PX,
+        padFactor: COLLIDE_PAD_FACTOR,
         viewportWidth: options.viewport?.width ?? 0,
         viewportHeight: options.viewport?.height ?? 0,
         settings: {

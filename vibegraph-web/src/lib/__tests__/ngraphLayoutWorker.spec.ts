@@ -43,6 +43,7 @@ function initMessage() {
       { from: 'a', to: 'c' },
     ],
     gapPx: 3,
+    padFactor: 1.5,
     viewportWidth: 1000,
     viewportHeight: 600,
     settings: SETTINGS,

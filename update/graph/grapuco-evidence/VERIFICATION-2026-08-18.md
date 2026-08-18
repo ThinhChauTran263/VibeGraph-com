@@ -130,3 +130,15 @@ Bài học: (1) collide phải là ràng buộc TRONG simulation như grapuco �
 chỉ là trang điểm; (2) d3-forceCollide cache radii lúc initialize — mọi lần đổi
 bán kính phải gọi lại `.radius(accessor)`; (3) đừng "chốt" khi chưa soi lại
 bằng devtools sau mỗi vòng sửa.
+
+### 7.2 Vòng tinh chỉnh VITE_COLLIDE_PAD_FACTOR (devtools sau mỗi vòng)
+
+| pad | touching | nn P10 | Nhận xét |
+|---|---|---|---|
+| 1.2 | 109 | 5.88 | tách yếu, core vẫn đặc |
+| 2.5 | 106 | 6.09 | ~1.2 |
+| **3** | **21** | **7.51** | khe đen rõ khắp core, silhouette bất quy tắc — CHỐT |
+
+Chốt: code default `COLLIDE_PAD_FACTOR=3` (dải 2–4× của grapuco) + `.env`
+`VITE_COLLIDE_PAD_FACTOR=3`. Ảnh cuối: fit = speckle rời có khe; 6.7× = bóng
+tách rời + label đọc được. Suite 596/596, vue-tsc clean.
