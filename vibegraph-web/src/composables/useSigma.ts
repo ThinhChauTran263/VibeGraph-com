@@ -922,24 +922,17 @@ export function useSigma(options: UseSigmaOptions) {
     }
 
     // If collisions remain after the relaxation loop, the dense core is stuck —
-    // every push is cancelled by a counter-push. Break the deadlock by uniformly
-    // expanding the densest region: scale all positions outward from the
-    // bounding-box centroid, then run one final round to re-settle the edges.
+    // every push is cancelled by a counter-push. Do NOT uniformly expand from the
+    // centroid (that produces a circular blob). Instead, run additional rounds
+    // with increased strength to break through the deadlock.
     if (anyMoved) {
       const remaining = countOverlappingPairs(nodes, gap)
       if (remaining > 0) {
-        const cx = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
-        const cy = nodes.reduce((s, n) => s + n.y, 0) / nodes.length
-        // Expand by the factor needed to make the average node spacing equal to
-        // the average node diameter. Capped to avoid blowing up the layout.
-        const avgRadius = nodes.reduce((s, n) => s + n.radius, 0) / nodes.length
-        const expandFactor = Math.min(1.5, 1 + (remaining / nodes.length) * 2)
-        for (const n of nodes) {
-          n.x = cx + (n.x - cx) * expandFactor
-          n.y = cy + (n.y - cy) * expandFactor
+        // Boost strength for stubborn dense cores: run extra rounds at full strength.
+        for (let extra = 0; extra < 10 && remaining > 0; extra++) {
+          const moved = settleOneRound(nodes, gap, maxRadius)
+          if (!moved) break
         }
-        // One final round to re-settle after expansion
-        settleOneRound(nodes, gap, maxRadius + avgRadius * expandFactor)
       }
     }
 

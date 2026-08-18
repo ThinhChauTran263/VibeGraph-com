@@ -212,7 +212,7 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 1500, { min: 0 })
+export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 40000, { min: 0 })
 /** Enable Barnes-Hut optimization once node count exceeds this. */
 export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
@@ -256,7 +256,7 @@ export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD'
  * the body so the camera frames the main cluster instead of a distant outlier.
  */
 export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 2000, { min: 0 })
+export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 40000, { min: 0 })
 
 /**
  * Rescale the settled layout so its bounding box spans this many layout units.
