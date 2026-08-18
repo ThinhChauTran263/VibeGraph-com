@@ -208,7 +208,29 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
   min: 1,
 })
 
-// ── ForceAtlas2 layout ───────────────────────────────────────────────────────
+// ── Layout engine selection ────────────────────────────────────────────────
+/**
+ * Macro-layout engine (Layer 1 of the 3-layer hybrid). 'ngraph' (default):
+ * headless ngraph.forcelayout in a Web Worker streams progressive positions to
+ * Sigma; collision is resolved afterwards by the Layer 2 d3-forceCollide
+ * micro-pass. 'fa2': legacy ForceAtlas2 worker kill-switch (same post-pass).
+ */
+export const LAYOUT_ENGINE: 'ngraph' | 'fa2' =
+  (ENV['VITE_LAYOUT_ENGINE'] ?? 'ngraph').trim().toLowerCase() === 'fa2' ? 'fa2' : 'ngraph'
+
+// ── ngraph macro-layout (Layer 1) ──────────────────────────────────────────
+// Physics settings for ngraph.forcelayout. Note: `gravity` here is Coulomb's
+// repulsion coefficient (negative = repel), NOT a centering pull.
+export const NGRAPH_TIME_STEP = envFloat('VITE_NGRAPH_TIME_STEP', 0.08, { min: 0 })
+export const NGRAPH_SPRING_LENGTH = envFloat('VITE_NGRAPH_SPRING_LENGTH', 150, { min: 1 })
+export const NGRAPH_SPRING_COEFFICIENT = envFloat('VITE_NGRAPH_SPRING_COEFFICIENT', 0.0008, {
+  min: 0,
+})
+export const NGRAPH_DRAG_COEFFICIENT = envFloat('VITE_NGRAPH_DRAG_COEFFICIENT', 0.02, { min: 0 })
+export const NGRAPH_GRAVITY = envFloat('VITE_NGRAPH_GRAVITY', -1.2)
+export const NGRAPH_THETA = envFloat('VITE_NGRAPH_THETA', 0.8, { min: 0 })
+
+// ── ForceAtlas2 layout (fa2 kill-switch engine) ────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
 export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 20000, { min: 0 })
 /** Enable Barnes-Hut optimization once node count exceeds this. */

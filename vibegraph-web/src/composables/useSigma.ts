@@ -7,24 +7,13 @@ import { shallowRef, onUnmounted, type Ref } from 'vue'
 import Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
-import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import { applyDensitySizeScale } from '@/lib/graphAdapter'
+import { createLayoutEngine, type LayoutEngineHandle } from '@/lib/layout/layoutClient'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
   SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
-  FA2_GRAVITY,
-  FA2_SCALING_RATIO,
-  FA2_BARNES_HUT_MIN_NODES,
-  FA2_SLOW_DOWN,
-  FA2_LINLOG_MODE,
-  FA2_OUTBOUND_ATTRACTION,
-  FA2_ADJUST_SIZES,
-  FA2_STRONG_GRAVITY_MODE,
-  FA2_LARGE_GRAPH_THRESHOLD,
-  FA2_GRAVITY_LARGE,
-  FA2_SCALING_RATIO_LARGE,
   LAYOUT_NORMALIZE_SPAN,
   LAYOUT_BRANCH_ENABLED,
   LAYOUT_BRANCH_MIN_NODES,
@@ -94,7 +83,7 @@ export function useSigma(options: UseSigmaOptions) {
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
-  const layout = shallowRef<FA2Layout | null>(null)
+  const layout = shallowRef<LayoutEngineHandle | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
   const ghostLayer = shallowRef<GhostLayerHandle | null>(null)
   // Cleanup for the manual right/middle-button canvas panning listeners.
@@ -478,31 +467,21 @@ export function useSigma(options: UseSigmaOptions) {
   }
 
   /**
-   * Start ForceAtlas2 layout. Stops automatically after a timeout.
+   * Start the macro-layout engine (Layer 1: ngraph worker by default, FA2
+   * kill-switch via VITE_LAYOUT_ENGINE). Stops automatically after a timeout.
    */
   function startLayout(graph: Graph) {
     stopLayout()
     if (graph.order === 0) return
 
-    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
-    const fa2 = new FA2Layout(graph, {
-      settings: {
-        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
-        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
-        barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
-        slowDown: FA2_SLOW_DOWN,
-        linLogMode: FA2_LINLOG_MODE,
-        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
-        adjustSizes: FA2_ADJUST_SIZES,
-        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
-      },
+    const engine = createLayoutEngine(graph, {
+      onTick: () => sigmaInstance.value?.refresh({ skipIndexation: true }),
     })
-
-    fa2.start()
-    layout.value = fa2
+    engine.start()
+    layout.value = engine
 
     layoutStopTimer.value = setTimeout(() => {
-      if (layout.value === fa2) {
+      if (layout.value === engine) {
         stopLayout(true)
       }
     }, LAYOUT_AUTO_STOP_MS)

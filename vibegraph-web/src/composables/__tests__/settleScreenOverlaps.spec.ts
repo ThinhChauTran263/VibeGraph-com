@@ -55,6 +55,8 @@ vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
     LAYOUT_NORMALIZE_SPAN: 0,
     LAYOUT_BRANCH_ENABLED: false,
     LAYOUT_SCREEN_OVERLAP_ITERATIONS: 200,
+    // jsdom has no Worker: pin the fa2 kill-switch engine for this harness.
+    LAYOUT_ENGINE: 'fa2' as const,
   }
 })
 

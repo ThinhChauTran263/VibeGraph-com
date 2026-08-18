@@ -23,6 +23,13 @@ const sigmaState = vi.hoisted(() => ({ instances: [] as MockSigmaInstance[] }))
 const layoutState = vi.hoisted(() => ({ instances: [] as MockLayoutInstance[] }))
 const syncLayoutState = vi.hoisted(() => ({ assign: vi.fn(), inferSettings: vi.fn() }))
 
+// jsdom has no Worker: pin the fa2 kill-switch engine so the harness drives the
+// mocked ForceAtlas2 worker instead of spawning the ngraph Web Worker.
+vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
+  return { ...actual, LAYOUT_ENGINE: 'fa2' as const }
+})
+
 vi.mock('sigma', () => {
   class MockSigma {
     graph: Graph
