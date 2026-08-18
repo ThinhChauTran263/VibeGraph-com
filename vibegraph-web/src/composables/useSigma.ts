@@ -10,6 +10,7 @@ import type { Settings } from 'sigma/settings'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import { applyDensitySizeScale } from '@/lib/graphAdapter'
 import { createLayoutEngine, type LayoutEngineHandle } from '@/lib/layout/layoutClient'
+import { runCollideSettle } from '@/lib/layout/collideSettle'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
@@ -21,10 +22,6 @@ import {
   LAYOUT_BRANCH_LEVEL_GAP,
   LAYOUT_BRANCH_JITTER,
   LAYOUT_BRANCH_COMPONENT_GAP,
-  LAYOUT_SCREEN_OVERLAP_ENABLED,
-  LAYOUT_SCREEN_OVERLAP_GAP_PX,
-  LAYOUT_SCREEN_OVERLAP_ITERATIONS,
-  LAYOUT_SCREEN_OVERLAP_STRENGTH,
   LAYOUT_AUTO_STOP_MS,
   ZOOM_FIT_DURATION_MS,
   SIGMA_MAX_EDGE_LABELS_PER_FRAME,
@@ -512,13 +509,13 @@ export function useSigma(options: UseSigmaOptions) {
 
   /**
    * Post-layout pipeline: normalize → spread clusters → center → screen-space
-   * de-overlap (settleScreenOverlaps). T8(b): the graphology-noverlap worker was
-   * REMOVED — it computed collisions in graph units from raw screen-px `size`
-   * attributes (~25% under-separation, 03-ROOT-CAUSE.md Layer 1) and blocked the
-   * pipeline on a 22 s timer. settleScreenOverlaps already converts px radii to
-   * graph units correctly (unitsPerPixel) and is zoom-invariant with
-   * ZOOM_SIZE_POWER = 1.0 (02-SIGMA-INTERNALS.md §4), so it now does the whole
-   * de-overlap job synchronously in a few ms.
+   * de-overlap (Layer 2 d3-forceCollide micro-pass). T8(b) removed the
+   * graphology-noverlap worker (wrong units, 22 s timer — 03-ROOT-CAUSE.md
+   * Layer 1); BLOB-3 replaced the hand-rolled pairwise relaxation with d3's
+   * quadtree-accelerated forceCollide — the same collision algorithm grapuco
+   * runs inside its simulation — bounded, zoom-invariant with
+   * ZOOM_SIZE_POWER = 1.0 (02-SIGMA-INTERNALS.md §4), and engine-agnostic
+   * (serves both the ngraph worker and the fa2 kill-switch).
    */
   function runPostLayoutPass(graph: Graph): void {
     normalizeLayout(graph)
@@ -531,7 +528,9 @@ export function useSigma(options: UseSigmaOptions) {
         | ((g: Graph) => void)
         | undefined
     )?.(graph)
-    settleScreenOverlaps(graph)
+    if (container.value) {
+      runCollideSettle(graph, container.value.clientWidth, container.value.clientHeight)
+    }
     cacheLayoutPositions(graph)
     sigmaInstance.value?.refresh({ skipIndexation: true })
     onLayoutSettled?.()
@@ -736,216 +735,6 @@ export function useSigma(options: UseSigmaOptions) {
     return clusters
   }
 
-
-  interface ScreenOverlapNode {
-    id: string
-    x: number
-    y: number
-    radius: number
-  }
-
-  /**
-   * Count pairs of nodes whose circles overlap (distance < radiusA + radiusB + gap).
-   * `epsilon` ignores sub-pixel residuals left by the geometric relaxation (it
-   * converges to the float plateau, never to literal zero) — without it a fully
-   * settled layout would still count as "overlapping" and wrongly trigger the
-   * similarity expansion.
-   */
-  function countOverlappingPairs(nodes: ScreenOverlapNode[], gap: number, epsilon = 0): number {
-    let count = 0
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i]!
-        const b = nodes[j]!
-        if (Math.hypot(b.x - a.x, b.y - a.y) < a.radius + b.radius + gap - epsilon) count++
-      }
-    }
-    return count
-  }
-
-  /**
-   * One round of the screen-space de-overlap relaxation. Runs up to
-   * LAYOUT_SCREEN_OVERLAP_ITERATIONS iterations; each iteration pushes every
-   * colliding pair apart by STRENGTH × half the overlap along their connecting
-   * line. Returns true if any node moved (i.e. collisions were found and
-   * pushed against), false when the round converged with zero collisions.
-   */
-  function settleOneRound(
-    nodes: ScreenOverlapNode[],
-    gap: number,
-    maxRadius: number,
-  ): boolean {
-    const cellSize = Math.max(1, maxRadius * 2 + gap)
-    let anyMoved = false
-
-    for (let iteration = 0; iteration < LAYOUT_SCREEN_OVERLAP_ITERATIONS; iteration += 1) {
-      const grid = new Map<string, number[]>()
-
-      for (let i = 0; i < nodes.length; i += 1) {
-        const node = nodes[i]
-        if (!node) continue
-        const key = `${Math.floor(node.x / cellSize)}:${Math.floor(node.y / cellSize)}`
-        const bucket = grid.get(key)
-        if (bucket) bucket.push(i)
-        else grid.set(key, [i])
-      }
-
-      const shiftX = new Float32Array(nodes.length)
-      const shiftY = new Float32Array(nodes.length)
-      let collisions = 0
-
-      for (let i = 0; i < nodes.length; i += 1) {
-        const a = nodes[i]
-        if (!a) continue
-        const cellX = Math.floor(a.x / cellSize)
-        const cellY = Math.floor(a.y / cellSize)
-
-        for (let dxCell = -1; dxCell <= 1; dxCell += 1) {
-          for (let dyCell = -1; dyCell <= 1; dyCell += 1) {
-            const bucket = grid.get(`${cellX + dxCell}:${cellY + dyCell}`)
-            if (!bucket) continue
-
-            for (const j of bucket) {
-              if (j <= i) continue
-              const b = nodes[j]
-              if (!b) continue
-
-              let dx = b.x - a.x
-              let dy = b.y - a.y
-              let distance = Math.hypot(dx, dy)
-              const target = a.radius + b.radius + gap
-              if (distance >= target) continue
-
-              if (distance < 0.0001) {
-                const angle = ((i * 97 + j * 53) % 360) * (Math.PI / 180)
-                dx = Math.cos(angle)
-                dy = Math.sin(angle)
-                distance = 1
-              }
-
-              collisions += 1
-              const push = ((target - distance) / distance) * LAYOUT_SCREEN_OVERLAP_STRENGTH * 0.5
-              const moveX = dx * push
-              const moveY = dy * push
-              shiftX[i] = (shiftX[i] ?? 0) - moveX
-              shiftY[i] = (shiftY[i] ?? 0) - moveY
-              shiftX[j] = (shiftX[j] ?? 0) + moveX
-              shiftY[j] = (shiftY[j] ?? 0) + moveY
-            }
-          }
-        }
-      }
-
-      if (collisions === 0) return anyMoved
-
-      for (let i = 0; i < nodes.length; i += 1) {
-        const node = nodes[i]
-        if (!node) continue
-        node.x += shiftX[i] ?? 0
-        node.y += shiftY[i] ?? 0
-      }
-
-      anyMoved = true
-    }
-
-    return anyMoved
-  }
-
-  function settleScreenOverlaps(graph: Graph): boolean {
-    if (!LAYOUT_SCREEN_OVERLAP_ENABLED || graph.order < 2 || !container.value) return false
-
-    const viewportWidth = container.value.clientWidth
-    const viewportHeight = container.value.clientHeight
-    if (viewportWidth <= 0 || viewportHeight <= 0) return false
-
-    let minX = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    const nodes: ScreenOverlapNode[] = []
-
-    graph.forEachNode((id, attributes) => {
-      if (attributes.filterHidden === true || attributes.hidden === true) return
-
-      const x = Number(attributes.x)
-      const y = Number(attributes.y)
-      const size = Number(attributes.size ?? 0)
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size <= 0) {
-        return
-      }
-
-      minX = Math.min(minX, x)
-      maxX = Math.max(maxX, x)
-      minY = Math.min(minY, y)
-      maxY = Math.max(maxY, y)
-      nodes.push({ id, x, y, radius: size })
-    })
-
-    if (nodes.length < 2) return false
-
-    const width = maxX - minX
-    const height = maxY - minY
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      return false
-    }
-
-    const unitsPerPixel = Math.max(width / viewportWidth, height / viewportHeight)
-    if (!Number.isFinite(unitsPerPixel) || unitsPerPixel <= 0) return false
-
-    const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX * unitsPerPixel
-    let maxRadius = 0
-    for (const node of nodes) {
-      node.radius *= unitsPerPixel
-      maxRadius = Math.max(maxRadius, node.radius)
-    }
-
-    // Limited relaxation rounds: preserve the organic FA2 silhouette. Many rounds
-    // (30+) turn the layout into a round blob — every node is pushed symmetrically
-    // outward by its colliding neighbours until the shape converges to a circle.
-    // A few rounds untangle local collisions without distorting the overall form.
-    const MAX_ROUNDS = 4
-    let anyMoved = false
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      const roundMoved = settleOneRound(nodes, gap, maxRadius)
-      if (!roundMoved) break
-      anyMoved = true
-    }
-
-    // If collisions remain, the layout is simply too dense for the node sizes.
-    // Expand with a SIMILARITY transform (scale from centroid): this preserves the
-    // organic FA2/branch silhouette exactly (a uniform scaling never rounds the
-    // shape out) while creating the room the nodes need. Step in small increments
-    // until no pair overlaps anymore.
-    const MAX_EXPANSION_STEPS = 10
-    const EXPANSION_FACTOR = 1.12
-    // Sub-pixel tolerance: relaxation converges to the float plateau, not to
-    // literal zero — without this, a fully settled pair would keep triggering
-    // expansion steps.
-    const OVERLAP_EPSILON = 1e-6
-    if (anyMoved) {
-      for (let step = 0; step < MAX_EXPANSION_STEPS; step += 1) {
-        if (countOverlappingPairs(nodes, gap, OVERLAP_EPSILON) === 0) break
-        const cx = nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length
-        const cy = nodes.reduce((sum, n) => sum + n.y, 0) / nodes.length
-        for (const node of nodes) {
-          node.x = cx + (node.x - cx) * EXPANSION_FACTOR
-          node.y = cy + (node.y - cy) * EXPANSION_FACTOR
-        }
-      }
-      // One final light round cleans up any residual pairs created by the scaling.
-      settleOneRound(nodes, gap, maxRadius)
-    }
-
-    let moved = anyMoved
-
-    if (!moved) return false
-
-    for (const node of nodes) {
-      graph.mergeNodeAttributes(node.id, { x: node.x, y: node.y })
-    }
-
-    return true
-  }
 
   /**
    * Dispose Sigma instance and layout.

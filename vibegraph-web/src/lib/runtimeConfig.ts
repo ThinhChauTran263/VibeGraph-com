@@ -324,31 +324,25 @@ export const LAYOUT_FIT_SIZE_SCALE_MIN = envFloat('VITE_LAYOUT_FIT_SIZE_SCALE_MI
   max: 1,
 })
 
-// ── Overlap removal (post-pass) ──────────────────────────────────────────────
-// T8(b): the graphology-noverlap worker was removed entirely. It computed
-// collisions in graph units from raw screen-px `size` attributes, guaranteeing
-// ~25% under-separation (update/graph/03-ROOT-CAUSE.md Layer 1), and blocked the
-// pipeline behind NOVERLAP_AUTO_STOP_MS = 22 s. `settleScreenOverlaps` below is
-// the single de-overlap pass: it converts px radii to graph units via the live
-// bounding-box factor (unitsPerPixel) and, with ZOOM_SIZE_POWER = 1.0, its result
-// is correct at every zoom level (update/graph/02-SIGMA-INTERNALS.md §4).
-// Final visual cleanup for Sigma's screen-sized nodes. This bounded pass
-// converts px radii to graph units and only pushes still-touching visible nodes
-// apart after the ForceAtlas2 worker stops.
+// ── Overlap removal — Layer 2 d3-forceCollide micro-pass ───────────────────
+// The hand-rolled pairwise relaxation (and before it the graphology-noverlap
+// worker, removed in T8(b) for computing collisions in graph units from raw
+// screen-px sizes — update/graph/03-ROOT-CAUSE.md Layer 1) is replaced by
+// d3-force's quadtree-accelerated forceCollide (collideSettle.ts): the same
+// collision algorithm grapuco runs inside its simulation, applied here as a
+// bounded post-pass so it serves both macro engines (ngraph / fa2). The pass
+// works in fit-screen px (radius = size + gap) and converts back to graph
+// units; with ZOOM_SIZE_POWER = 1.0 the result is correct at every zoom level
+// (update/graph/02-SIGMA-INTERNALS.md §4, grapuco measurements in
+// update/graph/grapuco-evidence/VERIFICATION-2026-08-18.md).
 export const LAYOUT_SCREEN_OVERLAP_ENABLED = envBool('VITE_LAYOUT_SCREEN_OVERLAP_ENABLED', true)
 export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP_GAP_PX', 3, {
   min: 0,
 })
-export const LAYOUT_SCREEN_OVERLAP_ITERATIONS = envInt(
-  'VITE_LAYOUT_SCREEN_OVERLAP_ITERATIONS',
-  50,
-  { min: 1 },
-)
-export const LAYOUT_SCREEN_OVERLAP_STRENGTH = envFloat(
-  'VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH',
-  0.9,
-  { min: 0, max: 1 },
-)
+/** Bounded tick budget for the collide relaxation (frame-budget knob). */
+export const COLLIDE_ITERATIONS = envInt('VITE_COLLIDE_ITERATIONS', 60, { min: 1 })
+/** forceCollide strength (0–1); 0.9 converges fast without overshoot. */
+export const COLLIDE_STRENGTH = envFloat('VITE_COLLIDE_STRENGTH', 0.9, { min: 0, max: 1 })
 
 /** Auto-stop the layout worker after this long. */
 export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
