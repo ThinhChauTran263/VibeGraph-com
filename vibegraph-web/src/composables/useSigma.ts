@@ -758,14 +758,20 @@ export function useSigma(options: UseSigmaOptions) {
     radius: number
   }
 
-  /** Count pairs of nodes whose circles overlap (distance < radiusA + radiusB + gap). */
-  function countOverlappingPairs(nodes: ScreenOverlapNode[], gap: number): number {
+  /**
+   * Count pairs of nodes whose circles overlap (distance < radiusA + radiusB + gap).
+   * `epsilon` ignores sub-pixel residuals left by the geometric relaxation (it
+   * converges to the float plateau, never to literal zero) — without it a fully
+   * settled layout would still count as "overlapping" and wrongly trigger the
+   * similarity expansion.
+   */
+  function countOverlappingPairs(nodes: ScreenOverlapNode[], gap: number, epsilon = 0): number {
     let count = 0
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const a = nodes[i]!
         const b = nodes[j]!
-        if (Math.hypot(b.x - a.x, b.y - a.y) < a.radius + b.radius + gap) count++
+        if (Math.hypot(b.x - a.x, b.y - a.y) < a.radius + b.radius + gap - epsilon) count++
       }
     }
     return count
@@ -907,13 +913,11 @@ export function useSigma(options: UseSigmaOptions) {
       maxRadius = Math.max(maxRadius, node.radius)
     }
 
-    // Multi-round: pushing nodes apart creates new collisions at the periphery
-    // (a node shoved out of a dense core lands on top of its new neighbour).
-    // One pass of N iterations is not enough for 1500+ nodes in a tight cluster.
-    // Repeat until a full round reports zero collisions (or the round cap kicks in).
-    // Radii and gap stay FIXED at the initial unitsPerPixel conversion — rescaling
-    // them per round would overshoot already-correct pairs.
-    const MAX_ROUNDS = 30
+    // Limited relaxation rounds: preserve the organic FA2 silhouette. Many rounds
+    // (30+) turn the layout into a round blob — every node is pushed symmetrically
+    // outward by its colliding neighbours until the shape converges to a circle.
+    // A few rounds untangle local collisions without distorting the overall form.
+    const MAX_ROUNDS = 4
     let anyMoved = false
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const roundMoved = settleOneRound(nodes, gap, maxRadius)
@@ -921,19 +925,29 @@ export function useSigma(options: UseSigmaOptions) {
       anyMoved = true
     }
 
-    // If collisions remain after the relaxation loop, the dense core is stuck —
-    // every push is cancelled by a counter-push. Do NOT uniformly expand from the
-    // centroid (that produces a circular blob). Instead, run additional rounds
-    // with increased strength to break through the deadlock.
+    // If collisions remain, the layout is simply too dense for the node sizes.
+    // Expand with a SIMILARITY transform (scale from centroid): this preserves the
+    // organic FA2/branch silhouette exactly (a uniform scaling never rounds the
+    // shape out) while creating the room the nodes need. Step in small increments
+    // until no pair overlaps anymore.
+    const MAX_EXPANSION_STEPS = 10
+    const EXPANSION_FACTOR = 1.12
+    // Sub-pixel tolerance: relaxation converges to the float plateau, not to
+    // literal zero — without this, a fully settled pair would keep triggering
+    // expansion steps.
+    const OVERLAP_EPSILON = 1e-6
     if (anyMoved) {
-      const remaining = countOverlappingPairs(nodes, gap)
-      if (remaining > 0) {
-        // Boost strength for stubborn dense cores: run extra rounds at full strength.
-        for (let extra = 0; extra < 10 && remaining > 0; extra++) {
-          const moved = settleOneRound(nodes, gap, maxRadius)
-          if (!moved) break
+      for (let step = 0; step < MAX_EXPANSION_STEPS; step += 1) {
+        if (countOverlappingPairs(nodes, gap, OVERLAP_EPSILON) === 0) break
+        const cx = nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length
+        const cy = nodes.reduce((sum, n) => sum + n.y, 0) / nodes.length
+        for (const node of nodes) {
+          node.x = cx + (node.x - cx) * EXPANSION_FACTOR
+          node.y = cy + (node.y - cy) * EXPANSION_FACTOR
         }
       }
+      // One final light round cleans up any residual pairs created by the scaling.
+      settleOneRound(nodes, gap, maxRadius)
     }
 
     let moved = anyMoved

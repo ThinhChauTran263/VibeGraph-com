@@ -65,26 +65,24 @@ export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 3000, 
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
-export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 6, { min: 1 })
-export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 4, { min: 1 })
-export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 18, { min: 1 })
+export const NODE_SIZE_DEFAULT = envInt('VITE_NODE_SIZE_DEFAULT', 9, { min: 1 })
+export const NODE_SIZE_MIN = envInt('VITE_NODE_SIZE_MIN', 6, { min: 1 })
+export const NODE_SIZE_MAX = envInt('VITE_NODE_SIZE_MAX', 26, { min: 1 })
 
 // Per-tier node radii (Sigma units). Sizes follow the containment hierarchy:
 // the wider a node's structural scope (and the rarer it is), the larger it renders;
 // the deeper / more numerous it is, the smaller — so dense member nodes don't drown
 // out the architecture. Floats are allowed (e.g. 4.5) for fine-grained tuning.
 //   Project > Package > File > Type decl > Member/Endpoint > Detail/metadata
-// Sizes kept small (grapuco-calibrated: their fit view shows ~4 px diameter) so
-// 1500+ nodes fit the viewport without overlapping.
-export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 14, { min: 1 })
-export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 10, { min: 1 })
-export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 7, { min: 1 })
+export const NODE_SIZE_PROJECT = envFloat('VITE_NODE_SIZE_PROJECT', 18, { min: 1 })
+export const NODE_SIZE_PACKAGE = envFloat('VITE_NODE_SIZE_PACKAGE', 14, { min: 1 })
+export const NODE_SIZE_FILE = envFloat('VITE_NODE_SIZE_FILE', 11, { min: 1 })
 /** Type declarations: Class / Interface / Enum / Record / DBModel. */
-export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 6, { min: 1 })
+export const NODE_SIZE_TYPE = envFloat('VITE_NODE_SIZE_TYPE', 10, { min: 1 })
 /** Behavioral members: Method / Constructor. */
-export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 5, { min: 1 })
+export const NODE_SIZE_MEMBER = envFloat('VITE_NODE_SIZE_MEMBER', 8, { min: 1 })
 /** HTTP entry points: Route / APIEndpoint (kept prominent despite shallow scope). */
-export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 5, { min: 1 })
+export const NODE_SIZE_ENDPOINT = envFloat('VITE_NODE_SIZE_ENDPOINT', 8, { min: 1 })
 /** Focus-mode opacities for the active vs dimmed nodes (0–1). */
 export const FOCUS_OPACITY_ACTIVE = envFloat('VITE_FOCUS_OPACITY_ACTIVE', 1.0, { min: 0, max: 1 })
 export const FOCUS_OPACITY_DIMMED = envFloat('VITE_FOCUS_OPACITY_DIMMED', 0.1, { min: 0, max: 1 })
@@ -212,7 +210,7 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 40000, { min: 0 })
+export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 20000, { min: 0 })
 /** Enable Barnes-Hut optimization once node count exceeds this. */
 export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
 export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
@@ -256,7 +254,7 @@ export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD'
  * the body so the camera frames the main cluster instead of a distant outlier.
  */
 export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 40000, { min: 0 })
+export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 8000, { min: 0 })
 
 /**
  * Rescale the settled layout so its bounding box spans this many layout units.

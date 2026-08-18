@@ -439,9 +439,11 @@ describe('useSigma settleScreenOverlaps (screen-space overlap resolution)', () =
 
     // The pass pushes the pair apart until the centre distance equals the sum of
     // the GRAPH-space radii — screen size × unitsPerPixel — plus the gap, also
-    // converted: 4·2 + 6·2 + 3·2 = 26. This asserts the conversion math as used.
+    // converted: 4·2 + 6·2 + GAP·2 (with the default GAP = 3 that is 26; the
+    // expectation is derived from the config constant, not hardcoded, because the
+    // gap is a tunable knob). This asserts the conversion math as used.
     const expectedSeparation = 4 * upp + 6 * upp + LAYOUT_SCREEN_OVERLAP_GAP_PX * upp
-    expect(expectedSeparation).toBe(26)
+    expect(expectedSeparation).toBe((4 + 6 + LAYOUT_SCREEN_OVERLAP_GAP_PX) * upp)
     expect(distanceBetween(graph, 'small', 'large')).toBeCloseTo(expectedSeparation, 8)
 
     wrapper.unmount()
