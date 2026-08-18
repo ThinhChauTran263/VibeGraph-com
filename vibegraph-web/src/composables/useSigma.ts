@@ -758,56 +758,33 @@ export function useSigma(options: UseSigmaOptions) {
     radius: number
   }
 
-  function settleScreenOverlaps(graph: Graph): boolean {
-    if (!LAYOUT_SCREEN_OVERLAP_ENABLED || graph.order < 2 || !container.value) return false
-
-    const viewportWidth = container.value.clientWidth
-    const viewportHeight = container.value.clientHeight
-    if (viewportWidth <= 0 || viewportHeight <= 0) return false
-
-    let minX = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
-    const nodes: ScreenOverlapNode[] = []
-
-    graph.forEachNode((id, attributes) => {
-      if (attributes.filterHidden === true || attributes.hidden === true) return
-
-      const x = Number(attributes.x)
-      const y = Number(attributes.y)
-      const size = Number(attributes.size ?? 0)
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size <= 0) {
-        return
+  /** Count pairs of nodes whose circles overlap (distance < radiusA + radiusB + gap). */
+  function countOverlappingPairs(nodes: ScreenOverlapNode[], gap: number): number {
+    let count = 0
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i]!
+        const b = nodes[j]!
+        if (Math.hypot(b.x - a.x, b.y - a.y) < a.radius + b.radius + gap) count++
       }
-
-      minX = Math.min(minX, x)
-      maxX = Math.max(maxX, x)
-      minY = Math.min(minY, y)
-      maxY = Math.max(maxY, y)
-      nodes.push({ id, x, y, radius: size })
-    })
-
-    if (nodes.length < 2) return false
-
-    const width = maxX - minX
-    const height = maxY - minY
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      return false
     }
+    return count
+  }
 
-    const unitsPerPixel = Math.max(width / viewportWidth, height / viewportHeight)
-    if (!Number.isFinite(unitsPerPixel) || unitsPerPixel <= 0) return false
-
-    const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX * unitsPerPixel
-    let maxRadius = 0
-    for (const node of nodes) {
-      node.radius *= unitsPerPixel
-      maxRadius = Math.max(maxRadius, node.radius)
-    }
-
+  /**
+   * One round of the screen-space de-overlap relaxation. Runs up to
+   * LAYOUT_SCREEN_OVERLAP_ITERATIONS iterations; each iteration pushes every
+   * colliding pair apart by STRENGTH × half the overlap along their connecting
+   * line. Returns true if any node moved (i.e. collisions were found and
+   * pushed against), false when the round converged with zero collisions.
+   */
+  function settleOneRound(
+    nodes: ScreenOverlapNode[],
+    gap: number,
+    maxRadius: number,
+  ): boolean {
     const cellSize = Math.max(1, maxRadius * 2 + gap)
-    let moved = false
+    let anyMoved = false
 
     for (let iteration = 0; iteration < LAYOUT_SCREEN_OVERLAP_ITERATIONS; iteration += 1) {
       const grid = new Map<string, number[]>()
@@ -867,7 +844,7 @@ export function useSigma(options: UseSigmaOptions) {
         }
       }
 
-      if (collisions === 0) break
+      if (collisions === 0) return anyMoved
 
       for (let i = 0; i < nodes.length; i += 1) {
         const node = nodes[i]
@@ -876,8 +853,97 @@ export function useSigma(options: UseSigmaOptions) {
         node.y += shiftY[i] ?? 0
       }
 
-      moved = true
+      anyMoved = true
     }
+
+    return anyMoved
+  }
+
+  function settleScreenOverlaps(graph: Graph): boolean {
+    if (!LAYOUT_SCREEN_OVERLAP_ENABLED || graph.order < 2 || !container.value) return false
+
+    const viewportWidth = container.value.clientWidth
+    const viewportHeight = container.value.clientHeight
+    if (viewportWidth <= 0 || viewportHeight <= 0) return false
+
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    const nodes: ScreenOverlapNode[] = []
+
+    graph.forEachNode((id, attributes) => {
+      if (attributes.filterHidden === true || attributes.hidden === true) return
+
+      const x = Number(attributes.x)
+      const y = Number(attributes.y)
+      const size = Number(attributes.size ?? 0)
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size <= 0) {
+        return
+      }
+
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+      nodes.push({ id, x, y, radius: size })
+    })
+
+    if (nodes.length < 2) return false
+
+    const width = maxX - minX
+    const height = maxY - minY
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return false
+    }
+
+    const unitsPerPixel = Math.max(width / viewportWidth, height / viewportHeight)
+    if (!Number.isFinite(unitsPerPixel) || unitsPerPixel <= 0) return false
+
+    const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX * unitsPerPixel
+    let maxRadius = 0
+    for (const node of nodes) {
+      node.radius *= unitsPerPixel
+      maxRadius = Math.max(maxRadius, node.radius)
+    }
+
+    // Multi-round: pushing nodes apart creates new collisions at the periphery
+    // (a node shoved out of a dense core lands on top of its new neighbour).
+    // One pass of N iterations is not enough for 1500+ nodes in a tight cluster.
+    // Repeat until a full round reports zero collisions (or the round cap kicks in).
+    // Radii and gap stay FIXED at the initial unitsPerPixel conversion — rescaling
+    // them per round would overshoot already-correct pairs.
+    const MAX_ROUNDS = 30
+    let anyMoved = false
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const roundMoved = settleOneRound(nodes, gap, maxRadius)
+      if (!roundMoved) break
+      anyMoved = true
+    }
+
+    // If collisions remain after the relaxation loop, the dense core is stuck —
+    // every push is cancelled by a counter-push. Break the deadlock by uniformly
+    // expanding the densest region: scale all positions outward from the
+    // bounding-box centroid, then run one final round to re-settle the edges.
+    if (anyMoved) {
+      const remaining = countOverlappingPairs(nodes, gap)
+      if (remaining > 0) {
+        const cx = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
+        const cy = nodes.reduce((s, n) => s + n.y, 0) / nodes.length
+        // Expand by the factor needed to make the average node spacing equal to
+        // the average node diameter. Capped to avoid blowing up the layout.
+        const avgRadius = nodes.reduce((s, n) => s + n.radius, 0) / nodes.length
+        const expandFactor = Math.min(1.5, 1 + (remaining / nodes.length) * 2)
+        for (const n of nodes) {
+          n.x = cx + (n.x - cx) * expandFactor
+          n.y = cy + (n.y - cy) * expandFactor
+        }
+        // One final round to re-settle after expansion
+        settleOneRound(nodes, gap, maxRadius + avgRadius * expandFactor)
+      }
+    }
+
+    let moved = anyMoved
 
     if (!moved) return false
 
