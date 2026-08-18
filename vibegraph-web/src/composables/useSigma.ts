@@ -181,6 +181,13 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
+    // DEV-only QA hook: lets browser-side verification scripts (T15 / BLOB-4
+    // measurements) read the live Sigma instance and graphology graph.
+    // import.meta.env.DEV is a build-time constant → tree-shaken out of
+    // production builds entirely.
+    if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__vibegraph_qa = { sigma, graph }
+    }
     // Reset the visibility guard for the first batched reducer update after rebuild.
     lastEdgeLabelsVisible = false
 
@@ -532,7 +539,11 @@ export function useSigma(options: UseSigmaOptions) {
       runCollideSettle(graph, container.value.clientWidth, container.value.clientHeight)
     }
     cacheLayoutPositions(graph)
-    sigmaInstance.value?.refresh({ skipIndexation: true })
+    // FULL refresh (no skipIndexation): Sigma's camera framing bounds are
+    // recomputed from the settled positions, so ratio 1 / zoomToFit actually
+    // frames the final layout. Progressive worker ticks keep skipIndexation
+    // for speed; only this final re-index is needed.
+    sigmaInstance.value?.refresh()
     onLayoutSettled?.()
   }
 
