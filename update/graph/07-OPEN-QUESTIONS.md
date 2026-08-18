@@ -43,9 +43,15 @@ Minor caveat (not blocking): the pick framebuffer runs at half viewport resoluti
 
 `K = graphToViewportRatio × cameraRatio` — constant for a given graph extent + viewport, but its **magnitude was never measured**.
 
-The estimate "plausibly in the hundreds" in `02-SIGMA-INTERNALS.md` §2 is reasoning from viewport width (~1048 px) against Sigma's normalized graph box — **not a measurement**.
+**Status: MEASURED (2026-08-18, task T8/T15).** Measured via `settleScreenOverlaps`'s own `unitsPerPixel` (the operative conversion factor for noverlap-unit work, since the noverlap worker was removed in T8(b)):
 
-Measure it at runtime during Step 2 rather than assuming. It also determines how badly a mistaken `itemSizesReference` flip would blow up sizes.
+| Quantity | Value | How measured |
+|---|---|---|
+| `unitsPerPixel` at fit view | **16.92** | `max(bboxW/vpW, bboxH/vpH)` on the live graph: bbox 10509×10353 graph units, viewport 984×612 CSS px |
+| → node `size=18` px in graph units | **~304** | `18 × 16.92` |
+| → node `size=8` px in graph units | **~135** | `8 × 16.92` |
+
+The estimate "plausibly in the hundreds" in `02-SIGMA-INTERNALS.md` §2 is reasoning from viewport width (~1048 px) against Sigma's normalized graph box — **not a measurement**. The measured value above uses the app's own conversion logic, which is the one that matters for de-overlap correctness. With `ZOOM_SIZE_POWER = 1.0`, this graph-space radius is zoom-invariant (02 §4), so this single constant is correct at every zoom.
 
 ### A3. Does grapuco precompute layout server-side?
 
