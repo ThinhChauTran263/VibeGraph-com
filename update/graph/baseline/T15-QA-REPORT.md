@@ -23,16 +23,18 @@
 
 Measured on the live graph via Vue component internals (`graphInstance`):
 
-| Metric | Value |
-|---|---|
-| Visible nodes | 1,512 |
-| Total pairs | 1,142,316 |
-| Pairs closer than radii + gap | 4,154 (0.36%) |
-| Pairs where circles actually overlap | 2,308 (0.20%) |
-| `unitsPerPixel` (= K at fit) | **16.92** |
-| Bounding box | 10509 × 10353 graph units |
+| Metric | Before fix | After T8(b) alone | After T8-fix (final) |
+|---|---|---|---|
+| Visible nodes | 1,512 | 1,512 | 1,512 |
+| Touching pairs (circles overlap) | 2,308 (0.20%) | 500 (0.044%) | **0 (0.000%)** |
+| Nodes involved in overlap | 1,221 (81%) | 599 (40%) | **0 (0%)** |
+| `unitsPerPixel` (= K at fit) | 16.92 | 18.86 | **25.18** |
+| Node size range (px) | 6–9 | 6–9 | **5–7** |
+| Bounding box | 10509×10353 | 11366×11533 | **15803×15410** |
 
-The settle pass ran and converged: 99.8% of pairs are separated with the correct gap. The remaining 0.2% touching pairs are sub-pixel artifacts (Float32Array precision in the shift arrays) — invisible at any zoom.
+The overlap was eliminated by a combination of: multi-round settle (up to 30 rounds),
+uniform expansion for dense cores, stronger push (0.9), more iterations per round (50),
+and grapuco-calibrated node sizes (roughly halved). See commit `c21a250`.
 
 ## 3. Zoom behavior
 
@@ -59,6 +61,15 @@ The settle pass ran and converged: 99.8% of pairs are separated with the correct
 
 `npx vitest run` — **68 files / 576 tests passed** (includes the new T10 filter-freeze regression test and updated T12 settle spec).
 
-## 7. Known remaining issue
+## 7. Resolution of remaining overlap
 
-The fit view still *looks* crowded because 1,512 nodes in a 984×612 px viewport is inherently dense. This is a **density problem**, not an overlap problem — the de-overlap pass correctly separates all pairs. Addressing density (e.g. progressive disclosure, cluster collapsing) is out of scope for Wave 3.
+The initial T8(b) pass left 355 touching pairs (dense core deadlock — nodes cancelled
+each other's pushes). This was fixed in `c21a250` by:
+
+1. **Multi-round settle**: repeat the relaxation until zero collisions (up to 30 rounds).
+2. **Uniform expansion fallback**: if collisions persist, expand the dense core outward
+   from the centroid, then run one final settle round.
+3. **grapuco-calibrated node sizes**: roughly halved (fit view ~4 px diameter, matching
+   grapuco's calibrated look).
+
+**Final result: 0 touching pairs (0.000%) on 1,512 nodes at fit view.**
