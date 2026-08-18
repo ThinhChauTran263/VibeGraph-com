@@ -42,11 +42,20 @@ public interface GraphRepository {
      * SINGLE atomic write (B-M11). Any failure rolls the whole analysis graph back, so a
      * half-written project graph can never be observed.
      *
+     * @param progressListener receives one callback per persisted node/edge group, INSIDE the
+     *                         write transaction; never {@code null} (use
+     *                         {@link UpsertProgressListener#NOOP})
      * @return the number of edges actually persisted (missing endpoints skipped), the truthful
      *         count to report to callers
      */
     int upsertAnalysis(String projectId, String name, String path,
-            List<NodeData> nodes, List<EdgeData> edges);
+            List<NodeData> nodes, List<EdgeData> edges, UpsertProgressListener progressListener);
+
+    /** Backward-compatible path without per-group write progress. */
+    default int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges) {
+        return upsertAnalysis(projectId, name, path, nodes, edges, UpsertProgressListener.NOOP);
+    }
 
     /**
      * Persist edges between nodes that already exist in the parsed graph. Missing

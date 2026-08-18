@@ -27,6 +27,7 @@ import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.repository.ProjectMetadata;
+import com.vibegraph.graph.repository.UpsertProgressListener;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 
@@ -169,24 +170,32 @@ public class Neo4jGraphRepository implements GraphRepository {
     /**
      * B-M11: the full graph write of one analysis in ONE write transaction. Any step that
      * fails rolls the whole upsert back, so Neo4j can never hold a half-written project
-     * graph (project without its nodes, or nodes without their edges).
+     * graph (project without its nodes, or nodes without their edges). The progress
+     * listener fires INSIDE that transaction after each group completes — observational
+     * only, never a transaction boundary of its own.
      */
     @Override
     public int upsertAnalysis(String projectId, String name, String path,
-            List<NodeData> nodes, List<EdgeData> edges) {
+            List<NodeData> nodes, List<EdgeData> edges, UpsertProgressListener progressListener) {
         Map<String, List<Map<String, Object>>> nodesByLabel =
                 nodes == null ? Map.of() : groupNodesByLabel(nodes);
         Map<String, List<Map<String, Object>>> edgesByType =
                 edges == null ? Map.of() : groupEdgesByType(edges);
+        // Project upsert + one callback-eligible group per label/type.
+        int totalGroups = nodesByLabel.size() + edgesByType.size() + 1;
         try (Session session = neo4jDriver.session()) {
             return session.executeWrite(tx -> {
                 runProjectUpsert(tx::run, projectId, name, path);
+                int groupsWritten = 1;
+                progressListener.onGroupWritten(groupsWritten, totalGroups);
                 for (Map.Entry<String, List<Map<String, Object>>> group : nodesByLabel.entrySet()) {
                     runNodeGroupUpsert(tx::run, projectId, group);
+                    progressListener.onGroupWritten(++groupsWritten, totalGroups);
                 }
                 int persisted = 0;
                 for (Map.Entry<String, List<Map<String, Object>>> group : edgesByType.entrySet()) {
                     persisted += runEdgeGroupUpsert(tx::run, projectId, group);
+                    progressListener.onGroupWritten(++groupsWritten, totalGroups);
                 }
                 return persisted;
             });

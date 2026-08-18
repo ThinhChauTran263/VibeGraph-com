@@ -17,6 +17,7 @@ import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.repository.ProjectMetadata;
+import com.vibegraph.graph.repository.UpsertProgressListener;
 import com.vibegraph.graph.repository.impl.neo4j.Neo4jGraphRepository;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
@@ -126,8 +127,8 @@ public class CachingGraphRepository implements GraphRepository {
 
     @Override
     public int upsertAnalysis(String projectId, String name, String path,
-            List<NodeData> nodes, List<EdgeData> edges) {
-        int persisted = delegate.upsertAnalysis(projectId, name, path, nodes, edges);
+            List<NodeData> nodes, List<EdgeData> edges, UpsertProgressListener progressListener) {
+        int persisted = delegate.upsertAnalysis(projectId, name, path, nodes, edges, progressListener);
         invalidate(projectId);
         return persisted;
     }

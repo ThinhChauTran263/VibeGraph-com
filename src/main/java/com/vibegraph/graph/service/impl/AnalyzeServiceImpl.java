@@ -109,8 +109,20 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // The returned count is the number of edges actually persisted after missing
         // endpoints are skipped — the truthful count to report (allEdges.size() would
         // over-report if anything were dropped).
+        //
+        // Finding 4: the write itself is the long pole here, so the bar must move during
+        // it instead of sitting at 94%. The repository reports per-group progress from
+        // inside the single write transaction; map it onto 94%..98% (the "Saving
+        // relationships" → "Finalizing" window).
         int edgesPersisted = graphRepository.upsertAnalysis(
-                projectId, displayName, projectPath, allNodes, allEdges);
+                projectId, displayName, projectPath, allNodes, allEdges,
+                (groupsWritten, totalGroups) -> {
+                    int pct = totalGroups <= 0
+                            ? 98
+                            : 94 + (int) Math.round((groupsWritten / (double) totalGroups) * (98 - 94));
+                    progress.onProgress(Math.min(98, pct),
+                            "Saving relationships (" + groupsWritten + "/" + totalGroups + " groups)");
+                });
 
         progress.onProgress(98, "Finalizing");
 

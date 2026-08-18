@@ -22,7 +22,6 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
 import com.vibegraph.common.util.FileUtils;
 import com.vibegraph.parser.NodeLayerClassifier;
 import com.vibegraph.parser.ProjectSymbolRegistry;
-import com.vibegraph.parser.TypeReferenceSupport;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
@@ -141,7 +140,7 @@ public class ParserServiceImpl implements ParserService {
 
                 // Aggregate nodes
                 List<NodeData> nodes = new ArrayList<>();
-                NodeData fileNode = fileNode(filePath, packageName);
+                NodeData fileNode = fileNode(filePath, packageName, endLineOf(cu, filePath));
                 nodes.add(fileNode);
                 // Package node + CONTAINS edge (Package -> File). Default-package files
                 // (no package declaration) get no Package node. Deduped across files by
@@ -197,7 +196,7 @@ public class ParserServiceImpl implements ParserService {
         }
     }
 
-    private NodeData fileNode(Path filePath, String packageName) {
+    private NodeData fileNode(Path filePath, String packageName, int endLine) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("extension", ".java");
         properties.put("packageName", packageName == null ? "" : packageName);
@@ -207,9 +206,21 @@ public class ParserServiceImpl implements ParserService {
                 filePath.toString(),
                 filePath.toString(),
                 1,
-                lineCount(filePath),
+                endLine,
                 properties
         );
+    }
+
+    /**
+     * Line count of a successfully parsed file, taken from the AST end line instead of
+     * re-reading the whole file (a second full read per source file was a pure waste:
+     * the parsed CompilationUnit already knows where it ends). {@link #lineCount(Path)}
+     * remains only as the fallback for a missing AST range.
+     */
+    private int endLineOf(CompilationUnit cu, Path filePath) {
+        return cu.getRange()
+                .map(range -> range.end.line)
+                .orElseGet(() -> lineCount(filePath));
     }
 
     /**
@@ -397,6 +408,11 @@ public class ParserServiceImpl implements ParserService {
         }
     }
 
+    /**
+     * Fallback line count for files whose parsed AST carries no usable range. Not part
+     * of the hot path for successfully parsed files — the CompilationUnit end line is
+     * preferred (see {@link #endLineOf}).
+     */
     private int lineCount(Path filePath) {
         try (var lines = Files.lines(filePath, java.nio.charset.StandardCharsets.UTF_8)) {
             long count = lines.count();
