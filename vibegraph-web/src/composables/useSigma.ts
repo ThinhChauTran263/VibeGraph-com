@@ -10,10 +10,13 @@ import type { Settings } from 'sigma/settings'
 import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import NoverlapLayout from 'graphology-layout-noverlap/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
+import { applyDensitySizeScale } from '@/lib/graphAdapter'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
   SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
+  SIGMA_NODE_GROW_ZOOM,
+  SIGMA_NODE_ZOOM_SIZE_POWER,
   FA2_GRAVITY,
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
@@ -75,9 +78,20 @@ const BASE_NODE_LABEL_SIZE = SIGMA_BASE_NODE_LABEL_SIZE
 const BASE_EDGE_LABEL_SIZE = SIGMA_BASE_EDGE_LABEL_SIZE
 
 const LABEL_RENDERED_SIZE_THRESHOLD = SIGMA_LABEL_RENDERED_SIZE_THRESHOLD
-const ZOOM_SIZE_POWER = 0.75
-const zoomToSizeRatio = (ratio: number): number =>
-  Math.max(0.001, Math.pow(ratio, ZOOM_SIZE_POWER))
+const NODE_GROW_ZOOM = SIGMA_NODE_GROW_ZOOM
+const NODE_ZOOM_SIZE_POWER = SIGMA_NODE_ZOOM_SIZE_POWER
+
+// Sigma divides item size by this value. Hold nodes steady through the normal
+// zoom range, then grow them smoothly after the configured deep-zoom threshold.
+const zoomToSizeRatio = (ratio: number): number => {
+  const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1
+  const zoom = 1 / safeRatio
+
+  if (zoom < 1) return Math.max(0.001, Math.pow(safeRatio, NODE_ZOOM_SIZE_POWER))
+  if (zoom <= NODE_GROW_ZOOM) return 1
+
+  return Math.max(0.001, Math.pow(NODE_GROW_ZOOM / zoom, NODE_ZOOM_SIZE_POWER))
+}
 
 export function useSigma(options: UseSigmaOptions) {
   const {
@@ -143,6 +157,12 @@ export function useSigma(options: UseSigmaOptions) {
     // for known nodes before the worker refines them.
     applyCachedLayout(graph)
 
+    // Density-adaptive fit-view sizing: on large graphs the configured radii
+    // exceed the viewport's circle-area budget and any de-overlap pass would
+    // close-pack the layout into a round disc. Shrink sizes (NOT positions) to
+    // a feasible budget before Sigma renders; no-op on small graphs.
+    applyDensitySizeScale(graph, container.value.clientWidth, container.value.clientHeight)
+
     const sigma = new Sigma(graph, container.value, {
       allowInvalidContainer: true,
       renderEdgeLabels: false,
@@ -159,6 +179,10 @@ export function useSigma(options: UseSigmaOptions) {
       labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
       itemSizesReference: 'screen',
       zoomToSizeRatioFunction: zoomToSizeRatio,
+      // Bound zoom-out so the graph cannot shrink into a useless dot, and cap
+      // deep zoom so node growth remains predictable at the configured power.
+      maxCameraRatio: 4,
+      minCameraRatio: 0.01,
       defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
       labelFont: 'Inter, system-ui, sans-serif',
@@ -181,6 +205,12 @@ export function useSigma(options: UseSigmaOptions) {
     })
 
     sigmaInstance.value = sigma
+    // DEV-only QA hook: browser-side verification scripts read the live Sigma
+    // instance + graph (touching-pair counts, zoom metrics). import.meta.env.DEV
+    // is a build-time constant → tree-shaken out of production builds.
+    if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__vibegraph_qa = { sigma, graph }
+    }
     // Reset the visibility guard for the first batched reducer update after rebuild.
     lastEdgeLabelsVisible = false
 
@@ -632,7 +662,9 @@ export function useSigma(options: UseSigmaOptions) {
     const hasMultipleClusters = clusters.length > 1
     const mainSizeBoost = Math.log(mainCluster.nodeIds.length + 1) * 0.03
     const mainCompactBoost =
-      mainCluster.radius > 0 ? Math.min(0.34, LAYOUT_BRANCH_LEVEL_GAP / mainCluster.radius / 10) : 0.34
+      mainCluster.radius > 0
+        ? Math.min(0.34, LAYOUT_BRANCH_LEVEL_GAP / mainCluster.radius / 10)
+        : 0.34
     const mainClusterScale =
       1 + Math.min(1.08, LAYOUT_BRANCH_STRENGTH * 0.1 + mainSizeBoost + 0.28 + mainCompactBoost)
     const expandedMainRadius = mainCluster.radius * mainClusterScale
@@ -647,9 +679,10 @@ export function useSigma(options: UseSigmaOptions) {
       const baseBoost = LAYOUT_BRANCH_STRENGTH * 0.08
       const compactBoost =
         cluster.radius > 0 ? Math.min(0.24, LAYOUT_BRANCH_LEVEL_GAP / cluster.radius / 18) : 0.24
-      const intraScale = cluster === mainCluster
-        ? mainClusterScale
-        : 1 + Math.min(0.72, baseBoost + sizeBoost + 0.22 + compactBoost)
+      const intraScale =
+        cluster === mainCluster
+          ? mainClusterScale
+          : 1 + Math.min(0.72, baseBoost + sizeBoost + 0.22 + compactBoost)
 
       const offsetX = Number(attributes.x) - cluster.centerX
       const offsetY = Number(attributes.y) - cluster.centerY
@@ -742,7 +775,6 @@ export function useSigma(options: UseSigmaOptions) {
 
     return clusters
   }
-
 
   interface ScreenOverlapNode {
     id: string

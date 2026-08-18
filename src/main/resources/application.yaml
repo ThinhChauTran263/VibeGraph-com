@@ -251,9 +251,11 @@ vibegraph:
         - node_modules
     # GitHub import HTTP timeouts (bound by GitHubImportProperties).
     github:
-      connect-timeout: ${VIBEGRAPH_GITHUB_CONNECT_TIMEOUT:10s}
+      connect-timeout: ${VIBEGRAPH_GITHUB_CONNECT_TIMEOUT:15s}
       preflight-request-timeout: ${VIBEGRAPH_GITHUB_PREFLIGHT_TIMEOUT:20s}
       tarball-request-timeout: ${VIBEGRAPH_GITHUB_TARBALL_TIMEOUT:60s}
+      max-attempts: ${VIBEGRAPH_GITHUB_MAX_ATTEMPTS:3}
+      retry-initial-delay: ${VIBEGRAPH_GITHUB_RETRY_INITIAL_DELAY:1s}
 
   watcher:
     enabled: ${VIBEGRAPH_WATCHER_ENABLED:true}

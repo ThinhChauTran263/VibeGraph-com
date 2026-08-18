@@ -99,11 +99,12 @@ describe('useGraphData - complete initial graph', () => {
     fetchFullGraphMock.mockReset()
   })
 
-  it('loads baseline and deep together without dropping baseline projections', async () => {
+  it('loads baseline and deep together while excluding detail nodes and incident edges', async () => {
     const fileA = { ...node('A.java'), type: 'File' as const, filePath: 'A.java' }
     const fileB = { ...node('B.java'), type: 'File' as const, filePath: 'B.java' }
     const classA = { ...node('A'), type: 'Class' as const, filePath: 'A.java' }
     const fieldA = { ...node('A.id'), type: 'Field' as const, filePath: 'A.java' }
+    const localA = { ...node('A.local'), type: 'LocalVariable' as const, filePath: 'A.java' }
     const baseline: GraphData = {
       nodes: [fileA, fileB, classA],
       edges: [edge('A.java|IMPORTS|B.java', 'A.java', 'B.java', 'IMPORTS')],
@@ -111,10 +112,13 @@ describe('useGraphData - complete initial graph', () => {
       edgeStats: { IMPORTS: 1 } as GraphData['edgeStats'],
     }
     const deep: GraphData = {
-      nodes: [fileA, fileB, classA, fieldA],
-      edges: [edge('A|HAS_FIELD|A.id', 'A', 'A.id', 'HAS_FIELD')],
-      nodeStats: { File: 2, Class: 1, Field: 1 } as GraphData['nodeStats'],
-      edgeStats: { HAS_FIELD: 1 } as GraphData['edgeStats'],
+      nodes: [fileA, fileB, classA, fieldA, localA],
+      edges: [
+        edge('A|HAS_FIELD|A.id', 'A', 'A.id', 'HAS_FIELD'),
+        edge('A|WRITES|A.local', 'A', 'A.local', 'WRITES'),
+      ],
+      nodeStats: { File: 2, Class: 1, Field: 1, LocalVariable: 1 } as GraphData['nodeStats'],
+      edgeStats: { HAS_FIELD: 1, WRITES: 1 } as GraphData['edgeStats'],
     }
     fetchFullGraphMock.mockResolvedValueOnce(baseline).mockResolvedValueOnce(deep)
 
@@ -125,16 +129,17 @@ describe('useGraphData - complete initial graph', () => {
     expect(fetchFullGraphMock).toHaveBeenNthCalledWith(1, 'project-1', { mode: 'baseline' })
     expect(fetchFullGraphMock).toHaveBeenNthCalledWith(2, 'project-1', { mode: 'deep' })
     expect(store.payloadMode).toBe('baseline+deep')
-    expect(store.graphData.nodeStats.Field).toBe(1)
+    expect(store.graphData.nodeStats.Field).toBeUndefined()
+    expect(store.graphData.nodeStats.LocalVariable).toBeUndefined()
 
     await ensureDeepGraph('project-1')
     expect(fetchFullGraphMock).toHaveBeenCalledTimes(2)
     expect(store.payloadMode).toBe('baseline+deep')
     expect(store.graphData.edgeStats.IMPORTS).toBe(1)
-    expect(store.graphData.edgeStats.HAS_FIELD).toBe(1)
-    expect(store.graphData.edges.map((graphEdge) => graphEdge.id).sort()).toEqual([
+    expect(store.graphData.edgeStats.HAS_FIELD).toBeUndefined()
+    expect(store.graphData.edgeStats.WRITES).toBeUndefined()
+    expect(store.graphData.edges.map((graphEdge) => graphEdge.id)).toEqual([
       'A.java|IMPORTS|B.java',
-      'A|HAS_FIELD|A.id',
     ])
   })
 })
