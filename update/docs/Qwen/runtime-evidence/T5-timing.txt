@@ -1,5 +1,0 @@
-T5 timing, no cookies, GET /api/projects, Chrome 151:
-NO-KEY n=30: mean 3.2 ms, median 3.1, min 2.4, max 4.5; status 401 x30.
-FAKE-KEY n=30: mean 3.0 ms, median 2.7, min 2.3, max 8.8; status 401 x22, 429 x8.
-Delta FAKE - NO = -0.2 ms. Claimed >=50 ms bcrypt penalty was not observed.
-Conclusion: NOT REPRODUCED.

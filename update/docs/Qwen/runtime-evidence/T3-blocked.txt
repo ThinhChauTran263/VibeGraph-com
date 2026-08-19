@@ -1,5 +1,0 @@
-T3 attempts:
-1) https://github.com/octocat/Hello-World -> import endpoint 400.
-2) https://github.com/spring-guides/gs-rest-service -> 422 GITHUB_IMPORT_ERROR, backend message: Failed to contact GitHub: request timed out.
-No project reached ANALYZING, so post-unmount polling could not be observed.
-Conclusion: BLOCKED by GitHub connectivity timeout.

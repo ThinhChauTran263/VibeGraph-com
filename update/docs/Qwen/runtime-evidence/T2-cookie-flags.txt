@@ -1,6 +1,0 @@
-T2 network evidence captured from POST /api/auth/login response headers.
-Cookie attributes:
-- vg_session: Path=/; Max-Age=1800; HttpOnly; SameSite=Lax; Secure absent
-- vg_refresh: Path=/api/auth; Max-Age=604800; HttpOnly; SameSite=Lax; Secure absent
-Conclusion: CONFIRMED under HTTP local configuration.
-Sensitive cookie values intentionally omitted.
