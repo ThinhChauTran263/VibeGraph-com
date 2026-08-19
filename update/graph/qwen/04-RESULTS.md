@@ -37,4 +37,22 @@ d3 thắng tuyệt đối ở dự án nhỏ và ngang/ngon hơn ở dự án l�
 ## 5. Trạng thái commit
 
 - P1 `bdbbe66`: công tắc engine + docs qwen (README/01/02/03) + worker + layoutClient + specs.
-- P2 (commit này): macro default `d3` + file kết quả này. Suite 579+ green, vue-tsc clean.
+- P2 `7121598`: macro default `d3` + file kết quả này.
+- P3 `0ea8b80`: `d3` default mọi dự án; fa2 đóng băng sau công tắc.
+- P4 (commit này): knob `VITE_LAYOUT_DRAW_SCALE/DRAW_MIN/COLLIDE_PAD` + sửa zoom curve
+  d3-mode về f(r)=r (p=1) — xem §6.
+
+## 6. P4 — sửa "node nhỏ xíu" (đo thực tế trên fatc 1 512 node)
+
+Bệnh: với `itemSizesReference:'positions'`, rendered = size·K/f(r). Ba trạng thái đã đo:
+
+| f(r) | rendered | kết quả đo |
+|---|---|---|
+| curve cũ (zoom^0.7) | ∝ zoom^1.7 | zoom 6.7×: bóng 27px NHƯNG đè 4 196 cặp (compound) |
+| f=1 (flat) | const px | node ~1px ở MỌI zoom — "nhỏ xíu không thấy gì" |
+| **f=r (p=1)** | ∝ zoom | fit 1.1px · 6.7× **7.6px** · 20× **23px**, **0 đè** ở mọi zoom |
+
+Knob mới (env, không đụng code khi tune):
+- `VITE_LAYOUT_DRAW_SCALE=12` → draw = max(12·val,10) = 48–168 units (node to rõ khi zoom)
+- `VITE_LAYOUT_DRAW_MIN=10`, `VITE_LAYOUT_COLLIDE_PAD=100` (bảo chứng 0 đè giữ nguyên)
+- d3-mode khóa p=1 trong code (fa2-mode vẫn dùng curve env của người dùng).

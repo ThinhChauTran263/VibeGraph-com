@@ -12,6 +12,9 @@ import type Graph from 'graphology'
 import {
   LAYOUT_ENGINE,
   LAYOUT_MACRO,
+  LAYOUT_DRAW_SCALE,
+  LAYOUT_DRAW_MIN,
+  LAYOUT_COLLIDE_PAD,
   FA2_GRAVITY,
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
@@ -110,6 +113,9 @@ function createD3Engine(graph: Graph, options: LayoutEngineOptions): LayoutEngin
         nodes,
         links,
         macro: LAYOUT_MACRO,
+        drawScale: LAYOUT_DRAW_SCALE,
+        drawMin: LAYOUT_DRAW_MIN,
+        collidePad: LAYOUT_COLLIDE_PAD,
       }
       worker.postMessage(message)
     },

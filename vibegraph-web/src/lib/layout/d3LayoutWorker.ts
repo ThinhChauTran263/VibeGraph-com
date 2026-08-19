@@ -43,6 +43,9 @@ export interface D3WorkerInitMessage {
   nodes: Array<{ id: string; x: number; y: number; val: number }>
   links: Array<{ source: string; target: string }>
   macro: 'd3' | 'ngraph'
+  drawScale: number
+  drawMin: number
+  collidePad: number
 }
 
 export interface D3WorkerStopMessage {
@@ -61,15 +64,19 @@ const LINK_DISTANCE = 150
 const CENTER_STRENGTH = 0.02
 const ALPHA_DECAY = 0.02
 const VELOCITY_DECAY = 0.3
-const COLLIDE_PAD = 100
 
 const scope = self as unknown as {
   onmessage: ((e: MessageEvent<D3WorkerInitMessage | D3WorkerStopMessage>) => void) | null
   postMessage: (msg: unknown) => void
 }
 
-const drawRadius = (n: SimNode): number => Math.max(3 * (n.val || 8), 10)
+const drawRadius = (n: SimNode): number => Math.max(DRAW_SCALE * (n.val || 8), DRAW_MIN)
 const collideRadius = (n: SimNode): number => drawRadius(n) + COLLIDE_PAD
+
+// Set once per init message (constants during the run → no radius-cache bug).
+let DRAW_SCALE = 3
+let DRAW_MIN = 10
+let COLLIDE_PAD = 100
 
 /** Collide-only d3 refinement used by the ngraph macro slot. */
 function runCollidePhase(nodes: SimNode[], links: Array<{ source: string; target: string }>): void {
@@ -122,6 +129,9 @@ scope.onmessage = (e) => {
     y: n.y,
   }))
   const links = msg.links
+  DRAW_SCALE = msg.drawScale || 3
+  DRAW_MIN = msg.drawMin || 10
+  COLLIDE_PAD = msg.collidePad ?? 100
 
   if (msg.macro === 'ngraph') {
     runNgraphMacro(nodes, links)

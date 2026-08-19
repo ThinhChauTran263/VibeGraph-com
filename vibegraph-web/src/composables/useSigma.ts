@@ -18,6 +18,8 @@ import {
   SIGMA_NODE_GROW_ZOOM,
   SIGMA_NODE_ZOOM_SIZE_POWER,
   LAYOUT_ENGINE,
+  LAYOUT_DRAW_SCALE,
+  LAYOUT_DRAW_MIN,
   FA2_GRAVITY,
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
@@ -85,6 +87,15 @@ const NODE_ZOOM_SIZE_POWER = SIGMA_NODE_ZOOM_SIZE_POWER
 // Sigma divides item size by this value. Hold nodes steady through the normal
 // zoom range, then grow them smoothly after the configured deep-zoom threshold.
 const zoomToSizeRatio = (ratio: number): number => {
+  // d3 mode: sizes are graph-units via 'positions'; rendered = size·K/f(r).
+  // f(r) = r (p = 1) makes rendered ∝ zoom — linear growth exactly like
+  // grapuco, and node/spacing ratio zoom-invariant (0 overlap everywhere).
+  // A flat f would render constant px (tiny at every zoom); any p ≠ 1 here
+  // would compound with the inherent 1/r and re-overlap nodes.
+  if (LAYOUT_ENGINE === 'd3') {
+    const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1
+    return Math.max(0.001, safeRatio)
+  }
   const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1
   const zoom = 1 / safeRatio
 
@@ -522,7 +533,7 @@ export function useSigma(options: UseSigmaOptions) {
               x: p.x,
               y: p.y,
               layoutVal: val,
-              size: Math.max(3 * val, 10),
+              size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN),
             })
           })
           cacheLayoutPositions(graph)

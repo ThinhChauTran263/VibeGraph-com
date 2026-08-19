@@ -249,6 +249,15 @@ export const LAYOUT_ENGINE: 'd3' | 'fa2' =
  *  see update/graph/qwen/04-RESULTS.md) or 'ngraph' hybrid (A/B fallback). */
 export const LAYOUT_MACRO: 'd3' | 'ngraph' =
   (ENV['VITE_LAYOUT_MACRO'] ?? 'd3').trim().toLowerCase() === 'ngraph' ? 'ngraph' : 'd3'
+/**
+ * Node draw radius in graph units = max(DRAW_SCALE·val, DRAW_MIN); collide
+ * radius = draw + COLLIDE_PAD (grapuco: draw 24–60, pad 100). Raise DRAW_SCALE
+ * for bigger visible nodes; keep COLLIDE_PAD ≥ ~2× draw for the 0-overlap
+ * guarantee (update/graph/qwen/01-EVIDENCE.md §3).
+ */
+export const LAYOUT_DRAW_SCALE = envFloat('VITE_LAYOUT_DRAW_SCALE', 3, { min: 0.5 })
+export const LAYOUT_DRAW_MIN = envFloat('VITE_LAYOUT_DRAW_MIN', 10, { min: 1 })
+export const LAYOUT_COLLIDE_PAD = envFloat('VITE_LAYOUT_COLLIDE_PAD', 100, { min: 0 })
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
