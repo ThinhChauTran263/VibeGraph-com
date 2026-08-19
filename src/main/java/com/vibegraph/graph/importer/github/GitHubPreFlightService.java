@@ -19,8 +19,11 @@ import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 import com.vibegraph.graph.importer.config.GitHubImportProperties;
 
+import lombok.extern.slf4j.Slf4j;
+
 /** Performs cheap GitHub metadata checks before downloading the tarball. */
 @Service
+@Slf4j
 public class GitHubPreFlightService {
 
     /**
@@ -102,18 +105,66 @@ public class GitHubPreFlightService {
         if (repoSizeKb > maxKb) {
             DataSize maxSize = DataSize.ofBytes(maxBytes);
             throw new GithubImportException(
-                    "GitHub repository is larger than the account's remaining storage quota (" + maxSize + ")");
+                    "GitHub repository is larger than the server's maximum import size (" + maxSize + ")");
         }
 
         String defaultBranch = metadata.path("default_branch").asText(null);
         if (defaultBranch == null || defaultBranch.isBlank()) {
             throw new GithubImportException("GitHub repository does not expose a default branch");
         }
-        return ref.withRef(defaultBranch);
+        return ref.withRef(defaultBranch).withCommitSha(fetchHeadSha(ref, defaultBranch));
+    }
+
+    /**
+     * Best-effort HEAD commit SHA of the default branch, used by re-imports to tell
+     * "nothing changed" (block) from "new commits" (refresh the existing project).
+     *
+     * <p>A failure here must never break the import itself: returning {@code null}
+     * simply disables the up-to-date short-circuit for this import.
+     */
+    private String fetchHeadSha(GitHubRepositoryRef ref, String branch) {
+        HttpRequest request = HttpRequest.newBuilder(headCommitUri(ref, branch))
+                .timeout(preflightRequestTimeout)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "VibeGraph")
+                .GET()
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            String host = response.uri() == null ? null : response.uri().getHost();
+            if (response.statusCode() != 200 || host == null
+                    || !ALLOWED_RESPONSE_HOSTS.contains(host.toLowerCase(Locale.ROOT))) {
+                log.debug("HEAD SHA lookup for {}@{} returned HTTP {} from host {}; skipping up-to-date check",
+                        ref.displayName(), branch, response.statusCode(), host);
+                return null;
+            }
+            JsonNode body;
+            try {
+                body = parse(response.body());
+            } catch (GithubImportException unreadable) {
+                log.debug("HEAD SHA lookup for {}@{} returned an unreadable body; skipping up-to-date check",
+                        ref.displayName(), branch);
+                return null;
+            }
+            String sha = body.path("sha").asText(null);
+            return sha == null || sha.isBlank() ? null : sha.trim();
+        } catch (IOException e) {
+            log.debug("HEAD SHA lookup for {}@{} failed: {}; skipping up-to-date check",
+                    ref.displayName(), branch, e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     private URI repositoryApiUri(GitHubRepositoryRef ref) {
         return URI.create("https://api.github.com/repos/" + ref.owner() + "/" + ref.repo());
+    }
+
+    private URI headCommitUri(GitHubRepositoryRef ref, String branch) {
+        return URI.create("https://api.github.com/repos/" + ref.owner() + "/" + ref.repo()
+                + "/commits/" + branch);
     }
 
     private JsonNode parse(String body) {

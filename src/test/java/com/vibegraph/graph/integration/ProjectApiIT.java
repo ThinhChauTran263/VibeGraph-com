@@ -62,7 +62,9 @@ class ProjectApiIT {
                 Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
                 Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class),
                 Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class),
-                Mockito.mock(CliRepositoryService.class));
+                Mockito.mock(CliRepositoryService.class),
+                Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class),
+                Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

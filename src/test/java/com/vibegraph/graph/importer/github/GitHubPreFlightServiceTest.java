@@ -133,5 +133,40 @@ class GitHubPreFlightServiceTest {
                     .isInstanceOf(GithubImportException.class)
                     .hasMessageContaining("unexpected host");
         }
+
+        @Test
+        @DisplayName("resolves the HEAD commit SHA alongside the default branch")
+        void resolvesHeadCommitSha() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> shaResponse = org.mockito.Mockito.mock(HttpResponse.class);
+            when(shaResponse.statusCode()).thenReturn(200);
+            when(shaResponse.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/main"));
+            when(shaResponse.body()).thenReturn("{\"sha\":\"abc123\"}");
+            doReturn(response, shaResponse).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null));
+
+            assertThat(resolved.ref()).isEqualTo("main");
+            assertThat(resolved.commitSha()).isEqualTo("abc123");
+        }
+
+        @Test
+        @DisplayName("a failing HEAD SHA lookup degrades to null without breaking the import")
+        void headShaFailureDegradesToNull() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            doReturn(response).doThrow(new java.io.IOException("boom")).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null));
+
+            assertThat(resolved.ref()).isEqualTo("main");
+            assertThat(resolved.commitSha()).isNull();
+        }
     }
 }

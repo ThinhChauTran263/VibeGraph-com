@@ -25,6 +25,8 @@ import com.vibegraph.common.exception.ArchiveImportException;
 import com.vibegraph.common.exception.ArchiveImportException.Reason;
 import com.vibegraph.common.exception.GithubImportException;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
+import com.vibegraph.common.exception.ProjectRefreshInProgressException;
+import com.vibegraph.common.exception.RepositoryUpToDateException;
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
@@ -140,6 +142,35 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.error.message").value("GitHub repository is private or not found"));
 
         verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/private"));
+    }
+
+    @Test
+    @DisplayName("GitHub re-import of an up-to-date repository maps to 409 REPO_UP_TO_DATE")
+    void shouldMapRepositoryUpToDateTo409() throws Exception {
+        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .thenThrow(new RepositoryUpToDateException("acme/demo"));
+
+        mockMvc.perform(post("/api/projects/import-github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://github.com/acme/demo\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("REPO_UP_TO_DATE"))
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("up to date")));
+    }
+
+    @Test
+    @DisplayName("GitHub re-import while still analyzing maps to 409 REFRESH_IN_PROGRESS")
+    void shouldMapRefreshInProgressTo409() throws Exception {
+        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+                .thenThrow(new ProjectRefreshInProgressException("acme/demo"));
+
+        mockMvc.perform(post("/api/projects/import-github")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://github.com/acme/demo\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("REFRESH_IN_PROGRESS"));
     }
 
     @Test

@@ -22,16 +22,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountQuotaSnapshot;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 
 /**
- * A1/B1: the declared Content-Length must be rejected against the caller's effective plan limit
- * BEFORE multipart spooling — acceptance criterion 1 requires that no body byte reaches disk.
- * With the chain never invoked, nothing downstream (multipart resolver included) can run, which
- * is exactly the "spool directory does not grow" property at unit level.
+ * A1/B1 (revised): the declared Content-Length is rejected against the SERVER HARD LIMIT
+ * BEFORE multipart spooling. The account quota is checked exactly, against the materialized
+ * {@code .java} bytes, after extraction - so the gate must NOT pre-reject an upload that
+ * merely exceeds the remaining quota (a 50MB archive holding 3MB of .java has to get
+ * through). The single quota-based early rejection left is an exhausted account
+ * (remaining 0), where no false positive is possible.
  */
 class ArchiveUploadLimitFilterTest {
 
     private static final long MIB = 1024L * 1024L;
+    private static final long HARD_LIMIT = DataSize.ofMegabytes(200).toBytes();
     private static final long HOST_CEILING = DataSize.ofMegabytes(2050).toBytes();
 
     private static final String IMPORT_PATH = "/api/projects/import-archive";
@@ -45,8 +49,10 @@ class ArchiveUploadLimitFilterTest {
     void setUp() {
         currentUser = mock(CurrentUser.class);
         accountSettingsService = mock(AccountSettingsService.class);
+        ArchiveImportProperties properties = new ArchiveImportProperties();
+        properties.setMaxSize(DataSize.ofBytes(HARD_LIMIT));
         filter = new ArchiveUploadLimitFilter(accountSettingsService, currentUser,
-                new ObjectMapper(), DataSize.ofMegabytes(2050));
+                new ObjectMapper(), properties, DataSize.ofBytes(HOST_CEILING));
         when(currentUser.id()).thenReturn(USER_ID);
     }
 
@@ -75,13 +81,13 @@ class ArchiveUploadLimitFilterTest {
     }
 
     @Test
-    @DisplayName("FREE plan: declared 500 MiB > 100 MiB remaining -> 413 and the chain never runs (no spool)")
-    void freePlanOversizedUploadIsRejectedBeforeAnyChainStep() throws Exception {
+    @DisplayName("Declared above the server hard limit -> 413 and the chain never runs (no spool)")
+    void uploadAboveHardLimitIsRejectedBeforeAnyChainStep() throws Exception {
         when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(100 * MIB));
         MockFilterChain chain = new MockFilterChain();
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        filter.doFilter(archivePost(500 * MIB), response, chain);
+        filter.doFilter(archivePost(HARD_LIMIT + MIB), response, chain);
 
         assertThat(response.getStatus()).isEqualTo(413);
         assertThat(response.getContentAsString()).contains("PAYLOAD_TOO_LARGE");
@@ -89,21 +95,23 @@ class ArchiveUploadLimitFilterTest {
     }
 
     @Test
-    @DisplayName("MAX plan: declared 1.5 GiB <= 2 GiB limit -> passes through (no high-plan regression)")
-    void maxPlanWithinLimitPasses() throws Exception {
-        when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(2048 * MIB));
+    @DisplayName("Declared above remaining quota but below the hard limit -> passes (exact quota check runs after extraction)")
+    void uploadAboveRemainingQuotaButBelowHardLimitPasses() throws Exception {
+        // 95/100 MiB used: the old gate rejected a 50 MiB upload here even though the
+        // materialized .java footprint could be tiny; the revised gate lets it through.
+        when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(100 * MIB, 95 * MIB));
         MockFilterChain chain = new MockFilterChain();
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        filter.doFilter(archivePost(1536 * MIB), response, chain);
+        filter.doFilter(archivePost(50 * MIB), response, chain);
 
         assertThat(chain.getRequest()).as("request must continue to the controller").isNotNull();
         assertThat(response.getStatus()).isEqualTo(200);
     }
 
     @Test
-    @DisplayName("Missing Content-Length -> falls back to host ceiling downstream, no pre-rejection, no quota lookup")
-    void missingContentLengthFallsBackToHostCeiling() throws Exception {
+    @DisplayName("Missing Content-Length -> falls back to the hard limit downstream, no pre-rejection, no quota lookup")
+    void missingContentLengthFallsBackToHardLimit() throws Exception {
         MockFilterChain chain = new MockFilterChain();
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -111,24 +119,6 @@ class ArchiveUploadLimitFilterTest {
 
         assertThat(chain.getRequest()).isNotNull();
         verify(accountSettingsService, never()).quotaSnapshot(any());
-    }
-
-    @Test
-    @DisplayName("Nearly exhausted quota: 95/100 MiB used, declared 50 MiB -> 413 (remaining, not plan total)")
-    void nearlyExhaustedQuotaRejectsUploadLargerThanRemaining() throws Exception {
-        when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(100 * MIB, 95 * MIB));
-        MockFilterChain chain = new MockFilterChain();
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(archivePost(50 * MIB), response, chain);
-
-        assertThat(response.getStatus()).isEqualTo(413);
-        assertThat(chain.getRequest()).isNull();
-
-        // A declared size within the 5 MiB remainder still passes the pre-check.
-        MockFilterChain pass = new MockFilterChain();
-        filter.doFilter(archivePost(4 * MIB), new MockHttpServletResponse(), pass);
-        assertThat(pass.getRequest()).isNotNull();
     }
 
     @Test
@@ -145,46 +135,49 @@ class ArchiveUploadLimitFilterTest {
     }
 
     @Test
-    @DisplayName("ENTERPRISE (limit 0) -> host ceiling bounds the upload")
-    void zeroPlanLimitFallsBackToHostCeiling() throws Exception {
+    @DisplayName("ENTERPRISE (limit 0) -> hard limit bounds the upload, not the host ceiling")
+    void zeroPlanLimitIsBoundedByHardLimit() throws Exception {
         when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(0L));
         MockFilterChain pass = new MockFilterChain();
-        filter.doFilter(archivePost(HOST_CEILING - 1), new MockHttpServletResponse(), pass);
+        filter.doFilter(archivePost(HARD_LIMIT - 1), new MockHttpServletResponse(), pass);
         assertThat(pass.getRequest()).isNotNull();
 
         MockFilterChain reject = new MockFilterChain();
         MockHttpServletResponse rejected = new MockHttpServletResponse();
-        filter.doFilter(archivePost(HOST_CEILING + 1), rejected, reject);
+        filter.doFilter(archivePost(HARD_LIMIT + 1), rejected, reject);
         assertThat(rejected.getStatus()).isEqualTo(413);
         assertThat(reject.getRequest()).isNull();
     }
 
     @Test
-    @DisplayName("Remaining above the host ceiling is capped by the host ceiling, never wider")
-    void remainingAboveHostCeilingIsCapped() throws Exception {
+    @DisplayName("Large plan is bounded by the hard limit, never wider")
+    void largePlanIsBoundedByHardLimit() throws Exception {
         when(accountSettingsService.quotaSnapshot(USER_ID)).thenReturn(snapshot(4096 * MIB, 0L));
         MockFilterChain pass = new MockFilterChain();
-        filter.doFilter(archivePost(HOST_CEILING), new MockHttpServletResponse(), pass);
+        filter.doFilter(archivePost(HARD_LIMIT - 1), new MockHttpServletResponse(), pass);
         assertThat(pass.getRequest()).isNotNull();
 
         MockFilterChain reject = new MockFilterChain();
         MockHttpServletResponse rejected = new MockHttpServletResponse();
-        filter.doFilter(archivePost(HOST_CEILING + 1), rejected, reject);
+        filter.doFilter(archivePost(HARD_LIMIT + 1), rejected, reject);
         assertThat(rejected.getStatus()).isEqualTo(413);
         assertThat(reject.getRequest()).isNull();
     }
 
     @Test
-    @DisplayName("Unresolvable identity -> host ceiling, never fail-open")
-    void unresolvableIdentityUsesHostCeiling() throws Exception {
+    @DisplayName("Unresolvable identity -> hard limit, never fail-open")
+    void unresolvableIdentityUsesHardLimit() throws Exception {
         when(currentUser.id()).thenThrow(new RuntimeException("no principal"));
-        MockFilterChain chain = new MockFilterChain();
-        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain pass = new MockFilterChain();
+        filter.doFilter(archivePost(HARD_LIMIT - 1), new MockHttpServletResponse(), pass);
+        assertThat(pass.getRequest()).isNotNull();
 
-        filter.doFilter(archivePost(HOST_CEILING + 1), response, chain);
+        MockFilterChain reject = new MockFilterChain();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(archivePost(HARD_LIMIT + 1), response, reject);
 
         assertThat(response.getStatus()).isEqualTo(413);
-        assertThat(chain.getRequest()).isNull();
+        assertThat(reject.getRequest()).isNull();
     }
 
     @Test
@@ -208,8 +201,7 @@ class ArchiveUploadLimitFilterTest {
 
         // "%69" is "i": the raw URI differs from IMPORT_PATH but Spring's handler mapping
         // decodes before matching, so this request DOES reach the archive import handler.
-        // Matching on the raw URI let it skip the pre-check and spool to the host ceiling.
-        filter.doFilter(request("POST", "/api/projects/%69mport-archive", 500 * MIB), response, chain);
+        filter.doFilter(request("POST", "/api/projects/%69mport-archive", HARD_LIMIT + MIB), response, chain);
 
         assertThat(response.getStatus()).isEqualTo(413);
         assertThat(chain.getRequest()).as("chain must not run -> nothing downstream can spool").isNull();
@@ -220,7 +212,7 @@ class ArchiveUploadLimitFilterTest {
     void malformedEscapeSequencePassesThrough() throws Exception {
         MockFilterChain chain = new MockFilterChain();
 
-        filter.doFilter(request("POST", "/api/projects/%zzmport-archive", 500 * MIB),
+        filter.doFilter(request("POST", "/api/projects/%zzmport-archive", HARD_LIMIT + MIB),
                 new MockHttpServletResponse(), chain);
 
         assertThat(chain.getRequest()).isNotNull();

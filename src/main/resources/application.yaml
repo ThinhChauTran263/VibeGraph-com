@@ -39,7 +39,7 @@ spring:
   # business limit; these prevent unbounded request bodies from exhausting the host.
   servlet:
     multipart:
-      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-file-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:200MB}
       max-request-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_REQUEST_SIZE:2050MB}
 
   security:
@@ -188,7 +188,6 @@ vibegraph:
     # Optional. When set, local project rootPath values must resolve inside this directory.
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
     # Fail closed by default: only explicit dev/test profile opt-ins may access arbitrary host paths.
-    allow-unconfined-browse: false
     allow-unconfined-import: false
 
   # Path to the AI memory / conventions file surfaced by the MCP conventions tool.
@@ -240,7 +239,7 @@ vibegraph:
   # remaining quota explicitly; this remains for compatibility with direct callers.
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:200MB}
       # Writable workspace for uploaded archives. Never the read-only /projects mount.
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
       ignored-paths:

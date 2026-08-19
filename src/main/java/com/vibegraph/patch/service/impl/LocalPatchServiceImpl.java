@@ -18,10 +18,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
-import com.vibegraph.auth.service.CreditBalanceService;
-import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
+import com.vibegraph.graph.service.ImportCreditBilling;
 import com.vibegraph.mcp.source.SourceFileService;
 import com.vibegraph.patch.config.LocalPatchProperties;
 import com.vibegraph.patch.dto.request.PatchRequest;
@@ -61,14 +60,15 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
 
     static final int MAX_PATH_LENGTH = 1024;
     private static final int BINARY_SCAN_BYTES = 8192;
+    /** Writes are confined to Java sources - the only content the knowledge graph needs. */
+    private static final String JAVA_EXTENSION = ".java";
 
     private final SourceFileService sourceFileService;
 
     private final LocalPatchProperties properties;
     private final AccountSettingsService accountSettingsService;
     private final ProjectUsageService projectUsageService;
-    private final CreditPricingService creditPricingService;
-    private final CreditBalanceService creditBalanceService;
+    private final ImportCreditBilling importCreditBilling;
     private final FeatureGateService featureGateService;
     private final CurrentUser currentUser;
     private final AtomicPatchApplier atomicPatchApplier;
@@ -126,6 +126,9 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
         for (int i = 0; i < files.size(); i++) {
             PatchFileChange file = files.get(i);
             Path target = validateRelativePath(root, file.path());
+            // Writes are .java-only, mirroring the archive/GitHub importers. Deletions stay
+            // unrestricted so legacy non-Java files pushed before this rule can be removed.
+            enforceJavaSource(target);
             byte[] bytes = decodeContent(file);
             enforceFileSize(bytes.length);
             totalBytes = addExact(totalBytes, bytes.length);
@@ -176,8 +179,8 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             return new PatchResult(projectId, files.size(), wouldDelete, List.of(), false);
         }
 
-        long requiredCredits = creditPricingService.calculateCredits("CLI_PUSH", files.size(), 0);
-        creditBalanceService.deductCredits(userId, requiredCredits, "CLI", "CLI_PUSH", projectId);
+        long requiredCredits = importCreditBilling.chargeUpfront(
+                userId, ImportCreditBilling.OPERATION_CLI_PUSH, files.size(), projectId, "CLI");
 
         List<AtomicPatchApplier.Write> writes = new java.util.ArrayList<>(fileTargets.length);
         for (int index = 0; index < fileTargets.length; index++) {
@@ -390,6 +393,19 @@ public class LocalPatchServiceImpl implements com.vibegraph.patch.service.LocalP
             return "";
         }
         return fileName.substring(dot + 1);
+    }
+
+    /**
+     * Refuse writes whose target is not a {@code .java} file. The extension is matched
+     * case-sensitively: a Java compilation unit is always {@code *.java}, and {@code .JAVA}
+     * would only smuggle a non-source file past this rule.
+     */
+    private void enforceJavaSource(Path target) {
+        Path fileName = target.getFileName();
+        if (fileName == null || !fileName.toString().endsWith(JAVA_EXTENSION)) {
+            throw new PatchRejectedException(Reason.NOT_JAVA_SOURCE,
+                    "only .java source files can be pushed");
+        }
     }
 
     private boolean changedOrDeleted(int changed, int deleted) {

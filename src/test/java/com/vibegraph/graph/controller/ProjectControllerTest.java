@@ -68,6 +68,8 @@ class ProjectControllerTest {
     private com.vibegraph.auth.service.FeatureGateService featureGateService;
     private com.vibegraph.auth.service.ProjectUsageService projectUsageService;
     private CliRepositoryService cliRepositoryService;
+    private com.vibegraph.auth.service.CreditPricingService creditPricingService;
+    private com.vibegraph.auth.service.CreditBalanceService creditBalanceService;
 
     @BeforeEach
     void setUp() {
@@ -83,10 +85,12 @@ class ProjectControllerTest {
         featureGateService = Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class);
         projectUsageService = Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class);
         cliRepositoryService = Mockito.mock(CliRepositoryService.class);
+        creditPricingService = Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class);
+        creditBalanceService = Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class);
         ProjectController controller = new ProjectController(
                 projectService, projectAnalysisScheduler, ownershipRegistrar, ownershipGuard, ownershipQuery,
                 deletionOrchestrator, trashService, currentUser, accountSettingsService, featureGateService,
-                projectUsageService, cliRepositoryService);
+                projectUsageService, cliRepositoryService, creditPricingService, creditBalanceService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -224,7 +228,31 @@ class ProjectControllerTest {
 
         // Existence is checked on the request thread; the heavy work is queued, not run inline.
         verify(projectService, times(1)).getProject("p1");
+        // Billing is pre-charged on the request thread via the flat per-file rule
+        // (missing root degrades to the base charge).
+        verify(creditPricingService).calculateCredits("PROJECT_ANALYZE", 0, 0);
+        verify(creditBalanceService).deductCredits(userId, 0L, "WEB", "PROJECT_ANALYZE", "p1");
         verify(projectAnalysisScheduler, times(1)).schedule("p1");
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/{id}/analyze returns 402 and skips scheduling when credits run out")
+    void shouldRejectAnalyzeWhenCreditsExhausted() throws Exception {
+        UUID userId = UUID.randomUUID();
+        ProjectResponse project = ProjectResponse.builder()
+                .id("p1").name("p1").rootPath("/tmp/p1").status("CREATED").build();
+        when(currentUser.id()).thenReturn(userId);
+        when(projectService.getProject("p1")).thenReturn(project);
+        Mockito.doThrow(new com.vibegraph.common.exception.InsufficientCreditsException(
+                        "Insufficient credits to perform this operation. Required: 2, Available: 0", 2L, 0L))
+                .when(creditBalanceService).assertCreditsAvailable(userId, 0L);
+
+        mockMvc.perform(post("/api/projects/p1/analyze"))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.error.code").value("CREDIT_EXHAUSTED"))
+                .andExpect(jsonPath("$.error.details").value("Required: 2 credits, Available: 0 credits"));
+
+        verify(projectAnalysisScheduler, never()).schedule("p1");
     }
 
     @Test

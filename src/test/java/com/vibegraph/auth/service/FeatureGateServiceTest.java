@@ -27,7 +27,6 @@ class FeatureGateServiceTest {
         org.assertj.core.api.Assertions.assertThat(FeatureGateService.API_KEYS_CREATE_GLOBAL)
                 .isEqualTo("api_keys.create.global");
         org.assertj.core.api.Assertions.assertThat(FeatureGateService.CLI_PUSH).isEqualTo("cli.push");
-        org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_LOCAL).isEqualTo("import.local");
         org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_ARCHIVE).isEqualTo("import.archive");
         org.assertj.core.api.Assertions.assertThat(FeatureGateService.IMPORT_GITHUB).isEqualTo("import.github");
         org.assertj.core.api.Assertions.assertThat(FeatureGateService.PROJECT_ANALYZE).isEqualTo("project.analyze");
@@ -96,7 +95,7 @@ class FeatureGateServiceTest {
         var capabilities = service.capabilities();
 
         org.assertj.core.api.Assertions.assertThat(capabilities)
-                .containsKeys(FeatureGateService.IMPORT_LOCAL, FeatureGateService.MCP_ENABLED,
+                .containsKeys(FeatureGateService.IMPORT_ARCHIVE, FeatureGateService.MCP_ENABLED,
                         "mcp.tool.source_file");
         org.assertj.core.api.Assertions.assertThat(capabilities.get("mcp.tool.source_file").enabled()).isFalse();
         org.assertj.core.api.Assertions.assertThat(capabilities.toString()).doesNotContain("admin-only description");

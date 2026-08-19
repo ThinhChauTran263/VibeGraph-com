@@ -33,4 +33,9 @@ public class ProjectResponse {
     private String status;
     /** Analysis progress 0-100: 0 until analysis finishes, 100 when ANALYZED. */
     private int progress;
+    /**
+     * Bytes of materialized {@code .java} source stored for this project - the exact amount
+     * counted against the owner's storage quota. Absent when unknown (legacy rows).
+     */
+    private Long storedBytes;
 }

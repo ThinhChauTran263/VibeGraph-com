@@ -112,6 +112,32 @@ class CreditPricingServiceTest {
     }
 
     @Test
+    @DisplayName("the minimum credits floor applies when the formula yields less")
+    void calculateCredits_appliesMinimumFloor() {
+        CreditPricingService service = new CreditPricingService(pricingRuleRepository);
+        CreditPricingRule rule = CreditPricingRule.builder()
+                .operationCode("IMPORT_ARCHIVE")
+                .baseCredits(bd("2"))
+                .perFileCredits(bd("0.01"))
+                .perMbCredits(BigDecimal.ZERO)
+                .minimumCredits(2)
+                .isActive(true)
+                .build();
+        when(pricingRuleRepository.findByOperationCode("IMPORT_ARCHIVE"))
+                .thenReturn(Optional.of(rule));
+
+        // Zero files: formula gives the base (2) -> floor is met exactly.
+        assertThat(service.calculateCredits("IMPORT_ARCHIVE", 0, 0)).isEqualTo(2L);
+        // 300 files: 2 + 3 = 5 -> above the floor.
+        assertThat(service.calculateCredits("IMPORT_ARCHIVE", 300, 0)).isEqualTo(5L);
+
+        // A zero-priced rule with no floor stays free (deductCredits skips 0).
+        when(pricingRuleRepository.findByOperationCode("FREE_OP"))
+                .thenReturn(Optional.of(rule("FREE_OP", bd("0"), bd("0"), bd("0"), true)));
+        assertThat(service.calculateCredits("FREE_OP", 10, 0)).isZero();
+    }
+
+    @Test
     @DisplayName("missing and inactive rules fail closed")
     void calculateCredits_missingOrInactiveRule_throws() {
         CreditPricingService service = new CreditPricingService(pricingRuleRepository);

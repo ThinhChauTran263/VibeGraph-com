@@ -36,6 +36,7 @@ import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ArchiveImportService;
+import com.vibegraph.graph.service.ImportCreditBilling;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
@@ -68,6 +69,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final FeatureGateService featureGateService;
     private final ConcurrentImportGuard concurrentImportGuard;
     private final GraphRepository graphRepository;
+    private final ImportCreditBilling importCreditBilling;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -82,7 +84,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                                     ProjectOwnershipRegistrar ownershipRegistrar,
                                     FeatureGateService featureGateService,
                                     ConcurrentImportGuard concurrentImportGuard,
-                                    GraphRepository graphRepository) {
+                                    GraphRepository graphRepository,
+                                    ImportCreditBilling importCreditBilling) {
         this.properties = properties;
         this.archiveExtractor = archiveExtractor;
         this.projectService = projectService;
@@ -97,6 +100,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.featureGateService = featureGateService;
         this.concurrentImportGuard = concurrentImportGuard;
         this.graphRepository = graphRepository;
+        this.importCreditBilling = importCreditBilling;
     }
 
     @Override
@@ -175,11 +179,14 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private ImportContext prepare(String name, MultipartFile file) {
         validate(name, file);
 
-        // Blocked account check before we consume any server resources (extract, etc.).
+        // Blocked/exhausted account check before we consume any server resources (extract, etc.).
+        // The archive's own size is bounded by the server hard limit (upload filter + extractor
+        // ceiling); the account quota is checked exactly, against the materialized .java bytes,
+        // AFTER extraction - a 50MB archive holding 3MB of .java must not be rejected up front.
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
-        accountSettingsService.assertQuotaNotExceeded(userId, file.getSize());
-        long remainingQuotaBytes = accountSettingsService.quotaSnapshot(userId).remainingBytes();
+        accountSettingsService.assertQuotaNotExceeded(userId, 1L);
+        long hardLimitBytes = properties.getMaxSize().toBytes();
 
         ArchiveType type = ArchiveTypeDetector.detect(file.getOriginalFilename());
         Path workspace = properties.getWorkspaceRoot().resolve(UUID.randomUUID().toString());
@@ -192,7 +199,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                 Files.copy(in, uploaded);
             }
             ArchiveExtractionResult extraction = archiveExtractor.extract(uploaded, type, source,
-                    remainingQuotaBytes);
+                    hardLimitBytes);
             deleteRecursively(uploaded); // the raw archive is no longer needed once .java files are materialized
 
             // Quota check after extraction
@@ -204,6 +211,12 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
 
             // Register ownership first to satisfy FK constraint in usage
             ownershipRegistrar.registerArchive(createdProjectId, project.getName());
+
+            // Pre-charge by imported .java file count before the expensive analysis;
+            // an exhausted balance fails fast (402) and the catch below removes the
+            // partially-registered project.
+            importCreditBilling.chargeUpfront(userId, ImportCreditBilling.OPERATION_IMPORT_ARCHIVE,
+                    extraction.javaFiles().size(), createdProjectId);
 
             // Record storage usage synchronously
             projectUsageService.recordImport(createdProjectId, userId, totalSize);

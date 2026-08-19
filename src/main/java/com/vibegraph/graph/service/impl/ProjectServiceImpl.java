@@ -264,6 +264,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .name(row.getName())
                 .status(status.name())
                 .progress(status == ProjectStatus.ANALYZED ? 100 : base.getProgress())
+                .storedBytes(row.getSizeBytes())
                 .build();
     }
 

@@ -11,7 +11,6 @@ graph/
 │   ├── ProjectController.java    — POST /api/projects, GET /api/projects
 │   ├── GraphController.java      — GET /api/projects/{id}/graph, /graph/impact (3 profiles)
 │   ├── ImportController.java     — POST /api/projects/import-archive, /import-github
-│   └── LocalProjectController.java — POST /api/projects/import-local, GET /api/projects/browse
 ├── service/
 │   ├── ProjectService.java       — Interface: project CRUD
 │   ├── GraphService.java         — Interface: graph query operations (incl. impact analysis)
@@ -47,7 +46,7 @@ graph/
 
 ## Trạng thái hiện thực (đối soát code thực tế)
 
-- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph + neighbors + impact); `LocalProjectController` (import-local/browse, fail-closed); `ImportController` (import-archive + import-github); `ArchiveImportServiceImpl`, `TarballImportServiceImpl`, `AnalyzeServiceImpl`, `GraphServiceImpl`.
+- ✅ Implemented: `Neo4jGraphRepository.upsertProject` / `upsertNodes` / `upsertEdges` / `getFullGraph` / `searchNodes`; `ProjectController` (create/list/get/delete/analyze); `GraphController` (full graph + neighbors + impact); `ImportController` (import-archive + import-github); `ArchiveImportServiceImpl`, `TarballImportServiceImpl`, `AnalyzeServiceImpl`, `GraphServiceImpl`.
 - ✅ Impact analysis khả dụng qua `GET /api/projects/{id}/graph/impact` trên `GraphController` (delegate `GraphService.getImpactAnalysis`). Không có controller/service Impact riêng — đã gộp vào GraphController/GraphService.
 
 > Các checkbox `[ ]` ở dưới là đặc tả mục tiêu MVP, không phải trạng thái đã xong.
