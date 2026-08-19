@@ -22,8 +22,6 @@
     "d3-force": "^3.0.0",
     "echarts": "^6.1.0",
     "graphology": "^0.26.0",
-    "graphology-layout-forceatlas2": "^0.10.1",
-    "graphology-layout-noverlap": "^0.4.2",
     "highlight.js": "^11.11.1",
     "pinia": "^3.0.4",
     "sigma": "^3.0.3",

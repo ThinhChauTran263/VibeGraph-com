@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 // H12: every route view is lazy so the landing/login pages never download the graph
-// stack (Sigma/Graphology/ForceAtlas2 — the heaviest part of the app). Route-level
+// stack (Sigma/Graphology/d3-force — the heaviest part of the app). Route-level
 // code splitting keeps first paint to just the shell + the visited view.
 const LandingView = () => import('@/views/LandingView.vue')
 const LoginView = () => import('@/views/LoginView.vue')

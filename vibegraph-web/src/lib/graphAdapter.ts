@@ -8,12 +8,7 @@
 import Graph from 'graphology'
 import type { GraphData, GraphNode, GraphEdge, NodeType, EdgeType } from '@/types/graph'
 import { NODE_COLORS, EDGE_COLORS, NODE_SIZES, NODE_SIZE_BY_TYPE } from './constants'
-import {
-  SIGMA_EDGE_SIZE,
-  LAYOUT_SCREEN_OVERLAP_GAP_PX,
-  LAYOUT_FIT_SIZE_COVERAGE,
-  LAYOUT_FIT_SIZE_SCALE_MIN,
-} from './runtimeConfig'
+import { SIGMA_EDGE_SIZE } from './runtimeConfig'
 
 export interface SigmaNodeAttributes {
   label: string
@@ -78,7 +73,7 @@ function nodePairKey(source: string, target: string): string {
  * Deterministic 32-bit FNV-1a hash → float in [0, 1). Used to seed a node's
  * initial position from its stable id so the layout is REPRODUCIBLE: the same
  * project always converges to the same picture instead of a different random
- * hairball on every load (ForceAtlas2 is sensitive to its starting positions).
+ * hairball on every load (force layouts are sensitive to their starting positions).
  */
 function seededUnit(str: string): number {
   let h = 2166136261
@@ -91,7 +86,7 @@ function seededUnit(str: string): number {
 
 /**
  * Deterministic initial position on a disc, derived from the node id. Replaces
- * random seeding so ForceAtlas2 starts from the same layout every time.
+ * random seeding so the layout starts from the same positions every time.
  */
 function seededPosition(id: string): { x: number; y: number } {
   const angle = seededUnit(id) * 2 * Math.PI
@@ -101,8 +96,8 @@ function seededPosition(id: string): { x: number; y: number } {
 
 /**
  * Convert backend GraphData to a Graphology Graph instance.
- * Assigns deterministic initial positions (seeded from node id) so ForceAtlas2
- * converges to the same layout on every load.
+ * Assigns deterministic initial positions (seeded from node id) so the layout
+ * converges to the same result on every load.
  */
 export function apiToGraphology(data: GraphData): Graph {
   const graph = new Graph({ multi: false, type: 'directed' })
@@ -191,69 +186,4 @@ export function getEdgeColor(edgeType: EdgeType): string {
  */
 export function getNodeSize(nodeType: NodeType): number {
   return NODE_SIZE_BY_TYPE[nodeType] ?? NODE_SIZES.default
-}
-
-/**
- * Density-adaptive fit-view node sizing. The fit view can only display as much
- * circle area as the viewport holds; when the configured per-type radii would
- * exceed that budget (large graphs), every node `size` is multiplied by one
- * global factor k solved from Σ π(sᵢ·k+g)² = COVERAGE·W·H (a quadratic in k),
- * keeping the total disc area within a feasible packing fraction. Small graphs
- * return 1 and stay untouched. Hidden (filterHidden/hidden) nodes are excluded
- * from both the budget and the resize. The shrunken dots grow back according to
- * the configured Sigma zoom curve, so detail views regain readable node sizes.
- * SIZES only — positions are never touched, so the macro silhouette
- * (the part the baseline gets right) is preserved exactly.
- * Returns the applied scale factor (1 = no change).
- */
-export function applyDensitySizeScale(
-  graph: Graph,
-  viewportWidth: number,
-  viewportHeight: number,
-): number {
-  if (graph.order < 2 || viewportWidth <= 0 || viewportHeight <= 0) return 1
-
-  // FIX: dùng viewport THAM CHIẾU cố định thay vì cửa sổ thật. Khả năng tách
-  // của layout (noverlap/settle) tính theo graph-units nên KHÔNG đổi theo cửa
-  // sổ, trong khi size px lại tỉ lệ sqrt(diện tích cửa sổ) — lấy cửa sổ thật
-  // khiến cửa sổ to thì node to và đè nhau. Reference cố định → node fit luôn
-  // ~3px ở mọi cửa sổ, đúng look đã được duyệt.
-  const REF_WIDTH = 800
-  const REF_HEIGHT = 540
-  const gap = LAYOUT_SCREEN_OVERLAP_GAP_PX
-  const budget = (LAYOUT_FIT_SIZE_COVERAGE * REF_WIDTH * REF_HEIGHT) / Math.PI
-
-  let sumSq = 0
-  let sumS = 0
-  let count = 0
-  graph.forEachNode((_id, attributes) => {
-    if (attributes.filterHidden === true || attributes.hidden === true) return
-    const size = Number(attributes.size ?? 0)
-    if (!Number.isFinite(size) || size <= 0) return
-    sumSq += size * size
-    sumS += size
-    count += 1
-  })
-  if (count < 2) return 1
-
-  // demand(k) = Σ (sᵢ·k + g)² = sumSq·k² + 2·g·sumS·k + count·g²  ≤ budget
-  const a = sumSq
-  const b = 2 * gap * sumS
-  const c = count * gap * gap - budget
-  let scale: number
-  if (a <= 0 || c >= 0) {
-    scale = LAYOUT_FIT_SIZE_SCALE_MIN
-  } else {
-    scale = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a)
-  }
-  scale = Math.min(1, Math.max(LAYOUT_FIT_SIZE_SCALE_MIN, scale))
-  if (scale >= 1) return 1
-
-  graph.updateEachNodeAttributes((_id, attributes) => {
-    if (attributes.filterHidden === true || attributes.hidden === true) return attributes
-    const size = Number(attributes.size ?? 0)
-    if (!Number.isFinite(size) || size <= 0) return attributes
-    return { ...attributes, size: Math.max(1.5, size * scale) }
-  })
-  return scale
 }

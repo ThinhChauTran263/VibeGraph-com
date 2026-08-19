@@ -3,13 +3,8 @@
  * only) and scale with zoom like the foreground; no max clamp that would shrink
  * graph-unit sizes to dots (user-reported bug 2026-08-19).
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ghostNodeSize, GHOST_EDGE_PX } from '../focusMode'
-
-vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
-  return { ...actual, LAYOUT_ENGINE: 'd3' as const }
-})
 
 describe('ghost sizing in d3 mode (graph-unit sizes)', () => {
   it('keeps full proportional size — no 20-unit clamp, no 0.8 shrink', () => {

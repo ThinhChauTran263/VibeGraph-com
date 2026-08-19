@@ -1,17 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
-
-// Legacy ghost band assertions below describe the fa2 engine; the d3 engine's
-// proportional ghost sizing is covered by focusModeGhostD3.spec.ts.
-vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
-  return { ...actual, LAYOUT_ENGINE: 'fa2' as const }
-})
 import {
   createSelectionFocusReducers,
   getDirectNeighbors,
   ghostEdgeColor,
-  ghostEdgeSize,
   ghostNodeColor,
   ghostNodeSize,
   NEIGHBOR_NODE_SIZE_MULTIPLIER,
@@ -390,14 +382,11 @@ function preservesHue(color: unknown): boolean {
 }
 
 describe('ghost-canvas node styling (proportional, hue-preserving â€” never tiny, never black)', () => {
-  it('scales node size proportionally and clamps it to a readable band (not a dot)', () => {
-    // ~80% of original, clamped to [2, 20].
-    expect(ghostNodeSize(10)).toBeCloseTo(8, 5)
-    // a small node stays at least the minimum, never a sub-pixel dot
-    expect(ghostNodeSize(1)).toBeGreaterThanOrEqual(2)
-    // a large hub is capped so it doesn't dominate
-    expect(ghostNodeSize(100)).toBeLessThanOrEqual(20)
-    // proportional rule: bigger original => bigger (or equal, when clamped) ghost
+  it('keeps full proportional size — dimming is done by color, not size', () => {
+    expect(ghostNodeSize(10)).toBe(10)
+    // a large hub keeps its full size (no clamp that would shrink it)
+    expect(ghostNodeSize(100)).toBe(100)
+    // proportional rule: bigger original => bigger ghost
     expect(ghostNodeSize(6)).toBeGreaterThan(ghostNodeSize(3))
   })
 
@@ -430,14 +419,7 @@ describe('ghost-canvas node styling (proportional, hue-preserving â€” never
   })
 })
 
-describe('ghost-canvas edge styling (thin but visible, hue-preserving)', () => {
-  it('thins edge width but keeps it visible, never zero', () => {
-    expect(ghostEdgeSize(1)).toBeGreaterThan(0)
-    expect(ghostEdgeSize(1)).toBeLessThan(1)
-    // floor keeps a hairline visible even for a hairline original
-    expect(ghostEdgeSize(0.1)).toBeGreaterThanOrEqual(0.4)
-  })
-
+describe('ghost-canvas edge styling (hue-preserving)', () => {
   it('darkens edge color toward the background while preserving hue', () => {
     const ghost = ghostEdgeColor('#93c5fd')
     expect(isBrightColor(ghost)).toBe(false)
