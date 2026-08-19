@@ -7,16 +7,17 @@ import { shallowRef, onUnmounted, type Ref } from 'vue'
 import Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { Settings } from 'sigma/settings'
-import FA2Layout from 'graphology-layout-forceatlas2/worker'
 import NoverlapLayout from 'graphology-layout-noverlap/worker'
 import { DEFAULT_LABEL_COLOR } from '@/lib/constants'
 import { applyDensitySizeScale } from '@/lib/graphAdapter'
+import { createLayoutEngine, type LayoutEngineHandle } from '@/lib/layout/layoutClient'
 import {
   SIGMA_BASE_NODE_LABEL_SIZE,
   SIGMA_BASE_EDGE_LABEL_SIZE,
   SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
   SIGMA_NODE_GROW_ZOOM,
   SIGMA_NODE_ZOOM_SIZE_POWER,
+  LAYOUT_ENGINE,
   FA2_GRAVITY,
   FA2_SCALING_RATIO,
   FA2_BARNES_HUT_MIN_NODES,
@@ -107,7 +108,7 @@ export function useSigma(options: UseSigmaOptions) {
 
   const sigmaInstance = shallowRef<Sigma | null>(null)
   const graphInstance = shallowRef<Graph | null>(null)
-  const layout = shallowRef<FA2Layout | null>(null)
+  const layout = shallowRef<LayoutEngineHandle | null>(null)
   const layoutStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
   const overlapLayout = shallowRef<NoverlapLayout | null>(null)
   const overlapStopTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
@@ -161,7 +162,10 @@ export function useSigma(options: UseSigmaOptions) {
     // exceed the viewport's circle-area budget and any de-overlap pass would
     // close-pack the layout into a round disc. Shrink sizes (NOT positions) to
     // a feasible budget before Sigma renders; no-op on small graphs.
-    applyDensitySizeScale(graph, container.value.clientWidth, container.value.clientHeight)
+    // (fa2 mode only — d3 mode uses graph-unit sizes instead.)
+    if (LAYOUT_ENGINE !== 'd3') {
+      applyDensitySizeScale(graph, container.value.clientWidth, container.value.clientHeight)
+    }
 
     const sigma = new Sigma(graph, container.value, {
       allowInvalidContainer: true,
@@ -177,7 +181,10 @@ export function useSigma(options: UseSigmaOptions) {
       hideEdgesOnMove: false,
       hideLabelsOnMove: false,
       labelRenderedSizeThreshold: LABEL_RENDERED_SIZE_THRESHOLD,
-      itemSizesReference: 'screen',
+      // d3 mode: node sizes are graph-units (max(3·val,10)) rendered through
+      // Sigma's graph-space reference, exactly like grapuco. fa2 mode keeps the
+      // screen-px contract.
+      itemSizesReference: LAYOUT_ENGINE === 'd3' ? 'positions' : 'screen',
       zoomToSizeRatioFunction: zoomToSizeRatio,
       // Bound zoom-out so the graph cannot shrink into a useless dot, and cap
       // deep zoom so node growth remains predictable at the configured power.
@@ -494,31 +501,46 @@ export function useSigma(options: UseSigmaOptions) {
   }
 
   /**
-   * Start ForceAtlas2 layout. Stops automatically after a timeout.
+   * Start the layout engine (update/graph/qwen/02-ARCHITECTURE.md).
+   * - 'd3': grapuco-recipe worker (macro + in-sim collide, 300 ticks, pinned);
+   *   on done, positions + graph-unit sizes are written once and the camera
+   *   fits — static layout, zero CPU afterwards.
+   * - 'fa2': frozen legacy pipeline; stops automatically after a timeout.
    */
   function startLayout(graph: Graph) {
     stopLayout()
     if (graph.order === 0) return
 
-    const isLarge = graph.order > FA2_LARGE_GRAPH_THRESHOLD
-    const fa2 = new FA2Layout(graph, {
-      settings: {
-        gravity: isLarge ? FA2_GRAVITY_LARGE : FA2_GRAVITY,
-        scalingRatio: isLarge ? FA2_SCALING_RATIO_LARGE : FA2_SCALING_RATIO,
-        barnesHutOptimize: graph.order > FA2_BARNES_HUT_MIN_NODES,
-        slowDown: FA2_SLOW_DOWN,
-        linLogMode: FA2_LINLOG_MODE,
-        outboundAttractionDistribution: FA2_OUTBOUND_ATTRACTION,
-        adjustSizes: FA2_ADJUST_SIZES,
-        strongGravityMode: FA2_STRONG_GRAVITY_MODE,
-      },
-    })
+    if (LAYOUT_ENGINE === 'd3') {
+      const engine = createLayoutEngine(graph, {
+        onDone: (positions, vals) => {
+          if (graphInstance.value !== graph) return
+          positions.forEach((p, i) => {
+            if (!graph.hasNode(p.id)) return
+            const val = vals[i] ?? 8
+            graph.mergeNodeAttributes(p.id, {
+              x: p.x,
+              y: p.y,
+              layoutVal: val,
+              size: Math.max(3 * val, 10),
+            })
+          })
+          cacheLayoutPositions(graph)
+          sigmaInstance.value?.refresh()
+          onLayoutSettled?.()
+        },
+      })
+      engine.start()
+      layout.value = engine
+      return
+    }
 
-    fa2.start()
-    layout.value = fa2
+    const engine = createLayoutEngine(graph)
+    engine.start()
+    layout.value = engine
 
     layoutStopTimer.value = setTimeout(() => {
-      if (layout.value === fa2) {
+      if (layout.value === engine) {
         stopLayout(true)
       }
     }, LAYOUT_AUTO_STOP_MS)
@@ -544,7 +566,7 @@ export function useSigma(options: UseSigmaOptions) {
       cacheLayoutPositions(graphInstance.value)
     }
 
-    if (runPostLayout && graphInstance.value) {
+    if (runPostLayout && graphInstance.value && LAYOUT_ENGINE === 'fa2') {
       runPostLayoutPass(graphInstance.value)
     }
   }
