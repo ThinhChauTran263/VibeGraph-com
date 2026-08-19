@@ -51,17 +51,52 @@ public final class ProjectSymbolRegistry {
         if (javaFiles == null || javaFiles.isEmpty()) {
             return empty();
         }
-        JavaParser parser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
-        List<CompilationUnit> units = new ArrayList<>();
-        for (java.nio.file.Path file : javaFiles) {
-            try {
-                parser.parse(file).getResult().ifPresent(units::add);
-            } catch (Exception ignored) {
-                // Pass 1 should stay best-effort; parse errors are handled in the main pass.
+        // Pass 1 runs on a worker pool — one resolver-less parser per thread (JavaParser is
+        // not thread-safe to share), collecting into a concurrent set. Type names land in a
+        // Set, so worker completion order never changes the registry's content.
+        int parallelism = Math.max(1, Math.min(javaFiles.size(), Runtime.getRuntime().availableProcessors()));
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(
+                parallelism, r -> {
+                    Thread t = new Thread(r, "vg-registry-worker");
+                    t.setDaemon(true);
+                    return t;
+                });
+        ThreadLocal<JavaParser> threadParser = ThreadLocal.withInitial(() ->
+                new JavaParser(new ParserConfiguration()
+                        .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21)));
+        Set<String> typeFullNames = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        try {
+            List<java.util.concurrent.Future<?>> tasks = new ArrayList<>(javaFiles.size());
+            for (java.nio.file.Path file : javaFiles) {
+                tasks.add(executor.submit(() -> {
+                    try {
+                        threadParser.get().parse(file).getResult()
+                                .ifPresent(cu -> collectTypeNames(cu, typeFullNames));
+                    } catch (Exception ignored) {
+                        // Pass 1 should stay best-effort; parse errors are handled in the main pass.
+                    }
+                }));
             }
+            for (java.util.concurrent.Future<?> task : tasks) {
+                try {
+                    task.get();
+                } catch (Exception ignored) {
+                    // Best-effort pass 1 — the main pass reports parse failures properly.
+                }
+            }
+        } finally {
+            executor.shutdown();
         }
-        return fromCompilationUnits(units);
+        return new ProjectSymbolRegistry(typeFullNames);
+    }
+
+    private static void collectTypeNames(CompilationUnit compilationUnit, Set<String> sink) {
+        String packageName = compilationUnit.getPackageDeclaration()
+                .map(pkg -> pkg.getNameAsString())
+                .orElse("");
+        for (TypeDeclaration<?> typeDeclaration : compilationUnit.getTypes()) {
+            collectTypeNames(typeDeclaration, packageName, null, sink);
+        }
     }
 
     public static Scope open(ProjectSymbolRegistry registry) {

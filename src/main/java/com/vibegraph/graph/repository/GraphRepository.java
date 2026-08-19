@@ -49,6 +49,25 @@ public interface GraphRepository {
             List<NodeData> nodes, List<EdgeData> edges);
 
     /**
+     * Step-level progress for the analysis write: invoked once per persisted batch
+     * (project upsert, one node group, one edge group) with (completedSteps, totalSteps).
+     * Lets callers drive a truthful progress bar during the DB write instead of freezing at
+     * a fixed percentage. Callbacks may repeat on transaction retry — clamp monotonically.
+     */
+    @FunctionalInterface
+    interface WriteProgress {
+        WriteProgress NOOP = (completedSteps, totalSteps) -> { };
+
+        void onStep(int completedSteps, int totalSteps);
+    }
+
+    /** {@link #upsertAnalysis(String, String, String, List, List)} with write sub-progress. */
+    default int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges, WriteProgress progress) {
+        return upsertAnalysis(projectId, name, path, nodes, edges);
+    }
+
+    /**
      * Persist edges between nodes that already exist in the parsed graph. Missing
      * endpoints are skipped rather than materialized as {@code External} stubs.
      *
