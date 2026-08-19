@@ -123,3 +123,9 @@ task/final/
 *.stackdump
 graph-check-cookies.txt
 vibegraph-web/graph-check.png
+
+# Qoder IDE agent/plans cache — local only.
+.qoder/
+
+# CI workflows removed; keep the folder local-only.
+.github/
