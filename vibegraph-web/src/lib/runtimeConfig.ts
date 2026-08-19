@@ -238,6 +238,27 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
   min: 1,
 })
 
+// ── Layout engine switch (update/graph/qwen/02-ARCHITECTURE.md) ────────────
+// 'd3' (default) = grapuco recipe: worker macro (d3|ngraph) + d3 forceCollide
+//   in-sim, 300 ticks, pinned; graph-unit sizes via 'positions'.
+// 'fa2' = legacy pipeline (FA2 + normalize/spread/density/settle/noverlap),
+//   FROZEN — rollback only via VITE_LAYOUT_ENGINE=fa2, never tuned further.
+export const LAYOUT_ENGINE: 'd3' | 'fa2' =
+  (ENV['VITE_LAYOUT_ENGINE'] ?? 'd3').trim().toLowerCase() === 'fa2' ? 'fa2' : 'd3'
+/** Macro slot for the d3 engine: pure 'd3' (default — matches grapuco spread,
+ *  see update/graph/qwen/04-RESULTS.md) or 'ngraph' hybrid (A/B fallback). */
+export const LAYOUT_MACRO: 'd3' | 'ngraph' =
+  (ENV['VITE_LAYOUT_MACRO'] ?? 'd3').trim().toLowerCase() === 'ngraph' ? 'ngraph' : 'd3'
+/**
+ * Node draw radius in graph units = max(DRAW_SCALE·val, DRAW_MIN); collide
+ * radius = draw + COLLIDE_PAD (grapuco: draw 24–60, pad 100). Raise DRAW_SCALE
+ * for bigger visible nodes; keep COLLIDE_PAD ≥ ~2× draw for the 0-overlap
+ * guarantee (update/graph/qwen/01-EVIDENCE.md §3).
+ */
+export const LAYOUT_DRAW_SCALE = envFloat('VITE_LAYOUT_DRAW_SCALE', 3, { min: 0.5 })
+export const LAYOUT_DRAW_MIN = envFloat('VITE_LAYOUT_DRAW_MIN', 10, { min: 1 })
+export const LAYOUT_COLLIDE_PAD = envFloat('VITE_LAYOUT_COLLIDE_PAD', 100, { min: 0 })
+
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
 export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 1500, { min: 0 })

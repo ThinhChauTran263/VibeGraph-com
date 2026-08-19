@@ -1,7 +1,7 @@
 import type Graph from 'graphology'
 import { dimColor } from './color'
 import { EDGE_COLORS } from './constants'
-import { SIGMA_MINIMAL_LABEL_RATIO, SIGMA_EDGE_LABEL_RATIO } from './runtimeConfig'
+import { SIGMA_MINIMAL_LABEL_RATIO, SIGMA_EDGE_LABEL_RATIO, LAYOUT_ENGINE } from './runtimeConfig'
 import type { EdgeType } from '@/types/graph'
 
 export interface FocusReducers {
@@ -115,12 +115,16 @@ const Z_NEIGHBOR = 2
 const Z_RELATED_EDGE = 2
 
 /**
- * Background-layer node radius for the ghost canvas. Proportional to the original
- * size (≈85%) and clamped to a readable band so large hubs don't dominate and
- * small nodes stay visible — never shrunk to a dot.
+ * Background-layer node radius for the ghost canvas.
+ * - d3 mode: sizes are graph-units; ghost nodes keep their FULL proportional
+ *   size (dimming is done by COLOR, not size — the user explicitly rejected
+ *   shrinking dimmed nodes to tiny dots) and scale with zoom exactly like the
+ *   foreground, since ghostLayer renders them through sigma.scaleSize.
+ * - fa2 mode: legacy px band (0.8×, clamped 2–20) so hubs don't dominate.
  */
 export function ghostNodeSize(size: unknown): number {
   const base = typeof size === 'number' ? size : GHOST_NODE_MIN_SIZE
+  if (LAYOUT_ENGINE === 'd3') return base
   const scaled = base * GHOST_NODE_SIZE_MULTIPLIER
   return Math.min(Math.max(scaled, GHOST_NODE_MIN_SIZE), GHOST_NODE_MAX_SIZE)
 }
@@ -135,6 +139,13 @@ export function ghostEdgeSize(size: unknown): number {
   const base = typeof size === 'number' ? size : GHOST_EDGE_MIN_SIZE
   return Math.max(base * GHOST_EDGE_SIZE_MULTIPLIER, GHOST_EDGE_MIN_SIZE)
 }
+
+/**
+ * d3 mode: the edge `size` attribute is in graph-units (~0.02) and would render
+ * sub-pixel through scaleSize, so the ghost canvas draws a constant screen-px
+ * hairline instead. fa2 mode keeps the scaled legacy width.
+ */
+export const GHOST_EDGE_PX = 0.8
 
 /** Background-layer edge color: original hue blended toward the dark background. */
 export function ghostEdgeColor(color: unknown): string {

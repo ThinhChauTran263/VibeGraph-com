@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Graph from 'graphology'
+
+// Legacy ghost band assertions below describe the fa2 engine; the d3 engine's
+// proportional ghost sizing is covered by focusModeGhostD3.spec.ts.
+vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
+  return { ...actual, LAYOUT_ENGINE: 'fa2' as const }
+})
 import {
   createSelectionFocusReducers,
   getDirectNeighbors,

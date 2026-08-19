@@ -29,6 +29,13 @@ const sigmaState = vi.hoisted(() => ({ instances: [] as MockSigmaInstance[] }))
 const layoutState = vi.hoisted(() => ({ instances: [] as MockLayoutInstance[] }))
 const syncLayoutState = vi.hoisted(() => ({ assign: vi.fn(), inferSettings: vi.fn() }))
 
+// Pin the legacy engine for this spec (jsdom has no Worker for the d3 path;
+// the d3 protocol is covered by layoutClient.spec instead).
+vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
+  return { ...actual, LAYOUT_ENGINE: 'fa2' as const }
+})
+
 vi.mock('sigma', () => {
   class MockSigma {
     graph: Graph
