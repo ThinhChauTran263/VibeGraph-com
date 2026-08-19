@@ -464,7 +464,7 @@ describe('unrelated elements are hidden from the foreground and routed to the gh
     })
     graph.addNode('create', { label: 'create', color: '#3B82F6', size: 6 })
     graph.addEdgeWithKey('route->create', 'route', 'create', {
-      color: '#65A30D',
+      color: EDGE_COLORS.HANDLES_ROUTE,
       size: 1,
       label: 'HANDLES_ROUTE',
     })
