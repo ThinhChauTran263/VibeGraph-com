@@ -24,7 +24,8 @@
 import type Sigma from 'sigma'
 import type Graph from 'graphology'
 import type { FocusPartition } from './focusMode'
-import { ghostNodeSize, ghostNodeColor, ghostEdgeSize, ghostEdgeColor } from './focusMode'
+import { ghostNodeSize, ghostNodeColor, ghostEdgeSize, ghostEdgeColor, GHOST_EDGE_PX } from './focusMode'
+import { LAYOUT_ENGINE } from '@/lib/runtimeConfig'
 
 const GHOST_LAYER_ID = 'ghost-graph'
 
@@ -120,10 +121,12 @@ export function attachGhostLayer(sigma: Sigma, graph: Graph): GhostLayerHandle {
       }
 
       context.strokeStyle = ghostEdgeColor(graph.getEdgeAttribute(edge, 'color'))
-      context.lineWidth = sigma.scaleSize(
-        ghostEdgeSize(graph.getEdgeAttribute(edge, 'size')),
-        cameraRatio,
-      )
+      // d3 mode: edge size attribute is graph-units (~0.02) and would render
+      // sub-pixel through scaleSize — draw a constant screen-px hairline instead.
+      context.lineWidth =
+        LAYOUT_ENGINE === 'd3'
+          ? GHOST_EDGE_PX
+          : sigma.scaleSize(ghostEdgeSize(graph.getEdgeAttribute(edge, 'size')), cameraRatio)
       context.beginPath()
       context.moveTo(start.x, start.y)
       context.lineTo(end.x, end.y)
