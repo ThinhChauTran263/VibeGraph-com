@@ -2,6 +2,7 @@ package com.vibegraph.graph.importer.github;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
@@ -54,6 +55,7 @@ class GitHubTarballClientTest {
     void downloadTarball_ConnectTimeoutThenSuccess_RetriesAndStoresTarball() throws Exception {
         byte[] tarball = "tarball-data".getBytes(StandardCharsets.UTF_8);
         when(response.statusCode()).thenReturn(200);
+        when(response.uri()).thenReturn(URI.create("https://codeload.github.com/owner/repo/tarball/main"));
         when(response.body()).thenReturn(new ByteArrayInputStream(tarball));
         doThrow(new HttpConnectTimeoutException("HTTP connect timed out"))
                 .doReturn(response)
@@ -86,6 +88,7 @@ class GitHubTarballClientTest {
     @Test
     void downloadTarball_MixedTransientFailures_NeverExceedsConfiguredAttemptLimit() throws Exception {
         when(response.statusCode()).thenReturn(503);
+        when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/owner/repo/tarball/main"));
         when(response.body()).thenReturn(InputStream.nullInputStream());
         doThrow(new HttpConnectTimeoutException("first timeout"))
                 .doReturn(response)
@@ -105,6 +108,7 @@ class GitHubTarballClientTest {
     @Test
     void downloadTarball_NotFound_DoesNotRetry() throws Exception {
         when(response.statusCode()).thenReturn(404);
+        when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/owner/repo/tarball/main"));
         when(response.body()).thenReturn(InputStream.nullInputStream());
         doReturn(response)
                 .when(httpClient)
@@ -116,6 +120,22 @@ class GitHubTarballClientTest {
                 .isInstanceOf(GithubImportException.class)
                 .hasMessageContaining("HTTP 404");
         verify(httpClient).send(any(HttpRequest.class), anyInputStreamHandler());
+    }
+
+    @Test
+    void downloadTarball_RedirectToForeignHost_RefusedWithoutRetry() throws Exception {
+        when(response.uri()).thenReturn(URI.create("https://evil.example.com/payload"));
+        doReturn(response)
+                .when(httpClient)
+                .send(any(HttpRequest.class), anyInputStreamHandler());
+
+        GitHubTarballClient client = new GitHubTarballClient(properties, httpClient);
+
+        assertThatThrownBy(() -> client.downloadTarball(repository(), tempDir.resolve("repo.tar.gz"), 1024))
+                .isInstanceOf(GithubImportException.class)
+                .hasMessageContaining("unexpected host");
+        verify(httpClient).send(any(HttpRequest.class), anyInputStreamHandler());
+        assertThat(Files.exists(tempDir.resolve("repo.tar.gz"))).isFalse();
     }
 
     @SuppressWarnings("unchecked")

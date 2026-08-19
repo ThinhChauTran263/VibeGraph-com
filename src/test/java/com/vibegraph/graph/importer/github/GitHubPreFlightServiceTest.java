@@ -1,6 +1,7 @@
 package com.vibegraph.graph.importer.github;
 
 import java.lang.reflect.Constructor;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.util.Arrays;
@@ -83,6 +84,7 @@ class GitHubPreFlightServiceTest {
         @DisplayName("resolves the default branch for a public repository")
         void resolvesDefaultBranch() throws Exception {
             when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/spring-projects/spring-petclinic"));
             when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
             doReturn(response).when(httpClient).send(any(), any());
 
@@ -97,6 +99,7 @@ class GitHubPreFlightServiceTest {
         @DisplayName("rejects a private repository")
         void rejectsPrivateRepository() throws Exception {
             when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/secret"));
             when(response.body()).thenReturn("{\"private\":true,\"size\":1024,\"default_branch\":\"main\"}");
             doReturn(response).when(httpClient).send(any(), any());
 
@@ -110,12 +113,25 @@ class GitHubPreFlightServiceTest {
         @DisplayName("rejects a repository that returns 404")
         void rejectsMissingRepository() throws Exception {
             when(response.statusCode()).thenReturn(404);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/missing"));
             doReturn(response).when(httpClient).send(any(), any());
 
             assertThatThrownBy(() -> service.validatePublicRepository(
                     new GitHubRepositoryRef("acme", "missing", null)))
                     .isInstanceOf(GithubImportException.class)
                     .hasMessageContaining("not found");
+        }
+
+        @Test
+        @DisplayName("rejects a response that arrived from a foreign redirect host")
+        void rejectsForeignRedirectHost() throws Exception {
+            when(response.uri()).thenReturn(URI.create("https://evil.example.com/metadata"));
+            doReturn(response).when(httpClient).send(any(), any());
+
+            assertThatThrownBy(() -> service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null)))
+                    .isInstanceOf(GithubImportException.class)
+                    .hasMessageContaining("unexpected host");
         }
     }
 }

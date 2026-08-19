@@ -6,6 +6,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Locale;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,12 @@ import com.vibegraph.graph.importer.config.GitHubImportProperties;
 /** Performs cheap GitHub metadata checks before downloading the tarball. */
 @Service
 public class GitHubPreFlightService {
+
+    /**
+     * F10 audit fix: with {@code Redirect.NORMAL} the final host comes from the redirect
+     * chain, so accept a metadata response only when it actually arrived from GitHub's API.
+     */
+    private static final Set<String> ALLOWED_RESPONSE_HOSTS = Set.of("api.github.com");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ArchiveImportProperties properties;
@@ -65,6 +73,12 @@ public class GitHubPreFlightService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new GithubImportException("GitHub pre-flight check was interrupted", e);
+        }
+
+        String host = response.uri() == null ? null : response.uri().getHost();
+        if (host == null || !ALLOWED_RESPONSE_HOSTS.contains(host.toLowerCase(Locale.ROOT))) {
+            throw new GithubImportException(
+                    "GitHub redirected the pre-flight request to an unexpected host: " + host);
         }
 
         int status = response.statusCode();
