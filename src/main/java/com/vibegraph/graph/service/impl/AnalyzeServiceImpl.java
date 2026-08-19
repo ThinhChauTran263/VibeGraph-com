@@ -95,22 +95,32 @@ public class AnalyzeServiceImpl implements AnalyzeService {
         // is left unchanged. NOT a copy of CALLS (reachability-filtered + deduped).
         allEdges.addAll(FlowAnalyzer.inferStepInFlow(allNodes, allEdges));
 
-        progress.onProgress(80, "Saving nodes");
+        progress.onProgress(80, "Saving graph");
 
         // Project node name = human-readable display name (repo/owner-repo for GitHub,
         // user-provided name for archive). The stable graph id stays projectId. Fall back
         // to projectId if no name was supplied so the node is never left without a label.
         String displayName = (projectName != null && !projectName.isBlank()) ? projectName : projectId;
 
-        progress.onProgress(94, "Saving relationships");
-
         // B-M11: one write transaction for the whole analysis graph — a mid-write failure
         // rolls back everything instead of leaving a half-written project graph in Neo4j.
         // The returned count is the number of edges actually persisted after missing
         // endpoints are skipped — the truthful count to report (allEdges.size() would
-        // over-report if anything were dropped).
+        // over-report if anything were dropped). The per-batch callback maps the 80→98
+        // window onto real write steps so the bar keeps moving during the DB write instead
+        // of freezing at a fixed percentage; clamped because transaction retries replay steps.
+        int[] lastPct = {80};
         int edgesPersisted = graphRepository.upsertAnalysis(
-                projectId, displayName, projectPath, allNodes, allEdges);
+                projectId, displayName, projectPath, allNodes, allEdges,
+                (completedSteps, totalSteps) -> {
+                    int pct = totalSteps <= 0 ? 98
+                            : 80 + (int) Math.round((completedSteps / (double) totalSteps) * 18.0);
+                    pct = Math.min(98, Math.max(lastPct[0], pct));
+                    if (pct > lastPct[0] || completedSteps == totalSteps) {
+                        lastPct[0] = pct;
+                        progress.onProgress(pct, "Saving graph (" + completedSteps + "/" + totalSteps + ")");
+                    }
+                });
 
         progress.onProgress(98, "Finalizing");
 

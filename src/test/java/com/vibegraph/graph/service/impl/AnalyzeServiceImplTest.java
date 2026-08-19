@@ -57,7 +57,7 @@ class AnalyzeServiceImplTest {
 
         ArgumentCaptor<String> id = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
-        verify(graphRepository).upsertAnalysis(id.capture(), name.capture(), eq("/tmp/repo"), any(), any());
+        verify(graphRepository).upsertAnalysis(id.capture(), name.capture(), eq("/tmp/repo"), any(), any(), any());
         assertThat(id.getValue()).isEqualTo("44786872");
         assertThat(name.getValue()).isEqualTo("ThinhChauTran263/Lab7_Java6");
     }
@@ -69,7 +69,7 @@ class AnalyzeServiceImplTest {
 
         service.analyzeProject("p1", "   ", "/tmp/p1");
 
-        verify(graphRepository).upsertAnalysis(eq("p1"), eq("p1"), anyString(), any(), any());
+        verify(graphRepository).upsertAnalysis(eq("p1"), eq("p1"), anyString(), any(), any(), any());
     }
 
     @Test
@@ -91,7 +91,7 @@ class AnalyzeServiceImplTest {
                 .hasMessageContaining("too large to analyze");
 
         // The cap fires before any persistence — nothing is written to the graph.
-        verify(graphRepository, never()).upsertAnalysis(any(), any(), any(), any(), any());
+        verify(graphRepository, never()).upsertAnalysis(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -114,13 +114,13 @@ class AnalyzeServiceImplTest {
                         EdgeData.of("CALLS", "com.example.CheckoutService.checkout(Order)", "com.example.PaymentPort.charge(Order)")))
                 .build();
         when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(result));
-        when(graphRepository.upsertAnalysis(anyString(), anyString(), anyString(), any(), any())).thenReturn(6);
+        when(graphRepository.upsertAnalysis(anyString(), anyString(), anyString(), any(), any(), any())).thenReturn(6);
 
         service.analyzeProject("p1", "p1", "/tmp/p1");
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<EdgeData>> edgesCaptor = ArgumentCaptor.forClass(List.class);
-        verify(graphRepository).upsertAnalysis(eq("p1"), eq("p1"), eq("/tmp/p1"), any(), edgesCaptor.capture());
+        verify(graphRepository).upsertAnalysis(eq("p1"), eq("p1"), eq("/tmp/p1"), any(), edgesCaptor.capture(), any());
         assertThat(edgesCaptor.getValue())
                 .anyMatch(edge -> "TRIGGERS".equals(edge.type())
                         && Boolean.TRUE.equals(edge.properties().get("inferred")))

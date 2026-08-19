@@ -174,19 +174,37 @@ public class Neo4jGraphRepository implements GraphRepository {
     @Override
     public int upsertAnalysis(String projectId, String name, String path,
             List<NodeData> nodes, List<EdgeData> edges) {
+        return upsertAnalysis(projectId, name, path, nodes, edges, WriteProgress.NOOP);
+    }
+
+    /**
+     * B-M11 single-transaction write with per-batch sub-progress. The driver runs the UNWIND
+     * batches sequentially inside the transaction, so reporting after each batch is truthful
+     * and does not weaken atomicity. On transaction retry the callbacks replay from step 0 —
+     * callers are expected to clamp monotonically.
+     */
+    @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges, WriteProgress progress) {
+        WriteProgress listener = progress != null ? progress : WriteProgress.NOOP;
         Map<String, List<Map<String, Object>>> nodesByLabel =
                 nodes == null ? Map.of() : groupNodesByLabel(nodes);
         Map<String, List<Map<String, Object>>> edgesByType =
                 edges == null ? Map.of() : groupEdgesByType(edges);
+        int totalSteps = 1 + nodesByLabel.size() + edgesByType.size();
+        int[] stepsDone = {0};
         try (Session session = neo4jDriver.session()) {
             return session.executeWrite(tx -> {
                 runProjectUpsert(tx::run, projectId, name, path);
+                listener.onStep(++stepsDone[0], totalSteps);
                 for (Map.Entry<String, List<Map<String, Object>>> group : nodesByLabel.entrySet()) {
                     runNodeGroupUpsert(tx::run, projectId, group);
+                    listener.onStep(++stepsDone[0], totalSteps);
                 }
                 int persisted = 0;
                 for (Map.Entry<String, List<Map<String, Object>>> group : edgesByType.entrySet()) {
                     persisted += runEdgeGroupUpsert(tx::run, projectId, group);
+                    listener.onStep(++stepsDone[0], totalSteps);
                 }
                 return persisted;
             });

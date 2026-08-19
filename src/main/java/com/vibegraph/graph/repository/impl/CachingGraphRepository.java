@@ -133,6 +133,14 @@ public class CachingGraphRepository implements GraphRepository {
     }
 
     @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges, WriteProgress progress) {
+        int persisted = delegate.upsertAnalysis(projectId, name, path, nodes, edges, progress);
+        invalidate(projectId);
+        return persisted;
+    }
+
+    @Override
     public void deleteProject(String projectId) {
         delegate.deleteProject(projectId);
         invalidate(projectId);

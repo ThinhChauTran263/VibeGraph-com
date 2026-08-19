@@ -3,20 +3,13 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSigma } from '../useSigma'
-import {
-  FA2_GRAVITY,
-  FA2_SCALING_RATIO,
-  SIGMA_LABEL_RENDERED_SIZE_THRESHOLD,
-  SIGMA_NODE_GROW_ZOOM,
-  SIGMA_NODE_ZOOM_SIZE_POWER,
-} from '@/lib/runtimeConfig'
+import { SIGMA_LABEL_RENDERED_SIZE_THRESHOLD } from '@/lib/runtimeConfig'
 
 interface MockSigmaInstance {
   settings: Record<string, unknown>
 }
 
 interface MockLayoutInstance {
-  params: Record<string, unknown>
   start: ReturnType<typeof vi.fn>
   kill: ReturnType<typeof vi.fn>
 }
@@ -27,7 +20,16 @@ interface HarnessVm {
 
 const sigmaState = vi.hoisted(() => ({ instances: [] as MockSigmaInstance[] }))
 const layoutState = vi.hoisted(() => ({ instances: [] as MockLayoutInstance[] }))
-const syncLayoutState = vi.hoisted(() => ({ assign: vi.fn(), inferSettings: vi.fn() }))
+
+// jsdom has no Worker for the d3 path; the d3 worker protocol itself is
+// covered by layoutClient.spec — here we stub the engine factory.
+vi.mock('@/lib/layout/layoutClient', () => ({
+  createLayoutEngine: vi.fn(() => {
+    const handle: MockLayoutInstance = { start: vi.fn(), kill: vi.fn() }
+    layoutState.instances.push(handle)
+    return handle
+  }),
+}))
 
 vi.mock('sigma', () => {
   class MockSigma {
@@ -78,27 +80,6 @@ vi.mock('sigma', () => {
   }
 
   return { default: MockSigma }
-})
-
-vi.mock('graphology-layout-forceatlas2', () => ({ default: syncLayoutState }))
-
-vi.mock('graphology-layout-forceatlas2/worker', () => {
-  class MockLayout {
-    graph: Graph
-    params: Record<string, unknown>
-    start = vi.fn()
-    stop = vi.fn()
-    kill = vi.fn()
-    isRunning = vi.fn(() => true)
-
-    constructor(graph: Graph, params: Record<string, unknown>) {
-      this.graph = graph
-      this.params = params
-      layoutState.instances.push(this as MockLayoutInstance)
-    }
-  }
-
-  return { default: MockLayout }
 })
 
 vi.mock('@/lib/ghostLayer', () => ({
@@ -159,50 +140,37 @@ describe('useSigma', () => {
   beforeEach(() => {
     sigmaState.instances.length = 0
     layoutState.instances.length = 0
-    syncLayoutState.assign.mockClear()
-    syncLayoutState.inferSettings.mockClear()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('runs layout in the worker without soft-band y post-processing and clears old graph state on dispose', () => {
+  it('starts the d3 layout engine once and clears old graph state on dispose', () => {
     const wrapper = mount(Harness)
     const graph = createGraph()
     const clearSpy = vi.spyOn(graph, 'clear')
 
     ;(wrapper.vm as unknown as HarnessVm).init(graph)
 
-    expect(syncLayoutState.assign).not.toHaveBeenCalled()
     expect(layoutState.instances).toHaveLength(1)
     expect(layoutState.instances[0]!.start).toHaveBeenCalledTimes(1)
-    expect(layoutState.instances[0]!.params).toMatchObject({
-      settings: expect.objectContaining({
-        gravity: FA2_GRAVITY,
-        scalingRatio: FA2_SCALING_RATIO,
-        linLogMode: false,
-      }),
-    })
 
     const sigma = sigmaState.instances[0]!
     expect(sigma.settings.hideEdgesOnMove).toBe(false)
     expect(sigma.settings.hideLabelsOnMove).toBe(false)
     expect(sigma.settings.labelRenderedSizeThreshold).toBe(SIGMA_LABEL_RENDERED_SIZE_THRESHOLD)
     expect(sigma.settings.defaultEdgeColor).toBe('#475569')
-    expect(sigma.settings.itemSizesReference).toBe('screen')
+    // d3 engine contract: node sizes are graph-units rendered through Sigma's
+    // graph-space reference (update/graph/qwen/02-ARCHITECTURE.md §5).
+    expect(sigma.settings.itemSizesReference).toBe('positions')
     expect(typeof sigma.settings.zoomToSizeRatioFunction).toBe('function')
     const zoomToSizeRatio = sigma.settings.zoomToSizeRatioFunction as (ratio: number) => number
+    // f(r) = r — linear growth keeps node/spacing ratio zoom-invariant.
     expect(zoomToSizeRatio(1)).toBeCloseTo(1)
-    const steadyZoom = (1 + SIGMA_NODE_GROW_ZOOM) / 2
-    expect(zoomToSizeRatio(1 / steadyZoom)).toBeCloseTo(1)
-    expect(zoomToSizeRatio(1 / SIGMA_NODE_GROW_ZOOM)).toBeCloseTo(1)
-
-    const deepZoom = SIGMA_NODE_GROW_ZOOM * 4
-    const renderedDeepZoomScale = 1 / zoomToSizeRatio(1 / deepZoom)
-    expect(renderedDeepZoomScale).toBeCloseTo(4 ** SIGMA_NODE_ZOOM_SIZE_POWER)
-    expect(zoomToSizeRatio(4)).toBeCloseTo(4 ** SIGMA_NODE_ZOOM_SIZE_POWER)
-    expect(layoutState.instances[0]!.params).not.toHaveProperty('outputReducer')
+    expect(zoomToSizeRatio(0.5)).toBeCloseTo(0.5)
+    expect(zoomToSizeRatio(4)).toBeCloseTo(4)
+    // The worker writes positions on 'done'; init must not move seeded nodes.
     expect(graph.getNodeAttribute('service', 'x')).toBe(100)
     expect(graph.getNodeAttribute('service', 'y')).toBe(100)
     expect(graph.getNodeAttribute('domain', 'x')).toBe(100)
