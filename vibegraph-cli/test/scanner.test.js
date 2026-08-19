@@ -30,8 +30,8 @@ test("scanner returns only POSIX relative paths (no absolute paths in payload)",
   try {
     await seed(dir, {
       "src/main/java/com/example/App.java": "class App {}",
-      "src/lib/util.ts": "export const x = 1;",
-      "README.md": "# hi",
+      "src/main/java/com/example/util/Helper.java": "class Helper {}",
+      "Root.java": "class Root {}",
     });
     const rules = await loadIgnoreRules(dir);
     const scan = await scanDirectory(dir, rules);
@@ -55,10 +55,36 @@ test("scanner returns only POSIX relative paths (no absolute paths in payload)",
     }
     const paths = scan.files.map((f) => f.relativePath).sort();
     assert.deepEqual(paths, [
-      "README.md",
-      "src/lib/util.ts",
+      "Root.java",
       "src/main/java/com/example/App.java",
+      "src/main/java/com/example/util/Helper.java",
     ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("scanner only includes .java files and skips everything else", async () => {
+  const dir = await makeTempDir();
+  try {
+    await seed(dir, {
+      "src/App.java": "class App {}",
+      "src/util.ts": "export const x = 1;",
+      "README.md": "# hi",
+      "pom.xml": "<project/>",
+      "data.json": "{}",
+    });
+    const rules = await loadIgnoreRules(dir);
+    const scan = await scanDirectory(dir, rules);
+
+    assert.deepEqual(scan.files.map((f) => f.relativePath), ["src/App.java"]);
+    for (const skippedPath of ["src/util.ts", "README.md", "pom.xml", "data.json"]) {
+      assert.equal(
+        scan.skipped.some((s) => s.relativePath === skippedPath && s.reason === "not Java source"),
+        true,
+        `${skippedPath} must be skipped as not Java source`,
+      );
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -89,10 +115,10 @@ test("scanner skips .env and private key files", async () => {
 test("scanner skips symlinks", async () => {
   const dir = await makeTempDir();
   try {
-    await seed(dir, { "target.txt": "real content" });
+    await seed(dir, { "Target.java": "class Target {}" });
     // symlinks require admin on Windows; skip the test if it can't be created
     try {
-      await symlink(path.join(dir, "target.txt"), path.join(dir, "link.txt"));
+      await symlink(path.join(dir, "Target.java"), path.join(dir, "Link.java"));
     } catch (err) {
       if (err.code === "EPERM" || err.code === "UNKNOWN") {
         console.log("skipping symlink test — symlinks not permitted here");
@@ -104,10 +130,10 @@ test("scanner skips symlinks", async () => {
     const scan = await scanDirectory(dir, rules);
 
     const paths = scan.files.map((f) => f.relativePath);
-    assert.equal(paths.includes("target.txt"), true);
-    assert.equal(paths.includes("link.txt"), false);
+    assert.equal(paths.includes("Target.java"), true);
+    assert.equal(paths.includes("Link.java"), false);
     assert.equal(
-      scan.skipped.some((s) => s.relativePath === "link.txt" && s.reason === "symlink"),
+      scan.skipped.some((s) => s.relativePath === "Link.java" && s.reason === "symlink"),
       true,
     );
   } finally {
@@ -118,7 +144,8 @@ test("scanner skips symlinks", async () => {
 test("scanner skips binary files", async () => {
   const dir = await makeTempDir();
   try {
-    const binPath = path.join(dir, "bin.class");
+    // A .java-named file with binary content must still be caught by the binary check.
+    const binPath = path.join(dir, "Blob.java");
     await writeFile(binPath, Buffer.from([1, 2, 0, 3, 4]));
     await seed(dir, { "src/App.java": "class App {}" });
 
@@ -126,10 +153,10 @@ test("scanner skips binary files", async () => {
     const scan = await scanDirectory(dir, rules);
 
     const paths = scan.files.map((f) => f.relativePath);
-    assert.equal(paths.includes("bin.class"), false);
+    assert.equal(paths.includes("Blob.java"), false);
     assert.equal(paths.includes("src/App.java"), true);
     assert.equal(
-      scan.skipped.some((s) => s.reason === "binary file"),
+      scan.skipped.some((s) => s.relativePath === "Blob.java" && s.reason === "binary file"),
       true,
     );
   } finally {
@@ -143,16 +170,16 @@ test("scanner skips files exceeding max size", async () => {
   try {
     process.env.VIBEGRAPH_MAX_FILE_SIZE = "100";
     await seed(dir, {
-      "small.txt": "hi",
-      "big.txt": "x".repeat(500),
+      "Small.java": "class Small {}",
+      "Big.java": "x".repeat(500),
     });
     const rules = await loadIgnoreRules(dir);
     const scan = await scanDirectory(dir, rules);
     const paths = scan.files.map((f) => f.relativePath);
-    assert.equal(paths.includes("small.txt"), true);
-    assert.equal(paths.includes("big.txt"), false);
+    assert.equal(paths.includes("Small.java"), true);
+    assert.equal(paths.includes("Big.java"), false);
     assert.equal(
-      scan.skipped.some((s) => s.relativePath === "big.txt"),
+      scan.skipped.some((s) => s.relativePath === "Big.java"),
       true,
     );
   } finally {
@@ -168,7 +195,7 @@ test("scanner enforces max-files cap and flags truncation", async () => {
   try {
     process.env.VIBEGRAPH_MAX_FILES = "3";
     const files = {};
-    for (let i = 0; i < 10; i++) files[`file${i}.txt`] = `content ${i}`;
+    for (let i = 0; i < 10; i++) files[`File${i}.java`] = `class File${i} {}`;
     await seed(dir, files);
 
     const rules = await loadIgnoreRules(dir);
