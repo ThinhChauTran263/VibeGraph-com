@@ -1,6 +1,6 @@
 /**
- * layoutClient spec — d3 engine path (worker protocol). The fa2 path is covered
- * by useSigma.spec (default engine). Worker is mocked; protocol asserted.
+ * layoutClient spec — d3 engine worker protocol. Worker is mocked; protocol
+ * asserted.
  */
 import Graph from 'graphology'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import { createLayoutEngine, type LayoutPosition } from '../layout/layoutClient'
 
 vi.mock('@/lib/runtimeConfig', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/runtimeConfig')>()
-  return { ...actual, LAYOUT_ENGINE: 'd3' as const, LAYOUT_MACRO: 'ngraph' as const }
+  return { ...actual, LAYOUT_MACRO: 'ngraph' as const }
 })
 
 interface MockWorkerInstance {

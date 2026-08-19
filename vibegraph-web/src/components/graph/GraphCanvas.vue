@@ -4,7 +4,7 @@
  * Renders force-directed graph with WebGL.
  *
  * Features:
- * - ForceAtlas2 layout (in Web Worker)
+ * - d3-force layout (in Web Worker)
  * - Click node, emit selected
  * - Loading + error states
  */
