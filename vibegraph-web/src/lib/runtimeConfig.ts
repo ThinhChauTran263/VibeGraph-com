@@ -245,9 +245,10 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
 //          in-sim, 300 ticks, pinned; graph-unit sizes via 'positions'.
 export const LAYOUT_ENGINE: 'd3' | 'fa2' =
   (ENV['VITE_LAYOUT_ENGINE'] ?? 'fa2').trim().toLowerCase() === 'd3' ? 'd3' : 'fa2'
-/** Macro slot for the d3 engine: 'ngraph' hybrid (default) or pure 'd3' (A/B). */
+/** Macro slot for the d3 engine: pure 'd3' (default — matches grapuco spread,
+ *  see update/graph/qwen/04-RESULTS.md) or 'ngraph' hybrid (A/B fallback). */
 export const LAYOUT_MACRO: 'd3' | 'ngraph' =
-  (ENV['VITE_LAYOUT_MACRO'] ?? 'ngraph').trim().toLowerCase() === 'd3' ? 'd3' : 'ngraph'
+  (ENV['VITE_LAYOUT_MACRO'] ?? 'd3').trim().toLowerCase() === 'ngraph' ? 'ngraph' : 'd3'
 
 // ── ForceAtlas2 layout ───────────────────────────────────────────────────────
 export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
