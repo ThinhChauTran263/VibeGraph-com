@@ -16,7 +16,8 @@ const ledgerError = ref('')
 interface UsageDisplay {
   usedMb?: number
   limitMb?: number
-  remainingMb?: number
+  usedBytes?: number
+  limitBytes?: number
   sourceStorageUsed?: number
   sourceStorageLimit?: number
   creditsUsed?: number
@@ -29,9 +30,10 @@ const usage = computed(
 )
 const usedMb = computed(() => usage.value?.usedMb ?? usage.value?.sourceStorageUsed ?? 0)
 const limitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
-const remainingMb = computed(
-  () => usage.value?.remainingMb ?? Math.max(limitMb.value - usedMb.value, 0),
-)
+const BYTES_PER_MB = 1024 * 1024
+// Prefer the exact byte counters; fall back to the rounded MB fields for older backends.
+const usedBytes = computed(() => usage.value?.usedBytes ?? usedMb.value * BYTES_PER_MB)
+const limitBytes = computed(() => usage.value?.limitBytes ?? limitMb.value * BYTES_PER_MB)
 const creditBalanceLabel = computed(() => {
   if (typeof usage.value?.creditsRemaining === 'number') {
     return `${usage.value.creditsRemaining} ${t('user.usage.credits')}`
@@ -154,9 +156,8 @@ function formatDate(value: string | null): string {
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
           <h3>{{ t('user.usage.sourceStorage') }}</h3>
-          <span>{{ t('user.usage.remaining', { count: remainingMb }) }}</span>
         </div>
-        <QuotaMeter :used="usedMb" :total="limitMb" unit="MB" />
+        <QuotaMeter :used-bytes="usedBytes" :total-bytes="limitBytes" />
       </section>
 
       <section class="usage-card usage-card--wide">
@@ -250,8 +251,7 @@ function formatDate(value: string | null): string {
 }
 
 .usage-card__label,
-.usage-card__meta,
-.section-heading span {
+.usage-card__meta {
   color: var(--vg-text-muted);
   font-size: var(--vg-text-sm);
 }

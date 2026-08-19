@@ -28,6 +28,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   imported: [project: Project]
+  /** User dismissed the dialog; in-flight imports keep running in background. */
+  backgrounded: []
 }>()
 
 interface MethodTab {
@@ -150,8 +152,15 @@ const ICON_NAMES: Record<Method, string> = {
           :async="true"
           embedded
           @imported="onImported"
+          @backgrounded="emit('backgrounded')"
         />
-        <GitHubImportForm v-else key="github" embedded @imported="onImported" />
+        <GitHubImportForm
+          v-else
+          key="github"
+          embedded
+          @imported="onImported"
+          @backgrounded="emit('backgrounded')"
+        />
       </Transition>
     </div>
   </section>

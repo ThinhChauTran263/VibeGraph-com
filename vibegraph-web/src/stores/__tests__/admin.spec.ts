@@ -125,6 +125,44 @@ describe('Admin Store', () => {
     vi.unstubAllGlobals()
   })
 
+  it('applies live online-user snapshots to the loaded overview', () => {
+    const store = useAdminStore()
+    store.overview = {
+      totalUsers: 10,
+      onlineUsers: 2,
+      totalProjects: 3,
+      totalReports: 0,
+      openReports: 0,
+      blockedUsers: 0,
+      timestamp: null,
+      onlineUserHistory: [{ label: '2026-07-17T13:04:00Z', value: 2, period: 'minute' }],
+    }
+
+    store.applyOnlineUsersEvent({
+      onlineUsers: 5,
+      capturedAt: '2026-07-17T13:05:30Z',
+      samples: [{ label: '2026-07-17T13:05:00Z', value: 5, period: 'minute' }],
+    })
+
+    expect(store.overview?.onlineUsers).toBe(5)
+    expect(store.overview?.onlineUserHistory).toEqual([
+      { label: '2026-07-17T13:05:00Z', value: 5, period: 'minute' },
+    ])
+    expect(store.overview?.totalUsers).toBe(10)
+  })
+
+  it('ignores live snapshots until the overview has loaded', () => {
+    const store = useAdminStore()
+
+    store.applyOnlineUsersEvent({
+      onlineUsers: 5,
+      capturedAt: '2026-07-17T13:05:30Z',
+      samples: [],
+    })
+
+    expect(store.overview).toBeNull()
+  })
+
   it('initializes with default state', () => {
     const store = useAdminStore()
     expect(store.overview).toBeNull()

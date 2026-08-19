@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import { useAdminRealtime } from '@/composables/useAdminRealtime'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
 import {
   MINUTE_MS,
@@ -19,7 +20,6 @@ import {
   sumPoints,
   type ChartId,
   type ChartMode,
-  type ChartTone,
   type DashboardChart,
   type OnlineSample,
   type Period,
@@ -52,8 +52,14 @@ const chartUpdateOptions = {
 }
 
 let pollInterval: ReturnType<typeof setInterval> | undefined
+let lastOverviewLoadedAt = 0
 const ONLINE_DISPLAY_BUCKETS = 10
 const POLL_INTERVAL_MS = 30 * 1000
+/** While the realtime channel is live, the full overview only needs a slow background refresh. */
+const OVERVIEW_BACKGROUND_REFRESH_MS = 5 * 60 * 1000
+
+const realtime = useAdminRealtime()
+const realtimeConnected = computed(() => realtime.status.value === 'connected')
 
 const overview = computed(() => adminStore.overview)
 const onlineSamples = computed<OnlineSample[]>(() => {
@@ -207,6 +213,7 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
   if (document.visibilityState === 'visible') {
     await loadOverview()
+    realtime.start()
     startPolling()
   } else {
     loading.value = false
@@ -215,27 +222,38 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopPolling()
+  realtime.stop()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 function startPolling(): void {
   stopPolling()
   pollInterval = setInterval(() => {
-    if (document.visibilityState === 'visible') void loadOverview()
+    if (document.visibilityState !== 'visible') return
+    // Pushed snapshots keep the online chart live while connected; the heavy
+    // overview then only needs a slow background refresh for the other cards.
+    if (
+      realtimeConnected.value &&
+      Date.now() - lastOverviewLoadedAt < OVERVIEW_BACKGROUND_REFRESH_MS
+    ) {
+      return
+    }
+    void loadOverview()
   }, POLL_INTERVAL_MS)
 }
 
 function stopPolling(): void {
-  if (!pollInterval) return
-  clearInterval(pollInterval)
+  if (pollInterval) clearInterval(pollInterval)
   pollInterval = undefined
 }
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') {
     stopPolling()
+    realtime.stop()
     return
   }
+  realtime.start()
   void loadOverview()
   startPolling()
 }
@@ -243,6 +261,7 @@ function handleVisibilityChange(): void {
 async function loadOverview(): Promise<void> {
   try {
     await adminStore.fetchOverview()
+    lastOverviewLoadedAt = Date.now()
     errorMsg.value = ''
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : t('admin.overview.errors.loadFailed')
@@ -751,7 +770,9 @@ function subjectKey(item: AdminStorageSubject): string {
         {{
           errorMsg
             ? t('admin.overview.polling.unavailable')
-            : t('admin.overview.polling.everySeconds', { seconds: 30 })
+            : realtimeConnected
+              ? t('admin.overview.polling.live')
+              : t('admin.overview.polling.everySeconds', { seconds: 30 })
         }}
       </div>
     </div>

@@ -132,6 +132,8 @@ export interface Project {
   status: string
   /** Analysis progress 0-100. Present on async import (202) and status events. */
   progress?: number
+  /** Bytes of stored .java source counted against the owner's storage quota. */
+  storedBytes?: number
 }
 
 /** Terminal + in-flight statuses pushed over the project-status WebSocket topic. */
@@ -434,44 +436,6 @@ export const importApi = {
       name: name?.trim() || undefined,
     })
   },
-
-  /**
-   * Import an existing directory on the backend host in place (no upload). The backend
-   * analyzes it and starts a file watcher so later edits stream realtime graph updates.
-   */
-  importLocal(path: string, name?: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-local', {
-      path,
-      name: name?.trim() || undefined,
-    })
-  },
-}
-
-/** A sub-directory entry returned by the server-side directory browser. */
-export interface DirectoryEntry {
-  name: string
-  path: string
-  /** Best-effort hint that the directory holds `.java` sources. */
-  containsJava: boolean
-}
-
-/** Result of browsing a directory on the backend host. */
-export interface DirectoryListing {
-  path: string
-  /** Parent directory path, or `null` at the allowed base (cannot navigate above it). */
-  parent: string | null
-  entries: DirectoryEntry[]
-}
-
-/**
- * Server-side directory picker. Browsing is confined to a base directory on the backend
- * (the configured allowed-root, else the host user's home), so it never exposes the whole disk.
- */
-export const browseApi = {
-  browse(path?: string): Promise<DirectoryListing> {
-    const query = path ? `?${new URLSearchParams({ path })}` : ''
-    return api.get<DirectoryListing>(`/api/projects/browse${query}`)
-  },
 }
 
 // Graph endpoints
@@ -643,6 +607,8 @@ import type {
   AdminPlanRequest,
   AdminPricingRule,
   AdminPricingRuleRequest,
+  AdminImportPricing,
+  AdminImportPricingTier,
   AdminUserResponse,
   AdminReport,
   AdminFeatureFlag,
@@ -789,6 +755,18 @@ export const adminApi = {
   },
   deletePricingRule(operationCode: string): Promise<void> {
     return api.delete(`/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`)
+  },
+  listImportPricing(): Promise<AdminImportPricing[]> {
+    return api.get<AdminImportPricing[]>('/api/admin/import-pricing')
+  },
+  updateImportPricing(
+    operationCode: string,
+    tiers: AdminImportPricingTier[],
+  ): Promise<AdminImportPricing> {
+    return api.put<AdminImportPricing>(
+      `/api/admin/import-pricing/${encodeURIComponent(operationCode)}`,
+      { tiers },
+    )
   },
   listUsers(
     params: { search?: string; status?: string; plan?: string; page?: number; size?: number } = {},

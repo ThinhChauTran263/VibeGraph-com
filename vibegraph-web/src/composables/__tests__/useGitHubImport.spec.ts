@@ -313,6 +313,73 @@ describe('useGitHubImport', () => {
     expect(composable.errorMessage.value).toBe(retryMessage)
   })
 
+  it('names the real reason when a non-Java repository has no .java files', async () => {
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(400, 'Bad Request', 'Archive contains no .java files', 'ARCHIVE_EMPTY_ARCHIVE'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/js-project')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(
+      'This repository contains no .java files. VibeGraph currently analyzes Java projects only.',
+    )
+  })
+
+  it('surfaces curated 422 reasons verbatim instead of the generic fallback', async () => {
+    const quotaMessage =
+      "GitHub repository is larger than the server's maximum import size (100MB)"
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', quotaMessage, 'GITHUB_IMPORT_ERROR'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/huge-repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(quotaMessage)
+  })
+
+  it('surfaces the curated SERVICE_BUSY reason instead of the generic fallback', async () => {
+    const busyMessage = 'Server is busy analyzing other projects. Please retry shortly.'
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(503, 'Service Unavailable', busyMessage, 'SERVICE_BUSY'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(busyMessage)
+  })
+
+  it('reports an accurate message when background analysis fails', async () => {
+    vi.useFakeTimers()
+    const analyzingProject = fakeProject({ id: 'gh-fail', status: 'ANALYZING' })
+    const failedProject = fakeProject({ id: 'gh-fail', status: 'FAILED' })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockResolvedValueOnce(failedProject)
+    const { ws } = makeFakeWs({ connectRejects: true })
+    const composable = useGitHubImport({ ws })
+
+    try {
+      const resultPromise = composable.importGithub('https://github.com/owner/broken')
+      await vi.advanceTimersByTimeAsync(1_000)
+      const result = await resultPromise
+
+      expect(result).toBeNull()
+      expect(composable.status.value).toBe('error')
+      expect(composable.errorMessage.value).toMatch(/analysis failed/i)
+      expect(composable.errorMessage.value).not.toMatch(/verify the repository is public/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses a generic message for unexpected API errors', async () => {
     importGithubMock.mockRejectedValueOnce(
       new ApiError(500, 'Internal Server Error', 'Stack trace: /srv/app/importer'),

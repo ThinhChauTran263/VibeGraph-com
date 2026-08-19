@@ -398,7 +398,9 @@
       "githubDescription": "Nhập repository GitHub public bằng URL HTTPS.",
       "noImportMethod": "Hiện chưa có phương thức nhập nào khả dụng.",
       "noImportMethodDescription": "Hiện chưa có phương thức nhập nào khả dụng. Việc nhập bị chặn cho đến khi hợp đồng capability của tài khoản báo có phương thức được bật.",
-      "importMethod": "Phương thức nhập"
+      "importMethod": "Phương thức nhập",
+      "analyzing": "Đang phân tích",
+      "analyzingDefault": "Đang parse, phân giải phụ thuộc và dựng graph..."
     },
     "trash": {
       "title": "Thùng rác",
@@ -427,12 +429,13 @@
       "analyzing": "Đang phân tích kho dự án...",
       "importing": "Đang nhập...",
       "githubTitle": "Thêm dự án từ GitHub",
-      "githubHint": "Nhập repository public bằng URL HTTPS. Ví dụ:",
+      "githubHint": "Nhập repository public bằng URL HTTPS. Hệ thống chỉ lưu và tính dung lượng các file mã nguồn .java đã giải nén. Ví dụ:",
       "githubUrl": "URL repository GitHub",
       "githubPlaceholder": "https://github.com/owner/repo",
       "importGithub": "Nhập repo GitHub",
       "success": "Đã nhập xong {name} (trạng thái: {status}).",
       "reset": "Đặt lại",
+      "background": "Đóng & tiếp tục chạy nền",
       "cli": {
         "title": "Tạo kho dự án đồng bộ bằng CLI",
         "hint": "VibeGraph tạo workspace trống trên server và API key gắn với dự án. Chạy các lệnh này trong terminal của dự án để đồng bộ code mà không lộ đường dẫn ổ đĩa local.",
@@ -461,12 +464,13 @@
       "uploading": "Đang tải lên...",
       "uploadArchive": "Tải file nén lên",
       "archiveTitle": "Thêm dự án từ file nén",
-      "archiveHint": "Tải lên file nén dự án Java. Hỗ trợ: .zip, .tar, .tar.gz, .tgz. Áp dụng dung lượng còn lại của tài khoản.",
+      "archiveHint": "Tải lên file nén dự án Java. Hỗ trợ: .zip, .tar, .tar.gz, .tgz. Hệ thống chỉ lưu và tính dung lượng các file mã nguồn .java đã giải nén; thư viện, asset và .git sẽ bị loại bỏ.",
       "projectName": "Tên dự án",
       "archiveFile": "File nén",
       "selectedFile": "Đã chọn:",
       "noFile": "Chưa chọn file.",
       "successFor": "Đã nhập",
+      "successStored": "Đã trích xuất {size} mã nguồn Java vào dự án của bạn.",
       "directoryFallback": "Không thể liệt kê thư mục.",
       "chooseFolder": "Chọn thư mục dự án",
       "up": "Lên trên",
@@ -546,7 +550,6 @@
       "credits": "credit",
       "usedCycle": "Đã dùng {used} / {limit} credit trong chu kỳ này",
       "sourceStorage": "Hạn mức lưu trữ mã nguồn",
-      "remaining": "Còn {count} MB",
       "ledger": "Nhật ký credit gần đây",
       "activityUnavailable": "Không thể tải hoạt động credit",
       "retryLedger": "Tải lại nhật ký",
@@ -786,10 +789,6 @@
         "mcpTools": "MCP toàn cục và công cụ con"
       },
       "controls": {
-        "localImport": {
-          "name": "Import thư mục cục bộ",
-          "note": "Tạm dừng import thư mục cục bộ nếu luồng import dự án gặp sự cố."
-        },
         "archiveImport": {
           "name": "Import file nén",
           "note": "Tắt khi xử lý file nén hoặc lưu trữ bị suy giảm."
@@ -1026,6 +1025,7 @@
       },
       "polling": {
         "everySeconds": "Làm mới mỗi {seconds} giây",
+        "live": "Đã kết nối cập nhật trực tiếp",
         "unavailable": "Không thể làm mới trực tiếp"
       },
       "subtitle": "Theo dõi người dùng, mức sử dụng, lưu trữ và tín hiệu bảo mật.",
@@ -1446,6 +1446,39 @@
         "userIdentities": "danh tính người dùng"
       }
     },
+    "importPricing": {
+      "title": "Giá Import",
+      "hint": "Chi phí credit cố định theo kích thước dự án, cấu hình riêng cho từng phương thức import. Dự án được tự động phân loại theo số file .java.",
+      "loading": "Đang tải giá import…",
+      "unlimited": "Không giới hạn (phân khúc cao nhất)",
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu. Áp dụng từ lần import kế tiếp.",
+      "operations": {
+        "IMPORT_ARCHIVE": "Upload archive (ZIP/TAR)",
+        "IMPORT_GITHUB": "Import từ GitHub",
+        "CLI_PUSH": "CLI push"
+      },
+      "tiers": {
+        "SMALL": "Nhỏ",
+        "MEDIUM": "Vừa",
+        "LARGE": "Lớn",
+        "XLARGE": "Siêu lớn"
+      },
+      "columns": {
+        "tier": "Phân khúc",
+        "maxFiles": "Đến số file",
+        "credits": "Credit"
+      },
+      "errors": {
+        "load": "Không tải được giá import.",
+        "save": "Không lưu được giá import.",
+        "negativeCredits": "Credit không được âm.",
+        "invalidBound": "Ngưỡng file phải là số dương.",
+        "boundsAscending": "Ngưỡng file phải tăng dần.",
+        "unlimitedMustBeLast": "Chỉ phân khúc cuối mới được để không giới hạn."
+      }
+    },
     "plansCredits": {
       "title": "Gói dịch vụ & credit",
       "actions": {
@@ -1712,5 +1745,21 @@
       "userVisibleReasonPlaceholder": "Giải thích lý do thay đổi quyền truy cập",
       "working": "Đang áp dụng..."
     }
+  },
+  "toasts": {
+    "region": "Thông báo",
+    "dismiss": "Đóng thông báo",
+    "viewProject": "Xem project",
+    "importReady": "{name} đã sẵn sàng — khám phá graph ngay.",
+    "importFailed": "Import thất bại với {name}."
+  },
+  "graphView": {
+    "loading": "Đang tải graph...",
+    "finalizing": "Đang hoàn thiện bố cục graph...",
+    "failed": "Tải graph thất bại",
+    "retry": "Thử lại",
+    "analyzingTitle": "Đang lập chỉ mục repository…",
+    "analyzingHint": "Bạn có thể đi nơi khác — chúng tôi sẽ báo khi graph sẵn sàng.",
+    "analyzingFailed": "Phân tích thất bại trên server."
   }
 }

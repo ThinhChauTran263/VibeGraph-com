@@ -24,7 +24,7 @@ describe('featureAvailability', () => {
   it('fails closed for every import method when the capability contract is absent', async () => {
     apiMocks.get.mockResolvedValueOnce({ id: 'user-1' })
     const { refreshFeatureAvailability, useFeatureAvailability } = await loadFeatureAvailability()
-    const local = useFeatureAvailability('import.local')
+    const local = useFeatureAvailability('cli.push')
     const archive = useFeatureAvailability('import.archive')
     const github = useFeatureAvailability('import.github')
 
@@ -40,12 +40,12 @@ describe('featureAvailability', () => {
   it('uses explicit capability values without inventing missing features', async () => {
     apiMocks.get.mockResolvedValueOnce({
       features: {
-        'import.local': { enabled: true },
+        'cli.push': { enabled: true },
         'import.archive': { enabled: false, reason: 'Archive imports are paused.' },
       },
     })
     const { refreshFeatureAvailability, useFeatureAvailability } = await loadFeatureAvailability()
-    const local = useFeatureAvailability('import.local')
+    const local = useFeatureAvailability('cli.push')
     const archive = useFeatureAvailability('import.archive')
     const github = useFeatureAvailability('import.github')
 

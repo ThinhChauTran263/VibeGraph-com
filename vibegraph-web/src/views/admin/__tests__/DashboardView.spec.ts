@@ -27,6 +27,34 @@ vi.mock('vue-echarts', () => ({ default: vChartMock }))
 // namespace for internal flags (__isTeleport etc. throw when undefined).
 vi.mock('../dashboard-echarts', () => ({ __esModule: true, default: vChartMock }))
 
+// The dashboard opens a STOMP channel for live online-user snapshots. Mock the
+// transport so the view test never touches SockJS; a hoisted controller lets
+// each test flip the connection status and inspect the subscription. The status
+// ref is created inside the (async) mock factory so the view's computed sees a
+// genuinely reactive value.
+const wsController = vi.hoisted(() => ({
+  status: null as unknown as { value: 'disconnected' | 'connecting' | 'connected' | 'error' },
+  captured: null as null | { topic: string; cb: (payload: unknown) => void },
+}))
+
+vi.mock('@/composables/useWebSocket', async () => {
+  const { ref } = await import('vue')
+  const status = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
+  wsController.status = status
+  return {
+    useWebSocket: () => ({
+      status,
+      error: { value: null },
+      connect: () => Promise.resolve(),
+      disconnect: () => Promise.resolve(),
+      subscribe: (topic: string, cb: (payload: unknown) => void) => {
+        wsController.captured = { topic, cb }
+        return { active: { value: true }, unsubscribe: () => {} }
+      },
+    }),
+  }
+})
+
 describe('Admin DashboardView', () => {
   beforeEach(() => {
     sessionStorage.clear()
@@ -34,6 +62,8 @@ describe('Admin DashboardView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 6, 17, 13, 5, 30))
     setVisibility('visible')
+    wsController.status.value = 'disconnected'
+    wsController.captured = null
   })
 
   afterEach(() => {
@@ -181,6 +211,58 @@ describe('Admin DashboardView', () => {
 
     await vi.advanceTimersByTimeAsync(30_000)
     expect(adminStore.fetchOverview).toHaveBeenCalledTimes(3)
+    wrapper.unmount()
+  })
+
+  it('skips the 30s overview poll while the realtime channel is connected', async () => {
+    wsController.status.value = 'connected'
+    const wrapper = mount(DashboardView, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: { admin: { overview: createOverview() } },
+          }),
+          i18n,
+        ],
+      },
+    })
+    const adminStore = useAdminStore()
+
+    await flushPromises()
+    expect(wsController.captured?.topic).toBe('/topic/admin/online-users')
+    expect(adminStore.fetchOverview).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(adminStore.fetchOverview).toHaveBeenCalledTimes(1)
+
+    // After the five-minute background window the full overview refreshes again.
+    await vi.advanceTimersByTimeAsync(4 * 60_000 + 30_000)
+    expect(adminStore.fetchOverview).toHaveBeenCalledTimes(2)
+
+    // Once the channel drops, the 30s polling fallback resumes.
+    wsController.status.value = 'disconnected'
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(adminStore.fetchOverview).toHaveBeenCalledTimes(3)
+    wrapper.unmount()
+  })
+
+  it('shows live copy while the realtime channel is connected', async () => {
+    wsController.status.value = 'connected'
+    const wrapper = mount(DashboardView, {
+      global: {
+        plugins: [
+          createTestingPinia({
+            createSpy: vi.fn,
+            initialState: { admin: { overview: createOverview() } },
+          }),
+          i18n,
+        ],
+      },
+    })
+
+    await settleCharts()
+    expect(wrapper.text()).toContain('Live updates connected')
     wrapper.unmount()
   })
 })

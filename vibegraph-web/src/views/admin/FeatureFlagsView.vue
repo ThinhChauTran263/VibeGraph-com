@@ -34,17 +34,6 @@ const templates: TemplateFlag[] = [
   {
     group: 'Import methods',
     groupLabelKey: 'importMethods',
-    key: 'import.local',
-    scope: 'GLOBAL',
-    displayName: 'Local import',
-    displayNameKey: 'localImport',
-    enabled: true,
-    description: 'Allow importing projects from server-local paths.',
-    noteKey: 'localImport',
-  },
-  {
-    group: 'Import methods',
-    groupLabelKey: 'importMethods',
     key: 'import.archive',
     scope: 'GLOBAL',
     displayName: 'Archive import',

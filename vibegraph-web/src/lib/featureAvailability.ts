@@ -3,7 +3,6 @@ import { api } from '@/lib/api'
 import type { FeatureCapability } from '@/types/api'
 
 export type FeatureKey =
-  | 'import.local'
   | 'import.archive'
   | 'import.github'
   | 'cli.push'

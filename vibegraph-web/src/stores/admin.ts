@@ -2,10 +2,13 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type {
   AdminOverview,
+  AdminOnlineUsersEvent,
   AdminPlan,
   AdminPlanRequest,
   AdminPricingRule,
   AdminPricingRuleRequest,
+  AdminImportPricing,
+  AdminImportPricingTier,
   AdminUserResponse,
   ApiKey,
   AdminReport,
@@ -39,6 +42,7 @@ export const useAdminStore = defineStore('admin', () => {
   const overview = ref<AdminOverview | null>(null)
   const plans = ref<AdminPlan[]>([])
   const pricingRules = ref<AdminPricingRule[]>([])
+  const importPricing = ref<AdminImportPricing[]>([])
   const users = ref<AdminUserResponse[]>([])
   const usersPagination = ref<Omit<PagedResponse<unknown>, 'content'>>({
     totalElements: 0,
@@ -93,6 +97,16 @@ export const useAdminStore = defineStore('admin', () => {
     overview.value = await adminApi.getOverview()
   }
 
+  /** Applies a live online-users snapshot pushed over the admin STOMP topic. */
+  function applyOnlineUsersEvent(event: AdminOnlineUsersEvent): void {
+    if (!overview.value) return
+    overview.value = {
+      ...overview.value,
+      onlineUsers: event.onlineUsers,
+      onlineUserHistory: event.samples,
+    }
+  }
+
   async function fetchPlans(): Promise<void> {
     plans.value = await adminApi.listPlans()
   }
@@ -138,6 +152,25 @@ export const useAdminStore = defineStore('admin', () => {
   async function deletePricingRule(operationCode: string): Promise<void> {
     await adminApi.deletePricingRule(operationCode)
     pricingRules.value = pricingRules.value.filter((rule) => rule.operationCode !== operationCode)
+  }
+
+  // ─── Import pricing tiers ────────────────────────────────────────────────
+
+  async function fetchImportPricing(): Promise<void> {
+    importPricing.value = await adminApi.listImportPricing()
+  }
+
+  async function saveImportPricing(
+    operationCode: string,
+    tiers: AdminImportPricingTier[],
+  ): Promise<void> {
+    const saved = await adminApi.updateImportPricing(operationCode, tiers)
+    const idx = importPricing.value.findIndex((p) => p.operationCode === operationCode)
+    if (idx >= 0) {
+      importPricing.value[idx] = saved
+    } else {
+      importPricing.value = [...importPricing.value, saved]
+    }
   }
 
   // ─── Users ────────────────────────────────────────────────────────────────────
@@ -703,6 +736,7 @@ export const useAdminStore = defineStore('admin', () => {
     overview,
     plans,
     pricingRules,
+    importPricing,
     users,
     usersPagination,
     reports,
@@ -725,12 +759,15 @@ export const useAdminStore = defineStore('admin', () => {
     error,
     // actions
     fetchOverview,
+    applyOnlineUsersEvent,
     fetchPlans,
     fetchPricingRules,
     savePlan,
     deletePlan,
     savePricingRule,
     deletePricingRule,
+    fetchImportPricing,
+    saveImportPricing,
     fetchUsers,
     getUserDetail,
     createUser,

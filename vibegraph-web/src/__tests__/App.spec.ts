@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 
 import App from '../App.vue'
+import i18n from '@/language'
 
 describe('App', () => {
   it('renders the router outlet (not the Vue starter page)', () => {
@@ -11,6 +13,7 @@ describe('App', () => {
     // (which pulls in vue-router devtools + localStorage in the test runtime).
     const wrapper = mount(App, {
       global: {
+        plugins: [i18n, createTestingPinia({ createSpy: vi.fn })],
         stubs: {
           RouterView: {
             template: '<div class="route-content">routed content</div>',

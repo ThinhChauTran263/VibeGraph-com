@@ -157,7 +157,15 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
           aria-label="Close node details"
           @click="onClose"
         >
-          ×
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path
+              d="M1.5 1.5l7 7M8.5 1.5l-7 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
         </button>
       </header>
 
@@ -312,10 +320,10 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 .node-detail-panel {
   width: 100%;
   border: 1px solid rgba(96, 165, 250, 0.25);
-  border-radius: 1rem;
-  padding: 1rem;
-  background: rgba(17, 24, 39, 0.94);
-  color: #e5e7eb;
+  border-radius: var(--vg-radius-lg);
+  padding: 0.875rem;
+  background: var(--vg-grad-surface);
+  color: var(--vg-text);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
 }
@@ -352,20 +360,38 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   overflow-wrap: anywhere;
 }
 
+/* Squared ghost icon button (not a floating circle) so the dismiss action
+   reads as part of the header row instead of an unrelated badge. */
 .node-detail-panel__close {
-  border: 1px solid #374151;
-  border-radius: 999px;
-  width: 2rem;
-  height: 2rem;
-  background: rgba(31, 41, 55, 0.85);
-  color: #d1d5db;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: transparent;
+  color: var(--vg-text-muted);
   cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.node-detail-panel__close:hover,
+.node-detail-panel__close:focus-visible {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(37, 99, 235, 0.18);
+  color: #f8fafc;
+  outline: none;
 }
 
 .node-detail-panel__meta,
 .node-detail-panel__properties,
 .node-detail-panel__connections {
-  margin-top: 0.75rem;
+  margin-top: 0.625rem;
 }
 
 .node-detail-panel__meta {
@@ -389,7 +415,7 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.875rem;
+  margin-top: 0.75rem;
   padding: 0.5rem 0.85rem;
   border: 1px solid rgba(96, 165, 250, 0.45);
   border-radius: 0.625rem;
@@ -420,7 +446,7 @@ const outgoingConnections = computed<NodeConnection[]>(() => {
 }
 
 .node-detail-panel__section {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
 }
 
 .node-detail-panel__properties {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 import { nextTick } from 'vue'
 import GitHubImportForm from '../GitHubImportForm.vue'
 import type { Project } from '@/lib/api'
@@ -32,7 +33,7 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
 }
 
 function mountForm() {
-  return mount(GitHubImportForm, { global: { plugins: [i18n] } })
+  return mount(GitHubImportForm, { global: { plugins: [i18n, createTestingPinia({ createSpy: vi.fn })] } })
 }
 
 function deferred<T>() {
