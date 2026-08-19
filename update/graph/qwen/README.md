@@ -19,6 +19,8 @@
 
 ## Trạng thái hiện tại của code
 
-- Worker `vibegraph-web/src/lib/layout/d3LayoutWorker.ts` **đã viết xong, chưa nối dây** (đúng recipe, có slot macro ngraph/d3).
-- Dependencies đã cài: `d3-force`, `@types/d3-force`, `ngraph.graph`, `ngraph.forcelayout`.
-- Chưa refactor useSigma/layoutClient; default vẫn là pipeline cũ.
+- **ĐÃ TRIỂN KHAI (P1–P3)**: engine `d3` là **default** cho mọi dự án (công tắc rollback
+  `VITE_LAYOUT_ENGINE=fa2`); macro default `d3` (`VITE_LAYOUT_MACRO=ngraph` để A/B).
+- Worker `src/lib/layout/d3LayoutWorker.ts` + `layoutClient.ts` đã nối dây; size graph-units
+  qua `itemSizesReference:'positions'`; fa2-mode đóng băng nguyên trạng.
+- Bằng chứng hình dạng + số liệu: [04-RESULTS.md](./04-RESULTS.md). Suite 579/579, vue-tsc clean.

@@ -239,12 +239,12 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
 })
 
 // ── Layout engine switch (update/graph/qwen/02-ARCHITECTURE.md) ────────────
-// 'fa2'  = legacy pipeline (FA2 + normalize/spread/density/settle/noverlap),
-//          FROZEN — rollback only, never tuned further.
-// 'd3'   = grapuco recipe: worker ngraph-macro (or pure d3) + d3 forceCollide
-//          in-sim, 300 ticks, pinned; graph-unit sizes via 'positions'.
+// 'd3' (default) = grapuco recipe: worker macro (d3|ngraph) + d3 forceCollide
+//   in-sim, 300 ticks, pinned; graph-unit sizes via 'positions'.
+// 'fa2' = legacy pipeline (FA2 + normalize/spread/density/settle/noverlap),
+//   FROZEN — rollback only via VITE_LAYOUT_ENGINE=fa2, never tuned further.
 export const LAYOUT_ENGINE: 'd3' | 'fa2' =
-  (ENV['VITE_LAYOUT_ENGINE'] ?? 'fa2').trim().toLowerCase() === 'd3' ? 'd3' : 'fa2'
+  (ENV['VITE_LAYOUT_ENGINE'] ?? 'd3').trim().toLowerCase() === 'fa2' ? 'fa2' : 'd3'
 /** Macro slot for the d3 engine: pure 'd3' (default — matches grapuco spread,
  *  see update/graph/qwen/04-RESULTS.md) or 'ngraph' hybrid (A/B fallback). */
 export const LAYOUT_MACRO: 'd3' | 'ngraph' =
