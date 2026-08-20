@@ -126,6 +126,7 @@ class AdminSecurityIT {
     @MockitoBean private CreditPricingRuleRepository pricingRuleRepository;
     @MockitoBean private CreditLedgerRepository creditLedgerRepository;
     @MockitoBean private ApiKeyRepository apiKeyRepository;
+    @MockitoBean private ImportPricingTierRepository importPricingTierRepository;
     @MockitoBean private FeatureFlagRepository featureFlagRepository;
     @MockitoBean private ProjectUsageRepository projectUsageRepository;
     @MockitoBean private jakarta.persistence.EntityManagerFactory entityManagerFactory;
