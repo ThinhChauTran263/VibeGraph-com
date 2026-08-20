@@ -278,7 +278,66 @@ class JwtAuthFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
         whenAuthenticated("blocked-token", userId, "blocked@test.local", null,
-                new AccountBlockedException("Account is blocked", "Policy review"), true);
+                new AccountBlockedException("Account is blocked", "Policy review"), false);
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNotNull(chain.getRequest());
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    @DisplayName("admin-blocked account keeps report access after its refresh sessions are revoked")
+    void doFilterInternal_blockedUserWithRevokedSession_allowsReports() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        MockHttpServletRequest request = requestWithToken("blocked-revoked-token");
+        request.setMethod("GET");
+        request.setRequestURI("/api/account/reports/" + UUID.randomUUID());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        whenAuthenticated("blocked-revoked-token", userId, "blocked@test.local", sessionId,
+                new AccountBlockedException("Account is blocked", "Policy review"), false);
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNotNull(chain.getRequest());
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    @DisplayName("deactivated account cannot reuse a revoked session for support routes")
+    void doFilterInternal_deactivatedUserWithRevokedSession_returnsUnauthorized() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        MockHttpServletRequest request = requestWithToken("deactivated-revoked-token");
+        request.setMethod("GET");
+        request.setRequestURI("/api/account/reports/" + UUID.randomUUID());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        whenAuthenticated("deactivated-revoked-token", userId, "deactivated@test.local", sessionId,
+                new AccountDeactivatedException("Account is deactivated", "Account closed"), false);
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNull(chain.getRequest());
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    @DisplayName("blocked account can establish the realtime transport; STOMP gates topics")
+    void doFilterInternal_blockedUser_allowsWebSocketHandshake() throws Exception {
+        UUID userId = UUID.randomUUID();
+        MockHttpServletRequest request = requestWithToken("blocked-token");
+        request.setMethod("GET");
+        request.setRequestURI("/ws/graph-updates/info");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        whenAuthenticated("blocked-token", userId, "blocked@test.local", null,
+                new AccountBlockedException("Account is blocked", "Policy review"), false);
 
         filter.doFilter(request, response, chain);
 

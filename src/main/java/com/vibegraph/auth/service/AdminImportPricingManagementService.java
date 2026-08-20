@@ -56,6 +56,7 @@ public class AdminImportPricingManagementService {
         validate(operationCode, request.tiers());
 
         tierRepository.deleteByOperationCode(operationCode);
+        tierRepository.flush(); // Force DELETES to execute before INSERTS to prevent unique constraint violation
         List<ImportPricingTier> saved = new ArrayList<>();
         int sortOrder = 10;
         for (AdminImportPricingUpdateRequest.Tier tier : request.tiers()) {

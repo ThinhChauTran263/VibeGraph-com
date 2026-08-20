@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminAuditLog } from '@/types/api'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const admin = useAdminStore()
@@ -28,6 +29,11 @@ const liveStatusLabel = computed(() => {
   if (admin.auditLiveStatus === 'reconnecting') return t('admin.audit.status.reconnecting')
   return t('admin.audit.status.livePaused')
 })
+const outcomeOptions = computed(() => [
+  { value: '', label: t('admin.audit.filters.allOutcomes') },
+  { value: 'SUCCESS', label: t('admin.audit.filters.success') },
+  { value: 'FAILURE', label: t('admin.audit.filters.failure') },
+])
 
 onMounted(async () => {
   await load()
@@ -106,7 +112,10 @@ function shortId(value: string | null | undefined): string {
   return value ? value.slice(0, 8) : ''
 }
 
-function principalLabel(id: string | null | undefined, displayName: string | null | undefined): string {
+function principalLabel(
+  id: string | null | undefined,
+  displayName: string | null | undefined,
+): string {
   if (!id) return t('admin.audit.labels.system')
   return `${shortId(id)}/${displayName?.trim() || id}`
 }
@@ -120,7 +129,10 @@ function targetUserLabel(log: AdminAuditLog): string {
 }
 
 function targetIdentifierLabel(log: AdminAuditLog): string {
-  if (log.targetUserId && (!log.targetId || log.targetId === log.targetUserId || log.targetType === 'USER')) {
+  if (
+    log.targetUserId &&
+    (!log.targetId || log.targetId === log.targetUserId || log.targetType === 'USER')
+  ) {
     return targetUserLabel(log)
   }
   return log.targetId || log.targetUserId || ''
@@ -209,11 +221,13 @@ function targetIdentifierLabel(log: AdminAuditLog): string {
         </label>
         <label>
           <span>{{ t('admin.audit.filters.outcome') }}</span>
-          <select v-model="outcome">
-            <option value="">{{ t('admin.audit.filters.allOutcomes') }}</option>
-            <option value="SUCCESS">{{ t('admin.audit.filters.success') }}</option>
-            <option value="FAILURE">{{ t('admin.audit.filters.failure') }}</option>
-          </select>
+          <ThemedSelect
+            v-model="outcome"
+            input-id="audit-outcome"
+            name="auditOutcome"
+            :options="outcomeOptions"
+            :aria-label="t('admin.audit.filters.outcome')"
+          />
         </label>
         <label
           ><span>{{ t('admin.audit.filters.from') }}</span
@@ -257,8 +271,7 @@ function targetIdentifierLabel(log: AdminAuditLog): string {
                 {{ actorLabel(log) }}
               </td>
               <td :data-label="t('admin.audit.table.target')">
-                {{ log.targetType || '-'
-                }}<small>{{ targetIdentifierLabel(log) }}</small>
+                {{ log.targetType || '-' }}<small>{{ targetIdentifierLabel(log) }}</small>
               </td>
               <td :data-label="t('admin.audit.table.ip')" class="mono">
                 {{ log.ipAddress || '-' }}
@@ -363,88 +376,407 @@ function targetIdentifierLabel(log: AdminAuditLog): string {
 </template>
 
 <style scoped>
-.audit-page { display: flex; flex-direction: column; gap: var(--vg-space-4); }
+.audit-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-4);
+}
 /* Inset the header's right edge by the panel padding (+1px for the panel
    border) so Refresh lines up exactly with Save retention / Reset / the
    DETAIL column instead of sticking out. */
-.page-header { padding-right: calc(var(--vg-space-4) + 1px); }
-.page-header, .retention-panel, .detail-heading, .pagination, .pagination > div, .notice.warning, .notice.info { display: flex; align-items: center; justify-content: space-between; gap: var(--vg-space-4); }
-.header-actions { display: flex; align-items: center; gap: var(--vg-space-2); }
-.live-status { display: inline-flex; align-items: center; gap: .4rem; color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; }
-.live-status::before { width: .55rem; height: .55rem; border-radius: 999px; background: var(--vg-text-muted); content: ''; }
-.live-status.connected { color: var(--vg-green-bright); }
-.live-status.connected::before { background: var(--vg-green-bright); }
-.live-status.reconnecting::before { background: #f59e0b; }
-.live-status.polling { color: var(--vg-blue-bright); }
-.live-status.polling::before { background: var(--vg-blue-bright); }
-.eyebrow { color: var(--vg-blue-bright); font-size: var(--vg-text-xs); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
-h1, h2 { margin: 0; color: var(--vg-text); font-family: var(--vg-font-display); letter-spacing: 0; }
-h1 { margin-top: var(--vg-space-1); font-size: clamp(1.625rem, 2.2vw, 1.875rem); }
-h2 { font-size: var(--vg-text-lg); }
-p { margin: var(--vg-space-1) 0 0; color: var(--vg-text-muted); }
-.panel, .notice { border: 1px solid var(--vg-border); border-radius: var(--vg-radius); background: var(--vg-surface); padding: var(--vg-space-4); }
-.notice.error { border-color: rgba(239,68,68,.32); color: var(--vg-danger); }
-.notice.success { border-color: rgba(34,197,94,.3); color: var(--vg-green-bright); }
-.notice.warning { border-color: rgba(245,158,11,.38); background: rgba(245,158,11,.08); }
-.notice.info { border-color: rgba(59,130,246,.32); background: rgba(59,130,246,.08); }
-.notice.warning strong, .notice.info strong { color: var(--vg-text); }
-.retention-panel form { display: grid; grid-template-columns: auto 7rem auto; align-items: center; gap: var(--vg-space-2); }
-.filters { display: grid; grid-template-columns: minmax(0,1.5fr) repeat(3,minmax(0,1fr)) auto auto; gap: var(--vg-space-3); align-items: end; }
-.filters label { min-width: 0; display: flex; flex-direction: column; gap: var(--vg-space-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
-input, select, button { min-height: 2.75rem; border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); font: inherit; }
-input, select { min-width: 0; padding: 0 var(--vg-space-3); background: var(--vg-bg); color: var(--vg-text); }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--vg-blue-bright); outline-offset: 2px; }
-button { padding: 0 var(--vg-space-3); background: var(--vg-blue); border-color: var(--vg-blue); color: white; cursor: pointer; font-weight: 800; }
-button.secondary, button.detail { background: var(--vg-surface-2); border-color: var(--vg-border); color: var(--vg-text); }
-button:disabled { opacity: .5; cursor: not-allowed; }
-.table-wrap { margin-top: var(--vg-space-4); overflow-x: auto; }
-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-th:nth-child(1) { width: 9%; }
-th:nth-child(2) { width: 10%; }
-th:nth-child(3) { width: 21%; }
-th:nth-child(4) { width: 21%; }
-th:nth-child(5) { width: 10%; }
-th:nth-child(6) { width: 17%; }
-th:nth-child(7) { width: 12%; }
-th, td { padding: var(--vg-space-3); border-bottom: 1px solid var(--vg-border); color: var(--vg-text); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.page-header {
+  padding-right: calc(var(--vg-space-4) + 1px);
+}
+.page-header,
+.retention-panel,
+.detail-heading,
+.pagination,
+.pagination > div,
+.notice.warning,
+.notice.info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vg-space-4);
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vg-space-2);
+}
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+}
+.live-status::before {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--vg-text-muted);
+  content: '';
+}
+.live-status.connected {
+  color: var(--vg-green-bright);
+}
+.live-status.connected::before {
+  background: var(--vg-green-bright);
+}
+.live-status.reconnecting::before {
+  background: #f59e0b;
+}
+.live-status.polling {
+  color: var(--vg-blue-bright);
+}
+.live-status.polling::before {
+  background: var(--vg-blue-bright);
+}
+.eyebrow {
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+h1,
+h2 {
+  margin: 0;
+  color: var(--vg-text);
+  font-family: var(--vg-font-display);
+  letter-spacing: 0;
+}
+h1 {
+  margin-top: var(--vg-space-1);
+  font-size: clamp(1.625rem, 2.2vw, 1.875rem);
+}
+h2 {
+  font-size: var(--vg-text-lg);
+}
+p {
+  margin: var(--vg-space-1) 0 0;
+  color: var(--vg-text-muted);
+}
+.panel,
+.notice {
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius);
+  background: var(--vg-surface);
+  padding: var(--vg-space-4);
+}
+.notice.error {
+  border-color: rgba(239, 68, 68, 0.32);
+  color: var(--vg-danger);
+}
+.notice.success {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--vg-green-bright);
+}
+.notice.warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.08);
+}
+.notice.info {
+  border-color: rgba(59, 130, 246, 0.32);
+  background: rgba(59, 130, 246, 0.08);
+}
+.notice.warning strong,
+.notice.info strong {
+  color: var(--vg-text);
+}
+.retention-panel form {
+  display: grid;
+  grid-template-columns: auto 7rem auto;
+  align-items: center;
+  gap: var(--vg-space-2);
+}
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) auto auto;
+  gap: var(--vg-space-3);
+  align-items: end;
+}
+.filters label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vg-space-2);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+input,
+select,
+button {
+  min-height: 2.75rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  font: inherit;
+}
+input,
+select {
+  min-width: 0;
+  padding: 0 var(--vg-space-3);
+  background: var(--vg-bg);
+  color: var(--vg-text);
+}
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 2px;
+}
+button {
+  padding: 0 var(--vg-space-3);
+  background: var(--vg-blue);
+  border-color: var(--vg-blue);
+  color: white;
+  cursor: pointer;
+  font-weight: 800;
+}
+button.secondary,
+button.detail {
+  background: var(--vg-surface-2);
+  border-color: var(--vg-border);
+  color: var(--vg-text);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.table-wrap {
+  margin-top: var(--vg-space-4);
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+th:nth-child(1) {
+  width: 9%;
+}
+th:nth-child(2) {
+  width: 10%;
+}
+th:nth-child(3) {
+  width: 21%;
+}
+th:nth-child(4) {
+  width: 21%;
+}
+th:nth-child(5) {
+  width: 10%;
+}
+th:nth-child(6) {
+  width: 17%;
+}
+th:nth-child(7) {
+  width: 12%;
+}
+th,
+td {
+  padding: var(--vg-space-3);
+  border-bottom: 1px solid var(--vg-border);
+  color: var(--vg-text);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
 /* Center the DETAIL column so the header and the Inspect button share the
    same center axis instead of hanging off the right edge at different widths. */
-th:last-child, td:last-child:not(.empty) { text-align: center; }
-button.detail { padding: 0 var(--vg-space-2); font-size: var(--vg-text-sm); white-space: nowrap; }
-th { background: var(--vg-surface-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); text-transform: uppercase; letter-spacing: .04em; }
-td small { display: block; margin-top: .2rem; color: var(--vg-text-dim); }
-.mono { font-family: var(--vg-font-mono, monospace); font-size: var(--vg-text-xs); }
-.principal-cell { font-family: var(--vg-font-mono, monospace); font-size: var(--vg-text-xs); overflow-wrap: anywhere; }
-.outcome { display: inline-flex; padding: .2rem .5rem; border-radius: 999px; background: rgba(148,163,184,.1); font-size: var(--vg-text-xs); font-weight: 800; }
-.outcome.success { color: var(--vg-green-bright); background: rgba(34,197,94,.1); }
-.outcome.failure { color: var(--vg-danger); background: rgba(239,68,68,.1); }
-.empty { color: var(--vg-text-muted); text-align: center; }
-.pagination { margin-top: var(--vg-space-4); color: var(--vg-text-muted); font-size: var(--vg-text-sm); }
-.detail-panel dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: var(--vg-space-3); }
-.detail-panel dl div, .details-copy { padding: var(--vg-space-3); border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); background: var(--vg-bg); }
-dt { color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; }
-dd { margin: var(--vg-space-1) 0 0; color: var(--vg-text); overflow-wrap: anywhere; }
-.details-copy { margin-top: var(--vg-space-3); color: var(--vg-text-muted); }
-pre { margin: var(--vg-space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vg-text); font-family: var(--vg-font-mono, monospace); }
-@media (max-width: 1024px) { .filters { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+th:last-child,
+td:last-child:not(.empty) {
+  text-align: center;
+}
+button.detail {
+  padding: 0 var(--vg-space-2);
+  font-size: var(--vg-text-sm);
+  white-space: nowrap;
+}
+th {
+  background: var(--vg-surface-2);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+td small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--vg-text-dim);
+}
+.mono {
+  font-family: var(--vg-font-mono, monospace);
+  font-size: var(--vg-text-xs);
+}
+.principal-cell {
+  font-family: var(--vg-font-mono, monospace);
+  font-size: var(--vg-text-xs);
+  overflow-wrap: anywhere;
+}
+.outcome {
+  display: inline-flex;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+}
+.outcome.success {
+  color: var(--vg-green-bright);
+  background: rgba(34, 197, 94, 0.1);
+}
+.outcome.failure {
+  color: var(--vg-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.empty {
+  color: var(--vg-text-muted);
+  text-align: center;
+}
+.pagination {
+  margin-top: var(--vg-space-4);
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-sm);
+}
+.detail-panel dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vg-space-3);
+}
+.detail-panel dl div,
+.details-copy {
+  padding: var(--vg-space-3);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-bg);
+}
+dt {
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+dd {
+  margin: var(--vg-space-1) 0 0;
+  color: var(--vg-text);
+  overflow-wrap: anywhere;
+}
+.details-copy {
+  margin-top: var(--vg-space-3);
+  color: var(--vg-text-muted);
+}
+pre {
+  margin: var(--vg-space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--vg-text);
+  font-family: var(--vg-font-mono, monospace);
+}
+@media (max-width: 1024px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 900px) {
-  .table-wrap { overflow-x: visible; }
-  table { min-width: 0; }
-  thead { display: none; }
-  tbody { display: grid; gap: var(--vg-space-3); }
-  tr { display: grid; gap: var(--vg-space-2); padding: var(--vg-space-3); border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); background: var(--vg-bg); }
-  td { display: grid; grid-template-columns: minmax(6rem, .42fr) minmax(0, 1fr); gap: var(--vg-space-3); padding: 0; border-bottom: 0; align-items: start; }
-  td::before { content: attr(data-label); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
-  td.empty { display: block; padding: var(--vg-space-4); text-align: center; }
-  td.empty::before { content: ''; display: none; }
+  .table-wrap {
+    overflow-x: visible;
+  }
+  table {
+    min-width: 0;
+  }
+  thead {
+    display: none;
+  }
+  tbody {
+    display: grid;
+    gap: var(--vg-space-3);
+  }
+  tr {
+    display: grid;
+    gap: var(--vg-space-2);
+    padding: var(--vg-space-3);
+    border: 1px solid var(--vg-border);
+    border-radius: var(--vg-radius-sm);
+    background: var(--vg-bg);
+  }
+  td {
+    display: grid;
+    grid-template-columns: minmax(6rem, 0.42fr) minmax(0, 1fr);
+    gap: var(--vg-space-3);
+    padding: 0;
+    border-bottom: 0;
+    align-items: start;
+  }
+  td::before {
+    content: attr(data-label);
+    color: var(--vg-text-muted);
+    font-size: var(--vg-text-xs);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td.empty {
+    display: block;
+    padding: var(--vg-space-4);
+    text-align: center;
+  }
+  td.empty::before {
+    content: '';
+    display: none;
+  }
   /* Stacked cards keep left-aligned labels like the other columns. */
-  td:last-child:not(.empty) { text-align: left; }
-  td small { margin-top: var(--vg-space-1); }
-  td button.detail { width: 100%; }
+  td:last-child:not(.empty) {
+    text-align: left;
+  }
+  td small {
+    margin-top: var(--vg-space-1);
+  }
+  td button.detail {
+    width: 100%;
+  }
 }
-@media (max-width: 720px) { .page-header, .retention-panel, .detail-heading, .pagination, .notice.warning, .notice.info { align-items: stretch; flex-direction: column; } .header-actions { justify-content: space-between; } .retention-panel form, .filters, .detail-panel dl { grid-template-columns: 1fr; width: 100%; } .pagination > div { width: 100%; } .pagination > div button { flex: 1; } }
+@media (max-width: 720px) {
+  .page-header,
+  .retention-panel,
+  .detail-heading,
+  .pagination,
+  .notice.warning,
+  .notice.info {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .header-actions {
+    justify-content: space-between;
+  }
+  .retention-panel form,
+  .filters,
+  .detail-panel dl {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .pagination > div {
+    width: 100%;
+  }
+  .pagination > div button {
+    flex: 1;
+  }
+}
 @media (max-width: 420px) {
-  td { grid-template-columns: 1fr; gap: var(--vg-space-1); }
+  td {
+    grid-template-columns: 1fr;
+    gap: var(--vg-space-1);
+  }
 }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 </style>
