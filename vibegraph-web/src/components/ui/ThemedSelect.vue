@@ -153,6 +153,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
         />
       </svg>
     </button>
+    <!-- Options use @click.prevent: they live inside the parent's
+         <label for=...>, and a click on a non-interactive li would otherwise be
+         FORWARDED by the label to the trigger button as its default action,
+         re-toggling the menu open right after commit closed it. -->
     <ul :id="listboxId" ref="listRef" v-show="open" role="listbox" class="vg-select__menu">
       <li
         v-for="(option, index) in options"
@@ -167,7 +171,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
         }"
         @pointerenter="activeIndex = index"
         @pointerdown.prevent
-        @click="commit(index)"
+        @click.prevent="commit(index)"
       >
         {{ option.label }}
       </li>
