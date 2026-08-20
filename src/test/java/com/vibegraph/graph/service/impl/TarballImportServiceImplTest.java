@@ -157,6 +157,29 @@ class TarballImportServiceImplTest {
     }
 
     @Test
+    @DisplayName("forwards a caller-selected branch to the pre-flight check")
+    void forwardsSelectedBranchToPreflight() throws Exception {
+        GitHubRepositoryRef resolved = new GitHubRepositoryRef("acme", "demo", "develop", "sha-1");
+        Path extractedRoot = workspaceRoot.resolve("github-branch/source");
+        Path javaFile = extractedRoot.resolve("src/App.java");
+        Files.createDirectories(javaFile.getParent());
+        Files.writeString(javaFile, "class App {}");
+
+        when(preFlightService.validatePublicRepository(any(GitHubRepositoryRef.class), anyLong())).thenReturn(resolved);
+        when(archiveExtractor.extract(any(Path.class), eq(ArchiveType.TAR_GZ), any(Path.class), anyLong()))
+                .thenReturn(new ArchiveExtractionResult(extractedRoot, List.of(javaFile), List.of("src/App.java")));
+        ProjectResponse created = ProjectResponse.builder().id("p2").name("acme/demo").rootPath("rp").status("CREATED").build();
+        ProjectResponse analyzing = ProjectResponse.builder().id("p2").name("acme/demo").status("ANALYZING").progress(0).build();
+        when(projectService.createProjectFromWorkspace("acme/demo", extractedRoot)).thenReturn(created);
+        when(projectService.getProject("p2")).thenReturn(analyzing);
+
+        service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo", "develop"));
+
+        verify(preFlightService).validatePublicRepository(new GitHubRepositoryRef("acme", "demo", "develop"),
+                209715200L);
+    }
+
+    @Test
     @DisplayName("disabled GitHub import flag blocks before preflight or download")
     void disabledGithubImportFlag_blocksBeforeNetwork() {
         doThrow(new FeatureDisabledException(FeatureGateService.IMPORT_GITHUB))
@@ -345,7 +368,7 @@ class TarballImportServiceImplTest {
 
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         // The stored SHA only advances after a successful re-analysis.
-        verify(ownershipRegistrar).updateSourceRef("p1", "sha-new");
+        verify(ownershipRegistrar).updateSourceRef("p1", "sha-new", "main");
         verify(fileChangeBroadcaster).watchProject("p1", existingRoot.toString());
         verify(projectService, never()).deleteProject("p1");
     }
@@ -377,7 +400,7 @@ class TarballImportServiceImplTest {
         backgroundTasks.get(0).run();
 
         verify(projectService).markFailed(eq("p1"), any());
-        verify(ownershipRegistrar, never()).updateSourceRef(any(), any());
+        verify(ownershipRegistrar, never()).updateSourceRef(any(), any(), any());
         // The pre-existing project survives a failed refresh.
         verify(projectService, never()).deleteProject("p1");
     }
@@ -401,6 +424,6 @@ class TarballImportServiceImplTest {
 
         service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
 
-        verify(ownershipRegistrar).registerGithub("p1", "acme/demo", "sha-new");
+        verify(ownershipRegistrar).registerGithub("p1", "acme/demo", "sha-new", "main");
     }
 }

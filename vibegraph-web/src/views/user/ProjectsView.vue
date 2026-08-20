@@ -10,7 +10,9 @@ import { projectApi, type Project } from '@/lib/api'
 import { toAccountProject, useAccountStore } from '@/stores/account'
 import { useProjectStore } from '@/stores/project'
 import { useImportTracker } from '@/stores/importTracker'
+import { isPendingProjectId, withInFlightCards } from '@/stores/importTracker'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const route = useRoute(),
   router = useRouter(),
@@ -57,7 +59,13 @@ async function loadProjects() {
 }
 async function refreshProjects() {
   try {
-    projectStore.projects = await projectApi.list()
+    const serverList = await projectApi.list()
+    // The server does not know the provisional pre-202 cards yet; keep them in
+    // front of the fresh list so a silent reconcile (KeepAlive re-activation,
+    // section switch) never blanks an import that is still starting up.
+    projectStore.projects = withInFlightCards(serverList, projectStore.projects, (id) =>
+      Boolean(tracker.get(id)),
+    )
     projectStore.projectsLoaded = true
     syncAccountProjects(projectStore.projects)
     trackAnalyzing(projectStore.projects)
@@ -84,6 +92,21 @@ function liveProgress(project: Project): number {
 }
 function liveMessage(project: Project): string {
   return tracker.get(project.id)?.message ?? t('user.projects.analyzingDefault')
+}
+/** Failure reason rendered on the card's live line when the import failed. */
+function liveError(project: Project): string | null {
+  if (project.status !== 'FAILED') return null
+  return tracker.get(project.id)?.message ?? t('user.projects.failedDefault')
+}
+/** Provisional pre-202 cards have no server row: dismiss them locally instead of a delete call. */
+function requestDelete(project: Project) {
+  if (isPendingProjectId(project.id)) {
+    projectStore.projects = projectStore.projects.filter((item) => item.id !== project.id)
+    syncAccountProjects(projectStore.projects)
+    tracker.forget(project.id)
+    return
+  }
+  deleteTarget.value = project
 }
 function open(project: Project) {
   projectStore.currentProjectId = project.id
@@ -148,6 +171,10 @@ onMounted(() => {
   void loadProjects()
   void refreshFeatureAvailability().catch(() => undefined)
 })
+
+// Kept alive by UserLayout: background reconcile on re-activation so imports
+// finished elsewhere show up without a reload flash.
+useSilentRefresh(() => refreshProjects())
 </script>
 
 <template>
@@ -196,7 +223,26 @@ onMounted(() => {
         <div class="repo-card__top">
           <div class="repo-card__identity">
             <h2>{{ project.name }}</h2>
-            <code>{{ project.id.slice(0, 8) }}</code>
+            <div class="repo-card__meta">
+              <code v-if="!isPendingProjectId(project.id)">{{ project.id.slice(0, 8) }}</code>
+              <span
+                v-if="project.sourceBranch"
+                class="repo-card__source"
+                :title="t('user.projects.sourceBranchTitle')"
+              >
+                <AppIcon name="branch" :size="14" />
+                <span class="repo-card__source-text">{{ project.sourceBranch }}</span>
+              </span>
+              <span
+                v-if="project.sourceRef"
+                class="repo-card__source"
+                :title="t('user.projects.sourceCommitTitle')"
+              >
+                <AppIcon name="commit" :size="14" />
+                <!-- 7-char short SHA, matching GitHub's abbreviated commit display. -->
+                <code class="repo-card__source-text">{{ project.sourceRef.slice(0, 7) }}</code>
+              </span>
+            </div>
           </div>
           <LogoSpinner v-if="isAnalyzing(project)" class="repo-card__spinner" :size="34" />
           <span v-else class="status">
@@ -218,6 +264,11 @@ onMounted(() => {
             ></div>
           </div>
           <p class="repo-card__live-message">{{ liveMessage(project) }}</p>
+        </div>
+        <div v-else-if="liveError(project)" class="repo-card__live" role="alert">
+          <p class="repo-card__live-message repo-card__live-message--error">
+            {{ liveError(project) }}
+          </p>
         </div>
         <dl v-else>
           <div>
@@ -249,7 +300,7 @@ onMounted(() => {
             class="icon-button danger"
             type="button"
             :aria-label="t('user.projects.deleteAria', { name: project.name })"
-            @click="deleteTarget = project"
+            @click="requestDelete(project)"
           >
             <AppIcon name="trash" :size="17" />
           </button>
@@ -463,6 +514,31 @@ button {
   grid-template-rows: 20px 16px;
   align-items: center;
 }
+/* Second identity row: project id plus, for GitHub imports, the imported
+   branch and commit so owners recognize where the sources came from. */
+.repo-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.repo-card__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
+}
+.repo-card__source svg {
+  flex-shrink: 0;
+}
+.repo-card__source-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .status {
   display: inline-flex;
   align-items: center;
@@ -535,6 +611,9 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.repo-card__live-message--error {
+  color: #fca5a5;
 }
 .explore:disabled {
   opacity: 0.55;

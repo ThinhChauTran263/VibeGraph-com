@@ -10,6 +10,37 @@ import { toAccountProject, useAccountStore } from '@/stores/account'
 /** Poll cadence for the background tracker (ms). */
 const TRACKER_POLL_INTERVAL_MS = 3000
 
+/** Id prefix of the provisional card shown while an import request still awaits its 202. */
+export const PENDING_PROJECT_PREFIX = 'pending-'
+
+export function isPendingProjectId(projectId: string): boolean {
+  return projectId.startsWith(PENDING_PROJECT_PREFIX)
+}
+
+/**
+ * Pure merge used by background reconciles: provisional pre-202 cards have no
+ * server row yet, so a plain `projects = await list()` would make an in-flight
+ * import vanish whenever the page silently re-fetches (KeepAlive re-activation,
+ * returning from another section). Keep every tracked provisional card in
+ * front of the fresh server list until the real 202 project replaces it.
+ * Module-level on purpose so specs can test it without a Pinia instance.
+ */
+export function withInFlightCards(
+  serverList: Project[],
+  currentList: Project[],
+  isTracked: (projectId: string) => boolean,
+): Project[] {
+  const merged = [...serverList]
+  for (const item of currentList) {
+    const inFlight =
+      isPendingProjectId(item.id) &&
+      isTracked(item.id) &&
+      !merged.some((server) => server.id === item.id)
+    if (inFlight) merged.unshift(item)
+  }
+  return merged
+}
+
 export interface TrackedImport {
   projectId: string
   name: string
@@ -126,6 +157,65 @@ export const useImportTracker = defineStore('importTracker', () => {
     syncAccountProjects()
   }
 
+  /** The provisional (pre-202) card currently in the list, if any. */
+  const pending = ref<{ id: string; name: string } | null>(null)
+
+  function removePendingCard(): void {
+    const current = pending.value
+    if (!current) return
+    pending.value = null
+    delete tracked.value[current.id]
+    projectStore.projects = projectStore.projects.filter((item) => item.id !== current.id)
+    syncAccountProjects()
+  }
+
+  /**
+   * Show a provisional analyzing card the moment an import is submitted, so the
+   * repository list reflects the import even while the server is still downloading
+   * and extracting the source (pre-202, progress 0). {@link track} swaps it for the
+   * real project once the 202 arrives; {@link failPending} turns it into an error
+   * card when the request is rejected.
+   */
+  function trackPending(name: string, branch?: string): void {
+    removePendingCard()
+    const provisional: Project = {
+      id: `${PENDING_PROJECT_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      status: 'ANALYZING',
+      progress: 0,
+      totalFiles: 0,
+      totalNodes: 0,
+      totalEdges: 0,
+      sourceBranch: branch || undefined,
+    }
+    pending.value = { id: provisional.id, name }
+    ensureInProjectList(provisional)
+    tracked.value[provisional.id] = {
+      projectId: provisional.id,
+      name,
+      status: 'ANALYZING',
+      progress: 0,
+      message: t('user.projects.pendingMessage'),
+      updatedAt: Date.now(),
+    }
+    bump()
+  }
+
+  /** The request was rejected before the 202: turn the provisional card into an error card. */
+  function failPending(message: string): void {
+    const current = pending.value
+    if (!current) return
+    pending.value = null
+    const entry = tracked.value[current.id]
+    if (entry) {
+      entry.status = 'FAILED'
+      entry.message = message
+      entry.updatedAt = Date.now()
+    }
+    patchProjectList(current.id, 'FAILED', 0)
+    bump()
+  }
+
   function finalize(projectId: string, status: 'ANALYZED' | 'FAILED', message: string | null): void {
     const entry = tracked.value[projectId]
     if (!entry || entry.status !== 'ANALYZING') return
@@ -139,10 +229,11 @@ export const useImportTracker = defineStore('importTracker', () => {
 
     if (status === 'ANALYZED') {
       // Reload the list so cards show the real file/node counts right away.
+      // reconcileWithTracked keeps any OTHER still-pending import visible.
       void projectApi
         .list()
         .then((list) => {
-          projectStore.projects = list
+          projectStore.projects = reconcileWithTracked(list)
           syncAccountProjects()
         })
         .catch(() => undefined)
@@ -237,6 +328,8 @@ export const useImportTracker = defineStore('importTracker', () => {
    */
   function track(project: Project): void {
     if (project.status !== 'ANALYZING') return
+    // The real project replaces the provisional pre-202 card of the same repository.
+    if (pending.value?.name === project.name) removePendingCard()
     if (isActive(project.id)) return
 
     ensureInProjectList(project)
@@ -252,6 +345,14 @@ export const useImportTracker = defineStore('importTracker', () => {
     startChannels(project.id)
   }
 
+  /**
+   * Merge a fresh server list with the provisional cards this tracker still
+   * owns, so reconciles never blank an in-flight import.
+   */
+  function reconcileWithTracked(serverList: Project[]): Project[] {
+    return withInFlightCards(serverList, projectStore.projects, (id) => Boolean(tracked.value[id]))
+  }
+
   /** Drop a terminal entry once no surface needs it anymore. */
   function forget(projectId: string): void {
     stopChannels(projectId)
@@ -259,5 +360,5 @@ export const useImportTracker = defineStore('importTracker', () => {
     bump()
   }
 
-  return { tracked, version, track, get, isActive, forget }
+  return { tracked, version, track, trackPending, failPending, get, isActive, forget }
 })

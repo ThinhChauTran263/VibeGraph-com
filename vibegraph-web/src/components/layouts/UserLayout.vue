@@ -286,7 +286,14 @@ function signOut(): void {
           t('user.layout.contactSupport')
         }}</RouterLink>
       </section>
-      <RouterView v-if="accountStateReady && (!restricted || reportsRouteActive)" />
+      <!-- KeepAlive: sidebar navigation must feel instant — views stay mounted
+           (no refetch flash, the graph canvas survives) and each view silently
+           refreshes its data on re-activation via useSilentRefresh. -->
+      <RouterView v-if="accountStateReady && (!restricted || reportsRouteActive)" v-slot="{ Component }">
+        <KeepAlive :max="8">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
       <section
         v-else-if="accountStateReady && restricted"
         class="restricted-state"

@@ -363,6 +363,8 @@
       "close": "Close",
       "newRepository": "New Repository",
       "importedRepositories": "Imported repositories",
+      "sourceBranchTitle": "Imported branch",
+      "sourceCommitTitle": "Imported commit",
       "ready": "Ready",
       "files": "Files",
       "nodes": "Nodes",
@@ -400,7 +402,9 @@
       "noImportMethodDescription": "No import method is currently available. Import is blocked until the account capability contract reports an enabled method.",
       "importMethod": "Import method",
       "analyzing": "Analyzing",
-      "analyzingDefault": "Parsing, resolving, building graph..."
+      "analyzingDefault": "Parsing, resolving, building graph...",
+      "pendingMessage": "Contacting GitHub, downloading repository...",
+      "failedDefault": "Import failed."
     },
     "trash": {
       "title": "Trash",
@@ -432,10 +436,13 @@
       "githubHint": "Import a public repository using its HTTPS URL. Only extracted .java source files are stored and counted against your storage quota. Example:",
       "githubUrl": "GitHub repository URL",
       "githubPlaceholder": "https://github.com/owner/repo",
+      "githubBranch": "Branch (default: main)",
+      "githubBranchPlaceholder": "main",
       "importGithub": "Import GitHub repo",
       "success": "Import completed for {name} (status: {status}).",
       "reset": "Reset",
       "background": "Close & continue in background",
+      "backgroundHint": "The import keeps running on the server — you can close this dialog and do something else.",
       "cli": {
         "title": "Create a CLI-synced repository",
         "hint": "VibeGraph creates an empty server workspace and a project-bound API key. Run the commands from your project terminal to sync code without exposing local drive paths.",

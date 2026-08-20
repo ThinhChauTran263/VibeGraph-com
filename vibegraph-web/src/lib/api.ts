@@ -134,6 +134,10 @@ export interface Project {
   progress?: number
   /** Bytes of stored .java source counted against the owner's storage quota. */
   storedBytes?: number
+  /** Commit SHA of the imported source (GitHub imports only). */
+  sourceRef?: string
+  /** Branch/ref the GitHub import was taken from. */
+  sourceBranch?: string
 }
 
 /** Terminal + in-flight statuses pushed over the project-status WebSocket topic. */
@@ -427,8 +431,12 @@ export const importApi = {
     return api.postMultipart<Project>('/api/projects/import-archive?async=true', form)
   },
 
-  importGithub(url: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-github', { url })
+  importGithub(url: string, branch?: string): Promise<Project> {
+    const trimmedBranch = branch?.trim()
+    return api.post<Project>('/api/projects/import-github', {
+      url,
+      ...(trimmedBranch ? { branch: trimmedBranch } : {}),
+    })
   },
 
   createCliRepository(name?: string): Promise<CliRepositorySetup> {

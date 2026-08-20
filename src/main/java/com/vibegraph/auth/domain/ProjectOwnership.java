@@ -63,6 +63,14 @@ public class ProjectOwnership {
     @Column(name = "source_ref", length = 64)
     private String sourceRef;
 
+    /**
+     * Branch/ref selected at import time (GitHub imports only), or {@code null} for other
+     * sources / imports predating the column. Informational only: re-import detection
+     * compares {@link #sourceRef} commit SHAs, never branches.
+     */
+    @Column(name = "source_branch", length = 100)
+    private String sourceBranch;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

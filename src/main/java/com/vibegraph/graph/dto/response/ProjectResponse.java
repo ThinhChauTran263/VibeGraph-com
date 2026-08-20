@@ -38,4 +38,11 @@ public class ProjectResponse {
      * counted against the owner's storage quota. Absent when unknown (legacy rows).
      */
     private Long storedBytes;
+    /**
+     * Commit SHA of the imported source (GitHub imports only); absent for other sources.
+     * Shown shortened on the project card so owners recognize which commit was imported.
+     */
+    private String sourceRef;
+    /** Branch/ref the GitHub import was taken from; absent for other sources. */
+    private String sourceBranch;
 }
