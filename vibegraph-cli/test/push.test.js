@@ -34,9 +34,10 @@ test("payload paths are POSIX-relative, never absolute, never contain backslash 
   try {
     process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
 
-    // Real source-like files
+    // Real source-like files (only .java is ever pushed)
     await mkdir(path.join(root, "src", "main", "java"), { recursive: true });
     await writeFile(path.join(root, "src", "main", "java", "App.java"), "class App {}\n");
+    await writeFile(path.join(root, "src", "main", "java", "Util.java"), "class Util {}\n");
     await writeFile(path.join(root, "README.md"), "# hi\n");
 
     // Files that MUST be excluded from the payload
@@ -73,10 +74,10 @@ test("payload paths are POSIX-relative, never absolute, never contain backslash 
       assert.equal(typeof entry.contentBase64, "string");
     }
 
-    // Payload MUST contain the safe files at their POSIX-relative paths.
+    // Payload MUST contain the safe .java files at their POSIX-relative paths,
+    // and only those — non-Java files like README.md are skipped.
     const paths = body.files.map((f) => f.path).sort();
-    assert.ok(paths.includes("README.md"));
-    assert.ok(paths.includes("src/main/java/App.java"));
+    assert.deepEqual(paths, ["src/main/java/App.java", "src/main/java/Util.java"]);
   } finally {
     if (prevConfig === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
     else process.env.VIBEGRAPH_CONFIG_DIR = prevConfig;
@@ -92,7 +93,7 @@ test("dry-run does not write a snapshot even when it succeeds against the backen
   try {
     process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
 
-    await writeFile(path.join(root, "a.txt"), "hello\n");
+    await writeFile(path.join(root, "A.java"), "class A {}\n");
 
     const stub = makeStubApi();
     await executePush("proj-dry", { root, dryRun: true }, stub.apiRequest);
@@ -124,7 +125,7 @@ test("no files to push emits a no-op, does not call backend when nothing changed
   try {
     process.env.VIBEGRAPH_CONFIG_DIR = snapDir;
 
-    await writeFile(path.join(root, "same.txt"), "unchanged\n");
+    await writeFile(path.join(root, "Same.java"), "class Same {}\n");
 
     // First push seeds the snapshot with current state.
     const first = makeStubApi();

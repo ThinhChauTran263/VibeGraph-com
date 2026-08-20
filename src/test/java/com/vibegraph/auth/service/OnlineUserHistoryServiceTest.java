@@ -1,12 +1,19 @@
 package com.vibegraph.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+
+import com.vibegraph.auth.websocket.OnlineUsersEvent;
 
 @DisplayName("Online user history")
 class OnlineUserHistoryServiceTest {
@@ -43,5 +50,31 @@ class OnlineUserHistoryServiceTest {
         assertThat(history.getFirst().label()).isEqualTo("2026-07-17T13:02:00Z");
         assertThat(history.getLast().label()).isEqualTo("2026-07-17T13:11:00Z");
         assertThat(history.getLast().value()).isEqualTo(11L);
+    }
+
+    @Test
+    @DisplayName("sampler tick broadcasts the fresh snapshot to the admin topic")
+    void sampleCurrentUsers_broadcastsSnapshotToAdminTopic() {
+        SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
+        OnlineUserHistoryService service = new OnlineUserHistoryService(template);
+
+        service.sampleCurrentUsers();
+
+        ArgumentCaptor<OnlineUsersEvent> event = ArgumentCaptor.forClass(OnlineUsersEvent.class);
+        verify(template).convertAndSend(eq(OnlineUserHistoryService.ONLINE_USERS_TOPIC), event.capture());
+        assertThat(event.getValue().samples())
+                .isEqualTo(service.snapshot(event.getValue().capturedAt()));
+        assertThat(event.getValue().samples().getLast().value())
+                .isEqualTo(event.getValue().onlineUsers());
+    }
+
+    @Test
+    @DisplayName("sampler tick without a broker keeps recording samples")
+    void sampleCurrentUsers_withoutBroker_recordsSilently() {
+        OnlineUserHistoryService service = new OnlineUserHistoryService();
+
+        service.sampleCurrentUsers();
+
+        assertThat(service.snapshot(Instant.now())).isNotEmpty();
     }
 }

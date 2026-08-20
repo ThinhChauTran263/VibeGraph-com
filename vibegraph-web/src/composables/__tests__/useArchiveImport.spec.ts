@@ -132,16 +132,22 @@ describe('useArchiveImport - successful upload', () => {
 })
 
 describe('useArchiveImport - error mapping', () => {
-  it('maps ApiError(413) to a user-friendly oversized message', async () => {
-    uploadArchiveMock.mockRejectedValueOnce(new ApiError(413, 'Payload Too Large', 'huge'))
+  it('surfaces the backend quota figures on ApiError(413)', async () => {
+    uploadArchiveMock.mockRejectedValueOnce(
+      new ApiError(
+        413,
+        'Payload Too Large',
+        "Your source code occupies 3.0 MB, which exceeds the account's remaining storage quota (1.0 MB). Free up storage or ask an admin for a quota override.",
+      ),
+    )
     const composable = useArchiveImport()
 
     const result = await composable.uploadArchive('demo', makeFile('demo.zip', 1024))
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toMatch(/quota|safety/i)
-    expect(composable.errorMessage.value).toMatch(/too large|quota|safety/i)
+    expect(composable.errorMessage.value).toContain('3.0 MB')
+    expect(composable.errorMessage.value).toContain('remaining storage quota (1.0 MB)')
   })
 
   it('maps server 5xx to an "unavailable" message when no body text', async () => {
@@ -162,6 +168,20 @@ describe('useArchiveImport - error mapping', () => {
 
     expect(composable.status.value).toBe('error')
     expect(composable.errorMessage.value).toBe('unsafe path entry')
+  })
+
+  it('maps an archive without .java files to a Java-only message', async () => {
+    uploadArchiveMock.mockRejectedValueOnce(
+      new ApiError(400, 'Bad Request', 'Archive contains no .java files', 'ARCHIVE_EMPTY_ARCHIVE'),
+    )
+    const composable = useArchiveImport()
+
+    await composable.uploadArchive('demo', makeFile('demo.zip', 1024))
+
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(
+      'This archive contains no .java files. VibeGraph currently analyzes Java projects only.',
+    )
   })
 
   it('maps a non-ApiError thrown value to a generic upload-failed message', async () => {
@@ -484,8 +504,14 @@ describe('useArchiveImport - async upload', () => {
     }
   })
 
-  it('maps an async upload ApiError(413) to the oversized message', async () => {
-    uploadArchiveAsyncMock.mockRejectedValueOnce(new ApiError(413, 'Payload Too Large', 'huge'))
+  it('surfaces the backend quota figures on an async upload ApiError(413)', async () => {
+    uploadArchiveAsyncMock.mockRejectedValueOnce(
+      new ApiError(
+        413,
+        'Payload Too Large',
+        "Your source code occupies 3.0 MB, which exceeds the account's remaining storage quota (1.0 MB). Free up storage or ask an admin for a quota override.",
+      ),
+    )
     const { ws } = makeFakeWs()
     const composable = useArchiveImport({ ws, ...STABLE, poll: makePoll(fakeProject()) })
 
@@ -493,7 +519,7 @@ describe('useArchiveImport - async upload', () => {
 
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
-    expect(composable.errorMessage.value).toMatch(/quota|safety/i)
+    expect(composable.errorMessage.value).toContain('remaining storage quota (1.0 MB)')
     expect(ws.connect).not.toHaveBeenCalled()
   })
 })

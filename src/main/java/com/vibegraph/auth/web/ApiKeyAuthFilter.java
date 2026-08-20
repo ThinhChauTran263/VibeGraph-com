@@ -1,8 +1,10 @@
 package com.vibegraph.auth.web;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -11,6 +13,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.vibegraph.auth.domain.ApiKey;
 import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
@@ -27,6 +31,13 @@ import jakarta.servlet.http.HttpServletResponse;
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
     private static final int MAX_PREFIX_CANDIDATES = 5;
+    /**
+     * F6 audit fix: {@code lastUsedAt} is an operational display value, not a per-request
+     * fact. Writing it on every API-key request amplified DB writes and created row-lock
+     * contention on {@code api_keys} under load; throttle to at most one write per key
+     * per interval instead.
+     */
+    static final Duration LAST_USED_WRITE_INTERVAL = Duration.ofSeconds(60);
     public static final String API_KEY_HEADER = "X-API-Key";
     public static final String API_KEY_REF_ATTRIBUTE = "vibegraph.apiKeyRef";
     public static final String API_KEY_CONTEXT_ATTRIBUTE = "vibegraph.apiKeyContext";
@@ -37,6 +48,11 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
     private final AccountSettingsService accountSettingsService;
     private final PasswordEncoder passwordEncoder;
+    // Remembers the last persisted lastUsedAt per key so repeat requests inside the
+    // throttle window skip the DB write; entries expire once they can no longer gate one.
+    private final Cache<UUID, Instant> lastUsedWrites = Caffeine.newBuilder()
+            .expireAfterWrite(LAST_USED_WRITE_INTERVAL.multipliedBy(5))
+            .build();
 
     public ApiKeyAuthFilter(
             ApiKeyRepository apiKeyRepository,
@@ -146,9 +162,19 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             String keyRef = key.getId() + ":" + key.getKeyPrefix();
             request.setAttribute(API_KEY_REF_ATTRIBUTE, keyRef);
             request.setAttribute(API_KEY_CONTEXT_ATTRIBUTE, new ApiKeyRequestContext(keyRef, key.getProjectId()));
-            key.setLastUsedAt(Instant.now());
-            apiKeyRepository.save(key);
+            recordLastUsed(key);
             return true;
         }).orElse(false);
+    }
+
+    private void recordLastUsed(ApiKey key) {
+        Instant now = Instant.now();
+        Instant lastWrite = lastUsedWrites.getIfPresent(key.getId());
+        if (lastWrite != null && Duration.between(lastWrite, now).compareTo(LAST_USED_WRITE_INTERVAL) < 0) {
+            return;
+        }
+        key.setLastUsedAt(now);
+        apiKeyRepository.save(key);
+        lastUsedWrites.put(key.getId(), now);
     }
 }

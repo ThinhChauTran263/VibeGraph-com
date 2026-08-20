@@ -364,6 +364,10 @@ function targetIdentifierLabel(log: AdminAuditLog): string {
 
 <style scoped>
 .audit-page { display: flex; flex-direction: column; gap: var(--vg-space-4); }
+/* Inset the header's right edge by the panel padding (+1px for the panel
+   border) so Refresh lines up exactly with Save retention / Reset / the
+   DETAIL column instead of sticking out. */
+.page-header { padding-right: calc(var(--vg-space-4) + 1px); }
 .page-header, .retention-panel, .detail-heading, .pagination, .pagination > div, .notice.warning, .notice.info { display: flex; align-items: center; justify-content: space-between; gap: var(--vg-space-4); }
 .header-actions { display: flex; align-items: center; gap: var(--vg-space-2); }
 .live-status { display: inline-flex; align-items: center; gap: .4rem; color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; }
@@ -385,8 +389,8 @@ p { margin: var(--vg-space-1) 0 0; color: var(--vg-text-muted); }
 .notice.info { border-color: rgba(59,130,246,.32); background: rgba(59,130,246,.08); }
 .notice.warning strong, .notice.info strong { color: var(--vg-text); }
 .retention-panel form { display: grid; grid-template-columns: auto 7rem auto; align-items: center; gap: var(--vg-space-2); }
-.filters { display: grid; grid-template-columns: minmax(12rem,1.5fr) repeat(3,minmax(9rem,1fr)) auto auto; gap: var(--vg-space-3); align-items: end; }
-.filters label { display: flex; flex-direction: column; gap: var(--vg-space-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.filters { display: grid; grid-template-columns: minmax(0,1.5fr) repeat(3,minmax(0,1fr)) auto auto; gap: var(--vg-space-3); align-items: end; }
+.filters label { min-width: 0; display: flex; flex-direction: column; gap: var(--vg-space-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
 input, select, button { min-height: 2.75rem; border: 1px solid var(--vg-border); border-radius: var(--vg-radius-sm); font: inherit; }
 input, select { min-width: 0; padding: 0 var(--vg-space-3); background: var(--vg-bg); color: var(--vg-text); }
 input:focus, select:focus, button:focus-visible { outline: 2px solid var(--vg-blue-bright); outline-offset: 2px; }
@@ -394,8 +398,19 @@ button { padding: 0 var(--vg-space-3); background: var(--vg-blue); border-color:
 button.secondary, button.detail { background: var(--vg-surface-2); border-color: var(--vg-border); color: var(--vg-text); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .table-wrap { margin-top: var(--vg-space-4); overflow-x: auto; }
-table { width: 100%; min-width: 74rem; border-collapse: collapse; }
-th, td { padding: var(--vg-space-3); border-bottom: 1px solid var(--vg-border); color: var(--vg-text); text-align: left; vertical-align: top; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+th:nth-child(1) { width: 9%; }
+th:nth-child(2) { width: 10%; }
+th:nth-child(3) { width: 21%; }
+th:nth-child(4) { width: 21%; }
+th:nth-child(5) { width: 10%; }
+th:nth-child(6) { width: 17%; }
+th:nth-child(7) { width: 12%; }
+th, td { padding: var(--vg-space-3); border-bottom: 1px solid var(--vg-border); color: var(--vg-text); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+/* Center the DETAIL column so the header and the Inspect button share the
+   same center axis instead of hanging off the right edge at different widths. */
+th:last-child, td:last-child:not(.empty) { text-align: center; }
+button.detail { padding: 0 var(--vg-space-2); font-size: var(--vg-text-sm); white-space: nowrap; }
 th { background: var(--vg-surface-2); color: var(--vg-text-muted); font-size: var(--vg-text-xs); text-transform: uppercase; letter-spacing: .04em; }
 td small { display: block; margin-top: .2rem; color: var(--vg-text-dim); }
 .mono { font-family: var(--vg-font-mono, monospace); font-size: var(--vg-text-xs); }
@@ -422,6 +437,8 @@ pre { margin: var(--vg-space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywh
   td::before { content: attr(data-label); color: var(--vg-text-muted); font-size: var(--vg-text-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
   td.empty { display: block; padding: var(--vg-space-4); text-align: center; }
   td.empty::before { content: ''; display: none; }
+  /* Stacked cards keep left-aligned labels like the other columns. */
+  td:last-child:not(.empty) { text-align: left; }
   td small { margin-top: var(--vg-space-1); }
   td button.detail { width: 100%; }
 }

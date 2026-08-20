@@ -93,4 +93,20 @@ class ProjectOwnershipRegistrarTest {
         verify(ownershipRepository, never()).save(any());
         assertThat(existing.getOwnerId()).isEqualTo(userA);
     }
+
+    @Test
+    @DisplayName("GitHub registration stores the imported branch and commit SHA")
+    void storesBranchAndSha() {
+        when(currentUser.id()).thenReturn(userA);
+        when(ownershipRepository.findById("p1")).thenReturn(Optional.empty());
+
+        registrar.registerGithub("p1", "acme/demo", "sha-1", "develop");
+
+        ArgumentCaptor<ProjectOwnership> captor = ArgumentCaptor.forClass(ProjectOwnership.class);
+        verify(ownershipRepository).save(captor.capture());
+        ProjectOwnership saved = captor.getValue();
+        assertThat(saved.getSourceType()).isEqualTo(ProjectSourceType.GITHUB);
+        assertThat(saved.getSourceRef()).isEqualTo("sha-1");
+        assertThat(saved.getSourceBranch()).isEqualTo("develop");
+    }
 }

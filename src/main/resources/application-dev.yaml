@@ -11,12 +11,11 @@ spring:
 vibegraph:
   projects:
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}
-    allow-unconfined-browse: ${VIBEGRAPH_ALLOW_UNCONFINED_BROWSE:true}
     allow-unconfined-import: ${VIBEGRAPH_ALLOW_UNCONFINED_IMPORT:true}
 
   import:
     archive:
-      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:2048MB}
+      max-size: ${VIBEGRAPH_IMPORT_ARCHIVE_HARD_MAX_SIZE:200MB}
       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
 
   watcher:

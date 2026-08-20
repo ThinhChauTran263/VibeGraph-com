@@ -1,7 +1,0 @@
-T8 runtime result:
-GET http://localhost:8080/api/projects with synthetic Origin: https://evil.example
-status=200
-access-control-allow-origin=null
-access-control-allow-credentials=null
-No wildcard CORS response.
-Conclusion: NOT REPRODUCED (expected secure behavior observed).

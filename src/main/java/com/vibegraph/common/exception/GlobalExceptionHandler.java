@@ -56,6 +56,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
     }
 
+    @ExceptionHandler(RepositoryUpToDateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRepositoryUpToDate(RepositoryUpToDateException ex) {
+        // Re-import of a repository whose HEAD matches the stored import — 409, nothing to do.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("REPO_UP_TO_DATE")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
+    @ExceptionHandler(ProjectRefreshInProgressException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRefreshInProgress(ProjectRefreshInProgressException ex) {
+        // Re-import while the existing project is still analyzing — 409, retry later.
+        ErrorResponse error = ErrorResponse.builder()
+                .code("REFRESH_IN_PROGRESS")
+                .message(ex.getMessage())
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(error));
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
         // Authenticated but not the owner — 403 with a generic message (no project/owner leak).
@@ -92,11 +112,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(InsufficientCreditsException.class)
     public ResponseEntity<ApiResponse<Void>> handleInsufficientCredits(InsufficientCreditsException ex) {
-        ErrorResponse error = ErrorResponse.builder()
+        ErrorResponse.ErrorResponseBuilder error = ErrorResponse.builder()
                 .code(ex.getCode())
-                .message(ex.getMessage())
-                .build();
-        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(ApiResponse.error(error));
+                .message(ex.getMessage());
+        // Machine-readable amounts let clients localize/render a friendlier prompt.
+        if (ex.getRequiredCredits() != null && ex.getAvailableCredits() != null) {
+            error.details("Required: " + ex.getRequiredCredits()
+                    + " credits, Available: " + ex.getAvailableCredits() + " credits");
+        }
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(ApiResponse.error(error.build()));
     }
 
     @ExceptionHandler(AccountBlockedException.class)

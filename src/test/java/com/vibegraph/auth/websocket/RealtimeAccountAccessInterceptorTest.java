@@ -249,6 +249,34 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
+    @DisplayName("admins can subscribe and receive online-user snapshots")
+    void preSend_admin_allowsAdminTopic() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        connectAs(Role.ADMIN);
+        interceptor.preSend(subscribeAdminMessage(), channel);
+
+        Message<byte[]> outbound = outboundAdminMessage();
+
+        assertThat(interceptor.preSend(outbound, channel)).isSameAs(outbound);
+    }
+
+    @Test
+    @DisplayName("non-admin users cannot subscribe to admin topics")
+    void preSend_nonAdmin_rejectsAdminTopicSubscription() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        connectAs(Role.USER);
+
+        assertThatThrownBy(() -> interceptor.preSend(subscribeAdminMessage(), channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("admin topic deliveries fail closed without an authorized session")
+    void preSend_unknownSession_suppressesAdminTopicUpdate() {
+        assertThat(interceptor.preSend(outboundAdminMessage(), channel)).isNull();
+    }
+
+    @Test
     @DisplayName("disconnect removes the stored session authorization")
     void preSend_disconnect_removesSessionAuthorization() {
         connectActiveUser();
@@ -292,6 +320,21 @@ class RealtimeAccountAccessInterceptorTest {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId(SESSION_ID);
         accessor.setDestination("/topic/reports/" + reportId);
+        return message(accessor);
+    }
+
+    private Message<byte[]> subscribeAdminMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/admin/online-users");
+        return message(accessor);
+    }
+
+    private Message<byte[]> outboundAdminMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/admin/online-users");
+        accessor.setMessageTypeIfNotSet(SimpMessageType.MESSAGE);
         return message(accessor);
     }
 

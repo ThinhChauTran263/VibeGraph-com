@@ -20,9 +20,12 @@ import {
 } from '@/lib/archiveUpload'
 import type { Project } from '@/lib/api'
 import { useArchiveImport } from '@/composables/useArchiveImport'
+import { useImportTracker } from '@/stores/importTracker'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 
 const { t } = useI18n({ useScope: 'global' })
+const tracker = useImportTracker()
 const props = withDefaults(
   defineProps<{
     /**
@@ -39,6 +42,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   imported: [project: Project]
+  /** User closed the dialog; the import keeps running in the background. */
+  backgrounded: []
 }>()
 
 const projectName = ref('')
@@ -56,7 +61,7 @@ const {
   uploadArchive,
   uploadArchiveAsync,
   reset,
-} = useArchiveImport()
+} = useArchiveImport({ onAccepted: (project) => tracker.track(project) })
 
 const canSubmit = computed(
   () =>
@@ -212,6 +217,7 @@ onBeforeUnmount(() => {
         aria-valuemax="100"
         :aria-label="progressLabel"
       >
+        <LogoSpinner v-if="isAnalyzing" class="archive-import__logo-spinner" :size="96" />
         <div class="archive-import__progress-head">
           <span class="archive-import__progress-label">{{ progressLabel }}</span>
           <span class="archive-import__progress-value">{{ progress }}%</span>
@@ -219,6 +225,14 @@ onBeforeUnmount(() => {
         <div class="archive-import__progress-track">
           <div class="archive-import__progress-fill" :style="{ width: progress + '%' }"></div>
         </div>
+        <button
+          v-if="isAnalyzing"
+          type="button"
+          class="archive-import__btn archive-import__btn--ghost archive-import__background"
+          @click="emit('backgrounded')"
+        >
+          {{ t('user.import.background') }}
+        </button>
       </div>
 
       <div class="archive-import__actions">
@@ -257,6 +271,9 @@ onBeforeUnmount(() => {
         role="status"
       >
         {{ t('user.import.successFor') }} <strong>{{ importedProject.name }}</strong> (status: {{ importedProject.status }}).
+        <span v-if="typeof importedProject.storedBytes === 'number'">
+          {{ t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) }) }}
+        </span>
       </p>
     </form>
   </section>
@@ -501,6 +518,16 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.archive-import__logo-spinner {
+  align-self: center;
+  margin-bottom: 0.2rem;
+}
+
+.archive-import__background {
+  align-self: center;
+  margin-top: 0.2rem;
 }
 
 .archive-import__progress-head {

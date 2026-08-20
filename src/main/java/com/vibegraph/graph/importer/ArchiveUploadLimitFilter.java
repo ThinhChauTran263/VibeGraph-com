@@ -25,16 +25,20 @@ import com.vibegraph.auth.service.AccountQuotaSnapshot;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.dto.response.ErrorResponse;
+import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 
 /**
- * A1/B1: reject archive uploads whose declared {@code Content-Length} exceeds the caller's
- * effective storage limit BEFORE Spring's multipart resolver spools the body to disk.
+ * A1/B1: reject archive uploads whose declared {@code Content-Length} exceeds the server hard
+ * limit BEFORE Spring's multipart resolver spools the body to disk.
  *
- * <p>The business quota check in {@code ArchiveImportServiceImpl} runs on the already-spool'd
- * {@code MultipartFile}, so a FREE account (100 MiB quota) could still force the server to write
- * up to the host multipart ceiling to disk before being rejected — a repeatable 20x write
- * amplification at the cheapest plan. This guard answers 413 while zero body bytes have been
- * persisted.
+ * <p>The ceiling is the configured import hard limit ({@code vibegraph.import.archive.max-size},
+ * capped by the host multipart ceiling), NOT the account quota: a 50MB archive holding 3MB of
+ * {@code .java} must not be rejected up front just because the declared size exceeds the
+ * remaining quota. The exact account-quota check runs after extraction, against the
+ * materialized {@code .java} bytes, in {@code ArchiveImportServiceImpl}. The one quota-based
+ * early rejection kept here is an EXHAUSTED account ({@code remainingBytes == 0}): any
+ * materialized byte would exceed it, so rejecting every declared byte can never be a false
+ * positive and preserves the audit's anti-amplification intent for the cheapest abuse case.
  *
  * <p>Placement: a plain servlet filter ordered AFTER the Spring Security chain (-100) — so the
  * SecurityContext is populated — and BEFORE the DispatcherServlet, which is where multipart
@@ -42,16 +46,9 @@ import com.vibegraph.common.dto.response.ErrorResponse;
  * resolves multipart before running them.
  *
  * <p>Fail-safe rules: a missing/invalid {@code Content-Length} or an unresolvable identity falls
- * back to the host ceiling, never to "allow everything". Chunked uploads keep the existing
- * host-level multipart limits as their only bound, exactly as before.
- *
- * <p>The ceiling is the account's REMAINING quota, not the plan total: with the total limit a
- * FREE user who already stored 95 of 100 MiB could still declare 100 MiB and force a full
- * spool before the business check rejects it — repeatable 1x-plan amplification. {@code
- * remainingBytes == 0} therefore rejects every declared byte. The only path back to the host
- * ceiling is an unlimited plan ({@code limitBytes == 0}, ENTERPRISE) or an unresolvable
- * identity; the two zero cases are told apart by {@code limitBytes}, because an exhausted
- * quota and an unlimited plan both yield {@code remainingBytes == 0}.
+ * back to the hard limit, never to "allow everything". Chunked uploads keep the existing
+ * host-level multipart limits as their only bound, exactly as before. Unlimited plans
+ * ({@code limitBytes == 0}, ENTERPRISE) are bounded by the hard limit alone.
  */
 @Component
 public class ArchiveUploadLimitFilter extends OncePerRequestFilter implements Ordered {
@@ -75,15 +72,18 @@ public class ArchiveUploadLimitFilter extends OncePerRequestFilter implements Or
     private final AccountSettingsService accountSettingsService;
     private final CurrentUser currentUser;
     private final ObjectMapper objectMapper;
+    private final ArchiveImportProperties archiveImportProperties;
     private final long hostCeilingBytes;
 
     public ArchiveUploadLimitFilter(AccountSettingsService accountSettingsService,
                                     CurrentUser currentUser,
                                     ObjectMapper objectMapper,
+                                    ArchiveImportProperties archiveImportProperties,
                                     @Value("${spring.servlet.multipart.max-request-size:2050MB}") DataSize maxRequestSize) {
         this.accountSettingsService = accountSettingsService;
         this.currentUser = currentUser;
         this.objectMapper = objectMapper;
+        this.archiveImportProperties = archiveImportProperties;
         this.hostCeilingBytes = maxRequestSize.toBytes();
     }
 
@@ -131,24 +131,27 @@ public class ArchiveUploadLimitFilter extends OncePerRequestFilter implements Or
     }
 
     /**
-     * Remaining quota capped by the host ceiling. Unlimited plans ({@code limitBytes == 0},
-     * ENTERPRISE) and unresolvable identities fall back to the host ceiling alone; an exhausted
-     * quota ({@code limitBytes > 0}, {@code remainingBytes == 0}) yields ceiling 0 so every
-     * declared byte is rejected up front.
+     * The server hard limit (import max-size capped by the host multipart ceiling), except an
+     * exhausted quota ({@code limitBytes > 0}, {@code remainingBytes == 0}) yields ceiling 0 so
+     * every declared byte is rejected up front - a case where no false positive is possible.
+     * Unlimited plans and unresolvable identities are bounded by the hard limit alone; the exact
+     * quota check runs after extraction.
      */
     private long ceilingForCurrentUser() {
         AccountQuotaSnapshot snapshot;
         try {
             snapshot = accountSettingsService.quotaSnapshot(currentUser.id());
         } catch (RuntimeException ex) {
-            return hostCeilingBytes;
+            return hardLimitBytes();
         }
-        if (snapshot.limitBytes() <= 0) {
-            // ENTERPRISE / unlimited plan (or a negative-limit misconfiguration): there is no
-            // plan budget to pre-enforce, only the host multipart ceiling.
-            return hostCeilingBytes;
+        if (snapshot.limitBytes() > 0 && snapshot.remainingBytes() <= 0) {
+            return 0L;
         }
-        return Math.min(snapshot.remainingBytes(), hostCeilingBytes);
+        return hardLimitBytes();
+    }
+
+    private long hardLimitBytes() {
+        return Math.min(archiveImportProperties.getMaxSize().toBytes(), hostCeilingBytes);
     }
 
     private void rejectPayloadTooLarge(HttpServletResponse response, long declared, long ceiling)

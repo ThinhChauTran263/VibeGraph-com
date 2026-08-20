@@ -142,10 +142,15 @@ public class ArchiveExtractor {
                                    long maxBytes, long[] total, List<Path> javaFiles, List<String> relativeJavaPaths)
             throws IOException {
         if (entryName == null || !entryName.toLowerCase(Locale.ROOT).endsWith(".java")) {
+            // F9 audit fix: skipped entries are still fully inflated while the stream
+            // advances past them, so a bomb can hide in a single non-.java entry. Count
+            // those decompressed bytes against the same ceiling instead of skipping blind.
+            drainAndCount(content, maxBytes, total);
             return;
         }
         Path target = resolveSafely(destRoot, entryName);
         if (isIgnored(destRoot, target, ignored)) {
+            drainAndCount(content, maxBytes, total);
             return;
         }
         Files.createDirectories(target.getParent());
@@ -201,6 +206,19 @@ public class ArchiveExtractor {
                             "Extracted content exceeds the configured maximum size");
                 }
                 out.write(buffer, 0, read);
+            }
+        }
+    }
+
+    /** Reads an entry that will not be materialized, still enforcing the extracted-byte ceiling. */
+    private void drainAndCount(InputStream in, long maxBytes, long[] total) throws IOException {
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = in.read(buffer)) != -1) {
+            total[0] += read;
+            if (total[0] > maxBytes) {
+                throw new ArchiveImportException(Reason.OVERSIZE,
+                        "Extracted content exceeds the configured maximum size");
             }
         }
     }

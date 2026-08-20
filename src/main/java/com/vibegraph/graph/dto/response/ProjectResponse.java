@@ -33,4 +33,16 @@ public class ProjectResponse {
     private String status;
     /** Analysis progress 0-100: 0 until analysis finishes, 100 when ANALYZED. */
     private int progress;
+    /**
+     * Bytes of materialized {@code .java} source stored for this project - the exact amount
+     * counted against the owner's storage quota. Absent when unknown (legacy rows).
+     */
+    private Long storedBytes;
+    /**
+     * Commit SHA of the imported source (GitHub imports only); absent for other sources.
+     * Shown shortened on the project card so owners recognize which commit was imported.
+     */
+    private String sourceRef;
+    /** Branch/ref the GitHub import was taken from; absent for other sources. */
+    private String sourceBranch;
 }

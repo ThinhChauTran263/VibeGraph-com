@@ -7,6 +7,7 @@ import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import type { ApiKeyCreated } from '@/types/api'
 import { accountApi } from '@/lib/api'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 const { t } = useI18n({ useScope: 'global' })
 const account = useAccountStore(),
   open = ref(false),
@@ -78,6 +79,12 @@ const canSubmit = computed(
 onMounted(() => {
   void Promise.allSettled([loadApiKeys(), loadProjects(), refreshFeatureAvailability()])
 })
+
+// Kept alive by UserLayout: keys created/revoked elsewhere appear on
+// re-activation without a reload flash.
+useSilentRefresh(() =>
+  Promise.allSettled([loadApiKeys(), account.fetchProjects({ force: true })]),
+)
 async function create() {
   if (!canSubmit.value) return
   creating.value = true

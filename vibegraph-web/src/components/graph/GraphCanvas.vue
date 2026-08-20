@@ -9,12 +9,16 @@
  * - Loading + error states
  */
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphExpand } from '@/composables/useGraphExpand'
 import { useFilters } from '@/composables/useFilters'
 import { useSigma } from '@/composables/useSigma'
 import { debounce } from '@/lib/debounce'
 import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
+import { projectApi } from '@/lib/api'
+import { useImportTracker } from '@/stores/importTracker'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import ExplorerPanel from '@/components/panels/ExplorerPanel.vue'
@@ -46,6 +50,38 @@ const props = defineProps<{
   projectId: string
 }>()
 
+const { t } = useI18n({ useScope: 'global' })
+const tracker = useImportTracker()
+
+// While the backend is still analyzing the project, the canvas shows a live
+// progress screen (brand spinner + progress bar + status message) instead of
+// the generic loading spinner. Cleared once analysis reaches a terminal state.
+const analyzingProjectId = ref<string | null>(null)
+const analysisFailed = ref(false)
+const analyzingEntry = computed(() =>
+  analyzingProjectId.value ? tracker.get(analyzingProjectId.value) : undefined,
+)
+const analyzingProgress = computed(() =>
+  Math.min(100, Math.max(0, Math.round(analyzingEntry.value?.progress ?? 0))),
+)
+const analyzingMessage = computed(
+  () => analyzingEntry.value?.message ?? t('user.projects.analyzingDefault'),
+)
+
+function waitForAnalysisEnd(seq: number, projectId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = watch(
+      () => tracker.version,
+      () => {
+        if (seq === loadSeq && tracker.isActive(projectId)) return
+        stop()
+        resolve()
+      },
+      { immediate: true },
+    )
+  })
+}
+
 const emit = defineEmits<{
   (e: 'nodeSelected', nodeId: string | null): void
 }>()
@@ -67,16 +103,17 @@ const activeFlow = ref<{
 // The selected flow shown in the right-hand DataFlowDetailPanel.
 const activeFlowDetail = ref<FlowListItem | null>(null)
 
-// User-resizable left sidebar width (px). Bound to a CSS custom property so the
-// responsive media query can still collapse the layout on narrow screens.
+// User-resizable left sidebar width (px). Owned by GraphView (v-model) so the
+// top tab bar can share the same column edge; bound to a CSS custom property
+// so the responsive media query can still collapse the layout on narrow screens.
 const wrapperRef = ref<HTMLElement | null>(null)
-const sidebarWidth = ref(288)
+const sidebarWidth = defineModel<number>('sidebarWidth', { default: 288 })
 let resizing = false
 
 // Collapsed state for the left sidebar. When collapsed the panel column shrinks
 // to zero and a floating chevron lets the user reopen it, freeing the full width
 // for the graph canvas.
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed = defineModel<boolean>('sidebarCollapsed', { default: false })
 
 function toggleSidebar(): void {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -412,6 +449,29 @@ async function load(projectId: string) {
   // Stale-load guard: if the project changes (or another load starts) while this
   // fetch is in flight, a late-resolving response must NOT init an outdated graph.
   const seq = ++loadSeq
+  analyzingProjectId.value = null
+  analysisFailed.value = false
+
+  // If analysis is still in flight, show the live progress screen and wait for
+  // the terminal state before fetching the graph (background imports included).
+  try {
+    const project = await projectApi.get(projectId)
+    if (seq !== loadSeq) return
+    if (project.status === 'ANALYZING') {
+      tracker.track(project)
+      analyzingProjectId.value = projectId
+      await waitForAnalysisEnd(seq, projectId)
+      if (seq !== loadSeq) return
+      analyzingProjectId.value = null
+      if (tracker.get(projectId)?.status === 'FAILED') {
+        analysisFailed.value = true
+        return
+      }
+    }
+  } catch {
+    // Status preflight failed (e.g. backend down): let loadGraph surface the real error.
+  }
+
   const graph = await loadGraph(projectId)
   if (seq !== loadSeq) return
   if (graph && canvasRef.value) {
@@ -750,9 +810,8 @@ onUnmounted(() => {
     :class="{
       'graph-canvas-wrapper--detail-open': graphReady && !loading && !error && (selectedNode || activeFlowDetail),
       'graph-canvas-wrapper--collapsed': graphReady && !loading && !error && sidebarCollapsed,
-      'graph-canvas-wrapper--loading': loading || error || !graphReady,
+      'graph-canvas-wrapper--loading': loading || error || !graphReady || analyzingProjectId,
     }"
-    :style="{ '--sidebar-width': (sidebarCollapsed ? 0 : sidebarWidth) + 'px' }"
   >
     <aside v-show="graphReady && !loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
       <div class="graph-canvas__sidebar-topbar">
@@ -885,15 +944,44 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="(loading || !graphReady) && !error" class="graph-overlay graph-overlay--loading">
-        <div class="spinner" aria-label="Loading graph" />
-        <p>{{ loading ? 'Loading graph...' : 'Finalizing graph layout...' }}</p>
+      <div
+        v-if="analyzingProjectId"
+        class="graph-overlay graph-overlay--loading graph-overlay--analyzing"
+      >
+        <LogoSpinner :size="180" />
+        <p class="graph-overlay__title">{{ t('graphView.analyzingTitle') }}</p>
+        <div
+          class="graph-overlay__progress"
+          role="progressbar"
+          :aria-valuenow="analyzingProgress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="graph-overlay__track">
+            <div class="graph-overlay__fill" :style="{ width: `${analyzingProgress}%` }"></div>
+          </div>
+          <span class="graph-overlay__value">{{ analyzingProgress }}%</span>
+        </div>
+        <p class="graph-overlay__message">{{ analyzingMessage }}</p>
+        <p class="graph-overlay__hint">{{ t('graphView.analyzingHint') }}</p>
       </div>
 
-      <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
-        <p class="error-title">Failed to load graph</p>
-        <p class="error-message">{{ error }}</p>
-        <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
+      <div
+        v-else-if="(loading || !graphReady) && !error && !analysisFailed"
+        class="graph-overlay graph-overlay--loading"
+      >
+        <LogoSpinner :size="140" />
+        <p>{{ loading ? t('graphView.loading') : t('graphView.finalizing') }}</p>
+      </div>
+
+      <div v-else-if="error || analysisFailed" class="graph-overlay graph-overlay--error" role="alert">
+        <p class="error-title">{{ t('graphView.failed') }}</p>
+        <p class="error-message">{{
+          analysisFailed && !error ? t('graphView.analyzingFailed') : error
+        }}</p>
+        <button class="retry-button" type="button" @click="load(props.projectId)">
+          {{ t('graphView.retry') }}
+        </button>
       </div>
 
       <aside v-if="graphReady && !loading && !error && activeFlowDetail" class="graph-canvas__detail">
@@ -1119,8 +1207,9 @@ onUnmounted(() => {
 
 .graph-canvas__stage {
   /* Single source of truth for the floating detail column width. The toolbar
-     reserves the same value, so the two can never drift apart. */
-  --detail-width: 23rem;
+     reserves the same value, so the two can never drift apart. 21rem keeps the
+     cards compact — wider made the two-panel column read as mostly padding. */
+  --detail-width: 21rem;
   /* The side-by-side threshold is written literally in the @container rules below,
      not held in a custom property: container and media queries cannot read var().
      A variable here would look like it drove the breakpoint while changing it did
@@ -1154,38 +1243,35 @@ onUnmounted(() => {
    padding read as dead space around every panel. */
 .graph-canvas__detail {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
-  bottom: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
   z-index: 7;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  width: min(var(--detail-width), calc(100% - 2rem));
-  /* The whole column scrolls as one. Panels size to their content so the Impact
-     Analysis results are never crushed to a zero-height (previously the panel was
-     capped at 38vh and its header/controls ate all of it, hiding the results). */
+  width: min(var(--detail-width), calc(100% - 1.5rem));
+  /* Fixed frame: the column itself never scrolls. Node Detail and Impact
+     Analysis each keep their own internal scroll (see the :deep rules below),
+     so both panels are always visible and reaching the Analyze form never
+     requires scrolling past Node Detail first. */
   min-height: 0;
-  overflow-y: auto;
-  /* Reserves the scrollbar's width up front so the cards keep one width whether or
-     not the column currently overflows. Measured: with overflow the content box is
-     353px either way — this changes nothing at that point. What it prevents is the
-     15px jump at the moment a scrollbar appears, which happens often here because
-     Impact Analysis results grow the column after it has already rendered. */
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
-/* Node Detail caps its height and scrolls internally so a node with many
-   relations cannot push Impact Analysis far down the column. */
+/* Node Detail caps at half the column and scrolls internally so a node with
+   many relations cannot push Impact Analysis out of view. */
 .graph-canvas__detail :deep(.node-detail-panel) {
-  flex: 0 0 auto;
-  max-height: 55vh;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
   overflow-y: auto;
 }
 
-/* Impact Analysis sizes to its content so its result list is always visible. */
+/* Impact Analysis owns the remaining half; its body already scrolls internally. */
 .graph-canvas__detail :deep(.impact-panel) {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Data Flow detail fills the right column and scrolls internally. */
@@ -1271,13 +1357,68 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #2a2a2a;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.graph-overlay--analyzing {
+  gap: 14px;
+}
+.graph-overlay__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #e5e5e5;
+}
+.graph-overlay__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, 80%);
+}
+.graph-overlay__track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(7, 11, 22, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+.graph-overlay__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  background-size: 200% 100%;
+  animation: overlay-shimmer 1.6s linear infinite;
+  transition: width 0.4s ease-out;
+}
+.graph-overlay__value {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.graph-overlay__message {
+  margin: 0;
+  max-width: 480px;
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  font-family: var(--vg-font-mono, monospace);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.graph-overlay__hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+@keyframes overlay-shimmer {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-overlay__fill {
+    animation: none;
+    transition: none;
+  }
 }
 
 .retry-button {
@@ -1393,12 +1534,12 @@ onUnmounted(() => {
    min-width: 12rem — then overflowed its own container straight under the panel.
    Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
 /* 40rem is the sum, not a guess: 1rem left + 12rem search floor + 0.75rem gap
-   + 23rem panel + 1rem right = 37.75rem, rounded up for slack. The toggles may
+   + 21rem panel + 0.75rem right = 35.5rem, rounded up for slack. The toggles may
    wrap onto their own line, so the search floor is what binds. Keep this literal
    and the one below in step — a query cannot read a custom property. */
 @container (min-width: 40rem) {
   .graph-canvas__stage--detail-open .graph-top-controls {
-    right: calc(1rem + var(--detail-width) + 0.75rem);
+    right: calc(0.75rem + var(--detail-width) + 0.75rem);
   }
 }
 
@@ -1458,11 +1599,5 @@ onUnmounted(() => {
 
 .graph-edge-kind-toggle {
   min-width: 8rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

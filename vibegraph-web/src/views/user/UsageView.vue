@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 import QuotaMeter from '@/components/ui/QuotaMeter.vue'
 import { displayPlanName } from '@/lib/planDisplay'
@@ -16,7 +17,8 @@ const ledgerError = ref('')
 interface UsageDisplay {
   usedMb?: number
   limitMb?: number
-  remainingMb?: number
+  usedBytes?: number
+  limitBytes?: number
   sourceStorageUsed?: number
   sourceStorageLimit?: number
   creditsUsed?: number
@@ -29,9 +31,10 @@ const usage = computed(
 )
 const usedMb = computed(() => usage.value?.usedMb ?? usage.value?.sourceStorageUsed ?? 0)
 const limitMb = computed(() => usage.value?.limitMb ?? usage.value?.sourceStorageLimit ?? 0)
-const remainingMb = computed(
-  () => usage.value?.remainingMb ?? Math.max(limitMb.value - usedMb.value, 0),
-)
+const BYTES_PER_MB = 1024 * 1024
+// Prefer the exact byte counters; fall back to the rounded MB fields for older backends.
+const usedBytes = computed(() => usage.value?.usedBytes ?? usedMb.value * BYTES_PER_MB)
+const limitBytes = computed(() => usage.value?.limitBytes ?? limitMb.value * BYTES_PER_MB)
 const creditBalanceLabel = computed(() => {
   if (typeof usage.value?.creditsRemaining === 'number') {
     return `${usage.value.creditsRemaining} ${t('user.usage.credits')}`
@@ -88,6 +91,23 @@ async function loadLedger(): Promise<void> {
 onMounted(() => {
   void loadUsage()
   void loadLedger()
+})
+
+// Kept alive by UserLayout: re-activation silently reconciles with the server so
+// new ledger rows / credit changes appear without any reload flash.
+useSilentRefresh(async () => {
+  const [usageResult, ledgerResult] = await Promise.allSettled([
+    accountStore.fetchUsage(),
+    accountStore.fetchCreditLedger(10),
+  ])
+  if (usageResult.status === 'fulfilled') {
+    usageError.value = ''
+    isUsageLoading.value = false
+  }
+  if (ledgerResult.status === 'fulfilled') {
+    ledgerError.value = ''
+    isLedgerLoading.value = false
+  }
 })
 
 function formatOperation(operationCode: string): string {
@@ -154,9 +174,8 @@ function formatDate(value: string | null): string {
       <section class="usage-card usage-card--wide">
         <div class="section-heading">
           <h3>{{ t('user.usage.sourceStorage') }}</h3>
-          <span>{{ t('user.usage.remaining', { count: remainingMb }) }}</span>
         </div>
-        <QuotaMeter :used="usedMb" :total="limitMb" unit="MB" />
+        <QuotaMeter :used-bytes="usedBytes" :total-bytes="limitBytes" />
       </section>
 
       <section class="usage-card usage-card--wide">
@@ -250,13 +269,14 @@ function formatDate(value: string | null): string {
 }
 
 .usage-card__label,
-.usage-card__meta,
-.section-heading span {
+.usage-card__meta {
   color: var(--vg-text-muted);
   font-size: var(--vg-text-sm);
 }
 
-.usage-card strong {
+/* Direct children only: the stat cards (plan, balance) get the big mono figure,
+   while ledger rows style their own <strong> small (see .ledger-row). */
+.usage-card > strong {
   color: var(--vg-text);
   font-family: var(--vg-font-display);
   font-size: var(--vg-text-xl);
@@ -293,17 +313,20 @@ function formatDate(value: string | null): string {
 }
 
 .ledger-row {
-  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--vg-space-4);
-  padding: var(--vg-space-3) var(--vg-space-4);
+  gap: var(--vg-space-3);
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--vg-border);
 }
 
 .ledger-row:last-child {
   border-bottom: 0;
+}
+
+.ledger-row > div {
+  min-width: 0;
 }
 
 .ledger-row strong,
@@ -312,28 +335,41 @@ function formatDate(value: string | null): string {
   overflow-wrap: anywhere;
 }
 
+/* Compact list typography: operation name reads as a list title, not a stat. */
 .ledger-row strong {
   display: block;
   color: var(--vg-text);
+  font-family: var(--vg-font-body);
+  font-size: var(--vg-text-sm);
+  font-weight: 600;
 }
 
-.ledger-row span,
+.ledger-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
+}
+
 .ledger-row time {
-  color: var(--vg-text-muted);
-  font-size: var(--vg-text-sm);
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
 }
 
 .ledger-row__meta {
-  min-width: 160px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--vg-space-1);
+  gap: 0.125rem;
 }
 
 .credit-delta {
-  min-width: 96px;
+  font-size: var(--vg-text-sm);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 

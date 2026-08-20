@@ -107,6 +107,13 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
 
       await walk(absolutePath, rootDir, ignoreRules, files, skipped, maxFileSize, maxFiles, onTruncate);
     } else if (entry.isFile()) {
+      // Java sources only — the knowledge graph stores nothing else, matching the
+      // archive/GitHub importers. The server enforces the same rule.
+      if (!entry.name.endsWith(".java")) {
+        skipped.push({ relativePath, reason: "not Java source" });
+        continue;
+      }
+
       // Check file size
       let fileStat;
       try {

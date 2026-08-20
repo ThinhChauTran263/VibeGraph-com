@@ -21,6 +21,7 @@ import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.abuse.AbuseProperties;
 import com.vibegraph.abuse.ConcurrentImportGuard;
 import com.vibegraph.common.exception.FeatureDisabledException;
+import com.vibegraph.common.exception.InsufficientCreditsException;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +52,7 @@ import com.vibegraph.graph.importer.ArchiveExtractor;
 import com.vibegraph.graph.importer.config.ArchiveImportProperties;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.ImportCreditBilling;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
@@ -77,6 +79,7 @@ class ArchiveImportServiceImplTest {
     @Mock ProjectOwnershipRegistrar ownershipRegistrar;
     @Mock FeatureGateService featureGateService;
     @Mock com.vibegraph.graph.repository.GraphRepository graphRepository;
+    @Mock ImportCreditBilling importCreditBilling;
 
     /** Capturing executor: background analysis runs only when we drain this list. */
     private final List<Runnable> backgroundTasks = new ArrayList<>();
@@ -95,7 +98,7 @@ class ArchiveImportServiceImplTest {
         service = new ArchiveImportServiceImpl(properties, new ArchiveExtractor(properties),
                 projectService, analyzeService, graphUpdateController, fileChangeBroadcaster, backgroundTasks::add,
                 accountSettingsService, projectUsageService, currentUser, ownershipRegistrar, featureGateService,
-                new ConcurrentImportGuard(new AbuseProperties()), graphRepository);
+                new ConcurrentImportGuard(new AbuseProperties()), graphRepository, importCreditBilling);
     }
 
     @Test
@@ -118,6 +121,27 @@ class ArchiveImportServiceImplTest {
         verify(analyzeService).analyzeProject("p1", "demo", "rp");
         verify(projectService).updateProjectStats("p1", 1, 5, 4);
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+        // Billed upfront by the extracted .java file count.
+        verify(importCreditBilling).chargeUpfront(userId, ImportCreditBilling.OPERATION_IMPORT_ARCHIVE, 1, "p1");
+    }
+
+    @Test
+    @DisplayName("an exhausted credit balance blocks the import and cleans up the partially registered project")
+    void insufficientCreditsBlocksImport() throws IOException {
+        MockMultipartFile file = zip("project.zip", Map.of("src/App.java", "class App {}"));
+        ProjectResponse created = ProjectResponse.builder().id("p1").name("demo").rootPath("rp").status("CREATED").build();
+        when(projectService.createProjectFromWorkspace(eq("demo"), any(Path.class))).thenReturn(created);
+        doThrow(new InsufficientCreditsException(
+                "Insufficient credits to perform this operation. Required: 2, Available: 0", 2L, 0L))
+                .when(importCreditBilling).chargeUpfront(userId, ImportCreditBilling.OPERATION_IMPORT_ARCHIVE, 1, "p1");
+
+        assertThatThrownBy(() -> service.importArchive("demo", file))
+                .isInstanceOf(InsufficientCreditsException.class);
+
+        verify(projectService).deleteProject("p1");
+        verify(projectUsageService, never()).recordImport(any(), any(), org.mockito.ArgumentMatchers.anyLong());
+        verify(analyzeService, never()).analyzeProject(any(), any(), any());
+        assertNoWorkspaceLeftover();
     }
 
     @Test

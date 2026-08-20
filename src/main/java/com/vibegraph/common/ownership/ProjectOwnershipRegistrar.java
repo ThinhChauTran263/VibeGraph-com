@@ -45,7 +45,47 @@ public class ProjectOwnershipRegistrar {
 
     /** Register a GitHub-import project (sourceType GITHUB). */
     public void registerGithub(String projectId, String name) {
-        register(projectId, name, ProjectSourceType.GITHUB);
+        registerGithub(projectId, name, null);
+    }
+
+    /**
+     * Register a GitHub-import project (sourceType GITHUB) together with the commit SHA of the
+     * imported source, so later re-imports can detect "up to date" vs "refresh".
+     */
+    public void registerGithub(String projectId, String name, String sourceRef) {
+        registerGithub(projectId, name, sourceRef, null);
+    }
+
+    /**
+     * Register a GitHub-import project together with the commit SHA and the branch/ref that
+     * was imported, so the project card can show where the sources came from.
+     */
+    public void registerGithub(String projectId, String name, String sourceRef, String sourceBranch) {
+        register(projectId, name, ProjectSourceType.GITHUB, sourceRef, sourceBranch);
+    }
+
+    /**
+     * Update the stored source commit SHA after a successful refresh. Best-effort no-op when the
+     * row is gone (e.g. purged between swap and analysis completion).
+     */
+    @Transactional
+    public void updateSourceRef(String projectId, String sourceRef) {
+        updateSourceRef(projectId, sourceRef, null);
+    }
+
+    /**
+     * Update the stored source commit SHA and imported branch after a successful refresh.
+     * Best-effort no-op when the row is gone (e.g. purged between swap and analysis completion).
+     */
+    @Transactional
+    public void updateSourceRef(String projectId, String sourceRef, String sourceBranch) {
+        ownershipRepository.findById(projectId).ifPresent(row -> {
+            row.setSourceRef(sourceRef);
+            if (sourceBranch != null) {
+                row.setSourceBranch(sourceBranch);
+            }
+            ownershipRepository.save(row);
+        });
     }
 
     @Transactional
@@ -65,6 +105,17 @@ public class ProjectOwnershipRegistrar {
      */
     @Transactional
     public void register(String projectId, String name, ProjectSourceType sourceType) {
+        register(projectId, name, sourceType, null);
+    }
+
+    @Transactional
+    public void register(String projectId, String name, ProjectSourceType sourceType, String sourceRef) {
+        register(projectId, name, sourceType, sourceRef, null);
+    }
+
+    @Transactional
+    public void register(String projectId, String name, ProjectSourceType sourceType, String sourceRef,
+            String sourceBranch) {
         UUID ownerId = currentUser.id();
         ProjectOwnership existing = ownershipRepository.findById(projectId).orElse(null);
         if (existing != null) {
@@ -74,6 +125,12 @@ public class ProjectOwnershipRegistrar {
             }
             existing.setName(name != null ? name : projectId);
             existing.setSourceType(sourceType);
+            if (sourceRef != null) {
+                existing.setSourceRef(sourceRef);
+            }
+            if (sourceBranch != null) {
+                existing.setSourceBranch(sourceBranch);
+            }
             ownershipRepository.save(existing);
             return;
         }
@@ -82,6 +139,8 @@ public class ProjectOwnershipRegistrar {
                 .ownerId(ownerId)
                 .name(name != null ? name : projectId)
                 .sourceType(sourceType)
+                .sourceRef(sourceRef)
+                .sourceBranch(sourceBranch)
                 .build();
         ownershipRepository.save(ownership);
     }

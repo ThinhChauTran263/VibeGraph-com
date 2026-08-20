@@ -40,6 +40,15 @@ public class GitHubUrlParser {
         if (!SEGMENT.matcher(owner).matches() || !SEGMENT.matcher(repo).matches()) {
             throw new GithubImportException("GitHub owner or repository name contains unsupported characters");
         }
+        // F10 audit fix: SEGMENT also matches "." and "..", which would build traversal
+        // paths like repos/../x downstream. GitHub never names an owner or repo that way.
+        if (isReservedSegment(owner) || isReservedSegment(repo)) {
+            throw new GithubImportException("GitHub owner or repository name is invalid");
+        }
         return new GitHubRepositoryRef(owner, repo, null);
+    }
+
+    private static boolean isReservedSegment(String segment) {
+        return ".".equals(segment) || "..".equals(segment);
     }
 }

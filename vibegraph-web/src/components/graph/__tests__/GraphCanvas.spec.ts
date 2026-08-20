@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 import { computed, ref } from 'vue'
 import Graph from 'graphology'
 import GraphCanvas from '../GraphCanvas.vue'
+import i18n from '@/language'
 import type { GraphData, GraphNode } from '@/types/graph'
 
 const selectedNode = ref<GraphNode | null>(null)
@@ -106,9 +108,22 @@ vi.mock('@/composables/useFilters', () => ({
   }),
 }))
 
+// The analyzing-status preflight in load() must not hit a real backend in unit
+// tests; keep every other lib/api export intact for child components.
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    projectApi: { get: vi.fn<() => Promise<never>>(() => Promise.reject(new Error('test: no backend'))) },
+  }
+})
+
 describe('GraphCanvas', () => {
   it('emits null when search selection is cleared', async () => {
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
 
     await wrapper.findComponent({ name: 'SearchBar' }).vm.$emit('clear')
 
@@ -130,7 +145,10 @@ describe('GraphCanvas', () => {
     selectedNode.value = selected
     selectNode.mockClear()
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
 
     await wrapper.findComponent({ name: 'NodeDetailPanel' }).vm.$emit('relationSelect', {
       edgeId: 'counterpart|CALLS|selected',
@@ -163,7 +181,10 @@ describe('GraphCanvas', () => {
     selectedNode.value = selected
     clearSelection.mockClear()
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     const panel = wrapper.findComponent({ name: 'NodeDetailPanel' })
 
     await panel.vm.$emit('relationSelect', {
@@ -210,7 +231,10 @@ describe('GraphCanvas', () => {
     graph.addEdgeWithKey('a|CALLS|b', 'a', 'b', { color: '#93c5fd' })
     graphInstanceRef.value = graph
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     await flushPromises()
 
     capturedRealtimePatched?.({
@@ -254,7 +278,10 @@ describe('GraphCanvas edge label toggle', () => {
 
     // The zoom-driven density change applies its reducer swap synchronously, so the
     // captured onCameraRatioChange handler drives the batched setting immediately.
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     await flushPromises()
     setReducers.mockClear()
 

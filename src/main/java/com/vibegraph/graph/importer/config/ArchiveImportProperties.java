@@ -18,7 +18,7 @@ import java.util.List;
  * vibegraph:
  *   import:
  *     archive:
- *       max-size: 2048MB
+ *       max-size: 200MB
  *       workspace-root: ${VIBEGRAPH_UPLOAD_WORKSPACE:${java.io.tmpdir}/vibegraph/uploads}
  *       ignored-paths:
  *         - target
@@ -32,8 +32,12 @@ import java.util.List;
 @ConfigurationProperties(prefix = "vibegraph.import.archive")
 public class ArchiveImportProperties {
 
-    /** Max uploaded archive size; larger archives are rejected before extraction. */
-    private DataSize maxSize = DataSize.ofMegabytes(2048);
+    /**
+     * Server hard limit per import request (upload size, download size, and extracted-byte
+     * ceiling). Deliberately independent of the account quota: only the materialized .java
+     * bytes count against the quota, and that check runs after extraction.
+     */
+    private DataSize maxSize = DataSize.ofMegabytes(200);
 
     /** Writable root where uploaded archives are materialized before parsing. Must never be the read-only /projects mount. */
     private Path workspaceRoot = Paths.get(System.getProperty("java.io.tmpdir"), "vibegraph", "uploads");

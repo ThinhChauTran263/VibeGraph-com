@@ -64,4 +64,13 @@ public interface ProjectOwnershipRepository extends JpaRepository<ProjectOwnersh
      */
     List<ProjectOwnership> findByOwnerIdAndSourceTypeAndNameAndDeletedAtIsNotNull(
             UUID ownerId, ProjectSourceType sourceType, String name);
+
+    /**
+     * Live (non-trashed) imports of the same repository for this owner. Re-importing a GitHub
+     * repo with a changed HEAD refreshes these in place; an unchanged HEAD is blocked as
+     * up-to-date. Matching by name is only safe for GitHub, where the name is the globally
+     * unique {@code owner/repo}.
+     */
+    List<ProjectOwnership> findByOwnerIdAndSourceTypeAndNameAndDeletedAtIsNull(
+            UUID ownerId, ProjectSourceType sourceType, String name);
 }

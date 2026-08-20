@@ -71,7 +71,7 @@ class AccountControllerTest {
                 "BLOCKED",
                 "Policy review",
                 java.util.Map.of(
-                        "import.local", FeatureCapability.deny("Policy review"),
+                        "import.archive", FeatureCapability.deny("Policy review"),
                         "registration", FeatureCapability.allow())));
 
         mockMvc.perform(get("/api/account/session-state"))
@@ -134,7 +134,9 @@ class AccountControllerTest {
     @DisplayName("GET /api/account/usage returns quota snapshot")
     void usage_returnsQuotaSnapshot() throws Exception {
         when(accountService.usage())
-                .thenReturn(new AccountUsageResponse(128L, 512L, 384L, "FREE", "Free", null, 25, 100, 75));
+                .thenReturn(new AccountUsageResponse(128L, 512L, 384L,
+                        128L * 1048576L, 512L * 1048576L, 384L * 1048576L,
+                        "FREE", "Free", null, 25, 100, 75));
 
         mockMvc.perform(get("/api/account/usage"))
                 .andExpect(status().isOk())
@@ -142,6 +144,9 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.data.usedMb").value(128))
                 .andExpect(jsonPath("$.data.limitMb").value(512))
                 .andExpect(jsonPath("$.data.remainingMb").value(384))
+                .andExpect(jsonPath("$.data.usedBytes").value(128L * 1048576L))
+                .andExpect(jsonPath("$.data.limitBytes").value(512L * 1048576L))
+                .andExpect(jsonPath("$.data.remainingBytes").value(384L * 1048576L))
                 .andExpect(jsonPath("$.data.planCode").value("FREE"))
                 .andExpect(jsonPath("$.data.planName").value("Free"))
                 .andExpect(jsonPath("$.data.creditsUsed").value(25))
