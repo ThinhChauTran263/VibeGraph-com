@@ -13,11 +13,7 @@
 
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import {
-  ARCHIVE_ACCEPT_ATTRIBUTE,
-  formatFileSize,
-  validateArchiveFile,
-} from '@/lib/archiveUpload'
+import { ARCHIVE_ACCEPT_ATTRIBUTE, formatFileSize, validateArchiveFile } from '@/lib/archiveUpload'
 import type { Project } from '@/lib/api'
 import { useArchiveImport } from '@/composables/useArchiveImport'
 import { useImportTracker } from '@/stores/importTracker'
@@ -73,7 +69,9 @@ const canSubmit = computed(
 
 const submitLabel = computed(() => {
   if (isAnalyzing.value) {
-    return progress.value >= 98 ? t('user.import.finalizing') : `${t('user.import.importing')} ${progress.value}%`
+    return progress.value >= 98
+      ? t('user.import.finalizing')
+      : `${t('user.import.importing')} ${progress.value}%`
   }
   if (status.value === 'uploading') return t('user.import.uploading')
   return t('user.import.uploadArchive')
@@ -85,7 +83,9 @@ const submitLabel = computed(() => {
 // matching the GitHub/local import wording.
 const progressLabel = computed(() => {
   if (!isAnalyzing.value) return t('user.import.uploading')
-  return progress.value >= 98 ? t('user.import.finalizing') : `${t('user.import.analyzing')} ${progress.value}%`
+  return progress.value >= 98
+    ? t('user.import.finalizing')
+    : `${t('user.import.analyzing')} ${progress.value}%`
 })
 
 function onFileChange(event: Event): void {
@@ -270,9 +270,12 @@ onBeforeUnmount(() => {
         class="archive-import__success"
         role="status"
       >
-        {{ t('user.import.successFor') }} <strong>{{ importedProject.name }}</strong> (status: {{ importedProject.status }}).
+        {{ t('user.import.successFor') }} <strong>{{ importedProject.name }}</strong> (status:
+        {{ importedProject.status }}).
         <span v-if="typeof importedProject.storedBytes === 'number'">
-          {{ t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) }) }}
+          {{
+            t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) })
+          }}
         </span>
       </p>
     </form>
@@ -578,20 +581,23 @@ onBeforeUnmount(() => {
 
 .archive-import__btn {
   font: inherit;
+  font-size: var(--vg-text-sm);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  min-height: 2.75rem;
   padding: 0.6rem 1.15rem;
   border-radius: var(--vg-radius-pill);
   border: 1px solid var(--vg-border-strong);
   background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color var(--vg-dur-fast) var(--vg-ease-out),
     border-color var(--vg-dur-fast) var(--vg-ease-out),
-    transform var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -608,13 +614,12 @@ onBeforeUnmount(() => {
 }
 
 .archive-import__btn--primary:not(:disabled):hover {
-  transform: translateY(-2px);
   box-shadow:
     0 0 0 1px rgba(34, 211, 238, 0.5),
     0 18px 40px -14px rgba(34, 211, 238, 0.8);
 }
 .archive-import__btn--primary:not(:disabled):active {
-  transform: translateY(0);
+  box-shadow: 0 4px 14px -8px rgba(34, 211, 238, 0.7);
 }
 
 .archive-import__btn--ghost:not(:disabled):hover {
@@ -622,9 +627,25 @@ onBeforeUnmount(() => {
   background: rgba(148, 163, 184, 0.12);
 }
 
+.archive-import__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .archive-import__submit-spinner {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+@media (max-width: 30rem) {
+  .archive-import__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .archive-import__actions .archive-import__btn {
+    width: 100%;
+  }
 }
 </style>

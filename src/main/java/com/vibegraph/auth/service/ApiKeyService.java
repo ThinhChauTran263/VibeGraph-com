@@ -52,6 +52,7 @@ public class ApiKeyService {
     private final PasswordEncoder passwordEncoder;
     private final FeatureGateService featureGateService;
     private final AuditService auditService;
+    private final ApiKeySecretProtector secretProtector;
     @Transactional
     public ApiKeyCreateResponse createForCurrentUser(ApiKeyCreateRequest request) {
         featureGateService.assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
@@ -78,6 +79,23 @@ public class ApiKeyService {
     public List<ApiKeyResponse> listForUser(UUID userId) {
         assertCurrentUserIsAdmin();
         return responses(apiKeyRepository.findByUserIdAndDeletedAtIsNull(userId));
+    }
+
+    /**
+     * Returns the plaintext secret for the owner's own key. Only keys created after the
+     * reveal feature (encrypted copy stored) can be revealed; older keys stay one-time.
+     */
+    @Transactional
+    public String revealForCurrentUser(UUID keyId) {
+        UUID userId = currentUserEntity().getId();
+        ApiKey apiKey = apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)
+                .orElseThrow(() -> new ForbiddenException("Access denied"));
+        if (apiKey.getSecretCipher() == null || apiKey.getSecretCipher().isBlank()) {
+            throw new ForbiddenException("This key was created before reveal support");
+        }
+        auditService.recordCurrentUser("API_KEY_REVEAL", userId, "API_KEY", keyId.toString(),
+                Map.of("keyPrefix", apiKey.getKeyPrefix()));
+        return secretProtector.decrypt(apiKey.getSecretCipher());
     }
 
     @Transactional
@@ -172,6 +190,7 @@ public class ApiKeyService {
                 .projectId(project.getProjectId())
                 .keyHash(passwordEncoder.encode(secretKey))
                 .keyPrefix(secretKey.substring(0, Math.min(12, secretKey.length())))
+                .secretCipher(secretProtector.encrypt(secretKey))
                 .name(name)
                 .build();
         try {

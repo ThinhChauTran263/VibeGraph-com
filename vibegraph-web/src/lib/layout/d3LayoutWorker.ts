@@ -90,10 +90,7 @@ function runCollidePhase(nodes: SimNode[], links: Array<{ source: string; target
 }
 
 /** ngraph.forcelayout macro skeleton (hybrid fallback slot). */
-function runNgraphMacro(
-  nodes: SimNode[],
-  links: Array<{ source: string; target: string }>,
-): void {
+function runNgraphMacro(nodes: SimNode[], links: Array<{ source: string; target: string }>): void {
   const ng = createNgraphGraph()
   for (const n of nodes) ng.addNode(n.id)
   for (const l of links) {
@@ -138,13 +135,14 @@ scope.onmessage = (e) => {
     runCollidePhase(nodes, links)
   } else {
     const sim: Simulation<SimNode, undefined> = forceSimulation<SimNode>(nodes)
-      .force('charge', forceManyBody<SimNode>().strength(CHARGE_STRENGTH).distanceMax(CHARGE_DISTANCE_MAX))
+      .force(
+        'charge',
+        forceManyBody<SimNode>().strength(CHARGE_STRENGTH).distanceMax(CHARGE_DISTANCE_MAX),
+      )
       .force('collision', forceCollide<SimNode>(collideRadius))
       .force(
         'link',
-        forceLink<SimNode, { source: string; target: string } & { index?: number }>(
-          links as never,
-        )
+        forceLink<SimNode, { source: string; target: string } & { index?: number }>(links as never)
           .id((d) => d.id)
           .distance(LINK_DISTANCE),
       )
@@ -156,9 +154,9 @@ scope.onmessage = (e) => {
   }
 
   // Pin everything → static graph, zero CPU after this message.
-  const ids = new Array<string>(nodes.length)
-  const xs = new Array<number>(nodes.length)
-  const ys = new Array<number>(nodes.length)
+  const ids = Array.from({ length: nodes.length }, () => '')
+  const xs = Array.from({ length: nodes.length }, () => 0)
+  const ys = Array.from({ length: nodes.length }, () => 0)
   for (let i = 0; i < nodes.length; i += 1) {
     const n = nodes[i]!
     n.fx = n.x

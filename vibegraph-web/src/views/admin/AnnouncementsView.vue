@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 import type { AdminAnnouncementRequest } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 
@@ -227,27 +228,33 @@ function toDateTimeLocal(value: string | null | undefined): string | null {
       <form class="composer" @submit.prevent="submitAnnouncement">
         <label class="field">
           <span>{{ t('admin.announcements.form.type') }}</span>
-          <select id="announcement-type" v-model="form.type" name="announcementType">
-            <option v-for="option in typeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
+          <ThemedSelect
+            v-model="form.type"
+            input-id="announcement-type"
+            name="announcementType"
+            :options="typeOptions"
+            :aria-label="t('admin.announcements.form.type')"
+          />
         </label>
         <label class="field">
           <span>{{ t('admin.announcements.form.severity') }}</span>
-          <select id="announcement-severity" v-model="form.severity" name="announcementSeverity">
-            <option v-for="option in severityOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
+          <ThemedSelect
+            v-model="form.severity"
+            input-id="announcement-severity"
+            name="announcementSeverity"
+            :options="severityOptions"
+            :aria-label="t('admin.announcements.form.severity')"
+          />
         </label>
         <label class="field">
           <span>{{ t('admin.announcements.form.target') }}</span>
-          <select id="announcement-target" v-model="form.target" name="announcementTarget">
-            <option v-for="option in targetOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
+          <ThemedSelect
+            v-model="form.target"
+            input-id="announcement-target"
+            name="announcementTarget"
+            :options="targetOptions"
+            :aria-label="t('admin.announcements.form.target')"
+          />
         </label>
         <label class="field title-field">
           <span>{{ t('admin.announcements.form.title') }}</span>

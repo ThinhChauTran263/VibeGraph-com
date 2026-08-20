@@ -69,6 +69,9 @@ class ApiKeyServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private ApiKeySecretProtector secretProtector;
+
     private ApiKeyService apiKeyService;
 
     private UUID userId;
@@ -87,7 +90,8 @@ class ApiKeyServiceTest {
                 accountSettingsService,
                 passwordEncoder,
                 featureGateService,
-                auditService);
+                auditService,
+                secretProtector);
 
         userId = UUID.randomUUID();
         user = User.builder()
@@ -369,5 +373,50 @@ class ApiKeyServiceTest {
 
         assertThrows(ForbiddenException.class,
                 () -> apiKeyService.disableForAnyUser(UUID.randomUUID()));
+    }
+
+    @Test
+    @DisplayName("revealForCurrentUser returns the decrypted secret for the owner")
+    void revealForCurrentUser_owner_decryptsStoredCipher() {
+        UUID keyId = UUID.randomUUID();
+        ApiKey apiKey = ApiKey.builder()
+                .id(keyId)
+                .userId(userId)
+                .keyHash("$2a$10$hash")
+                .keyPrefix("vbg_test1234")
+                .secretCipher("cipher-blob")
+                .name("Test")
+                .createdAt(java.time.Instant.now())
+                .build();
+        when(currentUser.id()).thenReturn(userId);
+        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId))
+                .thenReturn(java.util.Optional.of(apiKey));
+        when(secretProtector.decrypt("cipher-blob")).thenReturn("vbg_plainSecret");
+
+        assertEquals("vbg_plainSecret", apiKeyService.revealForCurrentUser(keyId));
+        verify(auditService).recordCurrentUser(eq("API_KEY_REVEAL"), eq(userId), eq("API_KEY"),
+                eq(keyId.toString()), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    @DisplayName("revealForCurrentUser rejects keys created before reveal support")
+    void revealForCurrentUser_legacyKeyWithoutCipher_throws() {
+        UUID keyId = UUID.randomUUID();
+        ApiKey apiKey = ApiKey.builder()
+                .id(keyId)
+                .userId(userId)
+                .keyHash("$2a$10$hash")
+                .keyPrefix("vbg_test1234")
+                .name("Test")
+                .createdAt(java.time.Instant.now())
+                .build();
+        when(currentUser.id()).thenReturn(userId);
+        when(userRepository.findById(userId)).thenReturn(java.util.Optional.of(user));
+        when(apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId))
+                .thenReturn(java.util.Optional.of(apiKey));
+
+        assertThrows(ForbiddenException.class, () -> apiKeyService.revealForCurrentUser(keyId));
+        verify(secretProtector, never()).decrypt(org.mockito.ArgumentMatchers.anyString());
     }
 }

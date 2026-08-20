@@ -50,6 +50,7 @@ class ApiKeyLifecycleServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private FeatureGateService featureGateService;
     @Mock private AuditService auditService;
+    @Mock private ApiKeySecretProtector secretProtector;
 
     private ApiKeyService service;
     private UUID userId;
@@ -59,7 +60,8 @@ class ApiKeyLifecycleServiceTest {
     @BeforeEach
     void setUp() {
         service = new ApiKeyService(currentUser, apiKeyRepository, projectOwnershipRepository,
-                userRepository, accountSettingsService, passwordEncoder, featureGateService, auditService);
+                userRepository, accountSettingsService, passwordEncoder, featureGateService, auditService,
+                secretProtector);
         userId = UUID.randomUUID();
         user = User.builder().id(userId).email("user@test.local").role(Role.USER).build();
         project = ProjectOwnership.builder().projectId("project-1").ownerId(userId).name("Project One")

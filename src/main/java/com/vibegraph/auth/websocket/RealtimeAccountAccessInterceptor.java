@@ -131,7 +131,7 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             UUID reportId
     ) {
         UUID userId = sessionId == null ? null : userIdsBySession.get(sessionId);
-        if (!isAuthSessionActive(sessionId, userId) || !accountAccessGuard.canAccessSupportRealtime(userId)) {
+        if (!canUseSupportSession(sessionId, userId)) {
             return rejectOrSuppress(command);
         }
         if (command == StompCommand.SEND) {
@@ -172,10 +172,10 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
         }
         try {
             AuthenticatedUser user = authenticatedUser(accessor);
-            if (!isAccessSessionActive(user)) {
+            if (!accountAccessGuard.canAccessSupportRealtime(user.id())) {
                 throw new AccessDeniedException(RESTRICTED_MESSAGE);
             }
-            if (!accountAccessGuard.canAccessSupportRealtime(user.id())) {
+            if (!isAccessSessionActive(user) && accountAccessGuard.canAccessRealtime(user.id())) {
                 throw new AccessDeniedException(RESTRICTED_MESSAGE);
             }
             accessor.setUser(new UsernamePasswordAuthenticationToken(user, null, java.util.List.of()));
@@ -262,6 +262,10 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
         }
         UUID authSessionId = authSessionIdsBySession.get(stompSessionId);
         return authSessionId == null || refreshSessionService.isAccessSessionActive(authSessionId, userId);
+    }
+
+    private boolean canUseSupportSession(String stompSessionId, UUID userId) {
+        return accountAccessGuard.canAccessSupportRealtime(userId);
     }
 
     private String projectId(String destination) {

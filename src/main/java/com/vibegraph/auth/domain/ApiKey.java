@@ -18,7 +18,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * CLI / MCP API key (table {@code api_keys}). Only the key HASH is stored, never the raw key.
+ * CLI / MCP API key (table {@code api_keys}). Only the key HASH is stored for authentication;
+ * an optional AES-GCM encrypted copy ({@code secret_cipher}) backs the owner-facing reveal flow.
  *
  * <p>Only non-deleted keys participate in authentication and project uniqueness. A key
  * disabled by an administrator is locked and cannot be deleted by its owner.
@@ -48,6 +49,10 @@ public class ApiKey {
 
     @Column(name = "key_prefix", nullable = false, length = 16)
     private String keyPrefix;
+
+    /** AES-GCM encrypted secret copy for the reveal flow; NULL for pre-migration keys. */
+    @Column(name = "secret_cipher")
+    private String secretCipher;
 
     @Column(name = "name")
     private String name;

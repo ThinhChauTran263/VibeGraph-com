@@ -21,7 +21,8 @@ public record ApiKeyResponse(
         String lockedBy,
         Instant deletedAt,
         boolean locked,
-        boolean canDelete) {
+        boolean canDelete,
+        boolean revealable) {
 
     public ApiKeyResponse(
             UUID id,
@@ -32,7 +33,7 @@ public record ApiKeyResponse(
             Instant expiresAt,
             Instant disabledAt) {
         this(id, keyPrefix, name, null, createdAt, lastUsedAt, expiresAt, disabledAt,
-                null, null, null, null, null, false, true);
+                null, null, null, null, null, false, true, false);
     }
 
     public static ApiKeyResponse from(ApiKey apiKey, ProjectOwnership project) {
@@ -52,7 +53,8 @@ public record ApiKeyResponse(
                 apiKey.getLockedBy(),
                 apiKey.getDeletedAt(),
                 apiKey.getDisabledBy() == com.vibegraph.auth.domain.ApiKeyDisabledBy.ADMIN,
-                apiKey.getDisabledBy() != com.vibegraph.auth.domain.ApiKeyDisabledBy.ADMIN);
+                apiKey.getDisabledBy() != com.vibegraph.auth.domain.ApiKeyDisabledBy.ADMIN,
+                apiKey.getSecretCipher() != null && !apiKey.getSecretCipher().isBlank());
     }
 
     public static ApiKeyResponse from(ApiKey apiKey) {
