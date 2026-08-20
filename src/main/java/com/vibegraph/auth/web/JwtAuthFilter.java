@@ -93,12 +93,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // used to be four separate round trips on every authenticated request.
             AccountAccessDecision decision =
                     accountAccessGuard.authenticate(tokenPrincipal.id(), tokenPrincipal.sessionId());
-            if (decision.restriction() != null && !isRestrictedAccountRoute(request)) {
+            boolean restrictedRoute = isRestrictedAccountRoute(request);
+            if (decision.restriction() != null && !restrictedRoute) {
                 SecurityContextHolder.clearContext();
                 writeRestrictedResponse(response, decision.restriction());
                 return false;
             }
-            if (!decision.sessionUsable()) {
+            if (!decision.sessionUsable() && !canUseBlockedSupportSession(decision, restrictedRoute)) {
                 SecurityContextHolder.clearContext();
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return false;
@@ -152,6 +153,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if ("POST".equals(method) && "/api/auth/logout".equals(path)) {
             return true;
         }
+        if (path.startsWith("/ws/")) {
+            // The SockJS/STOMP handshake itself carries no project or report data; the
+            // realtime interceptor re-enforces per-topic access after CONNECT (blocked
+            // accounts keep support realtime but lose project topics). Without this,
+            // restricted accounts could chat over REST yet never receive admin replies
+            // in realtime because the transport died at the HTTP handshake.
+            return true;
+        }
         if ("GET".equals(method)
                 && ("/api/auth/me".equals(path) || "/api/account/session-state".equals(path))) {
             return true;
@@ -169,6 +178,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return "PATCH".equals(method);
         }
         return "GET".equals(method);
+    }
+
+    private boolean canUseBlockedSupportSession(
+            AccountAccessDecision decision,
+            boolean restrictedRoute) {
+        return restrictedRoute
+                && decision.restriction() != null
+                && "ACCOUNT_BLOCKED".equals(decision.restriction().getCode());
     }
 
     private boolean isSessionManagementEndpoint(HttpServletRequest request) {

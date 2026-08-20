@@ -47,8 +47,8 @@ const tabs = computed<MethodTab[]>(() => [
     label: t('user.projects.cliPush'),
     short: t('user.projects.cliShort'),
     description: t('user.projects.cliDescription'),
-    accent: 'var(--vg-blue-bright)',
-    accentSoft: 'rgba(96, 165, 250, 0.16)',
+    accent: 'var(--vg-cyan)',
+    accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
   {
     id: 'archive',
@@ -63,15 +63,17 @@ const tabs = computed<MethodTab[]>(() => [
     label: 'GitHub',
     short: 'GitHub',
     description: t('user.projects.githubDescription'),
-    accent: 'var(--vg-violet)',
-    accentSoft: 'rgba(167, 139, 250, 0.16)',
+    accent: 'var(--vg-cyan)',
+    accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
 ])
 
 const enabledTabs = computed(() => tabs.value.filter((tab) => !props.disabledMethods[tab.id]))
 const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
 const active = ref<Method>(enabledTabs.value[0]?.id ?? 'cli')
-const activeTab = computed<MethodTab>(() => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!)
+const activeTab = computed<MethodTab>(
+  () => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!,
+)
 
 watch(
   () => props.disabledMethods,
@@ -108,7 +110,9 @@ const ICON_NAMES: Record<Method, string> = {
   >
     <header class="import-panel__head">
       <div class="import-panel__title-row">
-        <h2 id="import-panel-heading" class="import-panel__title">{{ t('user.projects.importDialogTitle') }}</h2>
+        <h2 id="import-panel-heading" class="import-panel__title">
+          {{ t('user.projects.importDialogTitle') }}
+        </h2>
         <span class="import-panel__badge">Java</span>
       </div>
       <p class="import-panel__desc">
@@ -168,8 +172,8 @@ const ICON_NAMES: Record<Method, string> = {
 
 <style scoped>
 .import-panel {
-  --accent: var(--vg-blue-bright);
-  --accent-soft: rgba(96, 165, 250, 0.16);
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -265,7 +269,7 @@ const ICON_NAMES: Record<Method, string> = {
   align-items: center;
   justify-content: flex-start;
   gap: 0.5rem;
-  min-height: 38px;
+  min-height: 2.75rem;
   font: inherit;
   font-weight: 600;
   font-size: var(--vg-text-sm);
@@ -282,6 +286,11 @@ const ICON_NAMES: Record<Method, string> = {
     color var(--vg-dur-fast) var(--vg-ease-out),
     border-color var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
+}
+
+.import-panel__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .import-panel__tab:hover:not(:disabled) {

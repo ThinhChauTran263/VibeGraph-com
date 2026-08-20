@@ -8,7 +8,7 @@
  * trigger button owns focus, ArrowUp/Down move aria-activedescendant,
  * Enter/Space commit, Escape closes, pointer users get hover + click.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 
 export interface ThemedSelectOption<T extends string | number> {
   value: T
@@ -20,6 +20,12 @@ const props = defineProps<{
   options: ThemedSelectOption<T>[]
   /** Id placed on the trigger button so an external <label for> can point at it. */
   inputId?: string
+  /** Accessible name used when the select is not paired with a visible label. */
+  ariaLabel?: string
+  /** Optional form name retained for native-form compatibility. */
+  name?: string
+  /** Compact is useful for dense toolbar filters; medium is the default. */
+  size?: 'sm' | 'md'
   disabled?: boolean
 }>()
 
@@ -29,6 +35,7 @@ const open = ref(false)
 const activeIndex = ref(0)
 const rootRef = ref<HTMLElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
+const generatedId = useId()
 
 const selectedIndex = computed(() =>
   props.options.findIndex((option) => option.value === props.modelValue),
@@ -37,11 +44,12 @@ const currentLabel = computed(() => {
   const match = selectedIndex.value >= 0 ? props.options[selectedIndex.value] : undefined
   return match?.label ?? ''
 })
-const listboxId = computed(() => `${props.inputId ?? 'vg-select'}-listbox`)
+const triggerId = computed(() => props.inputId ?? `vg-select-${generatedId}`)
+const listboxId = computed(() => `${triggerId.value}-listbox`)
 const optionId = (index: number) => `${listboxId.value}-option-${index}`
 
 function openMenu(): void {
-  if (props.disabled) return
+  if (props.disabled || props.options.length === 0) return
   activeIndex.value = selectedIndex.value >= 0 ? selectedIndex.value : 0
   open.value = true
 }
@@ -63,9 +71,10 @@ function commit(index: number): void {
 }
 
 function moveActive(delta: number): void {
+  if (props.options.length === 0) return
   const next = Math.min(props.options.length - 1, Math.max(0, activeIndex.value + delta))
   activeIndex.value = next
-  listRef.value?.children[next]?.scrollIntoView({ block: 'nearest' })
+  listRef.value?.children[next]?.scrollIntoView?.({ block: 'nearest' })
 }
 
 function onTriggerKeydown(event: KeyboardEvent): void {
@@ -122,12 +131,17 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
 </script>
 
 <template>
-  <div ref="rootRef" class="vg-select" :class="{ 'vg-select--open': open }">
+  <div
+    ref="rootRef"
+    class="vg-select"
+    :class="[{ 'vg-select--open': open }, `vg-select--${size ?? 'md'}`]"
+  >
     <button
-      :id="inputId"
+      :id="triggerId"
       type="button"
       class="vg-select__trigger"
       :disabled="disabled"
+      :aria-label="ariaLabel"
       aria-haspopup="listbox"
       :aria-expanded="open ? 'true' : 'false'"
       :aria-controls="listboxId"
@@ -136,13 +150,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
       @keydown="onTriggerKeydown"
     >
       <span class="vg-select__value">{{ currentLabel }}</span>
-      <svg
-        class="vg-select__chevron"
-        width="12"
-        height="8"
-        viewBox="0 0 12 8"
-        aria-hidden="true"
-      >
+      <svg class="vg-select__chevron" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true">
         <path
           d="M1 1.5l5 5 5-5"
           fill="none"
@@ -153,6 +161,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
         />
       </svg>
     </button>
+    <input v-if="name" type="hidden" :name="name" :value="modelValue" />
     <!-- Options use @click.prevent: they live inside the parent's
          <label for=...>, and a click on a non-interactive li would otherwise be
          FORWARDED by the label to the trigger button as its default action,
@@ -190,8 +199,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  height: 2.5rem;
-  padding: 0 0.625rem;
+  min-height: 2.75rem;
+  height: var(--vg-select-height, 2.75rem);
+  padding: 0 0.75rem;
   border: 1px solid var(--vg-border-strong);
   border-radius: var(--vg-radius-sm);
   background: var(--vg-surface-2);
@@ -203,6 +213,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
   transition:
     border-color var(--vg-dur-fast) ease,
     background-color var(--vg-dur-fast) ease;
+}
+
+.vg-select--sm {
+  --vg-select-height: 2.5rem;
 }
 
 .vg-select__trigger:hover:not(:disabled) {
@@ -281,6 +295,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
     color var(--vg-dur-fast) ease;
 }
 
+.vg-select__trigger:focus-visible {
+  outline: none;
+  border-color: var(--vg-blue-bright);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
 .vg-select__option--active {
   background: var(--vg-surface-3);
 }
@@ -297,5 +317,15 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDownO
   height: 0.375rem;
   border-radius: 50%;
   background: var(--vg-blue-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vg-select__menu,
+  .vg-select__trigger,
+  .vg-select__chevron,
+  .vg-select__option {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

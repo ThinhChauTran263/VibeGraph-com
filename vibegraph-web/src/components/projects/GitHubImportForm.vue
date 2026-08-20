@@ -180,9 +180,13 @@ function clearForm(): void {
         class="github-import__success"
         role="status"
       >
-        {{ t('user.import.success', { name: importedProject.name, status: importedProject.status }) }}
+        {{
+          t('user.import.success', { name: importedProject.name, status: importedProject.status })
+        }}
         <span v-if="typeof importedProject.storedBytes === 'number'">
-          {{ t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) }) }}
+          {{
+            t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) })
+          }}
         </span>
       </p>
     </form>
@@ -191,8 +195,8 @@ function clearForm(): void {
 
 <style scoped>
 .github-import {
-  --accent: var(--vg-violet);
-  --accent-soft: rgba(167, 139, 250, 0.16);
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -366,20 +370,23 @@ function clearForm(): void {
 
 .github-import__btn {
   font: inherit;
+  font-size: var(--vg-text-sm);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  min-height: 2.75rem;
   padding: 0.6rem 1.15rem;
   border-radius: var(--vg-radius-pill);
   border: 1px solid var(--vg-border-strong);
   background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color var(--vg-dur-fast) var(--vg-ease-out),
     border-color var(--vg-dur-fast) var(--vg-ease-out),
-    transform var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -389,20 +396,19 @@ function clearForm(): void {
 }
 
 .github-import__btn--primary {
-  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  background: linear-gradient(135deg, #22d3ee, #0891b2);
   border-color: transparent;
-  color: #fff;
-  box-shadow: 0 8px 24px -10px rgba(124, 58, 237, 0.7);
+  color: #04212b;
+  box-shadow: 0 8px 24px -10px rgba(34, 211, 238, 0.7);
 }
 
 .github-import__btn--primary:not(:disabled):hover {
-  transform: translateY(-2px);
   box-shadow:
-    0 0 0 1px rgba(167, 139, 250, 0.5),
-    0 18px 40px -14px rgba(124, 58, 237, 0.8);
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 18px 40px -14px rgba(34, 211, 238, 0.8);
 }
 .github-import__btn--primary:not(:disabled):active {
-  transform: translateY(0);
+  box-shadow: 0 4px 14px -8px rgba(34, 211, 238, 0.7);
 }
 
 .github-import__btn--ghost:not(:disabled):hover {
@@ -410,10 +416,26 @@ function clearForm(): void {
   background: rgba(148, 163, 184, 0.12);
 }
 
+.github-import__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .github-import__submit-spinner {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+@media (max-width: 30rem) {
+  .github-import__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .github-import__actions .github-import__btn {
+    width: 100%;
+  }
 }
 
 .github-import__progress {

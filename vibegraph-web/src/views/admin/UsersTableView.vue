@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, onMounted } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { ApiError } from '@/lib/api'
@@ -8,6 +8,7 @@ import StatusChip from '@/components/ui/StatusChip.vue'
 import UserDetailDrawer from './UserDetailDrawer.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AdminReasonDialog from '@/components/admin/AdminReasonDialog.vue'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
@@ -55,6 +56,16 @@ const createPlanOptions = computed(() =>
       }),
     })),
 )
+const statusFilterOptions = computed(() => [
+  { value: '', label: t('admin.users.filters.allStatuses') },
+  { value: 'active', label: t('admin.users.status.active') },
+  { value: 'blocked', label: t('admin.users.status.blocked') },
+  { value: 'deactivated', label: t('admin.users.status.deactivated') },
+])
+const planFilterOptions = computed(() => [
+  { value: '', label: t('admin.users.filters.allPlans') },
+  ...createPlanOptions.value.map(({ value, label }) => ({ value, label })),
+])
 const isCreating = ref(false)
 const createError = ref('')
 const tableActionError = ref('')
@@ -105,7 +116,22 @@ const loadPlansSafe = async () => {
   }
 }
 
-const applyFilters = () => void loadUsers(0)
+// Tìm kiếm trực tiếp: gõ tới đâu lọc tới đó (debounce để không bắn request mỗi phím nhấn).
+const SEARCH_DEBOUNCE_MS = 300
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(searchQuery, () => {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => void loadUsers(0), SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => clearTimeout(searchDebounceTimer))
+
+// Enter / nút Search: áp dụng ngay, huỷ bộ đếm debounce đang chờ.
+const applyFilters = () => {
+  clearTimeout(searchDebounceTimer)
+  void loadUsers(0)
+}
 
 const openDetail = async (user: AdminUserResponse) => {
   selectedUser.value = user
@@ -231,32 +257,26 @@ function userStatusLabel(u: AdminUserResponse): string {
           :placeholder="t('admin.users.filters.searchPlaceholder')"
           @keyup.enter="applyFilters"
         />
-        <select
-          id="adminUserStatusFilter"
-          name="statusFilter"
+        <ThemedSelect
           v-model="statusFilter"
           class="filter-select"
+          input-id="adminUserStatusFilter"
+          name="statusFilter"
+          :options="statusFilterOptions"
           :aria-label="t('admin.users.aria.filterByStatus')"
-          @change="applyFilters"
-        >
-          <option value="">{{ t('admin.users.filters.allStatuses') }}</option>
-          <option value="active">{{ t('admin.users.status.active') }}</option>
-          <option value="blocked">{{ t('admin.users.status.blocked') }}</option>
-          <option value="deactivated">{{ t('admin.users.status.deactivated') }}</option>
-        </select>
-        <select
-          id="adminUserPlanFilter"
-          name="planFilter"
+          size="sm"
+          @update:model-value="applyFilters"
+        />
+        <ThemedSelect
           v-model="planFilter"
           class="filter-select"
+          input-id="adminUserPlanFilter"
+          name="planFilter"
+          :options="planFilterOptions"
           :aria-label="t('admin.users.aria.filterByPlan')"
-          @change="applyFilters"
-        >
-          <option value="">{{ t('admin.users.filters.allPlans') }}</option>
-          <option v-for="plan in createPlanOptions" :key="plan.value" :value="plan.value">
-            {{ plan.label }}
-          </option>
-        </select>
+          size="sm"
+          @update:model-value="applyFilters"
+        />
         <button class="btn-filter" @click="applyFilters">
           {{ t('admin.users.actions.search') }}
         </button>
@@ -278,7 +298,7 @@ function userStatusLabel(u: AdminUserResponse): string {
               <th class="cell-center">{{ t('admin.users.table.plan') }}</th>
               <th class="cell-center">{{ t('admin.users.table.status') }}</th>
               <th class="cell-center">{{ t('admin.users.table.reason') }}</th>
-              <th>{{ t('admin.users.table.actions') }}</th>
+              <th class="actions-cell cell-center">{{ t('admin.users.table.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -303,19 +323,27 @@ function userStatusLabel(u: AdminUserResponse): string {
                   t('admin.users.fallback.emptyValue')
                 }}
               </td>
-              <td class="actions-cell" :data-label="t('admin.users.table.actions')">
+              <td class="actions-cell cell-center" :data-label="t('admin.users.table.actions')">
                 <div class="row-actions">
                   <button
-                    class="btn-detail btn-sm"
+                    class="action-button btn-detail btn-sm"
                     :aria-expanded="selectedUser?.id === user.id && detailOpen"
                     @click="openDetail(user)"
                   >
                     {{ t('admin.users.actions.detail') }}
                   </button>
-                  <button v-if="!user.blocked" class="btn-danger btn-sm" @click="handleBlock(user)">
+                  <button
+                    v-if="!user.blocked"
+                    class="action-button btn-danger btn-sm"
+                    @click="handleBlock(user)"
+                  >
                     {{ t('admin.users.actions.block') }}
                   </button>
-                  <button v-else class="btn-secondary btn-sm" @click="handleUnblock(user)">
+                  <button
+                    v-else
+                    class="action-button btn-secondary btn-sm"
+                    @click="handleUnblock(user)"
+                  >
                     {{ t('admin.users.actions.unblock') }}
                   </button>
                 </div>
@@ -593,15 +621,14 @@ function userStatusLabel(u: AdminUserResponse): string {
 }
 .filter-select {
   min-width: 0;
-  padding: 0.5rem 0.75rem;
-  background: var(--vg-bg-elev);
-  color: var(--vg-text);
-  border: 1px solid var(--vg-border);
-  border-radius: var(--vg-radius-sm);
-  font-family: inherit;
 }
-.filter-input:focus,
-.filter-select:focus {
+
+.filter-select :deep(.vg-select__trigger) {
+  background: var(--vg-bg-elev);
+  border-color: var(--vg-border);
+}
+
+.filter-input:focus {
   outline: none;
   border-color: var(--vg-blue);
 }
@@ -692,7 +719,7 @@ function userStatusLabel(u: AdminUserResponse): string {
   text-align: center;
 }
 .actions-cell {
-  min-width: 10rem;
+  min-width: 11.5rem;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -709,11 +736,21 @@ function userStatusLabel(u: AdminUserResponse): string {
 .row-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--vg-space-2);
   flex-wrap: nowrap;
 }
+.action-button {
+  inline-size: 5.5rem;
+  min-inline-size: 5.5rem;
+  min-block-size: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
 .btn-sm {
-  padding: 0.25rem 0.625rem;
+  padding: 0.4rem 0.5rem;
   font-size: var(--vg-text-xs);
 }
 .btn-detail {
@@ -1068,7 +1105,7 @@ select.form-input {
   }
 
   .row-actions {
-    justify-content: flex-end;
+    justify-content: center;
     flex-wrap: wrap;
   }
 
@@ -1109,11 +1146,6 @@ select.form-input {
   .modal-actions .btn-primary {
     flex: 1;
     min-width: 0;
-  }
-
-  .btn-sm {
-    min-width: 76px;
-    min-height: 36px;
   }
 
   .table-footer {

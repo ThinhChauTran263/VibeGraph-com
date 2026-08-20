@@ -49,8 +49,10 @@ const lockedMeta = (key: ApiKey): string => fmt.lockedMeta(t, locale.value, key)
           <tr>
             <th>{{ t('admin.userDetail.apiKeys.table.name') }}</th>
             <th>{{ t('admin.userDetail.apiKeys.table.apiKey') }}</th>
-            <th>{{ t('admin.userDetail.apiKeys.table.status') }}</th>
-            <th></th>
+            <th class="key-status-heading">
+              {{ t('admin.userDetail.apiKeys.table.status') }}
+            </th>
+            <th class="key-actions-heading"></th>
           </tr>
         </thead>
         <tbody>
@@ -86,7 +88,7 @@ const lockedMeta = (key: ApiKey): string => fmt.lockedMeta(t, locale.value, key)
                 {{ t('admin.userDetail.apiKeys.expires', { date: formatDate(k.expiresAt) }) }}
               </span>
             </td>
-            <td>
+            <td class="key-status-cell">
               <StatusChip :status="apiKeyStatus(k)" :label="apiKeyStatusLabel(k)" />
               <span v-if="k.disabledReason" class="key-meta key-reason">
                 {{ k.disabledReason }}
@@ -102,24 +104,39 @@ const lockedMeta = (key: ApiKey): string => fmt.lockedMeta(t, locale.value, key)
               <div class="key-actions">
                 <button
                   v-if="!k.disabled && !k.deletedAt"
-                  class="btn-danger btn-sm"
+                  type="button"
+                  class="key-action key-action--disable"
                   @click="emit('disable', k.id)"
                 >
-                  {{ t('admin.userDetail.actions.disable') }}
+                  <svg class="key-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <circle cx="10" cy="10" r="6.75" />
+                    <path d="m5.25 5.25 9.5 9.5" />
+                  </svg>
+                  <span>{{ t('admin.userDetail.actions.disable') }}</span>
                 </button>
                 <button
                   v-if="!k.locked && !k.deletedAt"
-                  class="btn-outline-secondary btn-sm"
+                  type="button"
+                  class="key-action key-action--lock"
                   @click="emit('lock', k.id)"
                 >
-                  {{ t('admin.userDetail.actions.lock') }}
+                  <svg class="key-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <rect x="4.75" y="8.5" width="10.5" height="7.75" rx="2" />
+                    <path d="M7.25 8.5V6.75a2.75 2.75 0 0 1 5.5 0V8.5" />
+                  </svg>
+                  <span>{{ t('admin.userDetail.actions.lock') }}</span>
                 </button>
                 <button
                   v-if="k.locked && !k.deletedAt"
-                  class="btn-outline-secondary btn-sm"
+                  type="button"
+                  class="key-action key-action--unlock"
                   @click="emit('unlock', k.id)"
                 >
-                  {{ t('admin.userDetail.actions.unlock') }}
+                  <svg class="key-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <rect x="4.75" y="8.5" width="10.5" height="7.75" rx="2" />
+                    <path d="M7.25 8.5V6.75a2.75 2.75 0 0 1 5.05-1.5" />
+                  </svg>
+                  <span>{{ t('admin.userDetail.actions.unlock') }}</span>
                 </button>
               </div>
             </td>
@@ -257,14 +274,81 @@ const lockedMeta = (key: ApiKey): string => fmt.lockedMeta(t, locale.value, key)
 }
 
 .key-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--vg-space-2);
+  display: grid;
+  justify-items: stretch;
+  gap: 0.55rem;
 }
 
-.key-actions .btn-sm {
-  min-width: 5.25rem;
+.key-action {
+  min-width: 8.25rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.625rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: var(--vg-radius-pill);
+  color: var(--vg-text);
+  font: inherit;
+  font-size: var(--vg-text-sm);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur-fast) var(--vg-ease-out),
+    color var(--vg-dur-fast) var(--vg-ease-out);
+}
+
+.key-action-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.key-action--disable {
+  border-color: color-mix(in srgb, var(--vg-danger) 38%, transparent);
+  background: color-mix(in srgb, var(--vg-danger) 14%, transparent);
+  color: color-mix(in srgb, var(--vg-danger) 58%, white);
+}
+
+.key-action--disable:hover {
+  border-color: color-mix(in srgb, var(--vg-danger) 64%, transparent);
+  background: color-mix(in srgb, var(--vg-danger) 22%, transparent);
+  color: color-mix(in srgb, var(--vg-danger) 34%, white);
+  box-shadow: 0 8px 22px -16px color-mix(in srgb, var(--vg-danger) 90%, transparent);
+}
+
+.key-action--lock,
+.key-action--unlock {
+  border-color: color-mix(in srgb, var(--vg-blue-bright) 34%, transparent);
+  background: color-mix(in srgb, var(--vg-blue-bright) 12%, transparent);
+  color: color-mix(in srgb, var(--vg-blue-bright) 62%, white);
+}
+
+.key-action--lock:hover,
+.key-action--unlock:hover {
+  border-color: color-mix(in srgb, var(--vg-blue-bright) 58%, transparent);
+  background: color-mix(in srgb, var(--vg-blue-bright) 20%, transparent);
+  color: color-mix(in srgb, var(--vg-blue-bright) 38%, white);
+  box-shadow: 0 8px 22px -16px color-mix(in srgb, var(--vg-blue-bright) 90%, transparent);
+}
+
+.key-action:focus-visible {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 2px;
+}
+
+.key-action:active {
+  box-shadow: inset 0 1px 4px rgba(2, 6, 23, 0.35);
 }
 
 .empty-state {
@@ -275,12 +359,45 @@ const lockedMeta = (key: ApiKey): string => fmt.lockedMeta(t, locale.value, key)
 
 .keys-table td:last-child,
 .keys-table th:last-child {
-  width: 1%;
-  text-align: right;
+  width: 9.5rem;
   white-space: nowrap;
 }
 
 .keys-table .key-action-cell {
   white-space: normal;
+}
+
+.keys-table .key-status-heading,
+.keys-table .key-status-cell {
+  width: 9.5rem;
+}
+
+.keys-table .key-status-heading {
+  text-align: center;
+}
+
+.keys-table .key-status-cell {
+  vertical-align: middle;
+}
+
+.key-status-cell :deep(.status-chip) {
+  display: flex;
+  width: fit-content;
+  margin-inline: auto;
+}
+
+.key-actions-heading,
+.key-action-cell {
+  padding-inline: var(--vg-space-4);
+}
+
+.key-action-cell {
+  vertical-align: middle;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-action {
+    transition: none;
+  }
 }
 </style>

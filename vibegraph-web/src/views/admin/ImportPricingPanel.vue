@@ -90,6 +90,12 @@ function validate(draft: OperationDraft): string | null {
   return null
 }
 
+/** Ô trống = không giới hạn (null); nhập số để đặt ngưỡng file cụ thể. */
+function onMaxFilesInput(tier: TierDraft, event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  tier.maxFiles = raw === '' ? null : Number(raw)
+}
+
 async function save(draft: OperationDraft): Promise<void> {
   const problem = validate(draft)
   if (problem) {
@@ -103,7 +109,11 @@ async function save(draft: OperationDraft): Promise<void> {
   try {
     await adminStore.saveImportPricing(
       draft.operationCode,
-      draft.tiers.map((tier) => ({ ...tier, credits: Math.round(Number(tier.credits) || 0) })),
+      draft.tiers.map((tier) => ({
+        ...tier,
+        maxFiles: tier.maxFiles === null ? null : Math.round(Number(tier.maxFiles) || 0),
+        credits: Math.round(Number(tier.credits) || 0),
+      })),
     )
     draft.message = t('admin.importPricing.saved')
   } catch (e: unknown) {
@@ -123,16 +133,16 @@ async function save(draft: OperationDraft): Promise<void> {
     </header>
 
     <p v-if="loading" class="import-pricing__status">{{ t('admin.importPricing.loading') }}</p>
-    <p v-else-if="errorMsg" class="import-pricing__status import-pricing__status--error" role="alert">
+    <p
+      v-else-if="errorMsg"
+      class="import-pricing__status import-pricing__status--error"
+      role="alert"
+    >
       {{ errorMsg }}
     </p>
 
     <div v-else class="import-pricing__grid">
-      <article
-        v-for="draft in drafts"
-        :key="draft.operationCode"
-        class="import-pricing__method"
-      >
+      <article v-for="draft in drafts" :key="draft.operationCode" class="import-pricing__method">
         <h3 class="import-pricing__method-title">
           {{ t(`admin.importPricing.operations.${draft.operationCode}`) }}
         </h3>
@@ -146,24 +156,21 @@ async function save(draft: OperationDraft): Promise<void> {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(tier, index) in draft.tiers" :key="tier.tierCode">
+            <tr v-for="tier in draft.tiers" :key="tier.tierCode">
               <td data-label="tier">
                 {{ t(`admin.importPricing.tiers.${tier.tierCode}`) }}
               </td>
               <td data-label="maxFiles">
-                <template v-if="tier.maxFiles === null">
-                  <span class="import-pricing__unlimited" :title="t('admin.importPricing.unlimited')">
-                    ∞
-                  </span>
-                </template>
+                <!-- Tier cao nhất: để trống = không giới hạn, có thể nhập số như các tier khác. -->
                 <input
-                  v-else
-                  v-model.number="tier.maxFiles"
+                  :value="tier.maxFiles ?? ''"
                   class="import-pricing__input"
                   type="number"
                   min="1"
                   :disabled="draft.saving"
+                  :title="tier.maxFiles === null ? t('admin.importPricing.unlimited') : undefined"
                   :aria-label="`${t(`admin.importPricing.tiers.${tier.tierCode}`)} ${t('admin.importPricing.columns.maxFiles')}`"
+                  @input="onMaxFilesInput(tier, $event)"
                 />
               </td>
               <td data-label="credits">
@@ -192,7 +199,10 @@ async function save(draft: OperationDraft): Promise<void> {
           <p
             v-if="draft.message"
             class="import-pricing__message"
-            :class="{ 'import-pricing__message--error': draft.error, 'import-pricing__message--ok': !draft.error }"
+            :class="{
+              'import-pricing__message--error': draft.error,
+              'import-pricing__message--ok': !draft.error,
+            }"
             role="status"
           >
             {{ draft.message }}
@@ -290,11 +300,6 @@ async function save(draft: OperationDraft): Promise<void> {
 
 .import-pricing__input:disabled {
   opacity: 0.55;
-}
-
-.import-pricing__unlimited {
-  font-size: var(--vg-text-lg);
-  color: var(--vg-text-muted);
 }
 
 .import-pricing__footer {

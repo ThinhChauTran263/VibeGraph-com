@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
@@ -80,7 +80,13 @@ describe('useImportTracker', () => {
     expect(toasts.toasts).toHaveLength(0)
 
     // Live progress moves forward and is monotonic.
-    ws.fire({ projectId: 'p-1', status: 'ANALYZING', progress: 40, message: 'building graph', timestamp: 't' })
+    ws.fire({
+      projectId: 'p-1',
+      status: 'ANALYZING',
+      progress: 40,
+      message: 'building graph',
+      timestamp: 't',
+    })
     expect(tracker.get('p-1')?.progress).toBe(40)
     expect(tracker.get('p-1')?.message).toBe('building graph')
 

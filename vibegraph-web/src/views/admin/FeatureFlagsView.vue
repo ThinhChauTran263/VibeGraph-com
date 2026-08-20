@@ -2,11 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 import { featureAvailabilityContract, refreshFeatureAvailability } from '@/lib/featureAvailability'
-import type {
-  AdminFeatureFlag,
-  AdminFeatureFlagRequest,
-} from '@/types/api'
+import type { AdminFeatureFlag, AdminFeatureFlagRequest } from '@/types/api'
 
 const adminStore = useAdminStore()
 const { t } = useI18n({ useScope: 'global' })
@@ -22,6 +20,10 @@ const form = ref<AdminFeatureFlagRequest>({
   enabled: true,
   description: '',
 })
+const scopeOptions = computed<{ value: AdminFeatureFlagRequest['scope']; label: string }[]>(() => [
+  { value: 'GLOBAL', label: t('admin.system.scopes.global') },
+  { value: 'MCP_TOOL', label: t('admin.system.scopes.mcpTool') },
+])
 
 type TemplateFlag = AdminFeatureFlagRequest & {
   group: string
@@ -330,10 +332,13 @@ function currentEnabled(template: TemplateFlag): boolean {
         </label>
         <label class="field">
           <span>{{ t('admin.system.form.scope') }}</span>
-          <select id="system-flag-scope" v-model="form.scope" name="systemFlagScope">
-            <option value="GLOBAL">{{ t('admin.system.scopes.global') }}</option>
-            <option value="MCP_TOOL">{{ t('admin.system.scopes.mcpTool') }}</option>
-          </select>
+          <ThemedSelect
+            v-model="form.scope"
+            input-id="system-flag-scope"
+            name="systemFlagScope"
+            :options="scopeOptions"
+            :aria-label="t('admin.system.form.scope')"
+          />
         </label>
         <label class="field">
           <span>{{ t('admin.system.form.displayName') }}</span>

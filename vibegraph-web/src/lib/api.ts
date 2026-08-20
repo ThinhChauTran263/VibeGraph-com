@@ -676,6 +676,11 @@ export const accountApi = {
   deleteApiKey(id: string): Promise<void> {
     return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
   },
+  revealApiKey(id: string): Promise<{ id: string; secretKey: string }> {
+    return api.post<{ id: string; secretKey: string }>(
+      `/api/account/api-keys/${encodeURIComponent(id)}/reveal`,
+    )
+  },
   listReports(): Promise<Report[]> {
     return api.get<Report[]>('/api/account/reports')
   },

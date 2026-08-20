@@ -188,6 +188,8 @@ export interface ApiKey {
   locked?: boolean
   deletedAt?: string | null
   canDelete?: boolean
+  /** True when the backend stores a revealable encrypted copy of the secret. */
+  revealable?: boolean
   /** Convenience getter derived by the frontend store. */
   disabled: boolean
 }

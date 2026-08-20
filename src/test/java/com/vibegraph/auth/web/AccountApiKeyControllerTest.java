@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -169,6 +170,22 @@ class AccountApiKeyControllerTest {
                 .andExpect(jsonPath("$.data[0].secretKey").doesNotExist())
                 .andExpect(jsonPath("$.data[1].keyPrefix").value("vbg_abcd5678"))
                 .andExpect(jsonPath("$.data[1].name").value("Key 2"));
+    }
+
+    @Test
+    @DisplayName("POST /api/account/api-keys/{id}/reveal returns an uncached owner secret")
+    void reveal_ownedKey_returnsSecretWithoutCaching() throws Exception {
+        UUID keyId = UUID.randomUUID();
+        when(apiKeyService.revealForCurrentUser(keyId)).thenReturn("vbg_revealedSecret");
+
+        mockMvc.perform(post("/api/account/api-keys/" + keyId + "/reveal"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(keyId.toString()))
+                .andExpect(jsonPath("$.data.secretKey").value("vbg_revealedSecret"));
+
+        verify(apiKeyService).revealForCurrentUser(keyId);
     }
 
     @Test

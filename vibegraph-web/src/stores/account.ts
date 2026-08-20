@@ -313,6 +313,7 @@ export const useAccountStore = defineStore('account', () => {
       locked: false,
       deletedAt: null,
       canDelete: true,
+      revealable: true,
       disabled: false,
     }
     apiKeys.value = [listEntry, ...apiKeys.value]
