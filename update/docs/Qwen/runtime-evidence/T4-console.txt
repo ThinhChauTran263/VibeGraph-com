@@ -1,6 +1,0 @@
-T4 runtime console evidence after Network Offline + Search on /admin/users:
-- Failed to load resource: net::ERR_INTERNET_DISCONNECTED
-- [Vue warn]: Unhandled error during execution of native event handler at <UsersTableView>
-- Uncaught (in promise)
-UI behavior: existing table remained visible; no error banner/toast/inline error appeared.
-Conclusion: CONFIRMED.

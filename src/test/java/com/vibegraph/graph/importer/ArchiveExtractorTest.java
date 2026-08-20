@@ -162,6 +162,26 @@ class ArchiveExtractorTest {
     }
 
     @Test
+    @DisplayName("counts decompressed bytes of skipped non-.java entries (F9 zip-bomb guard)")
+    void zipBombHiddenInNonJavaEntry_oversize() throws IOException {
+        properties.setMaxSize(DataSize.ofKilobytes(1));
+        Path zip = writeZip("bomb.zip", entries(
+                "big.bin", "x".repeat(4096),
+                "src/A.java", "class A {}"));
+        assertReason(() -> extractor.extract(zip, ArchiveType.ZIP, dest()), Reason.OVERSIZE);
+    }
+
+    @Test
+    @DisplayName("counts decompressed bytes of entries under ignored directories (F9 zip-bomb guard)")
+    void zipBombHiddenInIgnoredDirectory_oversize() throws IOException {
+        properties.setMaxSize(DataSize.ofKilobytes(1));
+        Path zip = writeZip("bomb.zip", entries(
+                "target/blob.java", "x".repeat(4096),
+                "src/A.java", "class A {}"));
+        assertReason(() -> extractor.extract(zip, ArchiveType.ZIP, dest()), Reason.OVERSIZE);
+    }
+
+    @Test
     @DisplayName("a missing/unreadable archive maps to EXTRACTION_FAILED")
     void missingArchive_extractionFailed() {
         Path missing = tempDir.resolve("does-not-exist.zip");

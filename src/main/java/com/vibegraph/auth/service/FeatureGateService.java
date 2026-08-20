@@ -21,7 +21,6 @@ public class FeatureGateService {
     public static final String REGISTRATION = "registration";
     public static final String API_KEYS_CREATE_GLOBAL = "api_keys.create.global";
     public static final String CLI_PUSH = "cli.push";
-    public static final String IMPORT_LOCAL = "import.local";
     public static final String IMPORT_ARCHIVE = "import.archive";
     public static final String IMPORT_GITHUB = "import.github";
     public static final String PROJECT_ANALYZE = "project.analyze";
@@ -34,7 +33,6 @@ public class FeatureGateService {
         REGISTRATION,
         API_KEYS_CREATE_GLOBAL,
         CLI_PUSH,
-        IMPORT_LOCAL,
         IMPORT_ARCHIVE,
         IMPORT_GITHUB,
         PROJECT_ANALYZE,

@@ -204,12 +204,24 @@ export const useAccountStore = defineStore('account', () => {
       : Number.isFinite(data.remainingBytes)
         ? Math.round((data.remainingBytes ?? 0) / bytesPerMb)
         : Math.max(limitMb - usedMb, 0)
+    const usedBytes = Number.isFinite(data.usedBytes)
+      ? (data.usedBytes as number)
+      : usedMb * bytesPerMb
+    const limitBytes = Number.isFinite(data.limitBytes)
+      ? (data.limitBytes as number)
+      : limitMb * bytesPerMb
+    const remainingBytes = Number.isFinite(data.remainingBytes)
+      ? (data.remainingBytes as number)
+      : Math.max(limitBytes - usedBytes, 0)
 
     usage.value = {
       ...data,
       usedMb,
       limitMb,
       remainingMb,
+      usedBytes,
+      limitBytes,
+      remainingBytes,
       quotaOverrideMb:
         data.quotaOverrideMb ??
         (typeof data.quotaOverrideBytes === 'number'

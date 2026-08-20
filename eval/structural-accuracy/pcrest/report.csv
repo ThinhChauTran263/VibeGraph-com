@@ -1,7 +1,0 @@
-﻿element,tool,ground_truth,recall_pct
-types,84,85,98.8
-class_incl_dbmodel,57,57,100
-interface,27,28,96.4
-enum,0,0,n/a
-entity,8,8,100
-endpoints,1,0,n/a

@@ -576,19 +576,38 @@ export function useSigma(options: UseSigmaOptions) {
 
   /**
    * Animate the camera to center a node in the viewport (used when a Data Flow
-   * step is selected). No-op when the node is absent from the live graph.
+   * step is selected or an Impact result is activated). No-op when the node is
+   * absent from the live graph.
+   *
+   * Sigma's camera lives in NORMALIZED [0,1] graph space, but right after a
+   * reducer swap (setSettings re-indexes asynchronously) getNodeDisplayData can
+   * still return RAW graph coordinates (thousands of units). Animating the
+   * camera to raw coords throws it far outside the normalized frame and the
+   * whole canvas renders blank until reload. So the read is deferred a frame
+   * (retrying briefly) and the target is validated to stay in camera space.
    */
-  function focusNode(nodeId: string): void {
+  function focusNode(nodeId: string, attemptsLeft = 5): void {
     const sigma = sigmaInstance.value
     if (!sigma || !graphInstance.value?.hasNode(nodeId)) return
-    const display = sigma.getNodeDisplayData(nodeId)
-    if (!display) return
-    sigma
-      .getCamera()
-      .animate(
-        { x: display.x, y: display.y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
-        { duration: ZOOM_FIT_DURATION_MS },
-      )
+    requestAnimationFrame(() => {
+      if (sigmaInstance.value !== sigma || !graphInstance.value?.hasNode(nodeId)) return
+      const display = sigma.getNodeDisplayData(nodeId)
+      if (!display) return
+      const x = Number(display.x)
+      const y = Number(display.y)
+      // Normalized positions sit in [0,1]; allow a small margin. Raw coords are
+      // orders of magnitude outside this window and must never reach the camera.
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < -0.5 || x > 1.5 || y < -0.5 || y > 1.5) {
+        if (attemptsLeft > 0) focusNode(nodeId, attemptsLeft - 1)
+        return
+      }
+      sigma
+        .getCamera()
+        .animate(
+          { x, y, ratio: Math.min(sigma.getCamera().getState().ratio, 0.6) },
+          { duration: ZOOM_FIT_DURATION_MS },
+        )
+    })
   }
 
   /**

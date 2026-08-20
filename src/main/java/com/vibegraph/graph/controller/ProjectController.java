@@ -1,5 +1,6 @@
 package com.vibegraph.graph.controller;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountSettingsService;
+import com.vibegraph.auth.service.CreditBalanceService;
+import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.dto.response.ApiResponse;
@@ -30,6 +33,7 @@ import com.vibegraph.graph.dto.request.CreateProjectRequest;
 import com.vibegraph.graph.dto.request.CliRepositoryCreateRequest;
 import com.vibegraph.graph.dto.response.CliRepositorySetupResponse;
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.graph.importer.JavaFileCounter;
 import com.vibegraph.graph.service.CliRepositoryService;
 import com.vibegraph.graph.service.ProjectAnalysisScheduler;
 import com.vibegraph.graph.service.ProjectService;
@@ -54,6 +58,8 @@ public class ProjectController {
     private final FeatureGateService featureGateService;
     private final ProjectUsageService projectUsageService;
     private final CliRepositoryService cliRepositoryService;
+    private final CreditPricingService creditPricingService;
+    private final CreditBalanceService creditBalanceService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -115,7 +121,18 @@ public class ProjectController {
         accountSettingsService.assertNotBlocked(userId);
 
         // Existence check up front so an unknown id still gets a 404, not an accepted no-op.
-        projectService.getProject(id);
+        ProjectResponse project = projectService.getProject(id);
+
+        // Pre-charge by the project's .java file count on the request thread, so an
+        // exhausted balance surfaces as 402 here instead of a failed background job.
+        // Re-analysis uses the flat per-file rule (credit_pricing_rules), not the
+        // import tier table.
+        int fileCount = JavaFileCounter.count(
+                project.getRootPath() != null ? Path.of(project.getRootPath()) : null);
+        long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", fileCount, 0);
+        creditBalanceService.assertCreditsAvailable(userId, requiredCredits);
+        creditBalanceService.deductCredits(userId, requiredCredits, "WEB", "PROJECT_ANALYZE", id);
+
         projectAnalysisScheduler.schedule(id);
 
         return ResponseEntity.accepted().build();

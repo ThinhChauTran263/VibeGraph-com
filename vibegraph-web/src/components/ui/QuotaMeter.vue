@@ -1,36 +1,41 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatFileSize } from '@/lib/archiveUpload'
 
 const { t } = useI18n({ useScope: 'global' })
 const props = defineProps<{
-  used: number
-  total: number
-  unit: string
+  usedBytes: number
+  totalBytes: number
 }>()
 
-const remaining = computed(() => Math.max(0, props.total - props.used))
+const remainingBytes = computed(() => Math.max(0, props.totalBytes - props.usedBytes))
 const percentage = computed(() => {
-  if (props.total === 0) return 0
-  return Math.min(100, (props.used / props.total) * 100)
+  if (props.totalBytes === 0) return 0
+  return Math.min(100, (props.usedBytes / props.totalBytes) * 100)
 })
 </script>
 
 <template>
   <div class="quota-meter">
     <div class="quota-info">
-      <span class="quota-used">{{ used }}{{ unit }} / {{ total }}{{ unit }} {{ t('user.quota.used') }}</span>
-      <span class="quota-remaining">{{ remaining }}{{ unit }} {{ t('user.quota.remaining') }}</span>
+      <span class="quota-used"
+        >{{ formatFileSize(usedBytes) }} / {{ formatFileSize(totalBytes) }}
+        {{ t('user.quota.used') }}</span
+      >
+      <span class="quota-remaining">{{ formatFileSize(remainingBytes) }}
+        {{ t('user.quota.remaining') }}</span
+      >
     </div>
     <div
-      v-if="total > 0"
+      v-if="totalBytes > 0"
       class="progress-track"
       role="progressbar"
-:aria-label="t('user.usage.sourceStorage')"
+      :aria-label="t('user.usage.sourceStorage')"
       aria-valuemin="0"
-      :aria-valuemax="total"
-      :aria-valuenow="Math.min(used, total)"
-      :aria-valuetext="t('user.quota.value', { used, total, unit })"
+      :aria-valuemax="totalBytes"
+      :aria-valuenow="Math.min(usedBytes, totalBytes)"
+      :aria-valuetext="`${formatFileSize(usedBytes)} ${t('user.quota.used')}`"
     >
       <div
         class="progress-fill"

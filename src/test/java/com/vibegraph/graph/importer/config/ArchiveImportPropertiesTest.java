@@ -26,7 +26,7 @@ class ArchiveImportPropertiesTest {
     void bindsSafeDefaults() {
         runner.run(ctx -> {
             ArchiveImportProperties props = ctx.getBean(ArchiveImportProperties.class);
-        assertThat(props.getMaxSize()).isEqualTo(DataSize.ofMegabytes(2048));
+        assertThat(props.getMaxSize()).isEqualTo(DataSize.ofMegabytes(200));
             assertThat(props.getWorkspaceRoot().toString()).contains("vibegraph");
             assertThat(props.getIgnoredPaths())
                     .containsExactly("target", "build", ".git", ".idea", "node_modules");

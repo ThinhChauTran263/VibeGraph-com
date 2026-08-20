@@ -363,6 +363,8 @@
       "close": "Close",
       "newRepository": "New Repository",
       "importedRepositories": "Imported repositories",
+      "sourceBranchTitle": "Imported branch",
+      "sourceCommitTitle": "Imported commit",
       "ready": "Ready",
       "files": "Files",
       "nodes": "Nodes",
@@ -398,7 +400,11 @@
       "githubDescription": "Import a public GitHub repository using its HTTPS URL.",
       "noImportMethod": "No import method is currently available.",
       "noImportMethodDescription": "No import method is currently available. Import is blocked until the account capability contract reports an enabled method.",
-      "importMethod": "Import method"
+      "importMethod": "Import method",
+      "analyzing": "Analyzing",
+      "analyzingDefault": "Parsing, resolving, building graph...",
+      "pendingMessage": "Contacting GitHub, downloading repository...",
+      "failedDefault": "Import failed."
     },
     "trash": {
       "title": "Trash",
@@ -427,12 +433,16 @@
       "analyzing": "Analyzing repository…",
       "importing": "Importing…",
       "githubTitle": "Add project from GitHub",
-      "githubHint": "Import a public repository using its HTTPS URL. Example:",
+      "githubHint": "Import a public repository using its HTTPS URL. Only extracted .java source files are stored and counted against your storage quota. Example:",
       "githubUrl": "GitHub repository URL",
       "githubPlaceholder": "https://github.com/owner/repo",
+      "githubBranch": "Branch (default: main)",
+      "githubBranchPlaceholder": "main",
       "importGithub": "Import GitHub repo",
       "success": "Import completed for {name} (status: {status}).",
       "reset": "Reset",
+      "background": "Close & continue in background",
+      "backgroundHint": "The import keeps running on the server — you can close this dialog and do something else.",
       "cli": {
         "title": "Create a CLI-synced repository",
         "hint": "VibeGraph creates an empty server workspace and a project-bound API key. Run the commands from your project terminal to sync code without exposing local drive paths.",
@@ -461,12 +471,13 @@
       "uploading": "Uploading...",
       "uploadArchive": "Upload archive",
       "archiveTitle": "Add project from archive",
-      "archiveHint": "Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Your account storage quota applies.",
+      "archiveHint": "Upload a Java project archive. Supported formats: .zip, .tar, .tar.gz, .tgz. Only extracted .java source files are stored and counted against your storage quota; libraries, assets and VCS metadata are discarded.",
       "projectName": "Project name",
       "archiveFile": "Archive file",
       "selectedFile": "Selected:",
       "noFile": "No file selected.",
       "successFor": "Imported",
+      "successStored": "Extracted {size} of Java source into this project.",
       "directoryFallback": "Failed to list directory.",
       "chooseFolder": "Choose a project folder",
       "up": "Up",
@@ -546,7 +557,6 @@
       "credits": "credits",
       "usedCycle": "{used} / {limit} credits used this cycle",
       "sourceStorage": "Source storage quota",
-      "remaining": "{count} MB remaining",
       "ledger": "Recent credit ledger",
       "activityUnavailable": "Credit activity unavailable",
       "retryLedger": "Retry ledger",
@@ -786,10 +796,6 @@
         "mcpTools": "MCP global and child tools"
       },
       "controls": {
-        "localImport": {
-          "name": "Local import",
-          "note": "Pause local-folder import if the project import flow is degraded."
-        },
         "archiveImport": {
           "name": "Archive import",
           "note": "Disable if archive parsing or storage is degraded."
@@ -1026,6 +1032,7 @@
       },
       "polling": {
         "everySeconds": "Refreshes every {seconds} seconds",
+        "live": "Live updates connected",
         "unavailable": "Live refresh unavailable"
       },
       "subtitle": "Monitor users, usage, storage, and security signals.",
@@ -1446,6 +1453,39 @@
         "userIdentities": "user identities"
       }
     },
+    "importPricing": {
+      "title": "Import Pricing",
+      "hint": "Fixed credit cost per project size, configured separately for each import method. Projects are classified automatically by their number of .java files.",
+      "loading": "Loading import pricing…",
+      "unlimited": "Unlimited (top tier)",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved. Applies to the next import.",
+      "operations": {
+        "IMPORT_ARCHIVE": "Archive upload (ZIP/TAR)",
+        "IMPORT_GITHUB": "GitHub import",
+        "CLI_PUSH": "CLI push"
+      },
+      "tiers": {
+        "SMALL": "Small",
+        "MEDIUM": "Medium",
+        "LARGE": "Large",
+        "XLARGE": "Extra large"
+      },
+      "columns": {
+        "tier": "Tier",
+        "maxFiles": "Up to files",
+        "credits": "Credits"
+      },
+      "errors": {
+        "load": "Failed to load import pricing.",
+        "save": "Failed to save import pricing.",
+        "negativeCredits": "Credits cannot be negative.",
+        "invalidBound": "File bounds must be positive numbers.",
+        "boundsAscending": "File bounds must be strictly ascending.",
+        "unlimitedMustBeLast": "Only the last tier may be unlimited."
+      }
+    },
     "plansCredits": {
       "title": "Plans & Credits",
       "actions": {
@@ -1712,5 +1752,21 @@
       "userVisibleReasonPlaceholder": "Explain why access is changing",
       "working": "Applying..."
     }
+  },
+  "toasts": {
+    "region": "Notifications",
+    "dismiss": "Dismiss notification",
+    "viewProject": "View project",
+    "importReady": "{name} is ready — explore the graph now.",
+    "importFailed": "Import failed for {name}."
+  },
+  "graphView": {
+    "loading": "Loading graph...",
+    "finalizing": "Finalizing graph layout...",
+    "failed": "Failed to load graph",
+    "retry": "Retry",
+    "analyzingTitle": "Indexing repository…",
+    "analyzingHint": "You can navigate elsewhere — we'll notify you when the graph is ready.",
+    "analyzingFailed": "Analysis failed on the server."
   }
 }

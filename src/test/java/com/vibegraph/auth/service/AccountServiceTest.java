@@ -128,7 +128,7 @@ class AccountServiceTest {
         when(accountSettingsService.findSettings(userId))
                 .thenReturn(UserAccountSettings.builder().userId(userId).build());
         when(featureGateService.capabilities()).thenReturn(java.util.Map.of(
-                FeatureGateService.IMPORT_LOCAL, com.vibegraph.auth.dto.FeatureCapability.allow(),
+                FeatureGateService.IMPORT_ARCHIVE, com.vibegraph.auth.dto.FeatureCapability.allow(),
                 FeatureGateService.MCP_ENABLED, com.vibegraph.auth.dto.FeatureCapability.allow()));
 
         var state = accountService.sessionState();
@@ -139,7 +139,7 @@ class AccountServiceTest {
         assertEquals("USER", state.role());
         assertEquals("ACTIVE", state.accountStatus());
         assertNull(state.safeReason());
-        assertTrue(state.features().get(FeatureGateService.IMPORT_LOCAL).enabled());
+        assertTrue(state.features().get(FeatureGateService.IMPORT_ARCHIVE).enabled());
         assertTrue(state.features().get(FeatureGateService.MCP_ENABLED).enabled());
         assertFalse(state.toString().contains("secret-hash"));
     }
@@ -166,7 +166,7 @@ class AccountServiceTest {
         when(accountSettingsService.findSettings(userId)).thenReturn(settings);
         when(featureGateService.capabilities()).thenReturn(java.util.Map.of(
                 FeatureGateService.REGISTRATION, com.vibegraph.auth.dto.FeatureCapability.allow(),
-                FeatureGateService.IMPORT_LOCAL, com.vibegraph.auth.dto.FeatureCapability.allow(),
+                FeatureGateService.IMPORT_ARCHIVE, com.vibegraph.auth.dto.FeatureCapability.allow(),
                 FeatureGateService.MCP_ENABLED, com.vibegraph.auth.dto.FeatureCapability.allow()));
 
         var state = accountService.sessionState();
@@ -174,7 +174,7 @@ class AccountServiceTest {
         assertEquals("BLOCKED", state.accountStatus());
         assertEquals("Policy review", state.safeReason());
         assertTrue(state.features().get(FeatureGateService.REGISTRATION).enabled());
-        assertFalse(state.features().get(FeatureGateService.IMPORT_LOCAL).enabled());
+        assertFalse(state.features().get(FeatureGateService.IMPORT_ARCHIVE).enabled());
         assertEquals("Policy review", state.features().get(FeatureGateService.MCP_ENABLED).reason());
         assertFalse(state.toString().contains("internal fraud score"));
         assertFalse(state.toString().contains("secret-hash"));
@@ -331,6 +331,9 @@ class AccountServiceTest {
         assertEquals(2L, usage.usedMb());
         assertEquals(4L, usage.limitMb());
         assertEquals(2L, usage.remainingMb());
+        assertEquals(1_572_864L, usage.usedBytes());
+        assertEquals(4_194_304L, usage.limitBytes());
+        assertEquals(2_621_440L, usage.remainingBytes());
         assertEquals("FREE", usage.planCode());
         assertEquals("Free", usage.planName());
         assertNull(usage.quotaOverrideMb());

@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,12 @@ public class GitHubTarballClient {
 
     private static final Logger log = LoggerFactory.getLogger(GitHubTarballClient.class);
     private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(408, 429, 500, 502, 503, 504);
+    /**
+     * F10 audit fix: the client follows redirects ({@code Redirect.NORMAL}), so the final
+     * host is decided by the redirect chain, not by the request URL. Every response must
+     * therefore land on a GitHub host we trust; anything else is refused outright.
+     */
+    private static final Set<String> ALLOWED_RESPONSE_HOSTS = Set.of("api.github.com", "codeload.github.com");
 
     private final Duration tarballRequestTimeout;
     private final Duration retryInitialDelay;
@@ -72,6 +79,11 @@ public class GitHubTarballClient {
                 }
                 pauseBeforeRetry(attempt, e.getMessage());
                 continue;
+            }
+            if (!isAllowedHost(response.uri())) {
+                closeQuietly(response.body());
+                throw new GithubImportException("GitHub redirected the tarball request to an unexpected host: "
+                        + (response.uri() == null ? null : response.uri().getHost()));
             }
             int status = response.statusCode();
             if (status >= 200 && status < 300) {
@@ -146,6 +158,11 @@ public class GitHubTarballClient {
     private URI tarballUri(GitHubRepositoryRef ref) {
         String encodedRef = URLEncoder.encode(ref.ref(), StandardCharsets.UTF_8).replace("+", "%20");
         return URI.create("https://api.github.com/repos/" + ref.owner() + "/" + ref.repo() + "/tarball/" + encodedRef);
+    }
+
+    private boolean isAllowedHost(URI finalUri) {
+        String host = finalUri == null ? null : finalUri.getHost();
+        return host != null && ALLOWED_RESPONSE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }
 
     private void copyCapped(InputStream in, OutputStream out, long maxBytes) throws IOException {

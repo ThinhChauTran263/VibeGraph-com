@@ -13,6 +13,9 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Service to calculate required credits for a specific operation.
+ * The charge is {@code base + files * perFile + sourceMb * perMb} with a
+ * single final ceiling, then floored at the rule's {@code minimumCredits}
+ * so small operations never fall below the configured floor.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,6 +44,7 @@ public class CreditPricingService {
         BigDecimal total = rule.getBaseCredits()
                 .add(BigDecimal.valueOf(fileCount).multiply(rule.getPerFileCredits()))
                 .add(sourceMb.multiply(rule.getPerMbCredits()));
-        return total.setScale(0, RoundingMode.CEILING).longValueExact();
+        long charge = total.setScale(0, RoundingMode.CEILING).longValueExact();
+        return Math.max(charge, rule.getMinimumCredits());
     }
 }

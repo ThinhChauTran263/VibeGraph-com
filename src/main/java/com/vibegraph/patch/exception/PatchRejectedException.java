@@ -28,6 +28,7 @@ public class PatchRejectedException extends RuntimeException {
         BLOCKED_FILE,
         ARCHIVE_NOT_ALLOWED,
         BINARY_CONTENT,
+        NOT_JAVA_SOURCE,
         MISSING_CONTENT,
         UNSUPPORTED_ENCODING,
         INVALID_BASE64,

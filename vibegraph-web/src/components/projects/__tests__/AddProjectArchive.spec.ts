@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 import { nextTick } from 'vue'
 import AddProjectArchive from '../AddProjectArchive.vue'
 import type { Project } from '@/lib/api'
@@ -63,7 +64,10 @@ const projectGetMock = projectApi.get as ReturnType<typeof vi.fn>
 function mountArchive(options: Parameters<typeof mount>[1] = {}) {
   return mount(AddProjectArchive, {
     ...options,
-    global: { ...options.global, plugins: [...(options.global?.plugins ?? []), i18n] },
+    global: {
+      ...options.global,
+      plugins: [...(options.global?.plugins ?? []), i18n, createTestingPinia({ createSpy: vi.fn })],
+    },
   })
 }
 

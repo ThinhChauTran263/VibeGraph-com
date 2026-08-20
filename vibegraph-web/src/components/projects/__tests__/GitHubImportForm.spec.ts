@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 import { nextTick } from 'vue'
 import GitHubImportForm from '../GitHubImportForm.vue'
 import type { Project } from '@/lib/api'
@@ -32,7 +33,7 @@ function fakeProject(overrides: Partial<Project> = {}): Project {
 }
 
 function mountForm() {
-  return mount(GitHubImportForm, { global: { plugins: [i18n] } })
+  return mount(GitHubImportForm, { global: { plugins: [i18n, createTestingPinia({ createSpy: vi.fn })] } })
 }
 
 function deferred<T>() {
@@ -68,6 +69,7 @@ describe('GitHubImportForm', () => {
 
     expect(importGithubMock).toHaveBeenCalledWith(
       'https://github.com/spring-projects/spring-petclinic',
+      'main',
     )
     const emitted = wrapper.emitted('imported')
     expect(emitted).toBeTruthy()
@@ -118,5 +120,26 @@ describe('GitHubImportForm', () => {
 
     expect((wrapper.get('input[type="url"]').element as HTMLInputElement).value).toBe('')
     expect(wrapper.text()).not.toContain('URL must match')
+  })
+
+  it('prefills the branch with main, submits a custom branch, and resets it back', async () => {
+    const project = fakeProject({ id: 'gh-3', status: 'ANALYZED' })
+    importGithubMock.mockResolvedValueOnce(project)
+    const wrapper = mountForm()
+
+    const branchInput = wrapper.get('input[name="branch"]')
+    expect((branchInput.element as HTMLInputElement).value).toBe('main')
+
+    await wrapper.get('input[type="url"]').setValue('https://github.com/owner/repo')
+    await branchInput.setValue('develop')
+    await wrapper.get('form').trigger('submit.prevent')
+    await nextTick()
+    await nextTick()
+
+    expect(importGithubMock).toHaveBeenCalledWith('https://github.com/owner/repo', 'develop')
+
+    await wrapper.get('button[type="button"]').trigger('click')
+    await nextTick()
+    expect((wrapper.get('input[name="branch"]').element as HTMLInputElement).value).toBe('main')
   })
 })

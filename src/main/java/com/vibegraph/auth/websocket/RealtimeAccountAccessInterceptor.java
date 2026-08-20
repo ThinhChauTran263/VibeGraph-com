@@ -31,6 +31,7 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
 
     private static final String PROJECT_TOPIC_PREFIX = "/topic/projects/";
     private static final String REPORT_TOPIC_PREFIX = "/topic/reports/";
+    private static final String ADMIN_TOPIC_PREFIX = "/topic/admin/";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String RESTRICTED_MESSAGE = "Account cannot access realtime updates";
@@ -94,6 +95,10 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             return handleReportMessage(message, command, sessionId, reportId);
         }
 
+        if (isAdminTopic(accessor.getDestination())) {
+            return handleAdminMessage(message, command, sessionId);
+        }
+
         if (command == StompCommand.SEND) {
             throw new AccessDeniedException(RESTRICTED_MESSAGE);
         }
@@ -139,6 +144,26 @@ public class RealtimeAccountAccessInterceptor implements ChannelInterceptor {
             return message;
         }
         return isAuthorizedSessionReport(sessionId, reportId) ? message : null;
+    }
+
+    private Message<?> handleAdminMessage(
+            Message<?> message,
+            StompCommand command,
+            String sessionId
+    ) {
+        UUID userId = sessionId == null ? null : userIdsBySession.get(sessionId);
+        if (!isAuthSessionActive(sessionId, userId)
+                || !Boolean.TRUE.equals(adminSessionsBySession.get(sessionId))) {
+            return rejectOrSuppress(command);
+        }
+        if (command == StompCommand.SEND) {
+            throw new AccessDeniedException(RESTRICTED_MESSAGE);
+        }
+        return message;
+    }
+
+    private boolean isAdminTopic(String destination) {
+        return destination != null && destination.startsWith(ADMIN_TOPIC_PREFIX);
     }
 
     private void authenticateSession(String sessionId, StompHeaderAccessor accessor) {
