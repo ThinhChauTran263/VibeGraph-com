@@ -6,6 +6,7 @@ import AppIcon from '@/components/ui/AppIcon.vue'
 import { projectApi, type TrashedProject } from '@/lib/api'
 import { toAccountProject, useAccountStore } from '@/stores/account'
 import { useProjectStore } from '@/stores/project'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const { t, locale } = useI18n({ useScope: 'global' })
 const projectStore = useProjectStore(),
@@ -99,6 +100,17 @@ function formatSize(bytes: number): string {
 
 onMounted(() => {
   void loadTrash()
+})
+
+// Kept alive by UserLayout: purges/restores made elsewhere refresh the list on
+// re-activation without a reload flash.
+useSilentRefresh(async () => {
+  try {
+    items.value = await projectApi.trash()
+    errorMsg.value = ''
+  } catch {
+    // Keep the cached list; the visible error UI owns failure states.
+  }
 })
 </script>
 

@@ -9,6 +9,9 @@ import {
 
 const GITHUB_REPO_URL_PATTERN =
   /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
+// Mirrors the backend's branch whitelist in GithubImportRequest: alphanumerics plus
+// '.', '_', '/', '-' — no '..' or '//' sequences, no leading/trailing separators.
+const GITHUB_BRANCH_PATTERN = /^(?!.*(?:\.\.|\/\/))[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9])?$/
 const GENERIC_GITHUB_IMPORT_ERROR = 'Import failed. Verify the repository is public and try again.'
 const NO_JAVA_FILES_ERROR =
   'This repository contains no .java files. VibeGraph currently analyzes Java projects only.'
@@ -53,6 +56,16 @@ export interface UseGitHubImportOptions {
    * import tracker so tracking survives the form unmounting (background import).
    */
   onAccepted?: (project: Project) => void
+  /**
+   * Called right after client validation, when the request actually goes out.
+   * Lets the host show a provisional card while the server still prepares the 202.
+   */
+  onSubmitted?: (url: string, branch?: string) => void
+  /**
+   * Called when the request fails without a 202, with the user-facing message,
+   * so the host can turn the provisional card into an error card.
+   */
+  onRejected?: (message: string) => void
 }
 
 function getGitHubImportError(error: unknown): string {
@@ -189,6 +202,20 @@ export function validateGitHubRepoUrl(url: string): string | null {
   return null
 }
 
+/** Empty branch is valid (the server falls back to the repository default branch). */
+export function validateGitHubBranch(branch: string): string | null {
+  const trimmed = branch.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  if (!GITHUB_BRANCH_PATTERN.test(trimmed)) {
+    return 'Branch name contains unsupported characters.'
+  }
+
+  return null
+}
+
 export function useGitHubImport(options: UseGitHubImportOptions = {}) {
   const status = ref<GitHubImportStatus>('idle')
   const errorMessage = ref<string | null>(null)
@@ -260,9 +287,12 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     }
   }
 
-  async function importGithub(url: string): Promise<Project | null> {
+  async function importGithub(url: string, branch?: string): Promise<Project | null> {
     const trimmedUrl = url.trim()
-    const validationError = validateGitHubRepoUrl(trimmedUrl)
+    const trimmedBranch = branch?.trim() || undefined
+    const validationError =
+      validateGitHubRepoUrl(trimmedUrl) ??
+      (trimmedBranch ? validateGitHubBranch(trimmedBranch) : null)
     if (validationError) {
       status.value = 'error'
       errorMessage.value = validationError
@@ -276,14 +306,17 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
     acceptedProject.value = null
     progress.value = 0
     cancelled = false
+    options.onSubmitted?.(trimmedUrl, trimmedBranch)
 
     try {
-      const project = await importApi.importGithub(trimmedUrl)
-      if (cancelled) return null
+      const project = await importApi.importGithub(trimmedUrl, trimmedBranch)
+      // Adopt the provisional card even when the form unmounted (dialog closed)
+      // while the request was in flight — the tracker is global.
       if (project.status === 'ANALYZING') {
         acceptedProject.value = project
         options.onAccepted?.(project)
       }
+      if (cancelled) return null
       const stopLive = project.status === 'ANALYZING' ? startLiveProgress(project.id) : null
       try {
         const analyzedProject = await waitForGitHubAnalysis(project, setProgress, () => cancelled)
@@ -296,9 +329,11 @@ export function useGitHubImport(options: UseGitHubImportOptions = {}) {
         stopLive?.()
       }
     } catch (error: unknown) {
+      const message = getGitHubImportError(error)
+      options.onRejected?.(message)
       if (cancelled) return null
       status.value = 'error'
-      errorMessage.value = getGitHubImportError(error)
+      errorMessage.value = message
       importedProject.value = null
       return null
     }

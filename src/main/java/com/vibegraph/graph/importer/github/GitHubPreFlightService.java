@@ -109,10 +109,37 @@ public class GitHubPreFlightService {
         }
 
         String defaultBranch = metadata.path("default_branch").asText(null);
+        String requestedRef = ref.ref();
+        if (requestedRef != null && !requestedRef.isBlank()) {
+            HeadShaResult head = lookupHeadSha(ref, requestedRef, true);
+            if (!head.missing()) {
+                // The caller selected an existing branch (or the lookup failed transiently,
+                // which the tarball download will surface with a real reason).
+                return ref.withCommitSha(head.sha());
+            }
+            // GitHub branch names are case-sensitive, but the form prefills "main" while
+            // repositories may use "Main", "master", ... Fall back to the repository default
+            // branch for the UI default and case-variants of it; anything else is a genuine
+            // mistake and fails fast with a clear message.
+            boolean uiDefault = "main".equalsIgnoreCase(requestedRef);
+            boolean caseVariant = defaultBranch != null && defaultBranch.equalsIgnoreCase(requestedRef);
+            if (defaultBranch != null && !defaultBranch.isBlank() && (uiDefault || caseVariant)) {
+                log.info("Requested branch '{}' not found in {}; falling back to default branch '{}'",
+                        requestedRef, ref.displayName(), defaultBranch);
+                return ref.withRef(defaultBranch).withCommitSha(fetchHeadSha(ref, defaultBranch));
+            }
+            throw new GithubImportException(
+                    "Branch '" + requestedRef + "' does not exist in " + ref.displayName());
+        }
+
         if (defaultBranch == null || defaultBranch.isBlank()) {
             throw new GithubImportException("GitHub repository does not expose a default branch");
         }
         return ref.withRef(defaultBranch).withCommitSha(fetchHeadSha(ref, defaultBranch));
+    }
+
+    /** HEAD SHA of a branch plus whether the branch provably does not exist (404/422). */
+    private record HeadShaResult(String sha, boolean missing) {
     }
 
     /**
@@ -123,6 +150,15 @@ public class GitHubPreFlightService {
      * simply disables the up-to-date short-circuit for this import.
      */
     private String fetchHeadSha(GitHubRepositoryRef ref, String branch) {
+        return lookupHeadSha(ref, branch, false).sha();
+    }
+
+    /**
+     * {@code detectMissing}: when true, a trusted 404/422 (GitHub's answers for an unknown
+     * ref) marks the result as {@code missing} so the caller can fall back or fail fast;
+     * any other failure stays best-effort ({@code sha=null, missing=false}).
+     */
+    private HeadShaResult lookupHeadSha(GitHubRepositoryRef ref, String branch, boolean detectMissing) {
         HttpRequest request = HttpRequest.newBuilder(headCommitUri(ref, branch))
                 .timeout(preflightRequestTimeout)
                 .header("Accept", "application/vnd.github+json")
@@ -132,11 +168,17 @@ public class GitHubPreFlightService {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             String host = response.uri() == null ? null : response.uri().getHost();
-            if (response.statusCode() != 200 || host == null
-                    || !ALLOWED_RESPONSE_HOSTS.contains(host.toLowerCase(Locale.ROOT))) {
+            boolean trustedHost = host != null && ALLOWED_RESPONSE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
+            // GitHub answers 404 for unknown repos/refs and 422 for a ref that resolves to
+            // no commit — both mean the branch does not exist.
+            if (detectMissing && trustedHost
+                    && (response.statusCode() == 404 || response.statusCode() == 422)) {
+                return new HeadShaResult(null, true);
+            }
+            if (response.statusCode() != 200 || !trustedHost) {
                 log.debug("HEAD SHA lookup for {}@{} returned HTTP {} from host {}; skipping up-to-date check",
                         ref.displayName(), branch, response.statusCode(), host);
-                return null;
+                return new HeadShaResult(null, false);
             }
             JsonNode body;
             try {
@@ -144,17 +186,17 @@ public class GitHubPreFlightService {
             } catch (GithubImportException unreadable) {
                 log.debug("HEAD SHA lookup for {}@{} returned an unreadable body; skipping up-to-date check",
                         ref.displayName(), branch);
-                return null;
+                return new HeadShaResult(null, false);
             }
             String sha = body.path("sha").asText(null);
-            return sha == null || sha.isBlank() ? null : sha.trim();
+            return new HeadShaResult(sha == null || sha.isBlank() ? null : sha.trim(), false);
         } catch (IOException e) {
             log.debug("HEAD SHA lookup for {}@{} failed: {}; skipping up-to-date check",
                     ref.displayName(), branch, e.getMessage());
-            return null;
+            return new HeadShaResult(null, false);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return null;
+            return new HeadShaResult(null, false);
         }
     }
 

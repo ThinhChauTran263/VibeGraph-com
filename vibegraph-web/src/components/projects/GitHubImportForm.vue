@@ -20,8 +20,26 @@ const emit = defineEmits<{
 withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 const repoUrl = ref('')
+// Branch selection defaults to main; clearing the field imports the repository's
+// default branch instead (server-side fallback).
+const DEFAULT_BRANCH = 'main'
+const branch = ref(DEFAULT_BRANCH)
+
+/** owner/repo display name for the provisional card shown while the request is in flight. */
+function pendingName(url: string): string {
+  return url
+    .trim()
+    .replace(/^https:\/\/github\.com\//i, '')
+    .replace(/\.git\/?$/i, '')
+    .replace(/\/$/, '')
+}
+
 const { status, errorMessage, importedProject, progress, isImporting, importGithub, reset } =
-  useGitHubImport({ onAccepted: (project) => tracker.track(project) })
+  useGitHubImport({
+    onAccepted: (project) => tracker.track(project),
+    onSubmitted: (url, selectedBranch) => tracker.trackPending(pendingName(url), selectedBranch),
+    onRejected: (message) => tracker.failPending(message),
+  })
 
 const canSubmit = computed(() => repoUrl.value.trim().length > 0 && !isImporting.value)
 const progressPct = computed(() => Math.round(progress.value))
@@ -36,7 +54,7 @@ const submitLabel = computed(() => t('user.import.importing'))
 
 async function onSubmit(): Promise<void> {
   if (!canSubmit.value) return
-  const project = await importGithub(repoUrl.value)
+  const project = await importGithub(repoUrl.value, branch.value)
   if (project) {
     emit('imported', project)
   }
@@ -44,6 +62,7 @@ async function onSubmit(): Promise<void> {
 
 function clearForm(): void {
   repoUrl.value = ''
+  branch.value = DEFAULT_BRANCH
   reset()
 }
 </script>
@@ -82,6 +101,21 @@ function clearForm(): void {
           :placeholder="t('user.import.githubPlaceholder')"
           :disabled="isImporting"
           aria-required="true"
+          autocomplete="off"
+          spellcheck="false"
+          @input="reset"
+        />
+      </label>
+
+      <label class="github-import__field">
+        <span class="github-import__label">{{ t('user.import.githubBranch') }}</span>
+        <input
+          v-model="branch"
+          class="github-import__text-input"
+          type="text"
+          name="branch"
+          :placeholder="t('user.import.githubBranchPlaceholder')"
+          :disabled="isImporting"
           autocomplete="off"
           spellcheck="false"
           @input="reset"
@@ -134,6 +168,7 @@ function clearForm(): void {
         >
           {{ t('user.import.background') }}
         </button>
+        <p class="github-import__background-hint">{{ t('user.import.backgroundHint') }}</p>
       </div>
 
       <p v-if="status === 'error' && errorMessage" class="github-import__error" role="alert">
@@ -395,6 +430,13 @@ function clearForm(): void {
 .github-import__background {
   align-self: center;
   margin-top: 0.2rem;
+}
+
+.github-import__background-hint {
+  margin: 0;
+  text-align: center;
+  font-size: var(--vg-text-xs);
+  color: var(--vg-text-dim);
 }
 
 .github-import__progress-head {

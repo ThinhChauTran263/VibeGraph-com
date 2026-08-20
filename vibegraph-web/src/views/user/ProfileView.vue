@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 
 const accountStore = useAccountStore()
@@ -56,6 +57,9 @@ const roleLabel = computed(() => {
 onMounted(() => {
   void loadProfile()
 })
+
+// Kept alive by UserLayout: profile edits made elsewhere show on re-activation.
+useSilentRefresh(() => accountStore.fetchProfile().catch(() => undefined))
 
 const updateProfile = async () => {
   const displayName = displayNameInput.value.trim()

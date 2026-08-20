@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import { ApiError, accountApi } from '@/lib/api'
 import type { UserNotification } from '@/types/api'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,6 +21,36 @@ let selectionVersion = 0
 const unreadCount = computed(() => items.value.filter((item) => !item.read).length)
 
 onMounted(loadNotifications)
+
+// Kept alive by UserLayout: new notifications arrive on re-activation without a
+// reload flash, preserving the current selection.
+useSilentRefresh(async () => {
+  try {
+    const fresh = (await accountApi.listNotifications()).sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    )
+    items.value = fresh
+    available.value = true
+    errorMsg.value = ''
+    if (selected.value) {
+      const still = fresh.find((item) => item.id === selected.value?.id)
+      if (still) selected.value = still
+    }
+  } catch {
+    // Keep the cached list; the visible error UI owns failure states.
+  }
+})
+
+// Deep links (?id=…) opened while the view is cached must still select that
+// notification — onMounted only ran for the first visit.
+watch(
+  () => route.query.id,
+  (id) => {
+    if (typeof id !== 'string' || selected.value?.id === id) return
+    const target = items.value.find((item) => item.id === id)
+    if (target) void selectNotification(target)
+  },
+)
 
 async function loadNotifications(): Promise<void> {
   try {

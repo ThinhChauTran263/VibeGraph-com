@@ -265,6 +265,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .status(status.name())
                 .progress(status == ProjectStatus.ANALYZED ? 100 : base.getProgress())
                 .storedBytes(row.getSizeBytes())
+                .sourceRef(row.getSourceRef())
+                .sourceBranch(row.getSourceBranch())
                 .build();
     }
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import ErrorAlert from '@/components/ui/ErrorAlert.vue'
 import { displayPlanName } from '@/lib/planDisplay'
 
@@ -70,6 +71,10 @@ async function loadUsage(): Promise<void> {
 onMounted(() => {
   void loadUsage()
 })
+
+// Kept alive by UserLayout: plan/credit changes appear on re-activation even
+// though loadUsage() short-circuits once cached data exists.
+useSilentRefresh(() => accountStore.fetchUsage().catch(() => undefined))
 </script>
 
 <template>

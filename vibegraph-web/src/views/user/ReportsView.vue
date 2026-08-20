@@ -6,6 +6,7 @@ import type { Report, ReportMessage, FeedbackCategory, ReportRealtimeEvent } fro
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const accountStore = useAccountStore()
 const { t } = useI18n({ useScope: 'global' })
@@ -38,6 +39,17 @@ onMounted(async () => {
     errorMsg.value = e instanceof Error ? e.message : t('user.reports.loadFallback')
   }
 })
+
+// Kept alive by UserLayout: report status changes reflect on re-activation
+// without a reload flash.
+useSilentRefresh(() =>
+  accountStore.fetchReports().then(
+    () => {
+      errorMsg.value = ''
+    },
+    () => undefined,
+  ),
+)
 
 const reportRealtime = useReportRealtime(selectedReportId, {
   onEvent: (event) => {

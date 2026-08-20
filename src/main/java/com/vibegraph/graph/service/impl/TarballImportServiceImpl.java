@@ -136,6 +136,11 @@ public class TarballImportServiceImpl implements TarballImportService {
         // the same repository still occupies the owner's quota. Purging it first frees that space
         // for this import instead of letting the old copy reject its own replacement.
         GitHubRepositoryRef parsed = urlParser.parse(request.url());
+        // An explicit branch selection wins over the repository default branch
+        // resolved during pre-flight; blank means "import the default branch".
+        if (request.branch() != null) {
+            parsed = parsed.withRef(request.branch());
+        }
         List<String> replaced = trashService.purgeTrashedGitHubDuplicates(userId, parsed.displayName());
         if (!replaced.isEmpty()) {
             log.info("Re-import of {} permanently removed {} trashed copy/copies: {}",
@@ -209,7 +214,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             createdProjectId = project.getId();
 
             // Register ownership first to satisfy FK constraint in usage
-            ownershipRegistrar.registerGithub(createdProjectId, project.getName(), ref.commitSha());
+            ownershipRegistrar.registerGithub(createdProjectId, project.getName(), ref.commitSha(), ref.ref());
 
             // Pre-charge by extracted .java file count before the expensive analysis;
             // an exhausted balance fails fast (402) and the catch below removes the
@@ -354,7 +359,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             if (ctx.sourceRef() != null) {
                 // Only a completed analysis advances the stored SHA — a failed refresh keeps the
                 // old value so the next re-import retries instead of reporting "up to date".
-                ownershipRegistrar.updateSourceRef(ctx.projectId(), ctx.sourceRef());
+                ownershipRegistrar.updateSourceRef(ctx.projectId(), ctx.sourceRef(), ctx.ref());
             }
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100,
                     "GitHub repository analysis completed");

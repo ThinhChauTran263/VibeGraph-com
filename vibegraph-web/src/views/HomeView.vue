@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import { displayPlanName } from '@/lib/planDisplay'
 
@@ -37,6 +38,10 @@ onMounted(() => {
   if (!account.usage) tasks.push(account.fetchUsage())
   void Promise.allSettled(tasks)
 })
+
+// Kept alive by UserLayout: project/credit counters reconcile in the
+// background on re-activation (profile/usage are already polled by the layout).
+useSilentRefresh(() => account.fetchProjects({ force: true }).catch(() => undefined))
 </script>
 
 <template>

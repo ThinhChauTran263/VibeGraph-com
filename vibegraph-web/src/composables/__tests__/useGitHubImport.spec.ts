@@ -145,10 +145,65 @@ describe('useGitHubImport', () => {
 
     expect(importGithubMock).toHaveBeenCalledWith(
       'https://github.com/spring-projects/spring-petclinic',
+      undefined,
     )
     expect(result).toEqual(project)
     expect(composable.status.value).toBe('success')
     expect(composable.importedProject.value).toEqual(project)
+  })
+
+  it('forwards the selected branch to the API', async () => {
+    const project = fakeProject({ id: 'gh-2b', status: 'ANALYZED' })
+    importGithubMock.mockResolvedValueOnce(project)
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo', ' develop ')
+
+    expect(importGithubMock).toHaveBeenCalledWith('https://github.com/owner/repo', 'develop')
+    expect(result).toEqual(project)
+  })
+
+  it('rejects an invalid branch name without calling the API', async () => {
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo', 'feature..x')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toMatch(/branch/i)
+    expect(importGithubMock).not.toHaveBeenCalled()
+  })
+
+  it('fires onSubmitted when the request goes out and onAccepted on a 202', async () => {
+    const analyzingProject = fakeProject({ id: 'gh-hook', status: 'ANALYZING' })
+    const analyzedProject = fakeProject({ id: 'gh-hook', status: 'ANALYZED' })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockResolvedValueOnce(analyzedProject)
+    const onSubmitted = vi.fn()
+    const onAccepted = vi.fn()
+    const onRejected = vi.fn()
+    const { ws } = makeFakeWs({ connectRejects: true })
+    const composable = useGitHubImport({ ws, onSubmitted, onAccepted, onRejected })
+
+    await composable.importGithub('https://github.com/owner/repo', 'main')
+
+    expect(onSubmitted).toHaveBeenCalledWith('https://github.com/owner/repo', 'main')
+    expect(onAccepted).toHaveBeenCalledTimes(1)
+    expect(onRejected).not.toHaveBeenCalled()
+  })
+
+  it('fires onRejected with the user-facing message when the request fails', async () => {
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', 'Private GitHub repositories are not supported'),
+    )
+    const onSubmitted = vi.fn()
+    const onRejected = vi.fn()
+    const composable = useGitHubImport({ onSubmitted, onRejected })
+
+    await composable.importGithub('https://github.com/owner/private')
+
+    expect(onSubmitted).toHaveBeenCalled()
+    expect(onRejected).toHaveBeenCalledWith('Private GitHub repositories are not supported')
   })
 
   it('waits for an async import to finish before exposing success', async () => {
