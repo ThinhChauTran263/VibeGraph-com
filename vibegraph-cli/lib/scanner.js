@@ -30,6 +30,8 @@ import { computeHash } from "./snapshot.js";
  * @property {ScannedFile[]} files - Files to include
  * @property {SkippedFile[]} skipped - Files that were skipped
  * @property {boolean} truncated - Whether max files limit was hit
+ * @property {boolean} complete - Whether every filesystem entry was inspected safely
+ * @property {string[]} unsafePaths - Paths that may exist but could not be inspected
  */
 
 /**
@@ -43,19 +45,32 @@ export async function scanDirectory(rootDir, ignoreRules) {
   const maxFiles = getMaxFiles();
   const files = [];
   const skipped = [];
+  const unsafePaths = [];
   let truncated = false;
 
-  await walk(rootDir, rootDir, ignoreRules, files, skipped, maxFileSize, maxFiles, () => {
+  let rootStats;
+  try {
+    rootStats = await stat(rootDir);
+  } catch (error) {
+    unsafePaths.push("");
+    return { files, skipped: [{ relativePath: ".", reason: "root missing or unreadable" }], truncated: false, complete: false, unsafePaths };
+  }
+  if (!rootStats.isDirectory()) {
+    unsafePaths.push("");
+    return { files, skipped: [{ relativePath: ".", reason: "root is not a directory" }], truncated: false, complete: false, unsafePaths };
+  }
+
+  await walk(rootDir, rootDir, ignoreRules, files, skipped, unsafePaths, maxFileSize, maxFiles, () => {
     truncated = true;
   });
 
-  return { files, skipped, truncated };
+  return { files, skipped, truncated, complete: unsafePaths.length === 0 && !truncated, unsafePaths };
 }
 
 /**
  * Recursive directory walker.
  */
-async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSize, maxFiles, onTruncate) {
+async function walk(currentDir, rootDir, ignoreRules, files, skipped, unsafePaths, maxFileSize, maxFiles, onTruncate) {
   if (files.length >= maxFiles) {
     onTruncate();
     return;
@@ -65,7 +80,8 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
   try {
     entries = await readdir(currentDir, { withFileTypes: true });
   } catch (error) {
-    // Permission denied or other read error — skip directory
+    unsafePaths.push(toPosixRelative(rootDir, currentDir));
+    skipped.push({ relativePath: toPosixRelative(rootDir, currentDir) || ".", reason: "directory read error" });
     return;
   }
 
@@ -93,9 +109,12 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
       const lstats = await lstat(absolutePath);
       if (lstats.isSymbolicLink()) {
         skipped.push({ relativePath, reason: "symlink" });
+        unsafePaths.push(relativePath);
         continue;
       }
     } catch {
+      unsafePaths.push(relativePath);
+      skipped.push({ relativePath, reason: "metadata read error" });
       continue;
     }
 
@@ -105,7 +124,7 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
       const dirIgnore = shouldIgnore(dirPath, ignoreRules);
       if (dirIgnore.ignored) continue;
 
-      await walk(absolutePath, rootDir, ignoreRules, files, skipped, maxFileSize, maxFiles, onTruncate);
+      await walk(absolutePath, rootDir, ignoreRules, files, skipped, unsafePaths, maxFileSize, maxFiles, onTruncate);
     } else if (entry.isFile()) {
       // Java sources only — the knowledge graph stores nothing else, matching the
       // archive/GitHub importers. The server enforces the same rule.
@@ -120,16 +139,19 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
         fileStat = await stat(absolutePath);
       } catch {
         skipped.push({ relativePath, reason: "unreadable" });
+        unsafePaths.push(relativePath);
         continue;
       }
 
       if (fileStat.size > maxFileSize) {
         skipped.push({ relativePath, reason: `exceeds ${Math.round(maxFileSize / 1024 / 1024)}MB limit` });
+        unsafePaths.push(relativePath);
         continue;
       }
 
       if (fileStat.size === 0) {
         skipped.push({ relativePath, reason: "empty file" });
+        unsafePaths.push(relativePath);
         continue;
       }
 
@@ -137,6 +159,7 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
       const binary = await isBinaryFile(absolutePath);
       if (binary) {
         skipped.push({ relativePath, reason: "binary file" });
+        unsafePaths.push(relativePath);
         continue;
       }
 
@@ -146,6 +169,7 @@ async function walk(currentDir, rootDir, ignoreRules, files, skipped, maxFileSiz
         content = await readFile(absolutePath);
       } catch {
         skipped.push({ relativePath, reason: "read error" });
+        unsafePaths.push(relativePath);
         continue;
       }
 

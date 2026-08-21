@@ -13,12 +13,15 @@
   "files": [
     "bin",
     "lib",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "smoke": "node ./bin/vibegraph.js help && node ./bin/vibegraph.js config show",
+    "smoke": "node ./test/smoke.js",
     "test": "node --test \"test/*.test.js\""
   },
-  "license": "UNLICENSED",
-  "private": true
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref }
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { useAdminRealtime } from '@/composables/useAdminRealtime'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
 import {
   MINUTE_MS,
@@ -51,15 +52,15 @@ const chartUpdateOptions = {
   replaceMerge: ['xAxis', 'yAxis', 'series'],
 }
 
-let pollInterval: ReturnType<typeof setInterval> | undefined
-let lastOverviewLoadedAt = 0
 const ONLINE_DISPLAY_BUCKETS = 10
-const POLL_INTERVAL_MS = 30 * 1000
-/** While the realtime channel is live, the full overview only needs a slow background refresh. */
-const OVERVIEW_BACKGROUND_REFRESH_MS = 5 * 60 * 1000
+const POLL_INTERVAL_MS = 30_000
+const CONNECTED_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const realtime = useAdminRealtime()
 const realtimeConnected = computed(() => realtime.status.value === 'connected')
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let lastOverviewRefreshAt = 0
+let overviewRefreshInFlight = false
 
 const overview = computed(() => adminStore.overview)
 const onlineSamples = computed<OnlineSample[]>(() => {
@@ -211,61 +212,57 @@ const dashboardCharts = computed<DashboardChart[]>(() => [
 
 onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  pollTimer = setInterval(pollOverview, POLL_INTERVAL_MS)
   if (document.visibilityState === 'visible') {
     await loadOverview()
     realtime.start()
-    startPolling()
   } else {
     loading.value = false
   }
 })
 
+useSilentRefresh(() => loadOverview())
+
 onUnmounted(() => {
-  stopPolling()
   realtime.stop()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 })
-
-function startPolling(): void {
-  stopPolling()
-  pollInterval = setInterval(() => {
-    if (document.visibilityState !== 'visible') return
-    // Pushed snapshots keep the online chart live while connected; the heavy
-    // overview then only needs a slow background refresh for the other cards.
-    if (
-      realtimeConnected.value &&
-      Date.now() - lastOverviewLoadedAt < OVERVIEW_BACKGROUND_REFRESH_MS
-    ) {
-      return
-    }
-    void loadOverview()
-  }, POLL_INTERVAL_MS)
-}
-
-function stopPolling(): void {
-  if (pollInterval) clearInterval(pollInterval)
-  pollInterval = undefined
-}
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') {
-    stopPolling()
     realtime.stop()
     return
   }
   realtime.start()
   void loadOverview()
-  startPolling()
+}
+
+function pollOverview(): void {
+  if (document.visibilityState !== 'visible') return
+  if (
+    realtimeConnected.value &&
+    Date.now() - lastOverviewRefreshAt < CONNECTED_REFRESH_INTERVAL_MS
+  ) {
+    return
+  }
+  void loadOverview()
 }
 
 async function loadOverview(): Promise<void> {
+  if (overviewRefreshInFlight) return
+  overviewRefreshInFlight = true
   try {
     await adminStore.fetchOverview()
-    lastOverviewLoadedAt = Date.now()
+    lastOverviewRefreshAt = Date.now()
     errorMsg.value = ''
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : t('admin.overview.errors.loadFailed')
   } finally {
+    overviewRefreshInFlight = false
     loading.value = false
   }
 }
@@ -1069,6 +1066,17 @@ function subjectKey(item: AdminStorageSubject): string {
   background: var(--vg-surface);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), var(--vg-shadow-sm);
+  transition: transform var(--vg-dur-fast) var(--vg-ease-out),
+              box-shadow var(--vg-dur-fast) var(--vg-ease-out),
+              border-color var(--vg-dur-fast) var(--vg-ease-out);
+}
+
+.summary-card:hover,
+.chart-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--vg-glow-subtle);
 }
 
 .notice {
@@ -1106,6 +1114,8 @@ function subjectKey(item: AdminStorageSubject): string {
   color: var(--vg-text);
   font-family: var(--vg-font-display);
   font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
 }
 
 .text-success {
@@ -1195,6 +1205,8 @@ function subjectKey(item: AdminStorageSubject): string {
   color: var(--vg-text);
   font-family: var(--vg-font-display);
   font-size: clamp(1.65rem, 2vw, 2.1rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
   line-height: 1;
 }
 

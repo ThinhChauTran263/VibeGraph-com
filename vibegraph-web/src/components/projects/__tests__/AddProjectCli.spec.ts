@@ -44,7 +44,7 @@ function setupResponse(): CliRepositorySetup {
       createdAt: '2026-07-20T00:00:00Z',
       expiresAt: null,
     },
-    commands: ['vibegraph login vbg_fullsecret', 'vibegraph push', 'vibegraph watch'],
+    commands: ['vibegraph login', 'vibegraph push', 'vibegraph watch'],
   }
 }
 
@@ -77,14 +77,32 @@ describe('AddProjectCli', () => {
     expect(account.fetchApiKeys).toHaveBeenCalledWith({ force: true })
   })
 
-  it('emits the project only when the user opens the repository', async () => {
+  it('never renders a legacy raw-key login command returned by an older backend', async () => {
+    const response = setupResponse()
+    response.commands = [
+      `vibegraph login ${response.apiKey.secretKey}`,
+      'vibegraph push',
+      'vibegraph watch',
+    ]
+    createCliRepositoryMock.mockResolvedValueOnce(response)
+    const { wrapper } = mountForm()
+
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(wrapper.get('.cli-import__commands pre').text()).toBe(
+      ['vibegraph login', 'vibegraph push', 'vibegraph watch'].join('\n'),
+    )
+  })
+
+  it('emits the project only when the user returns to the repository list', async () => {
     const response = setupResponse()
     createCliRepositoryMock.mockResolvedValueOnce(response)
     const { wrapper } = mountForm()
 
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
-    await wrapper.findAll('button').find((button) => button.text().includes('Open repository'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('Go to repositories'))!.trigger('click')
 
     expect(wrapper.emitted('imported')?.[0]?.[0]).toEqual(response.project)
   })

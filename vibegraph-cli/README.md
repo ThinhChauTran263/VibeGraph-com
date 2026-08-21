@@ -8,14 +8,20 @@ Local command-line client for the VibeGraph API. Push Java source patches, watch
 npm install -g ./vibegraph-cli
 ```
 
+For a published release:
+
+```bash
+npm install -g @vibegraph/cli
+```
+
 Requires Node.js 20+.
 
 ## Quick Start
 
 ```bash
 vibegraph config set-url http://localhost:8080
-# Create a project-bound API key in the VibeGraph web app, then copy it once.
-vibegraph auth set-key vbg_...
+# Sign in in the browser and choose the project API key owned by your account.
+vibegraph login
 vibegraph push --root ./projects/demo
 vibegraph watch --root ./projects/demo
 ```
@@ -27,15 +33,22 @@ For the full walkthrough, see **[docs/local-patch.md](../docs/local-patch.md)**.
 ### Auth
 
 ```bash
-vibegraph auth set-key <apiKey>
+vibegraph login
+vibegraph key change
+vibegraph key list
 vibegraph auth status
 vibegraph auth clear
 ```
 
-API keys are created by users in the web app and are bound to one repository/project. The CLI
-stores the key in `~/.vibegraph/config.json`, sends it as `X-API-Key`, and never prints the full
-value. `auth clear` removes the stored key but does not remove a `VIBEGRAPH_API_KEY` environment
-override.
+`vibegraph login` opens a short-lived browser authorization page. After sign-in, choose one of your
+owned, active project keys. The CLI stores the selected credential and its `apiKeyId` in
+`~/.vibegraph/config.json`, then uses the same credential for push, watch, and the MCP proxy.
+`vibegraph key change` repeats the browser flow and refreshes the account's key list. `key list`
+prints only masked metadata (`key prefix | project name`) from the last browser refresh.
+
+Raw-key commands (`login <apiKey>`, `login --key`, `key add`, and `auth set-key`) are rejected in
+production because a bearer key alone cannot prove that it belongs to the signed-in account. This
+prevents accidentally configuring a leaked key from another user. Use browser login instead.
 
 Legacy login commands remain available for compatibility and local development:
 
@@ -45,6 +58,15 @@ vibegraph login --email <e> --password <p>
 vibegraph logout
 vibegraph me
 ```
+
+The CLI keeps the rotating `vg_refresh` session cookie returned by the backend and refreshes an
+expired access token automatically. `vibegraph doctor` reports whether the legacy session is still
+active. For production automation, prefer a project-bound API key because it is scoped to one
+project and works without an interactive user session.
+
+Project management commands (`projects list/create/analyze/status/delete`) use the JWT user
+session. A project-bound API key intentionally authenticates only patch/watch and MCP operations,
+so a leaked key cannot enumerate or delete projects.
 
 ### Config
 
@@ -93,6 +115,79 @@ Generates a `.vibegraphignore` file with default rules.
 vibegraph doctor
 ```
 
+`vibegraph --version` prints the package version. `vibegraph config set-url` requires HTTPS in
+production; plain HTTP is accepted only for localhost development.
+
+## IDE and MCP production setup
+
+The recommended developer-machine setup is the local stdio proxy. It lets the IDE start
+`vibegraph mcp-proxy` and reuse the credential selected by `vibegraph login`; the generated JSON
+never contains the raw project API key.
+
+```bash
+vibegraph config set-url https://api.example.com
+vibegraph login
+vibegraph doctor
+vibegraph mcp config
+```
+
+`vibegraph mcp config` prints copy/paste JSON in the common `mcpServers` format:
+
+```json
+{
+  "mcpServers": {
+    "vibegraph": {
+      "command": "/absolute/path/to/node",
+      "args": [
+        "/absolute/path/to/vibegraph-cli/bin/vibegraph.js",
+        "mcp-proxy",
+        "--stdio"
+      ]
+    }
+  }
+}
+```
+
+`cursor` and `generic` use this `mcpServers` shape. VS Code uses a different `servers` shape, so
+use its preset instead:
+
+```bash
+vibegraph mcp install cursor
+vibegraph mcp install vscode
+vibegraph mcp install generic --path ./path/to/the/ide-mcp.json
+```
+
+The install command creates parent directories, merges the existing JSON, and preserves an
+existing `vibegraph` entry. For an IDE that is not listed, use `generic --path` if it accepts the
+standard `mcpServers` format, or run `vibegraph mcp config` and paste the output into that IDE's
+MCP settings file. You can choose a different server key when copying JSON:
+
+```bash
+vibegraph mcp config my-vibegraph
+```
+
+Some clients only support remote Streamable HTTP servers. In that case, configure the `/mcp`
+endpoint directly and put the project API key in the IDE's secret/environment store, never in a
+committed workspace file:
+
+```json
+{
+  "mcpServers": {
+    "vibegraph": {
+      "url": "https://api.example.com/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "X-API-Key": "${VIBEGRAPH_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+The local proxy and direct HTTP modes both charge the selected project. If a key was rotated,
+deleted, disabled, expired, or belongs to another account, MCP returns an actionable error; run
+`vibegraph key change` to refresh and select an owned key.
+
 ## Path conventions
 
 | Flag | Uses | Example |
@@ -123,3 +218,5 @@ These rules apply at any directory depth. Customize with `.vibegraphignore`.
 | `VIBEGRAPH_API_KEY` | (from config) | Override the project-bound API key |
 | `VIBEGRAPH_MAX_FILE_SIZE` | `1048576` (1MB) | Max file size in bytes |
 | `VIBEGRAPH_MAX_FILES` | `200` | Max files per push |
+| `VIBEGRAPH_MAX_TOTAL_BYTES` | `5242880` (5MB) | Max changed content per push; matches the backend default |
+| `VIBEGRAPH_HTTP_TIMEOUT_MS` | `30000` | HTTP request timeout |

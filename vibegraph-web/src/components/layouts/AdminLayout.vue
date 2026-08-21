@@ -157,7 +157,11 @@ function signOut(): void {
         </div>
       </header>
       <div class="content">
-        <RouterView />
+        <RouterView v-slot="{ Component }">
+          <KeepAlive :max="12">
+            <component :is="Component" />
+          </KeepAlive>
+        </RouterView>
       </div>
     </main>
   </div>
@@ -200,6 +204,7 @@ function signOut(): void {
   min-height: 68px;
   padding: var(--vg-space-4);
   border-bottom: 1px solid var(--vg-border);
+  user-select: none;
 }
 
 .brand-link {
@@ -251,12 +256,14 @@ function signOut(): void {
   gap: var(--vg-space-3);
   min-height: 40px;
   border-radius: 6px;
+  border: 1px solid transparent;
   text-decoration: none;
   color: var(--vg-text-muted);
   font-family: var(--vg-font-body);
   font-size: var(--vg-text-sm);
-  font-weight: 600;
+  font-weight: 500;
   padding: 0 var(--vg-space-3);
+  transition: all var(--vg-dur-fast) var(--vg-ease-out);
 }
 
 .nav-link:hover,
@@ -266,8 +273,10 @@ function signOut(): void {
 }
 
 .nav-link.router-link-exact-active {
-  color: var(--vg-blue-bright);
-  background: rgba(59, 130, 246, 0.12);
+  color: var(--vg-text);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .nav-icon {
@@ -316,7 +325,8 @@ function signOut(): void {
 
 .admin-account {
   color: var(--vg-text);
-  background: rgba(148, 163, 184, 0.08);
+  background: var(--vg-bg-elev);
+  border: 1px solid var(--vg-border);
   margin-bottom: var(--vg-space-2);
 }
 
@@ -374,6 +384,7 @@ function signOut(): void {
   margin: 0;
   padding: 0 var(--vg-space-3);
   gap: var(--vg-space-3);
+  user-select: none;
 }
 
 .eyebrow {

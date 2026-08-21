@@ -4,8 +4,8 @@
  * Stored at ~/.vibegraph/projects/<projectId>.json
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -23,7 +23,7 @@ function snapshotDir() {
  * @returns {string}
  */
 function snapshotPath(projectId) {
-  return path.join(snapshotDir(), `${projectId}.json`);
+  return path.join(snapshotDir(), `${validateSnapshotId(projectId)}.json`);
 }
 
 /**
@@ -38,6 +38,9 @@ export async function loadSnapshot(projectId) {
     return data.files || {};
   } catch (error) {
     if (error.code === "ENOENT") return {};
+    if (error instanceof SyntaxError) {
+      throw new Error(`Snapshot for ${projectId} is corrupted. Remove it and run push again.`, { cause: error });
+    }
     throw error;
   }
 }
@@ -55,7 +58,22 @@ export async function saveSnapshot(projectId, files) {
     updatedAt: new Date().toISOString(),
     files,
   };
-  await writeFile(snapshotPath(projectId), JSON.stringify(data, null, 2), "utf8");
+  const target = snapshotPath(projectId);
+  const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, target);
+  } catch (error) {
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
+}
+
+function validateSnapshotId(projectId) {
+  if (typeof projectId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(projectId)) {
+    throw new Error("Invalid snapshot identity.");
+  }
+  return projectId;
 }
 
 /**

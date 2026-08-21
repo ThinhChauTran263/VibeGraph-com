@@ -7,26 +7,26 @@
  * tool — deep slate canvas, blue for structure, green for "run / vibe").
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
 
 :root {
   color-scheme: dark;
 
   /* ---- Surfaces ---- */
-  --vg-bg: #070b16;
-  --vg-bg-elev: #0b1120;
-  --vg-surface: #0f172a;
-  --vg-surface-2: #141e34;
-  --vg-surface-3: #1b2742;
+  --vg-bg: #000000;
+  --vg-bg-elev: #050505;
+  --vg-surface: #0a0a0a;
+  --vg-surface-2: #121212;
+  --vg-surface-3: #1a1a1a;
 
   /* ---- Text ---- */
-  --vg-text: #e8edf6;
-  --vg-text-muted: #9fb0c7;
-  --vg-text-dim: #6b7c97;
+  --vg-text: #ededed;
+  --vg-text-muted: #a1a1aa;
+  --vg-text-dim: #71717a;
 
   /* ---- Borders / lines ---- */
-  --vg-border: rgba(148, 163, 184, 0.16);
-  --vg-border-strong: rgba(148, 163, 184, 0.32);
+  --vg-border: rgba(255, 255, 255, 0.1);
+  --vg-border-strong: rgba(255, 255, 255, 0.16);
 
   /* ---- Brand accents ---- */
   --vg-blue: #3b82f6;
@@ -46,8 +46,9 @@
   --vg-grad-surface: linear-gradient(160deg, rgba(27, 39, 66, 0.9), rgba(11, 17, 32, 0.9));
 
   /* ---- Typography ---- */
-  --vg-font-display: 'Fira Code', ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
-  --vg-font-body: 'Fira Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --vg-font-display: 'Inter', system-ui, -apple-system, sans-serif;
+  --vg-font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --vg-font-mono: 'Fira Code', ui-monospace, 'SFMono-Regular', monospace;
 
   --vg-text-xs: 0.75rem;
   --vg-text-sm: 0.875rem;
@@ -77,10 +78,11 @@
   --vg-radius-pill: 999px;
 
   /* ---- Elevation ---- */
-  --vg-shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.4);
-  --vg-shadow: 0 10px 30px -12px rgba(2, 6, 23, 0.7);
-  --vg-shadow-lg: 0 28px 70px -28px rgba(2, 6, 23, 0.85);
-  --vg-glow-blue: 0 0 0 1px rgba(96, 165, 250, 0.35), 0 18px 50px -20px rgba(59, 130, 246, 0.55);
+  --vg-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vg-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --vg-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --vg-glow-subtle: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 16px -4px rgba(0, 0, 0, 0.8);
+  --vg-glow-blue: 0 0 0 1px rgba(96, 165, 250, 0.25), 0 12px 32px -12px rgba(59, 130, 246, 0.45);
 
   /* ---- Motion ---- */
   --vg-dur-fast: 150ms;
@@ -124,8 +126,8 @@ h2,
 h3,
 h4 {
   font-family: var(--vg-font-display);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
   font-weight: 600;
 }
 
@@ -138,6 +140,17 @@ a {
   outline: 2px solid var(--vg-blue-bright);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+button,
+label,
+select,
+.nav-link,
+.brand-link,
+.sidebar-toggle,
+.group-toggle,
+.eyebrow {
+  user-select: none;
 }
 
 ::selection {

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminAuditLog } from '@/types/api'
 import ThemedSelect from '@/components/ui/ThemedSelect.vue'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const admin = useAdminStore()
@@ -42,6 +43,17 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   isActive = false
   admin.stopAuditStream()
+})
+
+useSilentRefresh(async () => {
+  try {
+    await load(pageNumber.value)
+    if (admin.auditLogDetail) {
+      await admin.fetchAuditLogDetail(admin.auditLogDetail.id)
+    }
+  } catch {
+    // Silent failure
+  }
 })
 
 async function load(page = 0): Promise<void> {

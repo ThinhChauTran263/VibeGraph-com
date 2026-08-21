@@ -20,8 +20,9 @@ const loading = ref(false)
 const error = ref('')
 const copied = ref<string | null>(null)
 
+const SAFE_CLI_COMMANDS = ['vibegraph login', 'vibegraph push', 'vibegraph watch']
 const canSubmit = computed(() => !loading.value && !setup.value)
-const commandBlock = computed(() => setup.value?.commands.join('\n') ?? '')
+const commandBlock = SAFE_CLI_COMMANDS.join('\n')
 
 async function createRepository(): Promise<void> {
   if (!canSubmit.value) return
@@ -152,8 +153,8 @@ function reset(): void {
           class="cli-import__btn cli-import__btn--primary"
           @click="emit('imported', setup.project)"
         >
-          <AppIcon name="graph" :size="17" />
-          <span>{{ t('user.import.cli.openRepository') }}</span>
+          <AppIcon name="repository" :size="17" />
+          <span>{{ t('user.import.cli.goToRepositories') }}</span>
         </button>
         <button type="button" class="cli-import__btn cli-import__btn--ghost" @click="reset">
           {{ t('user.import.cli.createAnother') }}
