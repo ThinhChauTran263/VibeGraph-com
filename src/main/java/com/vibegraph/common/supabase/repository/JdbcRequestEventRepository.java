@@ -121,6 +121,9 @@ public class JdbcRequestEventRepository implements RequestEventRepository {
                        count(DISTINCT api_key_ref) AS unique_api_keys
                 FROM request_events
                 WHERE occurred_at >= :since
+                  AND ip_address <> 'unknown'
+                  AND route <> '/actuator/health'
+                  AND ip_address !~* '^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|169\\.254\\.|100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.|::1$|0:0:0:0:0:0:0:1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)'
                 GROUP BY ip_address
                 ORDER BY count(*) DESC
                 LIMIT :limit
@@ -140,7 +143,9 @@ public class JdbcRequestEventRepository implements RequestEventRepository {
         return jdbc.query("""
                 SELECT ip_address, user_id, api_key_ref, count(*) AS requests
                 FROM request_events
-                WHERE occurred_at >= :since AND ip_address IN (:ipAddresses)
+                WHERE occurred_at >= :since
+                  AND ip_address IN (:ipAddresses)
+                  AND route <> '/actuator/health'
                 GROUP BY ip_address, user_id, api_key_ref
                 ORDER BY ip_address, count(*) DESC
                 """, Map.of("since", JdbcParameters.instant(since), "ipAddresses", ipAddresses),

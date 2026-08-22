@@ -15,7 +15,13 @@ const copy = computed(
   <div class="docs-page">
     <header class="docs-nav">
       <div class="docs-nav__inner">
-        <BrandMark :size="28" glyph-to="/" glyph-aria-label="VibeGraph home" />
+        <BrandMark
+          :size="28"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/dashboard"
+          wordmark-aria-label="VibeGraph dashboard"
+        />
         <nav :aria-label="copy.docs.navLabel">
           <a href="#install">Install</a><a href="#mcp">MCP</a><a href="#videos">Videos</a>
         </nav>
@@ -110,6 +116,20 @@ vibegraph mcp install generic --path ./mcp.json</code></pre>
           <pre><code>vibegraph mcp config cursor
 vibegraph mcp config vscode
 vibegraph mcp config generic</code></pre>
+          <h3>{{ copy.docs.localStdioTitle }}</h3>
+          <p>{{ copy.docs.localStdioBody }}</p>
+          <pre><code>{
+  "mcpServers": {
+    "vibegraph": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\&lt;USERNAME&gt;\\AppData\\Roaming\\npm\\node_modules\\vibegraph-cli\\bin\\vibegraph.js",
+        "mcp-proxy",
+        "--stdio"
+      ]
+    }
+  }
+}</code></pre>
           <p>{{ copy.docs.mcpBody }}</p>
           <h3>{{ copy.docs.manualTitle }}</h3>
           <pre><code>{

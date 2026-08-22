@@ -6,7 +6,10 @@ import BrandMark from '../BrandMark.vue'
 function makeRouter() {
   return createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }],
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/dashboard', component: { template: '<div />' } },
+    ],
   })
 }
 
@@ -17,16 +20,24 @@ describe('BrandMark', () => {
     await router.isReady()
 
     const wrapper = mount(BrandMark, {
-      props: { glyphTo: '/', glyphAriaLabel: 'VibeGraph home' },
+      props: {
+        glyphTo: '/',
+        glyphAriaLabel: 'VibeGraph landing page',
+        wordmarkTo: '/dashboard',
+        wordmarkAriaLabel: 'VibeGraph dashboard',
+      },
       global: { plugins: [router] },
     })
 
     const glyphLink = wrapper.get('a.brand__glyph-link')
     expect(glyphLink.attributes('href')).toBe('/')
-    expect(glyphLink.attributes('aria-label')).toBe('VibeGraph home')
+    expect(glyphLink.attributes('aria-label')).toBe('VibeGraph landing page')
     expect(glyphLink.find('img.brand__glyph').exists()).toBe(true)
     expect(glyphLink.find('.brand__word').exists()).toBe(false)
-    expect(wrapper.get('.brand__word').text()).toBe('VibeGraph')
+    const wordmarkLink = wrapper.get('a.brand__word-link')
+    expect(wordmarkLink.attributes('href')).toBe('/dashboard')
+    expect(wordmarkLink.attributes('aria-label')).toBe('VibeGraph dashboard')
+    expect(wordmarkLink.get('.brand__word').text()).toBe('VibeGraph')
   })
 
   it('renders no link when a destination is omitted', () => {

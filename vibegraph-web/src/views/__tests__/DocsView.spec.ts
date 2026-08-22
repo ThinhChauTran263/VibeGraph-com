@@ -38,6 +38,9 @@ describe('DocsView', () => {
     expect(text).toContain('vibegraph mcp config generic')
     expect(text).toContain('vibegraph mcp config vscode')
     expect(text).toContain('vibegraph mcp doctor')
+    expect(text).toContain('list_projects')
+    expect(text).toContain('C:\\\\Program Files\\\\nodejs\\\\node.exe')
+    expect(text).toContain('AppData\\\\Roaming\\\\npm\\\\node_modules\\\\vibegraph-cli')
     expect(text).toContain('https://api.vibegraph.tech/mcp')
     expect(text).toContain('PROJECT_API_KEY')
     expect(text).toContain('EEXIST')
@@ -47,7 +50,7 @@ describe('DocsView', () => {
 
   it('documents the published npm package and production install command', () => {
     const text = mountDocs().text()
-    expect(text).toContain('vibegraph-cli@0.1.0')
+    expect(text).toContain('vibegraph-cli@0.1.1')
     expect(text).toContain('npm install -g vibegraph-cli')
   })
 

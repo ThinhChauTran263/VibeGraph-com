@@ -79,8 +79,10 @@ function signOut(): void {
         <BrandMark
           :size="30"
           :show-wordmark="!isCollapsed"
-          glyph-to="/admin"
-          :glyph-aria-label="t('admin.layout.overviewLinkLabel')"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/admin"
+          :wordmark-aria-label="t('admin.layout.overviewLinkLabel')"
         />
         <button
           class="sidebar-toggle"

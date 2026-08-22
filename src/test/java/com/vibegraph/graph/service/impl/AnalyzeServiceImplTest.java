@@ -21,6 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.repository.ProjectMetadata;
+import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
@@ -70,6 +72,24 @@ class AnalyzeServiceImplTest {
         service.analyzeProject("p1", "   ", "/tmp/p1");
 
         verify(graphRepository).upsertAnalysis(eq("p1"), eq("p1"), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("reports the unique node count persisted in Neo4j instead of the raw parser count")
+    void reportsPersistedNodeCount() {
+        ParseResult result = ParseResult.builder()
+                .nodes(List.of(
+                        NodeData.of("Package", "example", "com.example", "", 0),
+                        NodeData.of("Package", "example", "com.example", "", 0)))
+                .build();
+        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(result));
+        when(graphRepository.findProject("p1"))
+                .thenReturn(new ProjectMetadata("p1", "Demo", "/tmp/p1", null, null, 1, 1, 0));
+
+        AnalysisResult analysis = service.analyzeProject("p1", "Demo", "/tmp/p1");
+
+        assertThat(analysis.nodesUpserted()).isEqualTo(1);
+        verify(graphRepository).findProject("p1");
     }
 
     @Test

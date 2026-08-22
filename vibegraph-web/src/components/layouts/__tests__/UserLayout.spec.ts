@@ -116,10 +116,12 @@ describe('UserLayout', () => {
     const { wrapper } = await mountLayout()
 
     const glyphLink = wrapper.get('header a.brand__glyph-link')
-    expect(glyphLink.attributes('href')).toBe('/dashboard')
+    expect(glyphLink.attributes('href')).toBe('/')
     expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
     expect(glyphLink.find('.brand__word').exists()).toBe(false)
-    expect(wrapper.get('header .brand__word').text()).toBe('VibeGraph')
+    const wordmarkLink = wrapper.get('header a.brand__word-link')
+    expect(wordmarkLink.attributes('href')).toBe('/dashboard')
+    expect(wordmarkLink.get('.brand__word').text()).toBe('VibeGraph')
   })
 
   it('collapses to accessible icon-only navigation and expands with the hamburger', async () => {

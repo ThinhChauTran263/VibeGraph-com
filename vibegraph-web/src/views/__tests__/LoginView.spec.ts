@@ -45,7 +45,9 @@ describe('LoginView', () => {
     expect(glyphLink.attributes('href')).toBe('/')
     expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
     expect(glyphLink.find('.brand__word').exists()).toBe(false)
-    expect(wrapper.get('.auth-page__header .brand__word').text()).toBe('VibeGraph')
+    const wordmarkLink = wrapper.get('.auth-page__header a.brand__word-link')
+    expect(wordmarkLink.attributes('href')).toBe('/dashboard')
+    expect(wordmarkLink.get('.brand__word').text()).toBe('VibeGraph')
   })
 
   it('renders Google and GitHub OAuth login links', async () => {

@@ -32,14 +32,17 @@ watch(sidebarWidth, (width) => {
   >
     <nav class="graph-view__tabs" aria-label="Project visualization">
       <span class="graph-view__tabs-left">
-        <RouterLink
-          class="graph-view__home"
-          :to="{ name: 'dashboard' }"
-          aria-label="Back to dashboard"
-        >
-          <BrandMark :size="24" :show-wordmark="false" />
-          <span class="graph-view__home-label">Dashboard</span>
-        </RouterLink>
+        <span class="graph-view__home">
+          <BrandMark
+            :size="24"
+            :show-wordmark="false"
+            glyph-to="/"
+            glyph-aria-label="VibeGraph landing page"
+          />
+          <RouterLink :to="{ name: 'dashboard' }" aria-label="Back to dashboard">
+            <span class="graph-view__home-label">Dashboard</span>
+          </RouterLink>
+        </span>
         <span class="graph-view__divider" aria-hidden="true"></span>
       </span>
       <span class="graph-view__tabs-right">
@@ -119,6 +122,11 @@ watch(sidebarWidth, (width) => {
 .graph-view__home:hover {
   background: rgba(148, 163, 184, 0.1);
   color: #fff;
+}
+
+.graph-view__home a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .graph-view__home-label {

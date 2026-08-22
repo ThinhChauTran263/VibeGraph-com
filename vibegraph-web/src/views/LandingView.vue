@@ -619,7 +619,13 @@ onBeforeUnmount(() => {
     <!-- ── Nav ── -->
     <header class="lp-nav" :class="{ 'lp-nav--scrolled': scrolled }">
       <div class="lp-nav__inner">
-        <BrandMark :size="30" glyph-to="/" glyph-aria-label="VibeGraph home" />
+        <BrandMark
+          :size="30"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/dashboard"
+          wordmark-aria-label="VibeGraph dashboard"
+        />
         <nav class="lp-nav__links" aria-label="Primary">
           <a href="#goals" :class="{ 'lp-nav__link--active': activeSection === 'goals' }">{{
             t('landing.nav.goals')
@@ -1336,7 +1342,13 @@ vibegraph watch</code></pre>
     <footer class="lp-footer">
       <div class="footer-top">
         <div class="footer-brand">
-          <BrandMark :size="24" glyph-to="/" glyph-aria-label="VibeGraph home" />
+          <BrandMark
+            :size="24"
+            glyph-to="/"
+            glyph-aria-label="VibeGraph landing page"
+            wordmark-to="/dashboard"
+            wordmark-aria-label="VibeGraph dashboard"
+          />
           <span class="lp-footer__note">{{ t('landing.footer.note') }}</span>
         </div>
         <div class="footer-links">

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.parser.flow.DynamicDispatchResolver;
@@ -124,16 +125,33 @@ public class AnalyzeServiceImpl implements AnalyzeService {
 
         progress.onProgress(98, "Finalizing");
 
+        int nodesPersisted = persistedNodeCount(projectId, allNodes);
+
         log.info("Analysis complete: {} files, {} nodes, {} edges persisted ({} parsed), {} warnings",
-                results.size(), allNodes.size(), edgesPersisted, allEdges.size(), totalWarnings);
+                results.size(), nodesPersisted, edgesPersisted, allEdges.size(), totalWarnings);
 
         return new AnalysisResult(
                 projectId,
                 results.size(),
-                allNodes.size(),
+                nodesPersisted,
                 edgesPersisted,
                 totalWarnings
         );
+    }
+
+    private int persistedNodeCount(String projectId, List<NodeData> parsedNodes) {
+        try {
+            ProjectMetadata metadata = graphRepository.findProject(projectId);
+            if (metadata != null) {
+                return metadata.totalNodes();
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Could not read persisted node count for project {}: {}", projectId, ex.getMessage());
+        }
+        return (int) parsedNodes.stream()
+                .map(NodeData::fullName)
+                .distinct()
+                .count();
     }
 
     /**
