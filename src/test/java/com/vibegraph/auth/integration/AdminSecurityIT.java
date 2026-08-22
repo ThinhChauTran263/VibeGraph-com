@@ -157,6 +157,27 @@ class AdminSecurityIT {
     }
 
     @Test
+    @DisplayName("CLI device start, token, and status endpoints are public but approval is protected")
+    void cliDeviceAuthorization_publicExchangeEndpoints_only() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        for (String path : java.util.List.of(
+                "/api/cli/device/start",
+                "/api/cli/device/token",
+                "/api/cli/device/status")) {
+            mockMvc.perform(post(path).contentType("application/json").content("{}"))
+                    .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+        }
+
+        mockMvc.perform(post("/api/cli/device/11111111-1111-1111-1111-111111111111/approve")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     @DisplayName("GET /api/admin/overview with USER role returns 403 Forbidden")
     void getOverview_userRole_returnsForbidden() throws Exception {

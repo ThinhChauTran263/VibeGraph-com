@@ -45,7 +45,22 @@ vi.mock('@/lib/featureAvailability', async () => {
 const ImportProjectPanelStub = {
   props: ['disabledMethods'],
   emits: ['imported'],
-  template: '<section data-test="import-panel">Import panel</section>',
+  template: `
+    <section data-test="import-panel">
+      Import panel
+      <button
+        data-test="complete-cli-import"
+        @click="$emit('imported', {
+          id: 'cli-new',
+          name: 'New CLI Repo',
+          totalFiles: 0,
+          totalNodes: 0,
+          totalEdges: 0,
+          status: 'CREATED'
+        })"
+      >Complete CLI import</button>
+    </section>
+  `,
 }
 const ConfirmDialogStub = {
   props: ['open', 'busy'],
@@ -174,6 +189,17 @@ describe('ProjectsView', () => {
 
     expect(router.currentRoute.value.name).toBe('graph')
     expect(router.currentRoute.value.params.projectId).toBe('project-1')
+  })
+
+  it('returns a newly created CLI repository to the repository list instead of an empty graph', async () => {
+    const { wrapper, router } = await mountView('/projects?import=new')
+
+    await wrapper.get('[data-test="complete-cli-import"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('projects')
+    expect(router.currentRoute.value.query).toEqual({})
+    expect(wrapper.text()).toContain('New CLI Repo')
   })
 
   it('shows the current empty and error states', async () => {

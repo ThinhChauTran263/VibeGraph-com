@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 // code splitting keeps first paint to just the shell + the visited view.
 const LandingView = () => import('@/views/LandingView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
+const CliAuthorizeView = () => import('@/views/CliAuthorizeView.vue')
 const RegisterView = () => import('@/views/RegisterView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
 const GraphView = () => import('@/views/GraphView.vue')
@@ -45,6 +46,11 @@ const router = createRouter({
       name: 'register',
       component: RegisterView,
       meta: { guestOnly: true },
+    },
+    {
+      path: '/cli/authorize',
+      name: 'cli-authorize',
+      component: CliAuthorizeView,
     },
     {
       path: '/',
@@ -180,6 +186,11 @@ router.beforeEach(async (to) => {
   }
   const role = auth.user?.role?.toUpperCase() ?? ''
   const isAuthenticated = !!auth.user
+  const pendingCliRoute = sessionStorage.getItem('vibegraph.cli.pendingRoute')
+
+  if (isAuthenticated && pendingCliRoute && to.name !== 'cli-authorize') {
+    return pendingCliRoute
+  }
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }

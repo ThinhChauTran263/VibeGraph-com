@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { realpathSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile, rm } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFileSync, realpathSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { chmod, mkdir, readFile, rename, writeFile, rm } from "node:fs/promises";
+import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,7 +20,9 @@ function libImport(moduleName) {
 const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vibegraph");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
-const CLI_VERSION = "0.1.0";
+const CLI_VERSION = JSON.parse(readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version;
+const REQUEST_TIMEOUT_MS = 30_000;
+let liveSuggestionLineCount = 0;
 const SHELL_COMMANDS = [
   { command: "/help", description: "Show help and available commands" },
   { command: "/exit", description: "Exit the VibeGraph shell" },
@@ -28,13 +31,13 @@ const SHELL_COMMANDS = [
   { command: "exit", description: "Exit the VibeGraph shell" },
   { command: "quit", description: "Exit the VibeGraph shell" },
   { command: "doctor", description: "Check backend health" },
-  { command: "login ", description: "Save a project-bound API key" },
-  { command: "login --key ", description: "Save a project-bound API key" },
-  { command: "key add ", description: "Store a project-bound API key" },
-  { command: "key set ", description: "Store a project-bound API key" },
+  { command: "mcp config", description: "Print MCP client configuration" },
+  { command: "mcp install ", description: "Install authenticated MCP proxy (cursor, vscode, or generic)" },
+  { command: "login", description: "Sign in and choose a project key in the browser" },
   { command: "key status", description: "Show masked API-key status" },
+  { command: "key list", description: "List API keys available to this CLI" },
+  { command: "key change", description: "Choose a different project API key" },
   { command: "key clear", description: "Clear the stored API key" },
-  { command: "auth set-key ", description: "Store a project-bound API key" },
   { command: "auth status", description: "Show masked API-key status" },
   { command: "auth clear", description: "Clear the stored API key" },
   { command: "me", description: "Show the current authenticated user" },
@@ -80,10 +83,11 @@ if (isDirectRun()) {
   main().catch((error) => {
     if (error instanceof CliError) {
       console.error(error.message);
-      process.exit(error.exitCode);
+      process.exitCode = error.exitCode;
+      return;
     }
     console.error(error?.stack || String(error));
-    process.exit(1);
+    process.exitCode = 1;
   });
 }
 
@@ -114,6 +118,10 @@ async function dispatchCommand(args) {
     case "-h":
       printHelp();
       return;
+    case "--version":
+    case "-v":
+      console.log(CLI_VERSION);
+      return;
     case "config":
       await handleConfig(rest);
       return;
@@ -130,7 +138,16 @@ async function dispatchCommand(args) {
       await handleLogin(rest);
       return;
     case "logout":
-      await saveConfig({ ...(await loadConfig()), token: undefined, user: undefined });
+      await saveConfig({
+        ...(await loadConfig()),
+        token: undefined,
+        refreshToken: undefined,
+        user: undefined,
+        apiKey: undefined,
+        apiKeyId: undefined,
+        project: undefined,
+        apiKeys: undefined,
+      });
       console.log("Logged out.");
       return;
     case "me":
@@ -150,6 +167,12 @@ async function dispatchCommand(args) {
       return;
     case "doctor":
       await handleDoctor();
+      return;
+    case "mcp":
+      await handleMcp(rest);
+      return;
+    case "mcp-proxy":
+      await handleMcpProxy(rest);
       return;
     default:
       throw new CliError(`Unknown command: ${command}\nRun: vibegraph help`, 2);
@@ -175,14 +198,12 @@ function printShellHelp() {
 
 function renderHelpBody() {
   return `Usage:
-  vibegraph login <apiKey>
-  vibegraph login --key <apiKey>
-  vibegraph key add <apiKey>
   vibegraph key status
+  vibegraph key list
+  vibegraph key change
   vibegraph key clear
   vibegraph config show
   vibegraph config set-url <url>
-  vibegraph auth set-key <apiKey>
   vibegraph auth status
   vibegraph auth clear
   vibegraph register --email <email> --password <password> --name <displayName>
@@ -190,6 +211,10 @@ function renderHelpBody() {
   vibegraph logout
   vibegraph me
   vibegraph doctor
+  vibegraph mcp config [cursor|vscode|generic] [--name <serverName>]
+  vibegraph mcp install <cursor|vscode|generic> [--path <file>]
+  vibegraph login [--no-browser]
+  vibegraph mcp-proxy --stdio
 
 Projects:
   vibegraph projects list
@@ -226,6 +251,7 @@ async function startInteractiveShell() {
   let visibleSuggestions = [];
   let selectedSuggestionIndex = -1;
   let keypressVersion = 0;
+  let pendingSuggestionLine = null;
   const refreshSuggestions = (character, key = {}) => {
     if (!processing) {
       keypressVersion += 1;
@@ -233,29 +259,53 @@ async function startInteractiveShell() {
         const suggestions = selectedSuggestionIndex >= 0
           ? visibleSuggestions
           : getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
-        if (!suggestions.length) {
-          return;
-        }
+        if (!suggestions.length) return;
         const direction = key.name;
         key.name = undefined;
+        key.sequence = "";
         visibleSuggestions = suggestions;
+        const previousSuggestionIndex = selectedSuggestionIndex;
         selectedSuggestionIndex = getNextSuggestionIndex(
           selectedSuggestionIndex,
           direction,
           suggestions.length,
         );
-        const slashPrefix = (readline.line || "").trimStart().startsWith("/") ? "/" : "";
-        const selectedLine = `${slashPrefix}${suggestions[selectedSuggestionIndex].command}`;
-        readline.write(null, { ctrl: true, name: "u" });
-        readline.write(selectedLine);
-        renderLiveSuggestions(readline.line || "", selectedSuggestionIndex, visibleSuggestions);
+        renderLiveSuggestionSelection(
+          readline.line || "",
+          previousSuggestionIndex,
+          selectedSuggestionIndex,
+          visibleSuggestions,
+        );
+        return;
+      }
+      if (key.name === "tab" && selectedSuggestionIndex >= 0) {
+        const selectedLine = getSelectedSuggestionLine(
+          readline.line || "",
+          visibleSuggestions,
+          selectedSuggestionIndex,
+        );
+        if (selectedLine) {
+          key.name = undefined;
+          key.sequence = "";
+          readline.write(null, { ctrl: true, name: "u" });
+          readline.write(selectedLine);
+          selectedSuggestionIndex = -1;
+          visibleSuggestions = [];
+          clearLiveSuggestions();
+        }
+        return;
+      }
+      if ((key.name === "return" || key.name === "enter") && selectedSuggestionIndex >= 0) {
+        pendingSuggestionLine = getSelectedSuggestionLine(
+          readline.line || "",
+          visibleSuggestions,
+          selectedSuggestionIndex,
+        );
         return;
       }
       const refreshVersion = keypressVersion;
       setImmediate(() => {
-        if (processing || refreshVersion !== keypressVersion) {
-          return;
-        }
+        if (processing || refreshVersion !== keypressVersion) return;
         selectedSuggestionIndex = -1;
         visibleSuggestions = getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
         renderLiveSuggestions(readline.line || "", -1, visibleSuggestions);
@@ -266,39 +316,47 @@ async function startInteractiveShell() {
   emitKeypressEvents(process.stdin, readline);
   process.stdin.prependListener("keypress", refreshSuggestions);
 
-  return new Promise((resolve) => {
-    readline.on("line", async (input) => {
-      processing = true;
-      keypressVersion += 1;
-      selectedSuggestionIndex = -1;
-      visibleSuggestions = [];
-      clearLiveSuggestions();
-      const line = input.trim();
-      if (!line) {
-        processing = false;
-        readline.prompt();
-        return;
-      }
-      if (isShellExitCommand(line)) {
-        readline.close();
-        return;
-      }
-      if (isShellHelpCommand(line)) {
-        printShellHelp();
-        processing = false;
-        readline.prompt();
-        return;
-      }
+  const processShellInput = async (input) => {
+    processing = true;
+    keypressVersion += 1;
+    const selectedLine = pendingSuggestionLine || getSelectedSuggestionLine(
+      input,
+      visibleSuggestions,
+      selectedSuggestionIndex,
+    );
+    pendingSuggestionLine = null;
+    selectedSuggestionIndex = -1;
+    visibleSuggestions = [];
+    clearLiveSuggestions();
+    const line = (selectedLine || input).trim();
+    if (!line) {
+      processing = false;
+      readline.prompt();
+      return;
+    }
+    if (isShellExitCommand(line)) {
+      readline.close();
+      return;
+    }
+    if (isShellHelpCommand(line)) {
+      printShellHelp();
+      processing = false;
+      readline.prompt();
+      return;
+    }
 
-      try {
-        await dispatchCommand(parseShellArgs(line));
-      } catch (error) {
-        console.error(error instanceof CliError ? error.message : error?.stack || String(error));
-      } finally {
-        processing = false;
-        readline.prompt();
-      }
-    });
+    try {
+      await dispatchCommand(parseShellArgs(line));
+    } catch (error) {
+      console.error(error instanceof CliError ? error.message : error?.stack || String(error));
+    } finally {
+      processing = false;
+      readline.prompt();
+    }
+  };
+
+  return new Promise((resolve) => {
+    readline.on("line", (input) => { void processShellInput(input); });
 
     readline.on("close", () => {
       process.stdin.off("keypress", refreshSuggestions);
@@ -384,7 +442,12 @@ function getSuggestionWindow(suggestions, selectedIndex = -1, windowSize = 6) {
   return suggestions.slice(start, start + windowSize);
 }
 
-function renderShellSuggestionPanel(line, selectedIndex = -1, providedSuggestions = null) {
+function renderShellSuggestionPanel(
+  line,
+  selectedIndex = -1,
+  providedSuggestions = null,
+  terminalWidth = Number.POSITIVE_INFINITY,
+) {
   const allSuggestions = providedSuggestions || getShellSuggestions(line, Number.POSITIVE_INFINITY);
   const suggestions = getSuggestionWindow(allSuggestions, selectedIndex);
   if (!allSuggestions.length) {
@@ -394,30 +457,120 @@ function renderShellSuggestionPanel(line, selectedIndex = -1, providedSuggestion
   const width = Math.max(...suggestions.map(({ command }) => command.length));
   return suggestions
     .map(({ command, description }, index) => {
-      const marker = windowStart + index === selectedIndex ? "> " : "  ";
-      const padded = command.padEnd(width + 2, " ");
-      const commandColor = index === selectedIndex ? "green" : "brightCyan";
-      return `${colorize(`${marker}${padded}`, commandColor)}${colorize(description, "dim")}`;
+      return renderShellSuggestionRow(
+        command,
+        description,
+        windowStart + index,
+        selectedIndex,
+        width,
+        terminalWidth,
+      );
     })
     .join("\n");
+}
+
+function renderShellSuggestionRow(
+  command,
+  description,
+  absoluteIndex,
+  selectedIndex,
+  commandWidth,
+  terminalWidth,
+) {
+  const marker = absoluteIndex === selectedIndex ? "> " : "  ";
+  const padded = command.padEnd(commandWidth + 2, " ");
+  const commandColor = absoluteIndex === selectedIndex ? "green" : "brightCyan";
+  const availableDescriptionWidth = Math.max(0, terminalWidth - marker.length - padded.length);
+  const visibleDescription = truncateTerminalText(description, availableDescriptionWidth);
+  return `${colorize(`${marker}${padded}`, commandColor)}${colorize(visibleDescription, "dim")}`;
 }
 
 function renderLiveSuggestions(line, selectedIndex = -1, suggestions = null) {
   if (!process.stdout.isTTY) {
     return;
   }
-  const panel = renderShellSuggestionPanel(line, selectedIndex, suggestions);
-  process.stdout.write("\x1b[s\n\x1b[J");
-  if (panel) {
-    process.stdout.write(`${panel}\n`);
+  const panel = renderShellSuggestionPanel(
+    line,
+    selectedIndex,
+    suggestions,
+    Math.max(20, process.stdout.columns || 80),
+  );
+  const panelLines = panel ? panel.split("\n") : [];
+  let output = clearLiveSuggestionRows();
+  if (panelLines.length) {
+    output += `\x1b[s\r\x1b[1B${panelLines.join("\r\n")}\x1b[u`;
   }
-  process.stdout.write("\x1b[u");
+  process.stdout.write(output);
+  liveSuggestionLineCount = panelLines.length;
+}
+
+function renderLiveSuggestionSelection(line, previousIndex, selectedIndex, suggestions) {
+  if (!process.stdout.isTTY) return;
+  const previousWindow = getSuggestionWindow(suggestions, previousIndex);
+  const selectedWindow = getSuggestionWindow(suggestions, selectedIndex);
+  const sameWindow = previousWindow.length === selectedWindow.length
+    && previousWindow.every((suggestion, index) => suggestion === selectedWindow[index]);
+  if (!sameWindow || liveSuggestionLineCount !== selectedWindow.length) {
+    renderLiveSuggestions(line, selectedIndex, suggestions);
+    return;
+  }
+
+  const windowStart = suggestions.indexOf(selectedWindow[0]);
+  const commandWidth = Math.max(...selectedWindow.map(({ command }) => command.length));
+  const terminalWidth = Math.max(20, process.stdout.columns || 80);
+  const rows = new Set([
+    previousIndex >= windowStart ? previousIndex - windowStart : -1,
+    selectedIndex - windowStart,
+  ]);
+  let output = "";
+  for (const row of rows) {
+    if (row < 0 || row >= selectedWindow.length) continue;
+    const suggestion = selectedWindow[row];
+    output += `\x1b[s\r\x1b[${row + 1}B\x1b[2K${renderShellSuggestionRow(
+      suggestion.command,
+      suggestion.description,
+      windowStart + row,
+      selectedIndex,
+      commandWidth,
+      terminalWidth,
+    )}\x1b[u`;
+  }
+  process.stdout.write(output);
 }
 
 function clearLiveSuggestions() {
-  if (process.stdout.isTTY) {
-    process.stdout.write("\x1b[s\n\x1b[J\x1b[u");
+  if (!process.stdout.isTTY) return;
+  process.stdout.write(clearLiveSuggestionRows());
+  liveSuggestionLineCount = 0;
+}
+
+function clearLiveSuggestionRows() {
+  return buildLiveSuggestionClearSequence(liveSuggestionLineCount);
+}
+
+function buildLiveSuggestionClearSequence(lineCount) {
+  if (lineCount <= 0) return "";
+  let output = "\x1b[s\r\x1b[1B";
+  for (let index = 0; index < lineCount; index += 1) {
+    output += "\x1b[2K";
+    if (index < lineCount - 1) output += "\x1b[1B\r";
   }
+  return `${output}\x1b[u`;
+}
+
+function getSelectedSuggestionLine(line, suggestions, selectedIndex) {
+  if (!Array.isArray(suggestions) || selectedIndex < 0 || selectedIndex >= suggestions.length) {
+    return null;
+  }
+  const slashPrefix = line.trimStart().startsWith("/") ? "/" : "";
+  return `${slashPrefix}${suggestions[selectedIndex].command}`;
+}
+
+function truncateTerminalText(value, maxLength) {
+  if (maxLength <= 0) return "";
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 3) return ".".repeat(maxLength);
+  return `${value.slice(0, maxLength - 3)}...`;
 }
 
 function parseShellArgs(line) {
@@ -478,7 +631,11 @@ export {
   getNextSuggestionIndex,
   getSuggestionWindow,
   getShellSuggestions,
+  getSelectedSuggestionLine,
+  truncateTerminalText,
   apiRequest,
+  buildLiveSuggestionClearSequence,
+  buildMcpServerConfig,
   handleDoctor,
   maskApiKey,
   parsePushCommandArgs,
@@ -487,6 +644,151 @@ export {
   renderShellSuggestionPanel,
   renderInteractiveHeader,
 };
+
+function buildMcpServerConfig(serverName = "vibegraph", target = "generic") {
+  const server = target === "vscode"
+    ? { type: "stdio", command: process.execPath, args: mcpProxyCommand().slice(1) }
+    : { command: process.execPath, args: mcpProxyCommand().slice(1) };
+  const section = target === "vscode" ? "servers" : "mcpServers";
+  return { [section]: { [serverName]: server } };
+}
+
+async function handleMcp(args) {
+  const subcommand = args.shift() || "config";
+  if (subcommand === "config") {
+    const targetOrName = args[0] && !args[0].startsWith("--") ? args.shift() : null;
+    const isTarget = ["cursor", "vscode", "generic"].includes(targetOrName);
+    const target = isTarget ? targetOrName : "generic";
+    const serverName = isTarget ? "vibegraph" : targetOrName || "vibegraph";
+    const options = parseOptions(args);
+    assertKnownOptions(options, ["name"]);
+    const configuredName = options.name && options.name !== true ? options.name : serverName;
+    console.log(JSON.stringify(buildMcpServerConfig(configuredName, target), null, 2));
+    return;
+  }
+  if (subcommand !== "install") {
+    throw new CliError(`Unknown MCP command: ${subcommand}`, 2);
+  }
+  const target = (args.shift() || "").toLowerCase();
+  if (!["cursor", "vscode", "generic"].includes(target)) {
+    throw new CliError("Usage: vibegraph mcp install <cursor|vscode|generic> [--path <file>]", 2);
+  }
+  const options = parseOptions(args);
+  assertKnownOptions(options, ["path"]);
+  await assertMcpAuth();
+  const filePath = resolveMcpConfigPath(target, options.path);
+  const section = target === "vscode" ? "servers" : "mcpServers";
+  const server = buildMcpServerConfig("vibegraph", target)[section].vibegraph;
+  await mergeMcpJson(filePath, section, "vibegraph", server);
+  console.log(`VibeGraph MCP installed in ${filePath}`);
+}
+
+async function assertMcpAuth() {
+  const config = await loadConfig();
+  if (!configuredApiKey(config)) {
+    throw new CliError("MCP authentication required. Run: vibegraph login", 2);
+  }
+}
+
+function mcpProxyCommand() {
+  return [process.execPath, fileURLToPath(import.meta.url), "mcp-proxy", "--stdio"];
+}
+
+function resolveMcpConfigPath(target, requestedPath) {
+  if (requestedPath && requestedPath !== true) return path.resolve(requestedPath);
+  if (target === "cursor") return path.join(homedir(), ".cursor", "mcp.json");
+  if (target === "vscode") return path.resolve(".vscode", "mcp.json");
+  if (target === "generic") return path.resolve("mcp.json");
+  throw new CliError("Usage: vibegraph mcp install <cursor|vscode|generic> [--path <file>]", 2);
+}
+
+async function mergeMcpJson(filePath, section, serverName, serverConfig) {
+  let current = {};
+  try {
+    current = JSON.parse(await readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw new CliError(`Cannot read MCP config ${filePath}: ${error.message}`, 1);
+    }
+  }
+  if (current?.[section]?.[serverName]) {
+    console.log(`VibeGraph MCP is already configured in ${filePath}; existing settings were preserved.`);
+    return;
+  }
+  const merged = {
+    ...current,
+    [section]: { ...(current[section] || {}), [serverName]: serverConfig },
+  };
+  await writeJsonFileAtomically(filePath, merged);
+}
+
+async function writeJsonFileAtomically(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const temporaryFile = `${filePath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  await writeFile(temporaryFile, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryFile, filePath);
+}
+
+async function handleMcpProxy(args) {
+  if (args.length !== 1 || args[0] !== "--stdio") {
+    throw new CliError("Usage: vibegraph mcp-proxy --stdio", 2);
+  }
+  const config = await loadConfig();
+  const apiKey = configuredApiKey(config);
+  if (!apiKey) {
+    throw new CliError("MCP authentication required. Run: vibegraph login", 2);
+  }
+  const endpoint = `${apiUrl(config)}/mcp`;
+  let sessionId = null;
+  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of input) {
+    if (!line.trim()) continue;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      throw new CliError("MCP proxy received invalid JSON on stdin.", 2);
+    }
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+        ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
+      },
+      body: JSON.stringify(message),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    sessionId = response.headers.get("mcp-session-id") || sessionId;
+    if (response.status === 202 || response.status === 204) continue;
+    if (!response.ok) {
+      const detail = await response.text();
+      if (response.status === 401 || response.status === 403) {
+        throw new CliError(
+          "VibeGraph MCP credential is no longer valid or permitted. Run: vibegraph key change",
+          3,
+        );
+      }
+      throw new CliError(`MCP upstream HTTP ${response.status}: ${detail || response.statusText}`, 1);
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream")) {
+      await forwardSseMessages(response);
+    } else {
+      process.stdout.write(`${JSON.stringify(await response.json())}\n`);
+    }
+  }
+}
+
+async function forwardSseMessages(response) {
+  const body = await response.text();
+  for (const line of body.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
+    if (data && data !== "[DONE]") process.stdout.write(`${data}\n`);
+  }
+}
 
 function renderHeader() {
   const line = (...parts) => parts.map(([text, color]) => colorize(text, color)).join("");
@@ -568,26 +870,35 @@ async function handleAuth(args) {
   const config = await loadConfig();
 
   if (subcommand === "set-key") {
-    const apiKey = args.shift();
-    if (!apiKey || apiKey.startsWith("--")) {
-      throw new CliError("Usage: vibegraph login --key <apiKey> or vibegraph key set <apiKey>", 2);
-    }
-    await saveApiKey(config, apiKey);
-    return;
+    throw new CliError("Manual API-key selection cannot verify account ownership. Run: vibegraph key change", 2);
   }
 
   if (subcommand === "set" || subcommand === "add") {
-    const apiKey = args.shift();
-    if (!apiKey || apiKey.startsWith("--")) {
-      throw new CliError("Usage: vibegraph key add <apiKey>", 2);
-    }
-    await saveApiKey(config, apiKey);
-    return;
+    throw new CliError("Manual API-key selection cannot verify account ownership. Run: vibegraph key change", 2);
   }
 
   if (subcommand === "clear") {
-    await saveConfig({ ...config, apiKey: undefined });
+    await saveConfig({ ...config, apiKey: undefined, apiKeyId: undefined, project: undefined, apiKeys: undefined });
     console.log("Stored API key cleared.");
+    return;
+  }
+
+  if (subcommand === "list") {
+    if (!Array.isArray(config.apiKeys) || !config.apiKeys.length) {
+      console.log("No cached API keys. Run: vibegraph key change");
+      return;
+    }
+    for (const key of config.apiKeys) {
+      const projectName = key.project?.name || key.name || "Unbound project";
+      const state = key.disabledAt || key.deletedAt ? " (inactive)" : "";
+      console.log(`${key.keyPrefix} | ${projectName}${state}`);
+    }
+    console.log("\nTo refresh this list from your account: vibegraph key change");
+    return;
+  }
+
+  if (subcommand === "change") {
+    await handleBrowserLogin(parseOptions(args), "CHANGE_KEY");
     return;
   }
 
@@ -624,14 +935,14 @@ async function handleRegister(args) {
 
 async function handleLogin(args) {
   if (args.length === 1 && !args[0].startsWith("--")) {
-    const config = await loadConfig();
-    await saveApiKey(config, args[0]);
-    return;
+    throw new CliError("Manual API-key login cannot verify account ownership. Run: vibegraph login", 2);
   }
   const options = parseOptions(args);
   if (options.key || options["api-key"]) {
-    const config = await loadConfig();
-    await saveApiKey(config, requiredAnyOption(options, ["key", "api-key"]));
+    throw new CliError("Manual API-key login cannot verify account ownership. Run: vibegraph login", 2);
+  }
+  if (!options.email && !options.password) {
+    await handleBrowserLogin(options);
     return;
   }
   const email = requiredOption(options, "email");
@@ -645,9 +956,95 @@ async function handleLogin(args) {
   console.log(`Logged in as ${response.user.email}`);
 }
 
+async function handleBrowserLogin(options, intent = "LOGIN") {
+  const config = await loadConfig();
+  const codeVerifier = randomBytes(32).toString("base64url");
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+  let started;
+  try {
+    started = await apiRequest("/api/cli/device/start", {
+      method: "POST",
+      body: {
+        codeChallenge,
+        deviceName: options.name || `${hostname()} VibeGraph CLI`,
+        client: "vibegraph-cli",
+        intent,
+        preferredApiKeyId: config.apiKeyId || undefined,
+      },
+    });
+  } catch (error) {
+    if (error instanceof CliError && /HTTP 401/i.test(error.message)) {
+      throw new CliError(
+        "Browser login was rejected by the API (HTTP 401). "
+          + "The backend must permit anonymous POST /api/cli/device/start. "
+          + "Deploy the current backend build, then run: vibegraph login",
+        3,
+      );
+    }
+    throw error;
+  }
+
+  console.log(`Open this URL to continue: ${started.verificationUriComplete}`);
+  console.log(`Confirmation code: ${started.userCode}`);
+  if (!options["no-browser"] && !options.device) {
+    if (openBrowser(started.verificationUriComplete)) {
+      console.log("Browser opened. Complete sign-in and project selection there.");
+    } else {
+      console.log("Could not open a browser automatically; use the URL above.");
+    }
+  }
+
+  const result = await pollDeviceCredential(started, codeVerifier);
+  validateApiKey(result.apiKey);
+  await saveConfig({
+    ...config,
+    apiKey: result.apiKey,
+    apiKeyId: result.apiKeyId || undefined,
+    project: { id: result.projectId, name: result.projectName },
+    apiKeys: sanitizeApiKeyMetadata(result.availableKeys),
+  });
+  console.log(`Connected to ${result.projectName || result.projectId}.`);
+  console.log(`Credential saved: ${maskApiKey(result.apiKey)}`);
+}
+
+async function pollDeviceCredential(started, codeVerifier) {
+  const expiresAt = Date.parse(started.expiresAt);
+  const intervalMs = Math.max(250, Number(started.intervalSeconds || 0) * 1000);
+  while (!Number.isFinite(expiresAt) || Date.now() < expiresAt) {
+    const result = await apiRequest("/api/cli/device/token", {
+      method: "POST",
+      body: {
+        deviceCode: started.deviceCode,
+        pollToken: started.pollToken,
+        codeVerifier,
+      },
+    });
+    if (result.status === "APPROVED" && result.apiKey) return result;
+    if (result.status !== "PENDING") {
+      throw new CliError(`CLI authorization ended with status ${result.status}.`, 3);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new CliError("CLI authorization expired. Run: vibegraph login", 3);
+}
+
+function openBrowser(url) {
+  try {
+    const command = process.platform === "win32"
+      ? "rundll32.exe"
+      : process.platform === "darwin" ? "open" : "xdg-open";
+    const args = process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url];
+    const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function saveApiKey(config, apiKey) {
   validateApiKey(apiKey);
-  await saveConfig({ ...config, apiKey });
+  await saveConfig({ ...config, apiKey, apiKeyId: undefined, project: undefined, apiKeys: undefined });
   console.log(`API key saved: ${maskApiKey(apiKey)}`);
   console.log("Run: vibegraph doctor");
 }
@@ -790,18 +1187,18 @@ async function assertPatchAuth(projectId) {
   const apiKey = configuredApiKey(config);
   if (!projectId && !apiKey) {
     throw new CliError(
-      "Root-only push/watch requires a project-bound API key. Run: vibegraph auth set-key <apiKey>",
+      "Root-only push/watch requires a project-bound API key. Run: vibegraph login",
       2,
     );
   }
   if (!apiKey && !config.token) {
     throw new CliError(
-      "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+      "Authentication required. Run: vibegraph login",
       2,
     );
   }
   if (!apiKey && projectId) {
-    console.warn("Warning: no API key configured; using the legacy Bearer token. Run: vibegraph auth set-key <apiKey>");
+    console.warn("Warning: no API key configured; using the legacy Bearer token. Run: vibegraph key change");
   }
 }
 
@@ -867,12 +1264,16 @@ async function handleDoctor() {
     apiKeyStatus,
   }, null, 2));
   if (apiKey && apiKeyStatus !== "active") {
-    throw new CliError("API key authentication failed. Run: vibegraph auth status or set a replacement key.", 3);
+    throw new CliError("API key authentication failed. Run: vibegraph key change", 3);
   }
 }
 
 async function apiRequest(endpoint, options = {}) {
   const config = await loadConfig();
+  return apiRequestWithConfig(endpoint, options, config, true);
+}
+
+async function apiRequestWithConfig(endpoint, options, config, allowRefresh) {
   const headers = {
     Accept: "application/json",
     ...(options.body ? { "Content-Type": "application/json" } : {})
@@ -888,7 +1289,7 @@ async function apiRequest(endpoint, options = {}) {
       headers.Authorization = `Bearer ${config.token}`;
     } else {
       throw new CliError(
-        "Authentication required. Run: vibegraph auth set-key <apiKey> or vibegraph login ...",
+        "Authentication required. Run: vibegraph login",
         2,
       );
     }
@@ -897,8 +1298,14 @@ async function apiRequest(endpoint, options = {}) {
   const response = await fetch(`${apiUrl(config)}${endpoint}`, {
     method: options.method || "GET",
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+
+  if (response.status === 401 && allowRefresh && headers.Authorization && config.refreshToken) {
+    const refreshed = await refreshLegacySession(config);
+    return apiRequestWithConfig(endpoint, options, refreshed, false);
+  }
 
   if (response.status === 204) {
     return null;
@@ -911,6 +1318,12 @@ async function apiRequest(endpoint, options = {}) {
 
   if (!response.ok) {
     const message = formatApiError(payload);
+    if (response.status === 401 && headers["X-API-Key"]) {
+      throw new CliError(
+        `HTTP 401: The selected project API key is no longer valid. It may have been deleted, rotated, disabled, or expired. Run: vibegraph key change (${message})`,
+        3,
+      );
+    }
     throw new CliError(`HTTP ${response.status}: ${message}`, response.status === 401 ? 3 : 1);
   }
 
@@ -918,6 +1331,24 @@ async function apiRequest(endpoint, options = {}) {
     return payload;
   }
   return payload && typeof payload === "object" && "data" in payload ? payload.data : payload;
+}
+
+async function refreshLegacySession(config) {
+  const response = await fetch(`${apiUrl(config)}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken: config.refreshToken }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new CliError(`HTTP ${response.status}: ${formatApiError(payload)}`, 3);
+  }
+  const auth = payload?.data ?? payload;
+  if (!auth?.token) throw new CliError("Refresh response did not include a token.", 3);
+  const refreshed = { ...config, token: auth.token, user: auth.user || config.user };
+  await saveConfig(refreshed);
+  return refreshed;
 }
 
 async function persistAuth(authResponse) {
@@ -928,7 +1359,8 @@ async function persistAuth(authResponse) {
   await saveConfig({
     ...config,
     token: authResponse.token,
-    user: authResponse.user
+    user: authResponse.user,
+    refreshToken: authResponse.refreshToken || config.refreshToken,
   });
 }
 
@@ -946,7 +1378,9 @@ async function loadConfig() {
 async function saveConfig(config) {
   await mkdir(CONFIG_DIR, { recursive: true });
   const cleaned = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined));
-  await writeFile(CONFIG_FILE, `${JSON.stringify(cleaned, null, 2)}\n`, { mode: 0o600 });
+  const temporaryFile = `${CONFIG_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  await writeFile(temporaryFile, `${JSON.stringify(cleaned, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryFile, CONFIG_FILE);
   await chmod(CONFIG_FILE, 0o600);
 }
 
@@ -1045,6 +1479,8 @@ function parsePushCommandArgs(args) {
   const remaining = [...args];
   const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
   const options = parseOptions(remaining);
+  assertKnownOptions(options, ["root", "dry-run"]);
+  if (options.root === true) throw new CliError("Missing --root <value>", 2);
   return {
     projectId,
     root: options.root && options.root !== true ? options.root : ".",
@@ -1056,10 +1492,31 @@ function parseWatchCommandArgs(args) {
   const remaining = [...args];
   const projectId = remaining[0] && !remaining[0].startsWith("--") ? remaining.shift() : null;
   const options = parseOptions(remaining);
+  assertKnownOptions(options, ["root"]);
+  if (options.root === true) throw new CliError("Missing --root <value>", 2);
   return {
     projectId,
     root: options.root && options.root !== true ? options.root : ".",
   };
+}
+
+function sanitizeApiKeyMetadata(keys) {
+  if (!Array.isArray(keys)) return [];
+  return keys.map((key) => ({
+    id: key.id,
+    keyPrefix: key.keyPrefix,
+    name: key.name,
+    project: key.project ? { id: key.project.id, name: key.project.name } : null,
+    createdAt: key.createdAt || null,
+    expiresAt: key.expiresAt || null,
+    disabledAt: key.disabledAt || null,
+    deletedAt: key.deletedAt || null,
+  })).filter((key) => key.id && key.keyPrefix);
+}
+
+function assertKnownOptions(options, allowed) {
+  const unknown = Object.keys(options).find((name) => !allowed.includes(name));
+  if (unknown) throw new CliError(`Unknown option: --${unknown}`, 2);
 }
 
 function printProject(project) {

@@ -40,6 +40,9 @@ const DEFAULT_MAX_FILE_SIZE = 1 * 1024 * 1024;
 /** Default max files per push */
 const DEFAULT_MAX_FILES = 200;
 
+/** Default maximum cumulative changed content per patch: 5 MB */
+const DEFAULT_MAX_TOTAL_BYTES = 5 * 1024 * 1024;
+
 /**
  * Load ignore rules from .vibegraphignore file + default deny-list.
  * @param {string} rootDir - Project root directory (absolute path)
@@ -126,6 +129,19 @@ export function getMaxFiles() {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_MAX_FILES;
+}
+
+/**
+ * Get the max cumulative changed content size from env or default.
+ * @returns {number}
+ */
+export function getMaxTotalBytes() {
+  const envVal = process.env.VIBEGRAPH_MAX_TOTAL_BYTES;
+  if (envVal) {
+    const parsed = Number.parseInt(envVal, 10);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_MAX_TOTAL_BYTES;
 }
 
 /**

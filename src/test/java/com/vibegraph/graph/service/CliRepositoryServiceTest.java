@@ -100,9 +100,10 @@ class CliRepositoryServiceTest {
         assertThat(response.project().getId()).isEqualTo("cli123");
         assertThat(response.apiKey().secretKey()).isEqualTo("vbg_fullsecret");
         assertThat(response.commands()).containsExactly(
-                "vibegraph login vbg_fullsecret",
+                "vibegraph login",
                 "vibegraph push",
                 "vibegraph watch");
+        assertThat(response.commands()).noneMatch(command -> command.contains("vbg_fullsecret"));
         verify(featureGateService).assertEnabled(FeatureGateService.CLI_PUSH);
         verify(accountSettingsService).assertNotBlocked(userId);
         verify(ownershipRegistrar).registerLocal("cli123", "Demo");

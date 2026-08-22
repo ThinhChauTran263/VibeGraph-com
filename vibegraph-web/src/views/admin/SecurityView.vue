@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import type {
   AdminIpBlock,
   AdminIpBlockRequest,
@@ -48,6 +49,14 @@ onMounted(async () => {
   admin.startSecurityStream()
 })
 onBeforeUnmount(() => admin.stopSecurityStream())
+
+useSilentRefresh(async () => {
+  try {
+    await admin.fetchSecurityData(100)
+  } catch {
+    // Silent failure
+  }
+})
 
 async function load(): Promise<void> {
   loading.value = true

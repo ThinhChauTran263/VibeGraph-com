@@ -32,6 +32,56 @@ public final class GraphTraversals {
     public record RouteRef(String httpMethod, String routePath, String handlerFullName) {
     }
 
+    /** A bounded symbol in the reverse reachable set of a changed seed. */
+    public record ReachableSymbol(String id, String type, String fullName, int depth) {
+    }
+
+    /**
+     * Returns only the symbols reachable from the changed seeds through impact edges. The walk
+     * is deterministic and bounded, so callers can serialize a minimal diff context instead of
+     * sending the entire project graph to an agent.
+     */
+    public static List<ReachableSymbol> reachableSymbols(
+            GraphView graph, Set<String> seedIds, int maxDepth, int maxSymbols) {
+        if (graph == null || seedIds == null || seedIds.isEmpty() || maxDepth < 0 || maxSymbols <= 0) {
+            return List.of();
+        }
+        Map<String, Integer> depthOf = new LinkedHashMap<>();
+        Deque<String> frontier = new ArrayDeque<>();
+        for (String seed : seedIds) {
+            if (seed != null && graph.byId(seed) != null && !depthOf.containsKey(seed)) {
+                depthOf.put(seed, 0);
+                frontier.add(seed);
+            }
+        }
+        while (!frontier.isEmpty() && depthOf.size() < maxSymbols) {
+            String current = frontier.removeFirst();
+            int depth = depthOf.get(current);
+            if (depth >= maxDepth) {
+                continue;
+            }
+            for (EdgeDto edge : graph.incoming(current)) {
+                if (!CALL_EDGES.contains(edge.getType()) && !HIERARCHY_EDGES.contains(edge.getType())
+                        && !"INJECTS".equals(edge.getType()) && !"IMPORTS".equals(edge.getType())) {
+                    continue;
+                }
+                if (!depthOf.containsKey(edge.getSource())) {
+                    depthOf.put(edge.getSource(), depth + 1);
+                    frontier.addLast(edge.getSource());
+                    if (depthOf.size() >= maxSymbols) {
+                        break;
+                    }
+                }
+            }
+        }
+        return depthOf.entrySet().stream()
+                .map(entry -> {
+                    NodeDto node = graph.byId(entry.getKey());
+                    return new ReachableSymbol(node.getId(), node.getType(), node.getFullName(), entry.getValue());
+                })
+                .toList();
+    }
+
     /**
      * Routes whose handler methods can reach any of the seed symbols — i.e. the API surface
      * an agent would break by changing those symbols. Reverse-BFS over incoming

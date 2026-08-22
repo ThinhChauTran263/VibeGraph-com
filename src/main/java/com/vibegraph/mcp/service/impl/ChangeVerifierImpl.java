@@ -16,6 +16,7 @@ import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.mcp.dto.response.RelatedTestsResponse;
 import com.vibegraph.mcp.dto.response.VerifyChangeResponse;
 import com.vibegraph.mcp.dto.response.VerifyChangeResponse.ChangedSymbol;
+import com.vibegraph.mcp.dto.response.VerifyChangeResponse.ReachableSymbol;
 import com.vibegraph.mcp.dto.response.VerifyChangeResponse.RouteRef;
 import com.vibegraph.mcp.dto.response.VerifyChangeResponse.SuggestedCommands;
 import com.vibegraph.mcp.dto.response.VerifyChangeResponse.TestRef;
@@ -115,6 +116,15 @@ public class ChangeVerifierImpl implements ChangeVerifier {
                         .handlerFullName(route.handlerFullName())
                         .build())
                 .toList();
+        List<ReachableSymbol> reachableContext = GraphTraversals
+                .reachableSymbols(graph, seedIds, MAX_ROUTE_DEPTH, MAX_SYMBOLS).stream()
+                .map(symbol -> ReachableSymbol.builder()
+                        .id(symbol.id())
+                        .type(symbol.type())
+                        .fullName(symbol.fullName())
+                        .depth(symbol.depth())
+                        .build())
+                .toList();
 
         TestLookup testLookup = relatedTests(normalizedProjectId, changedSymbols);
 
@@ -122,6 +132,7 @@ public class ChangeVerifierImpl implements ChangeVerifier {
                 .projectId(normalizedProjectId)
                 .changedFiles(files)
                 .changedSymbols(changedSymbols)
+                .reachableContext(reachableContext)
                 .affectedRoutes(routes)
                 .relatedTests(testLookup.tests)
                 .suggestedCommands(testLookup.commands)
@@ -217,6 +228,7 @@ public class ChangeVerifierImpl implements ChangeVerifier {
                 .projectId(projectId)
                 .changedFiles(files)
                 .changedSymbols(List.of())
+                .reachableContext(List.of())
                 .affectedRoutes(List.of())
                 .relatedTests(List.of())
                 .risks(List.of())

@@ -224,3 +224,11 @@ test("buildFileStateMap uses relative path as key with size/mtime/sha256", () =>
   assert.equal(map["a.txt"].sha256, "hash-a");
   assert.equal(map["b/c.txt"].size, 4);
 });
+
+test("scanner marks a missing root as incomplete instead of an empty project", async () => {
+  const rules = [];
+  const scan = await scanDirectory(path.join(tmpdir(), "vibegraph-root-does-not-exist"), rules);
+  assert.equal(scan.complete, false);
+  assert.deepEqual(scan.files, []);
+  assert.equal(scan.unsafePaths.includes(""), true);
+});

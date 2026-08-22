@@ -5,6 +5,7 @@ import { useAdminStore } from '@/stores/admin'
 import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 import { featureAvailabilityContract, refreshFeatureAvailability } from '@/lib/featureAvailability'
 import type { AdminFeatureFlag, AdminFeatureFlagRequest } from '@/types/api'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const adminStore = useAdminStore()
 const { t } = useI18n({ useScope: 'global' })
@@ -187,6 +188,14 @@ const extraFlags = computed(() =>
 )
 
 onMounted(loadFlags)
+
+useSilentRefresh(async () => {
+  try {
+    await Promise.all([adminStore.fetchFeatureFlags(), refreshFeatureAvailability()])
+  } catch {
+    // Silent failure
+  }
+})
 
 async function loadFlags(): Promise<void> {
   const [flagsResult, capabilityResult] = await Promise.allSettled([

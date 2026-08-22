@@ -88,7 +88,8 @@ class McpToolsTest {
                 Mockito.mock(FeatureGateService.class),
                 Mockito.mock(AccountAccessGuard.class),
                 Mockito.mock(ApiKeyRequestContextAccessor.class),
-                new ObjectMapper());
+                new ObjectMapper(),
+                Mockito.mock(com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator.class));
     }
 
     @Nested

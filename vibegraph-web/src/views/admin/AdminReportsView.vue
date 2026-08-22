@@ -6,6 +6,7 @@ import type { AdminReport, ReportMessage, ReportRealtimeEvent } from '@/types/ap
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
@@ -23,6 +24,19 @@ onMounted(async () => {
     await adminStore.fetchReports()
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : t('admin.reports.errors.loadReports')
+  }
+})
+
+useSilentRefresh(async () => {
+  try {
+    await adminStore.fetchReports()
+    if (selectedReport.value) {
+      const detail = await adminStore.fetchReportDetail(selectedReport.value.id)
+      selectedReport.value = detail.report
+      selectedMessages.value = detail.messages
+    }
+  } catch {
+    // Silent failure
   }
 })
 
