@@ -11,7 +11,7 @@ npm install -g ./vibegraph-cli
 For a published release:
 
 ```bash
-npm install -g @vibegraph/cli
+npm install -g vibegraph-cli
 ```
 
 Requires Node.js 20+.
@@ -125,7 +125,7 @@ The recommended developer-machine setup is the local stdio proxy. It lets the ID
 never contains the raw project API key.
 
 ```bash
-vibegraph config set-url https://api.example.com
+vibegraph config set-url https://vibegraph.tech
 vibegraph login
 vibegraph doctor
 vibegraph mcp config
@@ -174,17 +174,22 @@ committed workspace file:
 {
   "mcpServers": {
     "vibegraph": {
-      "url": "https://api.example.com/mcp",
+      "url": "https://vibegraph.tech/mcp",
       "transport": "streamable-http",
       "headers": {
-        "X-API-Key": "${VIBEGRAPH_API_KEY}"
+        "X-API-Key": "<PROJECT_API_KEY>"
       }
     }
   }
 }
 ```
 
-The local proxy and direct HTTP modes both charge the selected project. If a key was rotated,
+`<PROJECT_API_KEY>` is the active key created for the exact project that should be exposed to the
+IDE. It is not an OAuth client secret, JWT secret, or account-wide credential. In direct HTTP mode,
+switch projects by replacing this header value with the new project's key and restarting/reloading
+the IDE MCP server. With the CLI stdio proxy, run `vibegraph key change`, choose the new project,
+then restart/reload MCP; no JSON edit is needed. The local proxy and direct HTTP modes both charge
+the selected project. If a key was rotated,
 deleted, disabled, expired, or belongs to another account, MCP returns an actionable error; run
 `vibegraph key change` to refresh and select an owned key.
 

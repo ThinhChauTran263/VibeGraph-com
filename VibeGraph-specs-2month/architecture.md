@@ -303,7 +303,7 @@ CLI (vibegraph-cli.jar, post-MVP):
     → Gửi full graph metadata lên server qua WebSocket
     → Server upsert vào Neo4j, trả về projectId
   Step 2: Auto-open browser (mặc định, --no-open để tắt)
-    → java.awt.Desktop.browse("https://vibegraph.com/project/{projectId}")
+    → java.awt.Desktop.browse("https://vibegraph.tech/project/{projectId}")
     → Fallback: Runtime.exec với xdg-open (Linux), open (macOS), start (Windows)
     → Nếu không mở được: in URL ra console
   Step 3: Watch loop (chạy mãi)
@@ -391,6 +391,6 @@ volumes:
 
 ### Demo production single-tenant
 - VPS Hetzner CX22 ($5-7/tháng): 4GB RAM, 2 vCPU, 40GB SSD
-- Domain: `vibegraph.com` → DNS A record → VPS IP
+- Domain: `vibegraph.tech` → DNS A record → VPS IP
 - nginx reverse proxy + Let's Encrypt SSL tự động
 - Cùng docker-compose.yml + file env riêng (production credentials)

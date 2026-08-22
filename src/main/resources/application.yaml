@@ -159,6 +159,13 @@ vibegraph:
   # realtime.demo-permit defaults false = /ws and /mcp require auth (fail closed);
   # setting it true permits those routes for demo/local only and logs a startup WARN.
   auth:
+    # API-key ciphertexts use a dedicated AES-256 key. Set it in the environment; the application
+    # fails fast if the value is missing or is not Base64 for exactly 32 bytes.
+    api-key-encryption:
+      current-key: ${API_KEY_ENCRYPTION_KEY_CURRENT:}
+      previous-key: ${API_KEY_ENCRYPTION_KEY_PREVIOUS:}
+      # Keeps pre-rotation, JWT-derived ciphertext readable during the migration window.
+      legacy-secret: ${API_KEY_ENCRYPTION_LEGACY_SECRET:${JWT_SECRET:}}
     jwt:
       secret: ${JWT_SECRET:}
       expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:${JWT_EXPIRATION_MS:1800000}}
@@ -183,6 +190,22 @@ vibegraph:
       admin-email: ${ADMIN_EMAIL:}
       admin-password: ${ADMIN_PASSWORD:}
       admin-password-hash: ${ADMIN_PASSWORD_HASH:}
+
+  cli:
+    device:
+      frontend-url: ${VIBEGRAPH_CLI_DEVICE_FRONTEND_URL:${FRONTEND_URL:http://localhost:5173}}
+      ttl-seconds: ${VIBEGRAPH_CLI_DEVICE_TTL_SECONDS:600}
+      poll-interval-seconds: ${VIBEGRAPH_CLI_DEVICE_POLL_INTERVAL_SECONDS:2}
+      cleanup-cron: "${VIBEGRAPH_CLI_DEVICE_CLEANUP_CRON:0 20 3 * * ?}"
+
+  mcp:
+    orchestration:
+      retention:
+        enabled: ${VIBEGRAPH_MCP_TASK_RETENTION_ENABLED:true}
+        retention-days: ${VIBEGRAPH_MCP_TASK_RETENTION_DAYS:90}
+        batch-size: ${VIBEGRAPH_MCP_TASK_RETENTION_BATCH_SIZE:500}
+        max-batches: ${VIBEGRAPH_MCP_TASK_RETENTION_MAX_BATCHES:20}
+        cron: "${VIBEGRAPH_MCP_TASK_RETENTION_CRON:0 15 3 * * ?}"
 
   projects:
     # Optional. When set, local project rootPath values must resolve inside this directory.

@@ -20,6 +20,28 @@ management:
         enabled: true
 
 vibegraph:
+  auth:
+    api-key-encryption:
+      current-key: ${API_KEY_ENCRYPTION_KEY_CURRENT:}
+      previous-key: ${API_KEY_ENCRYPTION_KEY_PREVIOUS:}
+      legacy-secret: ${API_KEY_ENCRYPTION_LEGACY_SECRET:${JWT_SECRET:}}
+
+  cli:
+    device:
+      frontend-url: ${VIBEGRAPH_CLI_DEVICE_FRONTEND_URL:${FRONTEND_URL:http://localhost:3000}}
+      ttl-seconds: ${VIBEGRAPH_CLI_DEVICE_TTL_SECONDS:600}
+      poll-interval-seconds: ${VIBEGRAPH_CLI_DEVICE_POLL_INTERVAL_SECONDS:2}
+      cleanup-cron: "${VIBEGRAPH_CLI_DEVICE_CLEANUP_CRON:0 20 3 * * ?}"
+
+  mcp:
+    orchestration:
+      retention:
+        enabled: ${VIBEGRAPH_MCP_TASK_RETENTION_ENABLED:true}
+        retention-days: ${VIBEGRAPH_MCP_TASK_RETENTION_DAYS:90}
+        batch-size: ${VIBEGRAPH_MCP_TASK_RETENTION_BATCH_SIZE:500}
+        max-batches: ${VIBEGRAPH_MCP_TASK_RETENTION_MAX_BATCHES:20}
+        cron: "${VIBEGRAPH_MCP_TASK_RETENTION_CRON:0 15 3 * * ?}"
+
   # Uploaded archives are materialized on the writable named volume (see docker-compose.yml),
   # never on the read-only /projects mount.
   import:
