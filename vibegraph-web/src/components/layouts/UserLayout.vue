@@ -398,8 +398,9 @@ function signOut(): void {
 #user-sidebar nav a:hover,
 #user-sidebar nav a.router-link-active {
   color: var(--vg-text);
-  border-color: rgba(96, 165, 250, 0.28);
-  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 .nav-disabled {
   opacity: 0.45;
@@ -415,6 +416,10 @@ function signOut(): void {
   margin-top: auto;
   border-color: var(--vg-border);
   background: var(--vg-bg-elev);
+  transition: all var(--vg-dur-fast) var(--vg-ease-out);
+}
+.account:hover {
+  background: var(--vg-surface-2);
 }
 .account > div {
   min-width: 0;

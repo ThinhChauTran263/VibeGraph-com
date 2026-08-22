@@ -18,6 +18,7 @@ import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
+import com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator;
 
 public final class MeteredToolCallback implements ToolCallback {
 
@@ -32,6 +33,7 @@ public final class MeteredToolCallback implements ToolCallback {
     private final AccountAccessGuard accountAccessGuard;
     private final ApiKeyRequestContextAccessor apiKeyContextAccessor;
     private final ObjectMapper objectMapper;
+    private final McpTaskExecutionCoordinator taskCoordinator;
     /** Whether the delegate's input schema declares projectId — immutable per tool, computed once. */
     private final boolean declaresProjectId;
 
@@ -45,6 +47,21 @@ public final class MeteredToolCallback implements ToolCallback {
             AccountAccessGuard accountAccessGuard,
             ApiKeyRequestContextAccessor apiKeyContextAccessor,
             ObjectMapper objectMapper) {
+        this(delegate, currentUser, creditPricingService, creditBalanceService, ownershipGuard,
+                featureGateService, accountAccessGuard, apiKeyContextAccessor, objectMapper, null);
+    }
+
+    public MeteredToolCallback(
+            ToolCallback delegate,
+            CurrentUser currentUser,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            ProjectOwnershipGuard ownershipGuard,
+            FeatureGateService featureGateService,
+            AccountAccessGuard accountAccessGuard,
+            ApiKeyRequestContextAccessor apiKeyContextAccessor,
+            ObjectMapper objectMapper,
+            McpTaskExecutionCoordinator taskCoordinator) {
         this.delegate = delegate;
         this.currentUser = currentUser;
         this.creditPricingService = creditPricingService;
@@ -54,6 +71,7 @@ public final class MeteredToolCallback implements ToolCallback {
         this.accountAccessGuard = accountAccessGuard;
         this.apiKeyContextAccessor = apiKeyContextAccessor;
         this.objectMapper = objectMapper;
+        this.taskCoordinator = taskCoordinator;
         this.declaresProjectId = computeDeclaresProjectId();
     }
 
@@ -90,7 +108,10 @@ public final class MeteredToolCallback implements ToolCallback {
         long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
         creditBalanceService.deductCredits(
                 userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
-        return invocation.call();
+        if (taskCoordinator == null) {
+            return invocation.call();
+        }
+        return taskCoordinator.execute(delegate.getToolDefinition().name(), projectId, invocation::call);
     }
 
     private String extractProjectId(String toolInput) {

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import { ApiError } from '@/lib/api'
 import type { AdminUserResponse } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
@@ -81,6 +82,11 @@ const currentPageSize = computed(
 
 onMounted(() => {
   void loadUsers(0)
+  void loadPlansSafe()
+})
+
+useSilentRefresh(() => {
+  void loadUsers(currentPage.value)
   void loadPlansSafe()
 })
 

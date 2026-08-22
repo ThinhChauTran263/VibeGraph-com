@@ -104,3 +104,17 @@ test("computeHash is deterministic SHA-256 of content", () => {
   // SHA-256 of "hello"
   assert.equal(h1, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
 });
+
+test("snapshot IDs reject path traversal", async () => {
+  const dir = await makeTempDir();
+  const prev = process.env.VIBEGRAPH_CONFIG_DIR;
+  try {
+    process.env.VIBEGRAPH_CONFIG_DIR = dir;
+    await assert.rejects(saveSnapshot("../escape", {}), /Invalid snapshot identity/);
+    await assert.rejects(loadSnapshot("nested/escape"), /Invalid snapshot identity/);
+  } finally {
+    if (prev === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

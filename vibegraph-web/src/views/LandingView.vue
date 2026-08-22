@@ -7,9 +7,11 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import LogoTile from '@/components/ui/LogoTile.vue'
+import { publicSiteCopy } from '@/content/publicSite'
 
 // IDE / AI-agent logos
 import logoAntigravity from '@/assets/images/ide/LogoAntigravity.jpg'
@@ -46,7 +48,19 @@ const stack: LogoItem[] = [
 ]
 
 const scrolled = ref(false)
-const { t } = useI18n({ useScope: 'global' })
+const activeSection = ref('')
+const auth = useAuthStore()
+const { locale, t } = useI18n({ useScope: 'global' })
+const publicCopy = computed(
+  () => publicSiteCopy[locale.value as 'en-US' | 'vi-VN'] ?? publicSiteCopy['en-US'],
+)
+const primaryRoute = computed(() => {
+  if (!auth.isAuthenticated) return '/login'
+  return auth.user?.role === 'ADMIN' ? '/admin' : '/dashboard'
+})
+const primaryLabel = computed(() =>
+  auth.isAuthenticated ? publicCopy.value.actions.dashboard : publicCopy.value.actions.login,
+)
 
 function onScroll(): void {
   scrolled.value = window.scrollY > 12
@@ -54,10 +68,10 @@ function onScroll(): void {
 
 // Stats
 const stats = computed(() => [
-  { value: '4K+', label: t('landing.stats.symbols') },
-  { value: '10K+', label: t('landing.stats.relationships') },
-  { value: '300+', label: t('landing.stats.flows') },
-  { value: t('landing.stats.realtimeValue'), label: t('landing.stats.realtimeLabel') },
+  { value: 'Java', label: t('landing.stats.javaLabel') },
+  { value: 'Neo4j', label: t('landing.stats.neo4jLabel') },
+  { value: '18', label: t('landing.stats.toolsLabel') },
+  { value: 'CLI + MCP', label: t('landing.stats.integrationLabel') },
 ])
 
 // Features
@@ -164,7 +178,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'service',
-    label: 'ProjectService.java',
+    label: 'ProjectServiceImpl.java',
     type: 'service',
     x: 260,
     y: 170,
@@ -173,7 +187,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'repo',
-    label: 'ProjectRepository.java',
+    label: 'Neo4jGraphRepository.java',
     type: 'repository',
     x: 340,
     y: 250,
@@ -182,7 +196,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'db',
-    label: 'Database (MySQL)',
+    label: 'Neo4j graph',
     type: 'database',
     x: 350,
     y: 90,
@@ -191,7 +205,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'util',
-    label: 'GraphBuilder.java',
+    label: 'AnalyzeServiceImpl.java',
     type: 'utility',
     x: 230,
     y: 310,
@@ -295,49 +309,28 @@ const terminalTyping = ref(false)
 const commandsData = {
   impact: {
     command:
-      'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
+      'get_impact_analysis({ projectId: "<selected-project>", nodeQuery: "<symbol>", depth: 2 })',
     output: `{
-  "node": "com.vibegraph.graph.repository.ProjectRepository",
-  "riskLevel": "HIGH",
-  "blastRadius": 7,
-  "directImpact": [
-    "ProjectService.saveProject()",
-    "ProjectService.reloadGraph()"
-  ],
-  "transitiveImpact": [
-    "ProjectController.createProject()",
-    "ProjectApiIT"
-  ],
-  "warnings": ["Referenced by 2 execution flows"]
+  "source": "selected project graph",
+  "result": "Returned by VibeGraph at call time",
+  "note": "Affected nodes, flows and risk depend on the analyzed project"
 }`,
   },
   context: {
-    command: 'get_class_context({ projectId: "my-app", classQuery: "ProjectService" })',
+    command: 'get_class_context({ projectId: "<selected-project>", classQuery: "<class>" })',
     output: `{
-  "class": "com.vibegraph.graph.service.ProjectService",
-  "methods": ["saveProject", "reloadGraph", "deleteProject"],
-  "outgoingRelations": ["ProjectRepository", "GraphBuilder"],
-  "incomingRelations": ["ProjectController", "ProjectApiIT"],
-  "warnings": []
+  "source": "selected project graph",
+  "result": "Class context returned by VibeGraph at call time",
+  "note": "Methods and relationships depend on the selected project"
 }`,
   },
   plan: {
     command:
-      'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
+      'plan_code_change({ projectId: "<selected-project>", changeRequest: "<change>" })',
     output: `{
-  "changeRequest": "Rename ProjectService to WorkspaceService",
-  "candidateFiles": [
-    "ProjectService.java",
-    "ProjectController.java",
-    "ProjectApiIT.java"
-  ],
-  "blastRadius": 34,
-  "editSequence": [
-    "Rename class + update injections",
-    "Update controller references",
-    "Update tests"
-  ],
-  "confidence": "MEDIUM"
+  "source": "selected project graph",
+  "result": "Plan returned by VibeGraph at call time",
+  "note": "Candidate files and sequence depend on the requested change"
 }`,
   },
 }
@@ -412,6 +405,71 @@ const activeGuideTab = ref(0)
 const virtualCursor = ref({ x: 100, y: 100, clicking: false })
 const autoTourActive = ref(true)
 let tourTimeout: ReturnType<typeof setTimeout> | null = null
+let landingMotionContext: { revert: () => void } | null = null
+
+async function setupMotionEffects(): Promise<void> {
+  if (typeof window === 'undefined' || !window.matchMedia) return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const [{ default: gsap }, { ScrollTrigger }] = await Promise.all([
+    import('gsap'),
+    import('gsap/ScrollTrigger'),
+  ])
+  if (!isAlive) return
+  gsap.registerPlugin(ScrollTrigger)
+
+  landingMotionContext = gsap.context(() => {
+    gsap.utils.toArray<HTMLElement>('main > .section').forEach((section) => {
+      const children = Array.from(section.children) as HTMLElement[]
+      if (children.length === 0) return
+
+      gsap.fromTo(
+        children,
+        { autoAlpha: 0, y: 18 },
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.48,
+          stagger: 0.07,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 84%',
+            once: true,
+          },
+        },
+      )
+    })
+
+    gsap.to('.hero__visual', {
+      yPercent: 4,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: '.hero',
+        start: 'top top',
+        end: 'bottom top',
+        scrub: 0.6,
+      },
+    })
+
+    const sectionIds = ['goals', 'features', 'how', 'guide']
+    sectionIds.forEach((id) => {
+      const section = document.getElementById(id)
+      if (!section) return
+      ScrollTrigger.create({
+        trigger: section,
+        start: 'top 45%',
+        end: 'bottom 45%',
+        onEnter: () => {
+          activeSection.value = id
+        },
+        onEnterBack: () => {
+          activeSection.value = id
+        },
+      })
+    })
+  })
+}
 
 async function moveVirtualCursor(targetX: number, targetY: number, duration = 1200) {
   const startX = virtualCursor.value.x
@@ -484,6 +542,7 @@ function stopAutoTour() {
 }
 
 onMounted(() => {
+  void auth.refreshPublicSession()
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
 
@@ -504,6 +563,8 @@ onMounted(() => {
 
   // Start tour after a delay
   tourTimeout = setTimeout(playTourStep, 4000)
+
+  void setupMotionEffects()
 })
 
 onBeforeUnmount(() => {
@@ -520,6 +581,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousedown', stopAutoTour)
   window.removeEventListener('keydown', stopAutoTour)
   if (stepInterval) clearInterval(stepInterval)
+  landingMotionContext?.revert()
+  landingMotionContext = null
   stopAutoTour()
 })
 </script>
@@ -559,15 +622,16 @@ onBeforeUnmount(() => {
       <div class="lp-nav__inner">
         <BrandMark :size="30" />
         <nav class="lp-nav__links" aria-label="Primary">
-          <a href="#goals">{{ t('landing.nav.goals') }}</a>
-          <a href="#features">{{ t('landing.nav.features') }}</a>
-          <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
-          <a href="#guide">{{ t('landing.nav.guide') }}</a>
+          <a href="#goals" :class="{ 'lp-nav__link--active': activeSection === 'goals' }">{{ t('landing.nav.goals') }}</a>
+          <a href="#features" :class="{ 'lp-nav__link--active': activeSection === 'features' }">{{ t('landing.nav.features') }}</a>
+          <a href="#how" :class="{ 'lp-nav__link--active': activeSection === 'how' }">{{ t('landing.nav.howItWorks') }}</a>
+          <a href="#guide" :class="{ 'lp-nav__link--active': activeSection === 'guide' }">{{ t('landing.nav.guide') }}</a>
+          <RouterLink to="/docs">{{ publicCopy.nav.docs }}</RouterLink>
         </nav>
         <div class="lp-nav__actions">
           <LanguageSelector />
-          <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
-            {{ t('landing.actions.openDashboard') }}
+          <RouterLink class="btn btn--primary btn--sm" :to="primaryRoute">
+            {{ primaryLabel }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -588,8 +652,8 @@ onBeforeUnmount(() => {
           </h1>
           <p class="hero__lede">{{ t('landing.hero.description') }}</p>
           <div class="hero__cta">
-            <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-              {{ t('landing.actions.openDashboard') }}
+            <RouterLink class="btn btn--primary btn--lg" :to="primaryRoute">
+              {{ primaryLabel }}
               <span class="btn__arrow" aria-hidden="true">→</span>
             </RouterLink>
             <a class="btn btn--ghost btn--lg" href="#how">{{ t('landing.actions.seeHow') }}</a>
@@ -1048,26 +1112,28 @@ onBeforeUnmount(() => {
                 <div class="code-terminal-header">
                   <span>{{ t('landing.guide.step1.terminal') }}</span>
                 </div>
-                <pre><code># 1. Start Neo4j (graph database)
-docker compose up -d neo4j
+                <pre><code># Install the CLI package when it is published
+npm install -g vibegraph-cli
 
-# 2. Run the backend — Spring Boot on :8080
-./mvnw spring-boot:run
+# Point the CLI at production and sign in in your browser
+vibegraph config set-url https://vibegraph.tech
+vibegraph login
 
-# 3. Run the web client — Vite on :5173
-cd vibegraph-web && npm install && npm run dev</code></pre>
+# Push or watch a project
+vibegraph push --root ./your-project
+vibegraph watch --root ./your-project</code></pre>
               </div>
               <p class="text-sm text-dim">
-                {{ t('landing.guide.step1.envLead') }} <code>NEO4J_URI</code>,
-                <code>NEO4J_USERNAME</code> {{ t('landing.guide.step1.envAnd') }}
-                <code>NEO4J_PASSWORD</code> {{ t('landing.guide.step1.envTail') }}
+                {{ t('landing.guide.step1.envLead') }}
+                <RouterLink to="/docs">{{ t('landing.guide.step1.docsLink') }}</RouterLink>
+                {{ t('landing.guide.step1.envTail') }}
               </p>
             </div>
 
             <div v-if="activeGuideTab === 1" class="guide-pane">
               <h4>{{ t('landing.guide.step2.title') }}</h4>
               <p>
-                {{ t('landing.guide.step2.bodyLead') }} <code>http://localhost:5173</code>
+                {{ t('landing.guide.step2.bodyLead') }} <code>https://vibegraph.tech</code>
                 {{ t('landing.guide.step2.bodyTail') }}
               </p>
               <ul class="guide-list">
@@ -1103,7 +1169,9 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
                 <pre><code>{
   "mcpServers": {
     "vibegraph": {
-      "url": "http://localhost:8080/mcp"
+      "url": "https://vibegraph.tech/mcp",
+      "transport": "streamable-http",
+      "headers": { "X-API-Key": "&lt;PROJECT_API_KEY&gt;" }
     }
   }
 }</code></pre>
@@ -1238,8 +1306,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
         <div class="cta__inner">
           <h2 class="cta__title">{{ t('landing.cta.title') }}</h2>
           <p class="cta__sub">{{ t('landing.cta.description') }}</p>
-          <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-            {{ t('landing.actions.openDashboard') }}
+          <RouterLink class="btn btn--primary btn--lg" :to="primaryRoute">
+            {{ primaryLabel }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -1258,6 +1326,7 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
             <a href="#features">{{ t('landing.nav.features') }}</a>
             <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
             <a href="#guide">{{ t('landing.footer.installation') }}</a>
+            <RouterLink to="/docs">{{ publicCopy.landing.documentation }}</RouterLink>
           </div>
           <div class="footer-col">
             <h4>{{ t('landing.footer.resources') }}</h4>
@@ -1482,6 +1551,12 @@ main,
 .lp-nav__links a:hover {
   color: var(--vg-text);
 }
+.lp-nav__links a.lp-nav__link--active {
+  color: var(--vg-text);
+}
+.lp-nav__links a.lp-nav__link--active::after {
+  transform: scaleX(1);
+}
 .lp-nav__links a:hover::after {
   transform: scaleX(1);
 }
@@ -1634,6 +1709,7 @@ main,
 
 /* ── Hero visual (Interactive Graph Module) ── */
 .hero__visual {
+  will-change: transform;
   position: relative;
   aspect-ratio: 1;
   display: grid;

@@ -339,6 +339,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <systemPropertyVariables>
+                        <!-- Deterministic public test-only key; runtime profiles still fail closed. -->
+                        <API_KEY_ENCRYPTION_KEY_CURRENT>dmliZWdyYXBoLWxvY2FsLWFwaS1rZXktMzItYnl0ZSE=</API_KEY_ENCRYPTION_KEY_CURRENT>
+                    </systemPropertyVariables>
                     <excludes>
                         <exclude>**/*IT.java</exclude>
                         <exclude>**/*ITCase.java</exclude>
@@ -355,6 +359,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
+                    <systemPropertyVariables>
+                        <!-- Keep full-context ITs independent from developer credentials. -->
+                        <API_KEY_ENCRYPTION_KEY_CURRENT>dmliZWdyYXBoLWxvY2FsLWFwaS1rZXktMzItYnl0ZSE=</API_KEY_ENCRYPTION_KEY_CURRENT>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*IT.java</include>
                         <include>**/*ITCase.java</include>

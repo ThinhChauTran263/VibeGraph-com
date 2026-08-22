@@ -40,14 +40,13 @@
       "pill": "Source-code intelligence for Java",
       "titleLead": "See your code as a",
       "titleHighlight": "living graph",
-      "description": "VibeGraph turns a Java codebase into an explorable map of structure, dependencies and execution flows, then keeps it in sync as you vibe code. Understand impact before you change a thing."
+      "description": "VibeGraph turns a Java codebase into an explorable map of structure, dependencies and execution flows. Use CLI watch mode to send later file changes, and query the resulting project graph before editing code."
     },
     "stats": {
-      "symbols": "symbols mapped per project",
-      "relationships": "relationships traced",
-      "flows": "execution flows surfaced",
-      "realtimeValue": "Realtime",
-      "realtimeLabel": "graph updates as you code"
+      "javaLabel": "source analysis",
+      "neo4jLabel": "graph storage",
+      "toolsLabel": "registered MCP tools",
+      "integrationLabel": "project-bound access"
     },
     "tour": {
       "label": "Guided Tour Demo"
@@ -96,11 +95,11 @@
         },
         "impact": {
           "title": "Instant Blast-Radius Reports",
-          "body": "Query exact callers, trace execution flows, and assess impact in milliseconds before editing code."
+          "body": "Query graph relationships, trace available execution flows, and inspect impact data before editing code."
         },
         "mcp": {
           "title": "Model Context Protocol (MCP)",
-          "body": "Expose structure directly to LLMs, so coding agents query context, predict blast-radii, and edit safely."
+          "body": "Expose project graph data to MCP clients, so coding agents can query context and impact information."
         }
       }
     },
@@ -117,12 +116,12 @@
         "impact": {
           "tag": "Impact",
           "title": "Blast-radius analysis",
-          "body": "Pick any node and see exactly what breaks if you change it: direct callers, affected flows and risk level, before you touch a line."
+          "body": "Pick a node and inspect the callers, related flows and risk information available in the analyzed project graph."
         },
         "realtime": {
           "tag": "Realtime",
           "title": "Updates as you vibe",
-          "body": "Point VibeGraph at a local folder and the graph re-draws itself the moment you save. No re-import, no zip."
+          "body": "Use CLI watch mode to detect supported file changes and send incremental updates to the selected project."
         },
         "diagrams": {
           "tag": "Diagrams",
@@ -132,7 +131,7 @@
         "import": {
           "tag": "Import",
           "title": "CLI, archive or GitHub",
-          "body": "Create a CLI-synced repository, upload an archive, or paste a public GitHub URL. VibeGraph indexes it and you are exploring in seconds."
+          "body": "Create a CLI workspace, upload a supported archive, or provide a public GitHub URL for backend analysis."
         }
       }
     },
@@ -150,7 +149,7 @@
         },
         "analyze": {
           "title": "Analyze impact",
-          "body": "Before refactoring, run blast-radius analysis to see what your change touches and ship with confidence."
+        "body": "Before refactoring, run blast-radius analysis to inspect the relationships recorded for the selected symbol."
         }
       },
       "mock": {
@@ -161,39 +160,39 @@
         "projectStructure": "Project Structure",
         "panZoom": "Interactive pan and zoom active",
         "blastTriggered": "Blast Radius Triggered",
-        "downstreamAffected": "12 downstream callers affected in ProjectController",
-        "upstreamRiskHigh": "Upstream risk: HIGH"
+      "downstreamAffected": "Affected callers are calculated from project graph data",
+      "upstreamRiskHigh": "Risk is calculated from the selected graph node"
       }
     },
     "guide": {
       "eyebrow": "Quick Start & Installation",
-      "title": "Install & Vibe Code in 2 Minutes",
-      "description": "How to install, run analysis, and integrate VibeGraph with your developer workflow.",
+      "title": "Install the CLI and connect your project",
+      "description": "The current production flow for browser login, project upload and MCP integration.",
       "tabsAria": "Setup guide tabs",
       "tabs": {
-        "run": "Run VibeGraph",
-        "import": "Import a project",
+        "run": "Install the CLI",
+        "import": "Add a project",
         "agent": "Connect your AI agent"
       },
       "step1": {
-        "title": "Step 1: Start VibeGraph locally",
-        "body": "VibeGraph is a Spring Boot backend with a Vue web client, backed by a Neo4j graph database. Start Neo4j, run the backend, then the web client.",
+        "title": "Step 1: Install and sign in",
+        "body": "Configure the production URL, then run browser login. After authentication, select a project API key for CLI and MCP operations.",
         "terminal": "Terminal (bash)",
-        "envLead": "Set",
-        "envAnd": "and",
-        "envTail": "in .env, or bring the whole stack up at once with docker compose up -d."
+        "envLead": "Check the",
+        "docsLink": "release notice in Docs",
+        "envTail": "before installing: the repository package name is final, but the public npm package must exist before the global install command can succeed."
       },
       "step2": {
-        "title": "Step 2: Import your project",
+        "title": "Step 2: Create or upload a project",
         "bodyLead": "Open the dashboard at",
-        "bodyTail": "and import a Java project straight from the UI. No analyzer CLI required. Pick one of three methods:",
-        "localTitle": "Local folder",
-        "localBody": "point VibeGraph at a folder on the same machine; the graph re-draws in realtime as you edit.",
+        "bodyTail": "and choose a supported project source:",
+        "localTitle": "CLI workspace",
+        "localBody": "create the project from the CLI, push its Java files, and optionally keep watch mode running for later changes.",
         "archiveTitle": "Archive",
         "archiveBodyLead": "upload a",
         "archiveBodyOr": "or",
         "archiveBodyTail": "of the project.",
-        "githubBody": "paste a public HTTPS repo URL and VibeGraph clones, indexes and maps it.",
+        "githubBody": "provide a public HTTPS repository URL for backend import and analysis.",
         "note": "The backend parses the source, stores the call graph in Neo4j, and the Vue client renders it with Sigma.js. Search any symbol, double-click a node to focus, or select one to see its blast radius."
       },
       "step3": {
@@ -201,28 +200,28 @@
         "bodyLead": "VibeGraph runs a Model Context Protocol server over",
         "bodyTail": ", so agents like Claude, Cursor and Kiro can query the graph and run impact analysis. Point your agent at the endpoint:",
         "configTitle": "AI client config (mcp.json)",
-        "noteLead": "The server exposes 15 tools: impact analysis, class and method context, references, related tests, endpoint trace, project conventions and more. The exact config key may differ per client, for example",
+        "noteLead": "The current backend registers 18 MCP tools covering impact analysis, class and method context, references, tests, endpoint traces, source retrieval, verification and planning. Client configuration keys can differ; the manual production example uses",
         "noteTail": "."
       }
     },
     "engine": {
       "eyebrow": "The Engine",
       "title": "How VibeGraph reads your code",
-      "description": "A self-hosted AST-and-graph engine. VibeGraph parses your Java source and serves the result to both the web UI and your AI agent.",
+      "description": "A Java AST-and-graph engine backed by Neo4j. VibeGraph serves analyzed project data to the web UI and authenticated MCP clients.",
       "bodyLead": "VibeGraph parses your Java source into abstract syntax trees, resolves call and usage relationships, and stores the whole graph in",
-      "bodyTail": "on your own machine. Source never leaves the host.",
+      "bodyTail": ". In the hosted production service, projects uploaded through CLI, archive or GitHub are processed by the VibeGraph backend.",
       "items": {
         "private": {
-          "title": "Local & private",
-          "body": "parsing and the Neo4j graph stay on your infrastructure; no code is sent to the cloud."
+          "title": "Project-scoped access",
+          "body": "CLI and MCP operations use the selected project key, while the backend checks key ownership and request authorization."
         },
         "incremental": {
           "title": "Incremental",
-          "body": "a file watcher re-parses only what changed, so local projects update in near real-time."
+          "body": "CLI watch mode detects supported changes and sends incremental project updates to the backend."
         },
         "mcp": {
           "title": "MCP-native",
-          "body": "the same graph is exposed to AI agents through a Spring AI MCP server for impact-safe edits."
+          "body": "the analyzed graph is exposed through a Spring AI MCP server with project-key authentication."
         }
       }
     },
@@ -241,7 +240,7 @@
     },
     "cta": {
       "title": "Ready to map your codebase?",
-      "description": "Open the dashboard and import your first project. It takes seconds."
+      "description": "Log in, open the dashboard and add a Java project using one of the supported import paths."
     },
     "footer": {
       "note": "Source-code intelligence for the vibe-coding era.",
@@ -450,14 +449,14 @@
         "create": "Create repo & key",
         "creating": "Creating...",
         "readyTitle": "{name} is ready for CLI push",
-        "secretNotice": "Copy the API key now. It is shown once and identifies this repository for CLI and MCP.",
+        "secretNotice": "Copy the API key if you need it for another client. For VibeGraph CLI, run `vibegraph login` and select this repository in the browser; do not paste the key into CLI login.",
         "apiKey": "API key",
         "copy": "Copy",
         "copyAll": "Copy all",
         "copied": "Copied",
         "copyFailed": "Could not copy. Select the text and copy it manually.",
         "commands": "Run in your project terminal",
-        "openRepository": "Open repository",
+        "goToRepositories": "Go to repositories",
         "createAnother": "Create another",
         "error": "Could not create the CLI repository."
       },

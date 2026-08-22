@@ -593,6 +593,15 @@ export const authApi = {
   me(): Promise<User> {
     return api.get<User>('/api/auth/me')
   },
+
+  async meOptional(): Promise<User | null> {
+    const response = await fetchWithSessionRefresh(`${API_BASE_URL}/api/auth/me`, {
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web' },
+    })
+    if (response.status === 401) return null
+    return unwrap<User>(response)
+  },
 }
 
 // --- Account (user-side) API ---

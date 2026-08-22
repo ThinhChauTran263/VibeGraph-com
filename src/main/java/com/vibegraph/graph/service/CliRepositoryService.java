@@ -67,7 +67,7 @@ public class CliRepositoryService {
 
             ApiKeyCreateResponse apiKey = apiKeyService.createForCurrentUser(
                     new ApiKeyCreateRequest(defaultKeyName(project.getName()), project.getId()));
-            return new CliRepositorySetupResponse(project, apiKey, commands(apiKey.secretKey()));
+            return new CliRepositorySetupResponse(project, apiKey, commands());
         } catch (IOException ex) {
             cleanup(workspace, createdProjectId);
             throw new IllegalStateException("Could not create CLI repository workspace", ex);
@@ -84,9 +84,9 @@ public class CliRepositoryService {
                 : normalized + " CLI";
     }
 
-    private List<String> commands(String secretKey) {
+    private List<String> commands() {
         return List.of(
-                "vibegraph login " + secretKey,
+                "vibegraph login",
                 "vibegraph push",
                 "vibegraph watch");
     }

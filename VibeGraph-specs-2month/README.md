@@ -9,7 +9,7 @@ Thư mục này là nguồn chân lý duy nhất cho việc thực thi MVP. Nó 
 
 ## Mục tiêu sau 2 tháng
 
-Người dùng mở `vibegraph.com` hoặc chạy Docker stack cục bộ, upload một file ZIP/TAR của project Java, và thấy một đồ thị mã nguồn tương tác. GitHub public-repo import vẫn nằm trong MVP, nhưng archive upload là flow chính Sprint 2 để thay cho việc nhập local path thủ công. Các công cụ AI như Cursor, Claude Code, và Kiro có thể kết nối qua MCP và lấy về ngữ cảnh kiến trúc.
+Người dùng mở `vibegraph.tech` hoặc chạy Docker stack cục bộ, upload một file ZIP/TAR của project Java, và thấy một đồ thị mã nguồn tương tác. GitHub public-repo import vẫn nằm trong MVP, nhưng archive upload là flow chính Sprint 2 để thay cho việc nhập local path thủ công. Các công cụ AI như Cursor, Claude Code, và Kiro có thể kết nối qua MCP và lấy về ngữ cảnh kiến trúc.
 
 Chế độ local/self-host cũng hỗ trợ theo dõi một thư mục Java và cập nhật đồ thị gần như theo thời gian thực khi các tệp `.java` được tạo mới, thay đổi, hoặc xóa.
 

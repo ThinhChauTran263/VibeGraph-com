@@ -10,6 +10,7 @@ import type {
 } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import ImportPricingPanel from '@/views/admin/ImportPricingPanel.vue'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
@@ -64,6 +65,14 @@ const planStorageMb = computed({
 })
 
 onMounted(loadCatalogs)
+
+useSilentRefresh(async () => {
+  try {
+    await Promise.all([adminStore.fetchPlans(), adminStore.fetchPricingRules()])
+  } catch {
+    // Silent failure
+  }
+})
 
 async function loadCatalogs(): Promise<void> {
   try {

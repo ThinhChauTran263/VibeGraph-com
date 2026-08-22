@@ -20,6 +20,8 @@ public class VerifyChangeResponse {
     private String projectId;
     private List<String> changedFiles;
     private List<ChangedSymbol> changedSymbols;
+    /** Minimal reverse-reachable context around changed symbols, bounded by the verifier. */
+    private List<ReachableSymbol> reachableContext;
     private List<RouteRef> affectedRoutes;
     private List<TestRef> relatedTests;
     private SuggestedCommands suggestedCommands;
@@ -38,6 +40,17 @@ public class VerifyChangeResponse {
         private String fullName;
         private String relativePath;
         private Integer lineNumber;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReachableSymbol {
+        private String id;
+        private String type;
+        private String fullName;
+        private Integer depth;
     }
 
     @Data

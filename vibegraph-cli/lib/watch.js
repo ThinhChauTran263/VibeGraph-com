@@ -6,10 +6,11 @@
 
 import { watch } from "node:fs";
 import path from "node:path";
-import { loadIgnoreRules, shouldIgnore } from "./ignore.js";
-import { loadSnapshot, saveSnapshot, diffSnapshot } from "./snapshot.js";
-import { scanDirectory, buildFileStateMap, toPosixRelative } from "./scanner.js";
+import { getMaxTotalBytes, loadIgnoreRules, shouldIgnore } from "./ignore.js";
+import { loadSnapshot, diffSnapshot } from "./snapshot.js";
+import { scanDirectory, buildFileStateMap } from "./scanner.js";
 import { createPatchRequest, resolveSnapshotId } from "./project-target.js";
+import { executePush } from "./push.js";
 
 const DEBOUNCE_MS = 800;
 
@@ -28,33 +29,34 @@ export async function executeWatch(projectId, options, apiRequest) {
   console.log(`Project: ${projectId || "API key binding"}`);
   console.log(`Press Ctrl+C to stop.\n`);
 
-  // Do initial scan to establish baseline
-  const initialScan = await scanDirectory(rootDir, ignoreRules);
-  assertCompleteScan(initialScan);
-  const initialState = buildFileStateMap(initialScan.files);
-  await saveSnapshot(snapshotId, initialState);
-  console.log(`Baseline: ${initialScan.files.length} files tracked.\n`);
+  // Sync before watching so a first-time watch cannot silently establish an unpushed baseline.
+  await executePush(projectId, { root: rootDir, snapshotId, dryRun: false }, apiRequest);
+  const initialState = await loadSnapshot(snapshotId);
+  console.log(`Baseline: ${Object.keys(initialState).length} files tracked.\n`);
 
   let debounceTimer = null;
-  let pushing = false;
 
   async function pushChanges() {
-    if (pushing) return;
-    pushing = true;
-
     try {
       const scan = await scanDirectory(rootDir, ignoreRules);
       assertCompleteScan(scan);
       const currentState = buildFileStateMap(scan.files);
       const previousSnapshot = await loadSnapshot(snapshotId);
+      assertSafeSnapshotDiff(scan, previousSnapshot);
       const { changed, deleted } = diffSnapshot(currentState, previousSnapshot);
+      assertWatchDeletionSafety(currentState, previousSnapshot, deleted);
 
       if (changed.length === 0 && deleted.length === 0) {
-        pushing = false;
         return;
       }
 
       const filesToSend = scan.files.filter((f) => changed.includes(f.relativePath));
+      const totalBytes = filesToSend.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > getMaxTotalBytes()) {
+        throw new Error(
+          `Changed files total ${totalBytes} bytes, exceeding VIBEGRAPH_MAX_TOTAL_BYTES (${getMaxTotalBytes()}).`,
+        );
+      }
       const payload = {
         files: filesToSend.map((f) => ({
           path: f.relativePath,
@@ -95,15 +97,15 @@ export async function executeWatch(projectId, options, apiRequest) {
       } else {
         console.error(`[Error] Push failed: ${msg}`);
       }
-    } finally {
-      pushing = false;
     }
   }
 
   function scheduleCheck() {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(pushChanges, DEBOUNCE_MS);
+    debounceTimer = setTimeout(runPush, DEBOUNCE_MS);
   }
+
+  const runPush = createSerializedPushRunner(pushChanges, scheduleCheck);
 
   // Set up recursive watch
   try {
@@ -155,9 +157,53 @@ function isWatchNetworkError(msg) {
   );
 }
 
+export function createSerializedPushRunner(task, onPending) {
+  let running = false;
+  let pending = false;
+  return async function run() {
+    if (running) {
+      pending = true;
+      return;
+    }
+    running = true;
+    try {
+      await task();
+    } finally {
+      running = false;
+      if (pending) {
+        pending = false;
+        onPending();
+      }
+    }
+  };
+}
+
+function assertSafeSnapshotDiff(scan, previousSnapshot) {
+  const previousPaths = new Set(Object.keys(previousSnapshot));
+  const unsafePaths = scan.unsafePaths.filter(Boolean);
+  const uncertain = [
+    ...unsafePaths,
+    ...scan.skipped.filter((entry) => previousPaths.has(entry.relativePath)).map((entry) => entry.relativePath),
+  ].filter(Boolean);
+  for (const unsafePath of unsafePaths) {
+    uncertain.push(...[...previousPaths].filter((previousPath) => previousPath.startsWith(`${unsafePath}/`)));
+  }
+  if (uncertain.length > 0) {
+    throw new Error(`Scan cannot safely determine deletions for ${[...new Set(uncertain)].slice(0, 5).join(", ")}.`);
+  }
+}
+
+function assertWatchDeletionSafety(currentState, previousSnapshot, deleted) {
+  const previousCount = Object.keys(previousSnapshot).length;
+  if (previousCount === 0 || deleted.length === 0) return;
+  if (Object.keys(currentState).length === 0 || (deleted.length >= 20 && deleted.length * 2 >= previousCount)) {
+    throw new Error("Watch blocked a destructive deletion batch. Stop watch, verify --root, and run an explicit push with the matching deletion override.");
+  }
+}
+
 function assertCompleteScan(scan) {
-  if (!scan.truncated) return;
+  if (scan.complete) return;
   throw new Error(
-    "Scan stopped after VIBEGRAPH_MAX_FILES. Watch skipped this push because a partial scan could delete files incorrectly. Increase VIBEGRAPH_MAX_FILES or narrow --root.",
+    "Scan was incomplete or uncertain. Watch skipped this push because an unsafe scan could delete files incorrectly. Fix unreadable files/directories, increase VIBEGRAPH_MAX_FILES, or narrow --root.",
   );
 }

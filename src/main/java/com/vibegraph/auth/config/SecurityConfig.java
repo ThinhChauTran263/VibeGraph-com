@@ -67,6 +67,7 @@ import lombok.RequiredArgsConstructor;
 @EnableWebSecurity
 @EnableConfigurationProperties({
         JwtProperties.class,
+        ApiKeyEncryptionProperties.class,
         RealtimeSecurityProperties.class,
         AbuseProperties.class,
         OAuthRedirectProperties.class})
@@ -174,6 +175,9 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     auth.requestMatchers(
                             "/api/auth/**",
+                            "/api/cli/device/start",
+                            "/api/cli/device/token",
+                            "/api/cli/device/status",
                             "/actuator/health",
                             "/ws/**",
                             "/oauth2/**",

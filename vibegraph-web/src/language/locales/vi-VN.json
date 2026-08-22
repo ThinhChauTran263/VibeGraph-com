@@ -40,14 +40,13 @@
       "pill": "Trí tuệ source-code cho Java",
       "titleLead": "Xem code của bạn như một",
       "titleHighlight": "đồ thị sống",
-      "description": "VibeGraph biến codebase Java thành bản đồ có thể khám phá về cấu trúc, phụ thuộc và luồng thực thi, rồi giữ mọi thứ đồng bộ khi bạn vibe code. Hiểu rõ tác động trước khi thay đổi."
+      "description": "VibeGraph biến codebase Java thành bản đồ có thể khám phá về cấu trúc, phụ thuộc và luồng thực thi. Dùng chế độ watch của CLI để gửi các thay đổi file tiếp theo và truy vấn graph của project trước khi sửa code."
     },
     "stats": {
-      "symbols": "symbol được map trên mỗi dự án",
-      "relationships": "quan hệ được truy vết",
-      "flows": "luồng thực thi được phát hiện",
-      "realtimeValue": "Realtime",
-      "realtimeLabel": "graph cập nhật khi bạn code"
+      "javaLabel": "phân tích source",
+      "neo4jLabel": "lưu trữ graph",
+      "toolsLabel": "MCP tool đã đăng ký",
+      "integrationLabel": "truy cập theo project"
     },
     "tour": {
       "label": "Demo hướng dẫn"
@@ -96,11 +95,11 @@
         },
         "impact": {
           "title": "Báo cáo blast-radius tức thì",
-          "body": "Truy vấn caller chính xác, lần theo luồng thực thi và đánh giá tác động trước khi sửa code."
+          "body": "Truy vấn quan hệ trong graph, lần theo các luồng thực thi có sẵn và xem dữ liệu tác động trước khi sửa code."
         },
         "mcp": {
           "title": "Model Context Protocol (MCP)",
-          "body": "Đưa cấu trúc code trực tiếp cho LLM để coding agent truy vấn ngữ cảnh, dự đoán tác động và sửa an toàn hơn."
+          "body": "Cung cấp dữ liệu graph của project cho MCP client để coding agent truy vấn ngữ cảnh và thông tin tác động."
         }
       }
     },
@@ -117,12 +116,12 @@
         "impact": {
           "tag": "Impact",
           "title": "Phân tích blast-radius",
-          "body": "Chọn một node và xem chính xác thay đổi có thể ảnh hưởng gì: caller trực tiếp, flow liên quan và mức rủi ro."
+          "body": "Chọn một node để xem caller, flow liên quan và thông tin rủi ro có trong graph đã phân tích của project."
         },
         "realtime": {
           "tag": "Realtime",
           "title": "Cập nhật khi bạn code",
-          "body": "Trỏ VibeGraph vào thư mục local và graph tự vẽ lại khi bạn lưu file. Không cần import lại, không cần zip."
+          "body": "Dùng chế độ watch của CLI để phát hiện các thay đổi file được hỗ trợ và gửi cập nhật tăng dần cho project đã chọn."
         },
         "diagrams": {
           "tag": "Diagram",
@@ -132,7 +131,7 @@
         "import": {
           "tag": "Import",
           "title": "CLI, archive hoặc GitHub",
-          "body": "Tạo repository đồng bộ bằng CLI, upload archive hoặc nhập GitHub URL public. VibeGraph index và cho bạn khám phá trong vài giây."
+          "body": "Tạo workspace bằng CLI, upload archive được hỗ trợ hoặc cung cấp GitHub URL public để backend phân tích."
         }
       }
     },
@@ -150,7 +149,7 @@
         },
         "analyze": {
           "title": "Phân tích tác động",
-          "body": "Trước khi refactor, chạy phân tích blast-radius để biết thay đổi sẽ chạm tới đâu."
+        "body": "Trước khi refactor, chạy phân tích blast-radius để xem các quan hệ đã được ghi nhận cho symbol được chọn."
         }
       },
       "mock": {
@@ -161,39 +160,39 @@
         "projectStructure": "Cấu trúc dự án",
         "panZoom": "Pan và zoom tương tác đang bật",
         "blastTriggered": "Đã kích hoạt blast radius",
-        "downstreamAffected": "12 caller downstream bị ảnh hưởng trong ProjectController",
-        "upstreamRiskHigh": "Rủi ro upstream: CAO"
+      "downstreamAffected": "Caller bị ảnh hưởng được tính từ dữ liệu graph của project",
+      "upstreamRiskHigh": "Rủi ro được tính từ node graph được chọn"
       }
     },
     "guide": {
       "eyebrow": "Cài đặt nhanh",
-      "title": "Cài đặt và vibe code trong 2 phút",
-      "description": "Cách cài đặt, chạy phân tích và tích hợp VibeGraph vào workflow phát triển của bạn.",
+      "title": "Cài CLI và kết nối project",
+      "description": "Luồng production hiện tại cho đăng nhập bằng trình duyệt, upload project và tích hợp MCP.",
       "tabsAria": "Các tab hướng dẫn cài đặt",
       "tabs": {
-        "run": "Chạy VibeGraph",
-        "import": "Import dự án",
+        "run": "Cài CLI",
+        "import": "Thêm project",
         "agent": "Kết nối AI agent"
       },
       "step1": {
-        "title": "Bước 1: Chạy VibeGraph local",
-        "body": "VibeGraph gồm backend Spring Boot, web client Vue và database graph Neo4j. Khởi động Neo4j, chạy backend rồi chạy web client.",
+        "title": "Bước 1: Cài đặt và đăng nhập",
+        "body": "Cấu hình URL production rồi chạy đăng nhập bằng trình duyệt. Sau khi xác thực, chọn API key của project cho các thao tác CLI và MCP.",
         "terminal": "Terminal (bash)",
-        "envLead": "Thiết lập",
-        "envAnd": "và",
-        "envTail": "trong .env, hoặc khởi động toàn bộ stack bằng docker compose up -d."
+        "envLead": "Hãy xem",
+        "docsLink": "thông báo phát hành trong Docs",
+        "envTail": "trước khi cài: tên package trong repository đã chốt, nhưng package npm công khai phải tồn tại thì lệnh cài global mới chạy được."
       },
       "step2": {
-        "title": "Bước 2: Import dự án",
+        "title": "Bước 2: Tạo hoặc upload project",
         "bodyLead": "Mở dashboard tại",
-        "bodyTail": "và import dự án Java trực tiếp từ UI. Không cần analyzer CLI. Chọn một trong ba cách:",
-        "localTitle": "Thư mục local",
-        "localBody": "trỏ VibeGraph tới thư mục trên cùng máy; graph tự vẽ lại realtime khi bạn sửa file.",
+        "bodyTail": "và chọn một nguồn project được hỗ trợ:",
+        "localTitle": "CLI workspace",
+        "localBody": "tạo project từ CLI, push các file Java và có thể tiếp tục chạy watch mode cho những thay đổi sau đó.",
         "archiveTitle": "Archive",
         "archiveBodyLead": "upload",
         "archiveBodyOr": "hoặc",
         "archiveBodyTail": "của dự án.",
-        "githubBody": "dán URL HTTPS repo public để VibeGraph clone, index và map.",
+        "githubBody": "cung cấp URL HTTPS repository public để backend import và phân tích.",
         "note": "Backend parse source, lưu call graph trong Neo4j, còn Vue client render bằng Sigma.js. Bạn có thể tìm symbol, double-click node để focus hoặc chọn node để xem blast radius."
       },
       "step3": {
@@ -201,28 +200,28 @@
         "bodyLead": "VibeGraph chạy server Model Context Protocol qua",
         "bodyTail": ", để Claude, Cursor, Kiro và các agent khác truy vấn graph và chạy phân tích tác động. Trỏ agent tới endpoint:",
         "configTitle": "Cấu hình AI client (mcp.json)",
-        "noteLead": "Server cung cấp 15 tool: impact analysis, class và method context, references, related tests, endpoint trace, project conventions và nhiều hơn nữa. Khóa cấu hình có thể khác theo từng client, ví dụ",
+        "noteLead": "Backend hiện đăng ký 18 MCP tool cho impact analysis, class/method context, references, test, endpoint trace, đọc source, verification và planning. Khóa cấu hình có thể khác theo client; ví dụ production thủ công dùng",
         "noteTail": "."
       }
     },
     "engine": {
       "eyebrow": "Engine",
       "title": "VibeGraph đọc code của bạn như thế nào",
-      "description": "Một AST-and-graph engine self-hosted. VibeGraph parse source Java và phục vụ kết quả cho cả web UI lẫn AI agent.",
+      "description": "Java AST-and-graph engine dùng Neo4j. VibeGraph phục vụ dữ liệu project đã phân tích cho web UI và MCP client đã xác thực.",
       "bodyLead": "VibeGraph parse source Java thành abstract syntax tree, resolve quan hệ call/usage và lưu toàn bộ graph trong",
-      "bodyTail": "trên chính máy của bạn. Source không rời khỏi host.",
+      "bodyTail": ". Với dịch vụ production được host, project gửi qua CLI, archive hoặc GitHub được backend VibeGraph xử lý.",
       "items": {
         "private": {
-          "title": "Local & riêng tư",
-          "body": "quá trình parse và graph Neo4j nằm trên hạ tầng của bạn; code không gửi lên cloud."
+          "title": "Truy cập theo project",
+          "body": "Thao tác CLI và MCP dùng key của project đã chọn; backend kiểm tra quyền sở hữu key và quyền của request."
         },
         "incremental": {
           "title": "Incremental",
-          "body": "file watcher chỉ parse lại phần thay đổi để dự án local cập nhật gần realtime."
+          "body": "Chế độ watch của CLI phát hiện thay đổi được hỗ trợ và gửi cập nhật tăng dần lên backend."
         },
         "mcp": {
           "title": "MCP-native",
-          "body": "cùng graph đó được expose cho AI agent qua Spring AI MCP server để edit an toàn theo impact."
+          "body": "graph đã phân tích được cung cấp qua Spring AI MCP server với xác thực bằng project key."
         }
       }
     },
@@ -241,7 +240,7 @@
     },
     "cta": {
       "title": "Sẵn sàng map codebase của bạn?",
-      "description": "Mở dashboard và import dự án đầu tiên. Chỉ mất vài giây."
+      "description": "Đăng nhập, mở dashboard và thêm project Java bằng một trong các luồng import được hỗ trợ."
     },
     "footer": {
       "note": "Source-code intelligence cho thời đại vibe-coding.",
@@ -450,14 +449,14 @@
         "create": "Tạo repo & key",
         "creating": "Đang tạo...",
         "readyTitle": "{name} đã sẵn sàng để push bằng CLI",
-        "secretNotice": "Sao chép API key ngay bây giờ. Key chỉ hiển thị một lần và dùng để định danh repo này cho CLI và MCP.",
+        "secretNotice": "Sao chép API key nếu bạn cần dùng cho client khác. Với VibeGraph CLI, hãy chạy `vibegraph login` rồi chọn repo này trong trình duyệt; không dán key vào lệnh login.",
         "apiKey": "API key",
         "copy": "Sao chép",
         "copyAll": "Sao chép tất cả",
         "copied": "Đã sao chép",
         "copyFailed": "Không thể sao chép. Hãy chọn văn bản và sao chép thủ công.",
         "commands": "Chạy trong terminal của dự án",
-        "openRepository": "Mở repo",
+        "goToRepositories": "Đến danh sách repo",
         "createAnother": "Tạo repo khác",
         "error": "Không thể tạo repo CLI."
       },

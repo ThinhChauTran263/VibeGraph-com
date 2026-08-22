@@ -121,7 +121,9 @@ function imported(project: Project) {
   ]
   projectStore.projectsLoaded = true
   syncAccountProjects(projectStore.projects)
-  open(project)
+  // A newly created CLI repository has no graph data until the first push.
+  // Return to the repository list so the user can copy commands and push source.
+  void router.replace({ name: 'projects' })
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return

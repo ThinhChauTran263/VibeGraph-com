@@ -5,6 +5,7 @@ import { useAdminStore } from '@/stores/admin'
 import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 import type { AdminAnnouncementRequest } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const adminStore = useAdminStore()
 const { locale, t } = useI18n({ useScope: 'global' })
@@ -58,6 +59,14 @@ const form = ref<AdminAnnouncementRequest>({
 })
 
 onMounted(loadAnnouncements)
+
+useSilentRefresh(async () => {
+  try {
+    await adminStore.fetchAnnouncements()
+  } catch {
+    // Silent failure
+  }
+})
 
 function resetForm(): void {
   form.value = {

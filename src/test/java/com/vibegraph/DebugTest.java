@@ -1,5 +1,6 @@
 package com.vibegraph;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import com.vibegraph.auth.service.AdminImportPricingManagementService;
@@ -8,6 +9,7 @@ import com.vibegraph.auth.repository.ImportPricingTierRepository;
 import java.util.List;
 
 @SpringBootTest
+@Disabled("Manual database constraint probe; never run against a developer or production datasource")
 public class DebugTest {
     @Autowired
     AdminImportPricingManagementService s;

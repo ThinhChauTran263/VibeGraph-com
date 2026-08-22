@@ -112,7 +112,7 @@ class ProjectControllerTest {
         when(cliRepositoryService.create(any())).thenReturn(new CliRepositorySetupResponse(
                 project,
                 apiKey,
-                List.of("vibegraph login vbg_fullsecret", "vibegraph push", "vibegraph watch")));
+                List.of("vibegraph login", "vibegraph push", "vibegraph watch")));
 
         mockMvc.perform(post("/api/projects/cli-setup")
                         .contentType(MediaType.APPLICATION_JSON)
