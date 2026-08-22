@@ -16,6 +16,9 @@ import {
   getSelectedSuggestionLine,
   isShellExitCommand,
   isShellHelpCommand,
+  normalizeShellInput,
+  getInlineSuggestion,
+  renderInteractiveFrame,
   parsePushCommandArgs,
   parseShellArgs,
   parseWatchCommandArgs,
@@ -31,6 +34,7 @@ const SHELL_SUGGESTION_COMMANDS = [
   "quit",
   "doctor",
   "mcp config",
+  "mcp doctor",
   "mcp install ",
   "login",
   "key status",
@@ -51,9 +55,10 @@ const SHELL_SUGGESTION_COMMANDS = [
   "projects analyze ",
   "projects delete ",
   "projects push ",
-  "push --root ",
+  "push",
+  "push --dry-run",
   "projects status ",
-  "watch ",
+  "watch",
   "watch --root ",
   "ignore init",
   "ignore init --root ",
@@ -268,10 +273,10 @@ test("interactive header is compact and omits long usage", () => {
   const output = renderInteractiveHeader({ apiUrl: "http://api.example.test" }, "D:\\Projects\\demo");
   const plainOutput = output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "");
 
-  assert.match(plainOutput, /VibeGraph CLI v0\.1\.0/);
+  assert.match(plainOutput, /VibeGraph CLI v0\.1\.1/);
   assert.match(plainOutput, /D:\\Projects\\demo/);
   assert.match(plainOutput, /http:\/\/api\.example\.test/);
-  assert.match(plainOutput, /Type \/help for commands, \/exit to quit\./);
+  assert.match(plainOutput, /Up\/Down select; Tab completes; Enter runs\./);
   assert.doesNotMatch(plainOutput, /Usage:/);
 });
 
@@ -286,6 +291,24 @@ test("shell command helpers recognize help and exit aliases", () => {
   assert.equal(isShellExitCommand("projects"), false);
 });
 
+test("shell input accepts both compact commands and the optional executable prefix", () => {
+  assert.equal(normalizeShellInput("push"), "push");
+  assert.equal(normalizeShellInput("push --dry-run"), "push --dry-run");
+  assert.equal(normalizeShellInput("vibegraph push --dry-run"), "push --dry-run");
+  assert.equal(normalizeShellInput("vibegraph-cli push"), "push");
+  assert.equal(normalizeShellInput("vibegraph> key status"), "key status");
+  assert.equal(normalizeShellInput("vibegraph"), "help");
+});
+
+test("interactive suggestions render in one controlled panel", () => {
+  assert.equal(getInlineSuggestion("k", "key status"), "ey status");
+  assert.equal(getInlineSuggestion("key status", "key status"), "");
+  assert.equal(getInlineSuggestion("xyz", "key status"), "");
+  const frame = renderInteractiveFrame("vibegraph> ", "k", 1, getShellSuggestions("k"), 0, 80, 24);
+  assert.equal(frame.split("\n").length, getShellSuggestions("k").length + 1);
+  assert.match(frame, /ey status/);
+});
+
 test("shell completer suggests slash commands and command templates", () => {
   assert.deepEqual(completeShellLine("/h"), [["/help"], "/h"]);
   assert.deepEqual(completeShellLine("/")[0], [
@@ -294,6 +317,7 @@ test("shell completer suggests slash commands and command templates", () => {
     "/quit",
     "/doctor",
     "/mcp config",
+    "/mcp doctor",
     "/mcp install ",
     "/login",
     "/key status",
@@ -314,9 +338,10 @@ test("shell completer suggests slash commands and command templates", () => {
     "/projects analyze ",
     "/projects delete ",
     "/projects push ",
-    "/push --root ",
+    "/push",
+    "/push --dry-run",
     "/projects status ",
-    "/watch ",
+    "/watch",
     "/watch --root ",
     "/ignore init",
     "/ignore init --root ",
@@ -344,7 +369,7 @@ test("shell completer suggests slash commands and command templates", () => {
     "key change",
     "key clear",
   ], "key "]);
-  assert.deepEqual(completeShellLine("push "), [["push --root "], "push "]);
+  assert.deepEqual(completeShellLine("push"), [["push", "push --dry-run"], "push"]);
   assert.deepEqual(completeShellLine("watch --"), [["watch --root "], "watch --"]);
 });
 
@@ -452,7 +477,9 @@ test("shell suggestion window scrolls while keeping six visible commands", () =>
 });
 
 test("shell suggestion panel highlights a command below the first six entries", () => {
-  const panel = renderShellSuggestionPanel("/", 6, getShellSuggestions("/"));
+  const suggestions = getShellSuggestions("/");
+  const loginIndex = suggestions.findIndex(({ command }) => command === "login");
+  const panel = renderShellSuggestionPanel("/", loginIndex, suggestions);
 
   assert.match(panel, /> login/);
   assert.doesNotMatch(panel, /  help/);

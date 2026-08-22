@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -131,6 +131,56 @@ test("doctor checks health and validates a configured API key without printing i
   }
 });
 
+test("apiRequest uses the legacy Bearer token for JWT-only project management", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: "vbg_project12345678wxyz",
+    token: "legacy-jwt",
+  });
+  let captured;
+  try {
+    globalThis.fetch = async (url, options) => {
+      captured = { url, options };
+      return new Response(JSON.stringify({ success: true, data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await module.apiRequest("/api/projects", { auth: "jwt-only" });
+
+    assert.equal(captured.options.headers.Authorization, "Bearer legacy-jwt");
+    assert.equal("X-API-Key" in captured.options.headers, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("apiRequest never falls back to a project API key for JWT-only requests", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: "vbg_project12345678wxyz",
+  });
+  try {
+    await assert.rejects(
+      module.apiRequest("/api/projects", { auth: "jwt-only" }),
+      /A valid account session is required/,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
 test("apiRequest formats backend error envelopes without [object Object]", async () => {
   const previousFetch = globalThis.fetch;
   const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
@@ -164,6 +214,59 @@ test("apiRequest formats backend error envelopes without [object Object]", async
     );
   } finally {
     globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports an expired legacy session separately from an active API key", async () => {
+  const rawKey = "vbg_doctor12345678wxyz";
+  const previousFetch = globalThis.fetch;
+  const previousLog = console.log;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: rawKey,
+    token: "expired-token",
+  });
+  const calls = [];
+  let output = "";
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      if (String(url).endsWith("/actuator/health")) {
+        return new Response(JSON.stringify({ status: "UP" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (String(url).endsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ success: false, error: { message: "expired" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    console.log = (value) => {
+      output += String(value);
+    };
+
+    await module.handleDoctor();
+
+    assert.equal(calls.length, 3);
+    assert.equal(calls[1].url, "http://api.example.test/api/auth/me");
+    assert.equal(calls[1].options.headers.Authorization, "Bearer expired-token");
+    assert.equal(calls[2].options.headers["X-API-Key"], rawKey);
+    assert.match(output, /"authenticated": false/);
+    assert.match(output, /"apiKeyStatus": "active"/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    console.log = previousLog;
     if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
     else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
     await rm(configDir, { recursive: true, force: true });
@@ -238,4 +341,28 @@ test("buildMcpServerConfig supports VS Code's servers format", async () => {
   assert.equal(config.servers["custom-vibegraph"].type, "stdio");
   assert.equal(config.servers["custom-vibegraph"].command, process.execPath);
   assert.deepEqual(config.servers["custom-vibegraph"].args.slice(-2), ["mcp-proxy", "--stdio"]);
+});
+
+test("mergeMcpJson replaces a stale VibeGraph entry while preserving other MCP servers", async () => {
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({ apiKey: "vbg_mcp12345678secret" });
+  const filePath = path.join(configDir, "mcp.json");
+  const replacement = { command: "node", args: ["new-proxy", "--stdio"] };
+  try {
+    await writeFile(filePath, JSON.stringify({
+      mcpServers: {
+        vibegraph: { command: "old-node", args: ["old-proxy"] },
+        other: { command: "other-mcp", args: [] },
+      },
+    }), "utf8");
+
+    assert.equal(await module.mergeMcpJson(filePath, "mcpServers", "vibegraph", replacement), "updated");
+    const merged = JSON.parse(await readFile(filePath, "utf8"));
+    assert.deepEqual(merged.mcpServers.vibegraph, replacement);
+    assert.deepEqual(merged.mcpServers.other, { command: "other-mcp", args: [] });
+  } finally {
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
 });

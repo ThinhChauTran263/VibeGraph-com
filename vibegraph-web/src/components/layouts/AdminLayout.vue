@@ -76,20 +76,17 @@ function signOut(): void {
       :aria-label="t('admin.layout.navigationLabel')"
     >
       <div class="sidebar-brand">
-        <RouterLink
-          class="brand-link"
-          to="/admin"
-          :aria-label="t('admin.layout.overviewLinkLabel')"
-        >
-          <BrandMark :size="30" :show-wordmark="!isCollapsed" />
-        </RouterLink>
+        <BrandMark
+          :size="30"
+          :show-wordmark="!isCollapsed"
+          glyph-to="/admin"
+          :glyph-aria-label="t('admin.layout.overviewLinkLabel')"
+        />
         <button
           class="sidebar-toggle"
           type="button"
           :aria-label="
-            isCollapsed
-              ? t('admin.layout.expandSidebar')
-              : t('admin.layout.collapseSidebar')
+            isCollapsed ? t('admin.layout.expandSidebar') : t('admin.layout.collapseSidebar')
           "
           @click="toggleSidebar"
           :aria-expanded="!isCollapsed"
@@ -207,12 +204,6 @@ function signOut(): void {
   user-select: none;
 }
 
-.brand-link {
-  display: inline-flex;
-  min-width: 0;
-  text-decoration: none;
-}
-
 .sidebar-toggle,
 .mobile-menu,
 .sign-out {
@@ -307,10 +298,6 @@ function signOut(): void {
   justify-content: center;
   min-height: 64px;
   padding: var(--vg-space-2);
-}
-
-.admin-sidebar.is-collapsed .brand-link {
-  display: none;
 }
 
 .admin-sidebar.is-collapsed .sidebar-toggle {

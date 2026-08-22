@@ -332,6 +332,10 @@ public class AdminService {
         }
 
         settingsRepository.save(settings);
+        int effectiveCreditLimit = settings.getCreditQuotaOverride() != null
+                ? settings.getCreditQuotaOverride()
+                : plan.getMonthlyCreditLimit();
+        creditBalanceService.updateCurrentPeriodLimitSnapshot(userId, effectiveCreditLimit);
         auditService.recordCurrentUser("PLAN_UPDATE", userId, "USER", userId.toString(),
                 details("previousPlanCode", previousPlanCode, "planCode", request.planCode(),
                         "storageQuotaBytes", user.getQuotaBytes()));

@@ -375,7 +375,7 @@ class AdminServiceTest {
     void updatePlan_succeeds() {
         UUID userId = UUID.randomUUID();
         UserAccountSettings settings = UserAccountSettings.builder().userId(userId).build();
-        Plan plan = Plan.builder().code("PRO").storageLimitBytes(2000L).build();
+        Plan plan = Plan.builder().code("PRO").storageLimitBytes(2000L).monthlyCreditLimit(200).build();
         User user = User.builder().id(userId).email("test@test.local").displayName("Test").role(Role.USER).quotaBytes(100L).build();
 
         when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
@@ -388,6 +388,29 @@ class AdminServiceTest {
         assertEquals("PRO", response.planCode());
         assertEquals(0L, response.quotaMb());
         verify(settingsRepository).save(settings);
+        verify(creditBalanceService).updateCurrentPeriodLimitSnapshot(userId, 200);
+    }
+
+    @Test
+    @DisplayName("updatePlan preserves a credit override while changing the plan")
+    void updatePlan_preservesCreditOverride() {
+        UUID userId = UUID.randomUUID();
+        UserAccountSettings settings = UserAccountSettings.builder()
+                .userId(userId)
+                .creditQuotaOverride(750)
+                .build();
+        Plan plan = Plan.builder().code("MAX").storageLimitBytes(4000L).monthlyCreditLimit(2000).build();
+        User user = User.builder().id(userId).email("test@test.local").displayName("Test")
+                .role(Role.USER).quotaBytes(100L).build();
+
+        when(settingsRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(settings));
+        when(planRepository.findByCode("MAX")).thenReturn(Optional.of(plan));
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findById(userId)).thenReturn(Optional.of(settings));
+
+        adminService.updatePlan(userId, new AdminUserUpdatePlanRequest("MAX"));
+
+        verify(creditBalanceService).updateCurrentPeriodLimitSnapshot(userId, 750);
     }
 
     @Test

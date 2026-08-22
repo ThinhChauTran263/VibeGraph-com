@@ -471,7 +471,7 @@ export function useSigma(options: UseSigmaOptions) {
             x: p.x,
             y: p.y,
             layoutVal: val,
-            size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN),
+ size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN) * 1.3,
           })
         })
         cacheLayoutPositions(graph)
