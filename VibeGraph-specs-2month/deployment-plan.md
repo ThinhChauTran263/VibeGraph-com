@@ -75,7 +75,11 @@ VIBEGRAPH_CLI_DEVICE_FRONTEND_URL=https://vibegraph.tech
 VIBEGRAPH_TRUST_PROXY=true
 # Proxy peer visible inside the backend container, not an end-user address.
 # Confirm the gateway on the production host before deploy.
-VIBEGRAPH_TRUSTED_PROXIES=172.18.0.1,127.0.0.1
+# Host Caddy/Nginx -> backend published port: use its observed peer (often 172.18.0.1).
+# Proxy container -> backend service: prefer a static proxy IP; if its address is
+# assigned dynamically, use the smallest proxy-only CIDR (for example 172.18.0.0/28),
+# never the whole Docker network unless that network contains only the proxy.
+VIBEGRAPH_TRUSTED_PROXIES=172.18.0.6,172.18.0.1,127.0.0.1
 VIBEGRAPH_CLI_DEVICE_TTL_SECONDS=600
 VIBEGRAPH_CLI_DEVICE_POLL_INTERVAL_SECONDS=2
 VIBEGRAPH_CLI_DEVICE_CLEANUP_CRON=0 20 3 * * ?
@@ -147,6 +151,28 @@ server {
     }
 }
 ```
+
+## Mẫu Caddy + Cloudflare Tunnel
+
+Nếu production dùng Caddy/Cloudflare Tunnel, phải chuyển IP do Cloudflare xác thực tới
+backend. Nếu không, backend chỉ thấy IP container của tunnel (ví dụ `172.18.0.6`) và mọi
+người dùng bị gom vào cùng một network.
+
+```caddyfile
+api.vibegraph.tech {
+    reverse_proxy backend:8080 {
+        # Cloudflare overwrites CF-Connecting-IP at the edge. Restrict the origin so
+        # clients cannot connect directly and spoof this header.
+        header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+        header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+        header_up X-Forwarded-Proto {http.request.proto}
+    }
+}
+```
+
+Sau khi đổi Caddyfile, reload Caddy rồi gửi hai request từ hai mạng khác nhau. Dashboard
+phải xuất hiện hai IP public khác nhau; nếu vẫn thấy `172.18.x.x`, kiểm tra access log của
+proxy để bảo đảm `CF-Connecting-IP`/`X-Forwarded-For` được gửi tới `backend:8080`.
 
 ## Thiết lập production lần đầu
 

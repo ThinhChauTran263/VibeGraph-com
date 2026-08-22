@@ -74,6 +74,33 @@ class ClientAddressResolverTest {
     }
 
     @Test
+    void resolve_trustedProxy_usesCloudflareConnectingIpWhenTunnelOmitsPublicXff() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("172.18.0.0/16"));
+        ClientAddressResolver resolver = new ClientAddressResolver(properties);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.6");
+        request.addHeader("X-Forwarded-For", "172.18.0.6");
+        request.addHeader("CF-Connecting-IP", "198.51.100.77");
+
+        assertThat(resolver.resolve(request)).isEqualTo("198.51.100.77");
+    }
+
+    @Test
+    void resolve_untrustedRemoteProxy_ignoresCloudflareConnectingIp() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("10.0.0.4"));
+        ClientAddressResolver resolver = new ClientAddressResolver(properties);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.6");
+        request.addHeader("CF-Connecting-IP", "198.51.100.77");
+
+        assertThat(resolver.resolve(request)).isEqualTo("172.18.0.6");
+    }
+
+    @Test
     void resolve_invalidForwardedAddress_fallsBackToRemoteAddress() {
         AbuseProperties properties = new AbuseProperties();
         properties.setTrustProxy(true);

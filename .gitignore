@@ -3,6 +3,9 @@
 # ========================================
 .env
 
+# Local production deployment runbook may contain infrastructure details and secrets.
+DEPLOYMENT.md
+
 # ========================================
 # Build Outputs
 # ========================================

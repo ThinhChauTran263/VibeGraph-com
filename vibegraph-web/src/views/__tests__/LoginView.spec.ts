@@ -38,6 +38,16 @@ describe('LoginView', () => {
     expect(header.text()).toContain('VibeGraph')
   })
 
+  it('links only the logo glyph to the home page', async () => {
+    const { wrapper } = await mountLogin()
+
+    const glyphLink = wrapper.get('.auth-page__header a.brand__glyph-link')
+    expect(glyphLink.attributes('href')).toBe('/')
+    expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
+    expect(glyphLink.find('.brand__word').exists()).toBe(false)
+    expect(wrapper.get('.auth-page__header .brand__word').text()).toBe('VibeGraph')
+  })
+
   it('renders Google and GitHub OAuth login links', async () => {
     const { wrapper } = await mountLogin()
 

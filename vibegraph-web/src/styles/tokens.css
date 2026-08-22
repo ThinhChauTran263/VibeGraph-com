@@ -105,6 +105,13 @@ html,
 body {
   margin: 0;
   padding: 0;
+  caret-color: transparent;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable='false']) {
+  caret-color: currentColor;
 }
 
 body {

@@ -122,13 +122,13 @@ describe('LandingView lifecycle cleanup', () => {
     const wrapper = mountLanding()
     const cliText = wrapper.text()
     expect(cliText).toContain('vibegraph login')
-    expect(cliText).toContain('vibegraph push --root ./your-project')
+    expect(cliText).toContain('vibegraph push')
 
     await wrapper.findAll('.guide-tab')[2]?.trigger('click')
     await nextTick()
     const text = wrapper.text()
 
-    expect(text).toContain('https://vibegraph.tech/mcp')
+    expect(text).toContain('https://api.vibegraph.tech/mcp')
     expect(text).toContain('PROJECT_API_KEY')
     expect(text).not.toContain('http://localhost:8080/mcp')
   })

@@ -32,6 +32,7 @@ const SHELL_COMMANDS = [
   { command: "quit", description: "Exit the VibeGraph shell" },
   { command: "doctor", description: "Check backend health" },
   { command: "mcp config", description: "Print MCP client configuration" },
+  { command: "mcp doctor", description: "Verify MCP authentication, handshake, and tools" },
   { command: "mcp install ", description: "Install authenticated MCP proxy (cursor, vscode, or generic)" },
   { command: "login", description: "Sign in and choose a project key in the browser" },
   { command: "key status", description: "Show masked API-key status" },
@@ -52,10 +53,11 @@ const SHELL_COMMANDS = [
   { command: "projects analyze ", description: "Analyze a project graph" },
   { command: "projects delete ", description: "Delete a project" },
   { command: "projects push ", description: "Push local file changes" },
-  { command: "push --root ", description: "Push using the API-key project binding" },
+  { command: "push", description: "Push the current folder using the selected project key" },
+  { command: "push --dry-run", description: "Preview changes for the current folder" },
   { command: "projects status ", description: "Show project status" },
-  { command: "watch ", description: "Watch a local project and push changes" },
-  { command: "watch --root ", description: "Watch using the API-key project binding" },
+  { command: "watch", description: "Watch the current folder and push changes" },
+  { command: "watch --root ", description: "Watch a different local folder" },
   { command: "ignore init", description: "Create a .vibegraphignore file" },
   { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
 ];
@@ -212,6 +214,7 @@ function renderHelpBody() {
   vibegraph me
   vibegraph doctor
   vibegraph mcp config [cursor|vscode|generic] [--name <serverName>]
+  vibegraph mcp doctor
   vibegraph mcp install <cursor|vscode|generic> [--path <file>]
   vibegraph login [--no-browser]
   vibegraph mcp-proxy --stdio
@@ -226,7 +229,8 @@ Projects:
   vibegraph projects status <projectId>
 
 Watch:
-  vibegraph push [--root <localPath>] [--dry-run]
+  vibegraph push [--dry-run]
+  (The current folder is used by default; add --root <localPath> for another folder.)
   vibegraph watch <projectId> --root <localPath>
   vibegraph watch [--root <localPath>]
 
@@ -237,135 +241,190 @@ Ignore:
 async function startInteractiveShell() {
   const config = await loadConfig();
   console.log(renderInteractiveHeader(config));
+  return runInteractiveLineEditor();
+}
 
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: "vibegraph> ",
-    completer: completeShellLine,
-    historySize: 100,
-    removeHistoryDuplicates: true,
-  });
-
+async function runInteractiveLineEditor() {
+  const prompt = "vibegraph> ";
+  const history = [];
+  let historyIndex = 0;
+  let input = "";
+  let cursor = 0;
+  let suggestionIndex = 0;
   let processing = false;
-  let visibleSuggestions = [];
-  let selectedSuggestionIndex = -1;
-  let keypressVersion = 0;
-  let pendingSuggestionLine = null;
-  const refreshSuggestions = (character, key = {}) => {
-    if (!processing) {
-      keypressVersion += 1;
-      if (key.name === "up" || key.name === "down") {
-        const suggestions = selectedSuggestionIndex >= 0
-          ? visibleSuggestions
-          : getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
-        if (!suggestions.length) return;
-        const direction = key.name;
-        key.name = undefined;
-        key.sequence = "";
-        visibleSuggestions = suggestions;
-        const previousSuggestionIndex = selectedSuggestionIndex;
-        selectedSuggestionIndex = getNextSuggestionIndex(
-          selectedSuggestionIndex,
-          direction,
+  let closed = false;
+
+  const render = () => {
+    if (closed) return;
+    const suggestions = getShellSuggestions(input, Number.POSITIVE_INFINITY);
+    if (suggestionIndex >= suggestions.length) suggestionIndex = 0;
+    process.stdout.write(renderInteractiveFrame(
+      prompt,
+      input,
+      cursor,
+      suggestions,
+      suggestionIndex,
+      process.stdout.columns || 80,
+      process.stdout.rows || 24,
+    ));
+  };
+
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(false);
+    process.stdin.off("keypress", onKeypress);
+    process.stdin.pause();
+    process.stdout.write("\r\x1b[0J\n");
+    resolveShell();
+  };
+
+  let resolveShell;
+  const shellDone = new Promise((resolve) => { resolveShell = resolve; });
+  const onKeypress = (str = "", key = {}) => {
+    if (closed) return;
+    if (key.ctrl && key.name === "c") {
+      finish();
+      return;
+    }
+    if (processing) return;
+    if (key.ctrl && key.name === "d") {
+      if (!input) finish();
+      else if (cursor < input.length) {
+        input = input.slice(0, cursor) + input.slice(cursor + 1);
+        suggestionIndex = 0;
+        render();
+      }
+      return;
+    }
+    if (key.name === "return" || key.name === "enter") {
+      const suggestions = getShellSuggestions(input, Number.POSITIVE_INFINITY);
+      const selectedLine = getSelectedSuggestionLine(input, suggestions, suggestionIndex);
+      if (selectedLine) {
+        input = selectedLine;
+        cursor = input.length;
+      }
+      void submit();
+      return;
+    }
+    if (key.name === "backspace") {
+      if (cursor > 0) {
+        input = input.slice(0, cursor - 1) + input.slice(cursor);
+        cursor -= 1;
+        suggestionIndex = 0;
+        render();
+      }
+      return;
+    }
+    if (key.name === "delete") {
+      if (cursor < input.length) {
+        input = input.slice(0, cursor) + input.slice(cursor + 1);
+        suggestionIndex = 0;
+        render();
+      }
+      return;
+    }
+    if (key.name === "left") {
+      cursor = Math.max(0, cursor - 1);
+      render();
+      return;
+    }
+    if (key.name === "right") {
+      cursor = Math.min(input.length, cursor + 1);
+      render();
+      return;
+    }
+    if (key.name === "home") {
+      cursor = 0;
+      render();
+      return;
+    }
+    if (key.name === "end") {
+      cursor = input.length;
+      render();
+      return;
+    }
+    if (key.name === "up" || key.name === "down") {
+      const suggestions = getShellSuggestions(input, Number.POSITIVE_INFINITY);
+      if (suggestions.length) {
+        suggestionIndex = getNextSuggestionIndex(
+          suggestionIndex,
+          key.name,
           suggestions.length,
         );
-        renderLiveSuggestionSelection(
-          readline.line || "",
-          previousSuggestionIndex,
-          selectedSuggestionIndex,
-          visibleSuggestions,
-        );
+        render();
         return;
       }
-      if (key.name === "tab" && selectedSuggestionIndex >= 0) {
-        const selectedLine = getSelectedSuggestionLine(
-          readline.line || "",
-          visibleSuggestions,
-          selectedSuggestionIndex,
-        );
-        if (selectedLine) {
-          key.name = undefined;
-          key.sequence = "";
-          readline.write(null, { ctrl: true, name: "u" });
-          readline.write(selectedLine);
-          selectedSuggestionIndex = -1;
-          visibleSuggestions = [];
-          clearLiveSuggestions();
-        }
-        return;
-      }
-      if ((key.name === "return" || key.name === "enter") && selectedSuggestionIndex >= 0) {
-        pendingSuggestionLine = getSelectedSuggestionLine(
-          readline.line || "",
-          visibleSuggestions,
-          selectedSuggestionIndex,
-        );
-        return;
-      }
-      const refreshVersion = keypressVersion;
-      setImmediate(() => {
-        if (processing || refreshVersion !== keypressVersion) return;
-        selectedSuggestionIndex = -1;
-        visibleSuggestions = getShellSuggestions(readline.line || "", Number.POSITIVE_INFINITY);
-        renderLiveSuggestions(readline.line || "", -1, visibleSuggestions);
-      });
+      if (!history.length) return;
+      historyIndex = key.name === "up"
+        ? Math.max(0, historyIndex - 1)
+        : Math.min(history.length, historyIndex + 1);
+      input = history[historyIndex] || "";
+      cursor = input.length;
+      suggestionIndex = 0;
+      render();
+      return;
+    }
+    if (key.name === "tab") {
+      const suggestions = getShellSuggestions(input, Number.POSITIVE_INFINITY);
+      if (!suggestions.length) return;
+      const selected = suggestions[suggestionIndex % suggestions.length].command;
+      input = input.trimStart().startsWith("/") ? `/${selected}` : selected;
+      cursor = input.length;
+      suggestionIndex = 0;
+      render();
+      return;
+    }
+    if (!key.ctrl && !key.meta && str && !/^[\x00-\x1f\x7f]$/.test(str)) {
+      input = input.slice(0, cursor) + str + input.slice(cursor);
+      cursor += str.length;
+      suggestionIndex = 0;
+      render();
     }
   };
 
-  emitKeypressEvents(process.stdin, readline);
-  process.stdin.prependListener("keypress", refreshSuggestions);
-
-  const processShellInput = async (input) => {
-    processing = true;
-    keypressVersion += 1;
-    const selectedLine = pendingSuggestionLine || getSelectedSuggestionLine(
-      input,
-      visibleSuggestions,
-      selectedSuggestionIndex,
-    );
-    pendingSuggestionLine = null;
-    selectedSuggestionIndex = -1;
-    visibleSuggestions = [];
-    clearLiveSuggestions();
-    const line = (selectedLine || input).trim();
+  const submit = async () => {
+    if (processing) return;
+    const submittedInput = input;
+    const line = normalizeShellInput(submittedInput);
+    input = "";
+    cursor = 0;
+    suggestionIndex = 0;
+    if (line) {
+      if (history[history.length - 1] !== line) history.push(line);
+      historyIndex = history.length;
+    }
+    process.stdout.write(`\r\x1b[0J${prompt}${submittedInput}\n`);
     if (!line) {
-      processing = false;
-      readline.prompt();
+      render();
       return;
     }
     if (isShellExitCommand(line)) {
-      readline.close();
+      finish();
       return;
     }
-    if (isShellHelpCommand(line)) {
-      printShellHelp();
-      processing = false;
-      readline.prompt();
-      return;
-    }
-
+    processing = true;
+    process.stdin.off("keypress", onKeypress);
+    if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(false);
     try {
-      await dispatchCommand(parseShellArgs(line));
+      if (isShellHelpCommand(line)) printShellHelp();
+      else await dispatchCommand(parseShellArgs(line));
     } catch (error) {
       console.error(error instanceof CliError ? error.message : error?.stack || String(error));
     } finally {
+      if (!closed && process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+      if (!closed) process.stdin.on("keypress", onKeypress);
       processing = false;
-      readline.prompt();
+      render();
     }
   };
 
-  return new Promise((resolve) => {
-    readline.on("line", (input) => { void processShellInput(input); });
-
-    readline.on("close", () => {
-      process.stdin.off("keypress", refreshSuggestions);
-      clearLiveSuggestions();
-      resolve();
-    });
-
-    readline.prompt();
-  });
+  emitKeypressEvents(process.stdin);
+  if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+  process.stdin.on("keypress", onKeypress);
+  process.stdin.once("end", finish);
+  render();
+  await shellDone;
 }
 
 function renderInteractiveHeader(config = {}, cwd = process.cwd()) {
@@ -383,7 +442,7 @@ function renderInteractiveHeader(config = {}, cwd = process.cwd()) {
     `${colorize("VibeGraph CLI", "bold")} ${colorize(`v${CLI_VERSION}`, "dim")}`,
     `${colorize("Path", "dim")}: ${cwd}`,
     `${colorize("API", "dim")}: ${apiUrl(config)}`,
-    colorize("Type /help for commands, /exit to quit.", "dim"),
+    colorize("Up/Down select; Tab completes; Enter runs.", "dim"),
   ];
   return icon.map((row, index) => `${row}  ${text[index] || ""}`).join("\n");
 }
@@ -394,6 +453,58 @@ function isShellExitCommand(command) {
 
 function isShellHelpCommand(command) {
   return ["/help", "help"].includes(command.trim().toLowerCase());
+}
+
+function normalizeShellInput(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const withoutPrompt = trimmed.replace(/^vibegraph(?:-cli)?>\s*/i, "");
+  if (/^vibegraph(?:-cli)?$/i.test(withoutPrompt)) return "help";
+  return withoutPrompt.replace(/^vibegraph(?:-cli)?\s+/i, "").trim();
+}
+
+function getInlineSuggestion(input, command) {
+  if (!input || !command) return "";
+  const prefix = input.trimStart().startsWith("/") ? "/" : "";
+  const candidate = `${prefix}${command}`;
+  if (!candidate.toLowerCase().startsWith(input.toLowerCase())) return "";
+  return candidate.slice(input.length);
+}
+
+function renderInteractiveFrame(
+  prompt,
+  input,
+  cursor,
+  suggestions = [],
+  selectedIndex = 0,
+  columns = 80,
+  rows = 24,
+) {
+  const terminalWidth = Math.max(20, columns);
+  const inputWidth = Math.max(1, terminalWidth - prompt.length - 1);
+  const viewStart = cursor >= inputWidth ? cursor - inputWidth + 1 : 0;
+  const visibleInput = input.slice(viewStart, viewStart + inputWidth);
+  const visibleCursor = Math.max(0, cursor - viewStart);
+  const selected = suggestions[selectedIndex] || suggestions[0];
+  const ghost = getInlineSuggestion(input, selected?.command);
+  const hint = cursor === input.length ? ghost : "";
+  const availableHintWidth = Math.max(0, inputWidth - visibleInput.length);
+  const visibleHint = truncateTerminalText(hint, availableHintWidth);
+  const maxPanelRows = Math.max(1, Math.min(5, rows - 2));
+  const panel = renderShellSuggestionPanel(
+    input,
+    selectedIndex,
+    suggestions,
+    terminalWidth,
+    maxPanelRows,
+  );
+  const panelLines = panel ? panel.split("\n") : [];
+  const renderedPanel = panelLines.map((line) => `\r\n${line}`).join("");
+  const moveUp = panelLines.length ? `\x1b[${panelLines.length}A` : "";
+  const cursorColumn = prompt.length + visibleCursor;
+  const moveRight = cursorColumn > 0 ? `\x1b[${cursorColumn}C` : "";
+  return `\r\x1b[0J${prompt}${visibleInput}${colorize(visibleHint, "dim")}`
+    + `${renderedPanel}${moveUp}\r${moveRight}`;
 }
 
 function completeShellLine(line) {
@@ -447,9 +558,10 @@ function renderShellSuggestionPanel(
   selectedIndex = -1,
   providedSuggestions = null,
   terminalWidth = Number.POSITIVE_INFINITY,
+  windowSize = 6,
 ) {
   const allSuggestions = providedSuggestions || getShellSuggestions(line, Number.POSITIVE_INFINITY);
-  const suggestions = getSuggestionWindow(allSuggestions, selectedIndex);
+  const suggestions = getSuggestionWindow(allSuggestions, selectedIndex, windowSize);
   if (!allSuggestions.length) {
     return "";
   }
@@ -627,6 +739,9 @@ function parseShellArgs(line) {
 export {
   isShellExitCommand,
   isShellHelpCommand,
+  normalizeShellInput,
+  getInlineSuggestion,
+  renderInteractiveFrame,
   completeShellLine,
   getNextSuggestionIndex,
   getSuggestionWindow,
@@ -636,6 +751,8 @@ export {
   apiRequest,
   buildLiveSuggestionClearSequence,
   buildMcpServerConfig,
+  mergeMcpJson,
+  probeMcpProxy,
   handleDoctor,
   maskApiKey,
   parsePushCommandArgs,
@@ -666,6 +783,11 @@ async function handleMcp(args) {
     console.log(JSON.stringify(buildMcpServerConfig(configuredName, target), null, 2));
     return;
   }
+  if (subcommand === "doctor") {
+    if (args.length) throw new CliError("Usage: vibegraph mcp doctor", 2);
+    await handleMcpDoctor();
+    return;
+  }
   if (subcommand !== "install") {
     throw new CliError(`Unknown MCP command: ${subcommand}`, 2);
   }
@@ -679,8 +801,9 @@ async function handleMcp(args) {
   const filePath = resolveMcpConfigPath(target, options.path);
   const section = target === "vscode" ? "servers" : "mcpServers";
   const server = buildMcpServerConfig("vibegraph", target)[section].vibegraph;
-  await mergeMcpJson(filePath, section, "vibegraph", server);
-  console.log(`VibeGraph MCP installed in ${filePath}`);
+  const action = await mergeMcpJson(filePath, section, "vibegraph", server);
+  console.log(`VibeGraph MCP ${action} in ${filePath}`);
+  await handleMcpDoctor();
 }
 
 async function assertMcpAuth() {
@@ -711,15 +834,94 @@ async function mergeMcpJson(filePath, section, serverName, serverConfig) {
       throw new CliError(`Cannot read MCP config ${filePath}: ${error.message}`, 1);
     }
   }
-  if (current?.[section]?.[serverName]) {
-    console.log(`VibeGraph MCP is already configured in ${filePath}; existing settings were preserved.`);
-    return;
-  }
+  const existing = current?.[section]?.[serverName];
+  if (existing && JSON.stringify(existing) === JSON.stringify(serverConfig)) return "verified";
   const merged = {
     ...current,
     [section]: { ...(current[section] || {}), [serverName]: serverConfig },
   };
   await writeJsonFileAtomically(filePath, merged);
+  return existing ? "updated" : "installed";
+}
+
+async function handleMcpDoctor() {
+  await assertMcpAuth();
+  const result = await probeMcpProxy();
+  console.log(JSON.stringify({
+    status: "ready",
+    apiUrl: apiUrl(await loadConfig()),
+    server: result.serverInfo,
+    protocolVersion: result.protocolVersion,
+    toolCount: result.tools.length,
+    tools: result.tools.map((tool) => tool.name),
+  }, null, 2));
+  console.log("MCP is ready. Restart or reload the IDE MCP server if tools are not visible yet.");
+}
+
+async function probeMcpProxy(timeoutMs = 15_000) {
+  const messages = [
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "vibegraph-cli-doctor", version: CLI_VERSION },
+      },
+    },
+    { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+  ];
+  const command = mcpProxyCommand();
+  const child = spawn(command[0], command.slice(1), {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  child.stdin.end(`${messages.map((message) => JSON.stringify(message)).join("\n")}\n`);
+
+  const exitCode = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new CliError(`MCP proxy handshake timed out after ${timeoutMs}ms.`, 3));
+    }, timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(new CliError(`Cannot start the MCP proxy: ${error.message}`, 3));
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+  });
+  if (exitCode !== 0) {
+    throw new CliError(`MCP proxy exited with code ${exitCode}: ${stderr.trim() || "no error details"}`, 3);
+  }
+  const responses = stdout.split(/\r?\n/).filter(Boolean).map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      throw new CliError("MCP proxy returned non-JSON output on stdout.", 3);
+    }
+  });
+  const initialized = responses.find((message) => message.id === 1);
+  const listed = responses.find((message) => message.id === 2);
+  if (initialized?.error) throw new CliError(`MCP initialize failed: ${initialized.error.message}`, 3);
+  if (!initialized?.result?.serverInfo) throw new CliError("MCP initialize did not return server information.", 3);
+  if (listed?.error) throw new CliError(`MCP tools/list failed: ${listed.error.message}`, 3);
+  const tools = listed?.result?.tools;
+  if (!Array.isArray(tools) || tools.length === 0) {
+    throw new CliError("MCP connected successfully but returned no tools.", 3);
+  }
+  return {
+    serverInfo: initialized.result.serverInfo,
+    protocolVersion: initialized.result.protocolVersion,
+    tools,
+  };
 }
 
 async function writeJsonFileAtomically(filePath, value) {
@@ -747,46 +949,99 @@ async function handleMcpProxy(args) {
     try {
       message = JSON.parse(line);
     } catch {
-      throw new CliError("MCP proxy received invalid JSON on stdin.", 2);
+      writeMcpError(null, -32700, "MCP proxy received invalid JSON on stdin.");
+      continue;
     }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-        ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
-      },
-      body: JSON.stringify(message),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    sessionId = response.headers.get("mcp-session-id") || sessionId;
-    if (response.status === 202 || response.status === 204) continue;
-    if (!response.ok) {
-      const detail = await response.text();
-      if (response.status === 401 || response.status === 403) {
-        throw new CliError(
-          "VibeGraph MCP credential is no longer valid or permitted. Run: vibegraph key change",
-          3,
-        );
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json, text/event-stream",
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+          ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
+        },
+        body: JSON.stringify(message),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      sessionId = response.headers.get("mcp-session-id") || sessionId;
+      if (response.status === 202 || response.status === 204) continue;
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          writeMcpRequestError(
+            message,
+            -32001,
+            "VibeGraph MCP credential is no longer valid or permitted. Run: vibegraph key change",
+          );
+          continue;
+        }
+        writeMcpRequestError(message, -32000, `VibeGraph MCP upstream returned HTTP ${response.status}.`);
+        continue;
       }
-      throw new CliError(`MCP upstream HTTP ${response.status}: ${detail || response.statusText}`, 1);
-    }
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("text/event-stream")) {
-      await forwardSseMessages(response);
-    } else {
-      process.stdout.write(`${JSON.stringify(await response.json())}\n`);
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("text/event-stream")) {
+        await forwardSseMessages(response, message.id);
+      } else {
+        process.stdout.write(`${JSON.stringify(await response.json())}\n`);
+      }
+    } catch (error) {
+      const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+      writeMcpRequestError(
+        message,
+        -32000,
+        timedOut
+          ? `VibeGraph MCP request timed out after ${REQUEST_TIMEOUT_MS}ms.`
+          : "VibeGraph MCP upstream request failed.",
+      );
     }
   }
 }
 
-async function forwardSseMessages(response) {
-  const body = await response.text();
-  for (const line of body.split(/\r?\n/)) {
-    if (!line.startsWith("data:")) continue;
-    const data = line.slice(5).trim();
-    if (data && data !== "[DONE]") process.stdout.write(`${data}\n`);
+function writeMcpRequestError(message, code, errorMessage) {
+  if (!message || !Object.prototype.hasOwnProperty.call(message, "id")) return;
+  writeMcpError(message.id ?? null, code, errorMessage);
+}
+
+function writeMcpError(id, code, errorMessage) {
+  process.stdout.write(`${JSON.stringify({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message: errorMessage },
+  })}\n`);
+}
+
+async function forwardSseMessages(response, requestId) {
+  if (!response.body) {
+    throw new Error("MCP SSE response did not include a body.");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let responseReceived = false;
+  try {
+    while (!responseReceived) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = done ? "" : events.pop() || "";
+      for (const event of events) {
+        const data = event.split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n")
+          .trim();
+        if (!data || data === "[DONE]") continue;
+        const parsed = JSON.parse(data);
+        process.stdout.write(`${JSON.stringify(parsed)}\n`);
+        if (Object.prototype.hasOwnProperty.call(parsed, "id") && parsed.id === requestId) {
+          responseReceived = true;
+          break;
+        }
+      }
+      if (done) break;
+    }
+  } finally {
+    if (responseReceived) await reader.cancel().catch(() => {});
   }
 }
 
@@ -1050,7 +1305,7 @@ async function saveApiKey(config, apiKey) {
 }
 
 async function handleMe() {
-  const user = await apiRequest("/api/auth/me", { auth: true });
+  const user = await apiRequest("/api/auth/me", { auth: "jwt-only" });
   console.log(JSON.stringify(user, null, 2));
 }
 
@@ -1058,7 +1313,7 @@ async function handleProjects(args) {
   const subcommand = args.shift() || "list";
 
   if (subcommand === "list") {
-    const projects = await apiRequest("/api/projects", { auth: true });
+    const projects = await apiRequest("/api/projects", { auth: "jwt-only" });
     if (!projects.length) {
       console.log("No projects.");
       return;
@@ -1074,7 +1329,7 @@ async function handleProjects(args) {
     const rootPath = requiredOption(options, "path");
     const project = await apiRequest("/api/projects", {
       method: "POST",
-      auth: true,
+      auth: "jwt-only",
       body: {
         rootPath,
         name: options.name,
@@ -1090,7 +1345,7 @@ async function handleProjects(args) {
     const requestPath = requiredOption(options, "path");
     const project = await apiRequest("/api/projects/import-local", {
       method: "POST",
-      auth: true,
+      auth: "jwt-only",
       body: {
         path: requestPath,
         name: options.name
@@ -1107,7 +1362,7 @@ async function handleProjects(args) {
     }
     const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/analyze`, {
       method: "POST",
-      auth: true
+      auth: "jwt-only"
     });
     console.log(JSON.stringify(result, null, 2));
     return;
@@ -1120,7 +1375,7 @@ async function handleProjects(args) {
     }
     await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, {
       method: "DELETE",
-      auth: true,
+      auth: "jwt-only",
       unwrap: false
     });
     console.log(`Deleted project ${projectId}`);
@@ -1141,7 +1396,7 @@ async function handleProjects(args) {
     if (!projectId) {
       throw new CliError("Usage: vibegraph projects status <projectId>", 2);
     }
-    const project = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, { auth: true });
+    const project = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, { auth: "jwt-only" });
     console.log(JSON.stringify({
       id: project.id,
       name: project.name,
@@ -1243,6 +1498,15 @@ async function handleDoctor() {
   }
   const health = await response.json();
   const apiKey = configuredApiKey(config);
+  let authenticated = false;
+  if (config.token) {
+    try {
+      await apiRequest("/api/auth/me", { auth: "jwt-only" });
+      authenticated = true;
+    } catch (error) {
+      if (!(error instanceof CliError) || !/HTTP 401/i.test(error.message)) throw error;
+    }
+  }
   let apiKeyStatus = "not configured";
   if (apiKey) {
     try {
@@ -1259,7 +1523,7 @@ async function handleDoctor() {
   console.log(JSON.stringify({
     apiUrl: apiUrl(config),
     health: health.status,
-    authenticated: Boolean(config.token),
+    authenticated,
     apiKey: maskApiKey(apiKey),
     apiKeyStatus,
   }, null, 2));
@@ -1283,7 +1547,15 @@ async function apiRequestWithConfig(endpoint, options, config, allowRefresh) {
     const apiKey = configuredApiKey(config);
     const apiKeyOnly = options.auth === "api-key-only";
     const apiKeyFirst = options.auth === "api-key-first";
-    if (apiKey && (apiKeyOnly || apiKeyFirst || !config.token)) {
+    const jwtOnly = options.auth === "jwt-only";
+    if (jwtOnly && !config.token) {
+      throw new CliError(
+        "A valid account session is required. Project API keys only authorize project-bound CLI/MCP operations. "
+          + "Run: vibegraph login --email <email> --password <password>",
+        3,
+      );
+    }
+    if (apiKey && !jwtOnly && (apiKeyOnly || apiKeyFirst || !config.token)) {
       headers["X-API-Key"] = apiKey;
     } else if (config.token && !apiKeyOnly) {
       headers.Authorization = `Bearer ${config.token}`;
@@ -1321,6 +1593,13 @@ async function apiRequestWithConfig(endpoint, options, config, allowRefresh) {
     if (response.status === 401 && headers["X-API-Key"]) {
       throw new CliError(
         `HTTP 401: The selected project API key is no longer valid. It may have been deleted, rotated, disabled, or expired. Run: vibegraph key change (${message})`,
+        3,
+      );
+    }
+    if (response.status === 401 && options.auth === "jwt-only") {
+      throw new CliError(
+        "HTTP 401: The saved account session is expired or invalid. The selected project API key may still be active "
+          + "for push and MCP. Run: vibegraph login --email <email> --password <password>",
         3,
       );
     }

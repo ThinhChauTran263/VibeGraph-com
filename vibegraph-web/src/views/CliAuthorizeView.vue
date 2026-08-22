@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import CliAuthorizationForm from '@/components/auth/CliAuthorizationForm.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import { ApiError, type Project } from '@/lib/api'
 import { cliAuthorizationApi } from '@/lib/cliAuthorization'
@@ -26,6 +27,21 @@ const authorizationPath = route.fullPath.split('#')[0] ?? route.path
 const preferredApiKeyId = typeof route.query.key === 'string' ? route.query.key : ''
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 
+const apiKeyOptions = computed(() =>
+  apiKeys.value.length
+    ? apiKeys.value.map((key) => ({
+        value: key.id,
+        label: `${key.keyPrefix}  /  ${key.project?.name || key.name}`,
+      }))
+    : [{ value: '', label: 'No active revealable keys' }],
+)
+
+const projectOptions = computed(() =>
+  projects.value.length
+    ? projects.value.map((project) => ({ value: project.id, label: project.name }))
+    : [{ value: '', label: 'No projects yet' }],
+)
+
 const accountInitial = computed(() => {
   const value = auth.user?.displayName || auth.user?.email || 'V'
   return value.trim().charAt(0).toUpperCase()
@@ -34,7 +50,9 @@ const accountInitial = computed(() => {
 const canApprove = computed(() => {
   if (approving.value || completedProject.value) return false
   if (mode.value === 'KEY') return Boolean(selectedApiKeyId.value)
-  return mode.value === 'EXISTING' ? Boolean(selectedProjectId.value) : Boolean(projectName.value.trim())
+  return mode.value === 'EXISTING'
+    ? Boolean(selectedProjectId.value)
+    : Boolean(projectName.value.trim())
 })
 
 const selectedApiKeyId = ref('')
@@ -83,7 +101,9 @@ async function useAnotherAccount(): Promise<void> {
 }
 
 function startKeyRefresh(): void {
-  refreshTimer = setInterval(() => { void refreshKeys() }, 7000)
+  refreshTimer = setInterval(() => {
+    void refreshKeys()
+  }, 7000)
   window.addEventListener('focus', refreshKeys)
   document.addEventListener('visibilitychange', refreshOnVisible)
 }
@@ -111,25 +131,29 @@ function applyKeys(availableKeys: ApiKey[]): void {
   const now = Date.now()
   const next = availableKeys.filter((key) => {
     const expiresAt = key.expiresAt ? Date.parse(key.expiresAt) : Number.POSITIVE_INFINITY
-    return key.disabledAt == null
-      && key.deletedAt == null
-      && key.disabled !== true
-      && key.revealable === true
-      && key.project != null
-      && (!Number.isFinite(expiresAt) || expiresAt > now)
+    return (
+      key.disabledAt == null &&
+      key.deletedAt == null &&
+      key.disabled !== true &&
+      key.revealable === true &&
+      key.project != null &&
+      (!Number.isFinite(expiresAt) || expiresAt > now)
+    )
   })
   const previous = selectedApiKeyId.value
   apiKeys.value = next
   if (previous && !next.some((key) => key.id === previous)) {
     selectedApiKeyId.value = next[0]?.id ?? ''
     if (previous === preferredApiKeyId || previous) {
-      error.value = 'The selected API key was deleted, rotated, disabled, or expired. Choose another key.'
+      error.value =
+        'The selected API key was deleted, rotated, disabled, or expired. Choose another key.'
     }
   } else if (!previous) {
     const preferred = next.find((key) => key.id === preferredApiKeyId)
     selectedApiKeyId.value = preferred?.id ?? next[0]?.id ?? ''
     if (preferredApiKeyId && !preferred) {
-      error.value = 'The previously selected API key was deleted, rotated, disabled, or expired. Choose another key.'
+      error.value =
+        'The previously selected API key was deleted, rotated, disabled, or expired. Choose another key.'
     }
   }
 }
@@ -153,8 +177,8 @@ async function approve(): Promise<void> {
       ...(mode.value === 'KEY'
         ? { apiKeyId: selectedApiKeyId.value }
         : mode.value === 'EXISTING'
-        ? { projectId: selectedProjectId.value }
-        : { projectName: projectName.value.trim() }),
+          ? { projectId: selectedProjectId.value }
+          : { projectName: projectName.value.trim() }),
     })
     completedProject.value = result.projectName || result.projectId
     clearPendingAuthorization()
@@ -171,27 +195,39 @@ function clearPendingAuthorization(): void {
 }
 
 function apiMessage(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : 'VibeGraph could not authorize this CLI request.'
+  return cause instanceof ApiError
+    ? cause.message
+    : 'VibeGraph could not authorize this CLI request.'
 }
 </script>
 
 <template>
   <main class="cli-auth">
     <section class="cli-auth__card" aria-labelledby="cli-auth-title">
-      <BrandMark :size="38" :show-wordmark="true" />
+      <BrandMark :size="38" :show-wordmark="true" glyph-to="/" glyph-aria-label="VibeGraph home" />
       <div class="cli-auth__eyebrow">Secure device authorization</div>
       <h1 id="cli-auth-title">
-        {{ completedProject ? 'Sign in successful' : accountConfirmed ? 'Connect VibeGraph CLI' : 'Approve sign in' }}
+        {{
+          completedProject
+            ? 'Sign in successful'
+            : accountConfirmed
+              ? 'Connect VibeGraph CLI'
+              : 'Approve sign in'
+        }}
       </h1>
       <p class="cli-auth__intro">
-        {{ completedProject
-          ? 'You can close this tab and return to your terminal.'
-          : accountConfirmed
-          ? 'Choose the project key this installation may push and query through MCP. The credential stays project-bound and can be revoked from your account.'
-          : 'VibeGraph CLI is requesting permission to connect to your account.' }}
+        {{
+          completedProject
+            ? 'You can close this tab and return to your terminal.'
+            : accountConfirmed
+              ? 'Choose the project key this installation may push and query through MCP. The credential stays project-bound and can be revoked from your account.'
+              : 'VibeGraph CLI is requesting permission to connect to your account.'
+        }}
       </p>
 
-      <div v-if="loading" class="cli-auth__state" role="status">Checking your VibeGraph account...</div>
+      <div v-if="loading" class="cli-auth__state" role="status">
+        Checking your VibeGraph account...
+      </div>
       <div v-else-if="completedProject" class="cli-auth__success" role="status">
         <div class="cli-auth__success-icon" aria-hidden="true">&#10003;</div>
         <div class="cli-auth__account" aria-label="Connected account">
@@ -199,7 +235,10 @@ function apiMessage(cause: unknown): string {
           <strong>{{ auth.user?.displayName || auth.user?.email }}</strong>
           <small>{{ auth.user?.email }}</small>
         </div>
-        <p>Connected to <strong>{{ completedProject }}</strong>.</p>
+        <p>
+          Connected to <strong>{{ completedProject }}</strong
+          >.
+        </p>
         <span>You're all set. You can close this tab and return to your terminal.</span>
       </div>
       <div v-else-if="!accountConfirmed" class="cli-auth__confirm">
@@ -218,51 +257,21 @@ function apiMessage(cause: unknown): string {
           Sign in with another account <span aria-hidden="true">&#8250;</span>
         </button>
       </div>
-      <form v-else class="cli-auth__form" @submit.prevent="approve">
-        <div class="cli-auth__modes" role="tablist" aria-label="Authorization mode">
-          <button type="button" :class="{ active: mode === 'KEY' }" :disabled="!apiKeys.length" @click="mode = 'KEY'">
-            Use existing key
-          </button>
-          <button type="button" :class="{ active: mode === 'EXISTING' }" @click="mode = 'EXISTING'">
-            Create key for project
-          </button>
-          <button type="button" :class="{ active: mode === 'NEW' }" @click="mode = 'NEW'">
-            New project
-          </button>
-        </div>
-
-        <label v-if="mode === 'KEY'">
-          API key and project
-          <select v-model="selectedApiKeyId">
-            <option v-if="!apiKeys.length" value="">No active revealable keys</option>
-            <option v-for="key in apiKeys" :key="key.id" :value="key.id">
-              {{ key.keyPrefix }} | {{ key.project?.name || key.name }}
-            </option>
-          </select>
-          <small v-if="!apiKeys.length" class="cli-auth__hint">
-            Create or replace a project key in your VibeGraph account, then refresh this page.
-          </small>
-        </label>
-        <label v-else-if="mode === 'EXISTING'">
-          Project
-          <select v-model="selectedProjectId" :disabled="!projects.length">
-            <option v-if="!projects.length" value="">No projects yet</option>
-            <option v-for="project in projects" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-        </label>
-        <label v-else>
-          Project name
-          <input v-model="projectName" maxlength="120" autocomplete="off" placeholder="My repository" />
-        </label>
-
-        <div v-if="error" class="cli-auth__error" role="alert">{{ error }}</div>
-        <button class="cli-auth__approve" type="submit" :disabled="!canApprove">
-          {{ approving ? 'Connecting...' : 'Authorize CLI' }}
-        </button>
-        <p class="cli-auth__fineprint">VibeGraph never displays the API key in this browser window.</p>
-      </form>
+      <CliAuthorizationForm
+        v-else
+        v-model:mode="mode"
+        v-model:selected-api-key-id="selectedApiKeyId"
+        v-model:selected-project-id="selectedProjectId"
+        v-model:project-name="projectName"
+        :api-key-options="apiKeyOptions"
+        :project-options="projectOptions"
+        :api-keys-available="Boolean(apiKeys.length)"
+        :projects-available="Boolean(projects.length)"
+        :can-approve="canApprove"
+        :approving="approving"
+        :error="error"
+        @submit="approve"
+      />
     </section>
   </main>
 </template>
