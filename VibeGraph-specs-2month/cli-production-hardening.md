@@ -2,7 +2,7 @@
 
 ## Objective
 
-Make `@vibegraph/cli` safe and predictable for production API-key push/watch workflows while
+Make `vibegraph-cli` safe and predictable for production API-key push/watch workflows while
 retaining JWT project-management compatibility.
 
 ## Authentication Contract

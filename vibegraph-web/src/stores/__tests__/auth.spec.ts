@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
     register: vi.fn(),
     logout: vi.fn(),
     me: vi.fn(),
+    meOptional: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number
@@ -29,6 +30,7 @@ const mockAuthApi = authApi as {
   register: ReturnType<typeof vi.fn>
   logout: ReturnType<typeof vi.fn>
   me: ReturnType<typeof vi.fn>
+  meOptional: ReturnType<typeof vi.fn>
 }
 
 const fakeUser: User = {
@@ -243,6 +245,29 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(false)
       expect(store.token).toBeNull()
       expect(localStorage.getItem('vg_token')).toBeNull()
+    })
+  })
+
+  describe('refreshPublicSession', () => {
+    it('clears a stale cached user when the anonymous session endpoint returns null', async () => {
+      const store = useAuthStore()
+      store.user = fakeUser
+      mockAuthApi.meOptional.mockResolvedValue(null)
+
+      await store.refreshPublicSession()
+
+      expect(store.user).toBeNull()
+      expect(localStorage.getItem('vg_user')).toBeNull()
+    })
+
+    it('updates the public CTA session without requiring a protected-route redirect', async () => {
+      const store = useAuthStore()
+      mockAuthApi.meOptional.mockResolvedValue(fakeUser)
+
+      await store.refreshPublicSession()
+
+      expect(store.user).toEqual(fakeUser)
+      expect(JSON.parse(localStorage.getItem('vg_user') ?? 'null')).toEqual(fakeUser)
     })
   })
 })

@@ -67,6 +67,7 @@ import lombok.RequiredArgsConstructor;
 @EnableWebSecurity
 @EnableConfigurationProperties({
         JwtProperties.class,
+        ApiKeyEncryptionProperties.class,
         RealtimeSecurityProperties.class,
         AbuseProperties.class,
         OAuthRedirectProperties.class})

@@ -68,6 +68,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** Refresh a public-page CTA without redirecting anonymous visitors to login. */
+  async function refreshPublicSession(): Promise<void> {
+    try {
+      const me = await authApi.meOptional()
+      if (!me) {
+        clearSession()
+        return
+      }
+      user.value = me
+      localStorage.setItem(USER_KEY, JSON.stringify(me))
+    } catch {
+      // Keep the cached state when a public page cannot reach the API.
+    }
+  }
+
   // ─── Internal helpers ────────────────────────────────────────────────────────
 
   function setSession(response: AuthResponse): void {
@@ -109,5 +124,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     fetchCurrentUser,
+    refreshPublicSession,
   }
 })

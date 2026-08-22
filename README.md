@@ -108,18 +108,43 @@ Xem **[docs/codex/README.md](docs/codex/README.md)** để dùng Codex CLI theo 
 
 ## MCP Configuration
 
-Add to your AI tool's `mcp.json`:
+MCP is authenticated and project-scoped. The recommended setup is to install the CLI stdio proxy;
+it reuses the project key selected by `vibegraph login` without writing the raw key into an IDE
+workspace file:
+
+```bash
+npm install -g vibegraph-cli
+vibegraph config set-url http://localhost:8080       # local only
+vibegraph login                                      # browser approval + project key selection
+vibegraph mcp install cursor                         # or vscode / generic --path <file>
+```
+
+For production replace the URL with `https://vibegraph.tech` (or the deployed API origin). If an IDE
+only supports remote Streamable HTTP, configure `/mcp` with the key in its secret/environment store;
+never paste a raw key into a committed JSON file:
 
 ```json
 {
   "mcpServers": {
     "vibegraph": {
-      "url": "http://localhost:8080/mcp",
-      "transport": "streamable-http"
+      "url": "https://vibegraph.tech/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "X-API-Key": "<PROJECT_API_KEY>"
+      }
     }
   }
 }
 ```
+
+`<PROJECT_API_KEY>` must be the active API key generated for the specific VibeGraph project that
+the IDE should use. It is not the Google/GitHub OAuth secret, JWT secret, or a user-wide key.
+To switch projects in this direct-HTTP JSON mode, replace `<PROJECT_API_KEY>` with the new
+project's key and restart/reload the MCP server in the IDE. When using the CLI stdio proxy instead,
+run `vibegraph key change`, select the new project, then restart/reload MCP; the JSON does not
+change.
+Direct unauthenticated `/mcp` configuration is not supported. A revoked, rotated, expired, or
+foreign project key is rejected; refresh it with `vibegraph key change`.
 
 ## License
 

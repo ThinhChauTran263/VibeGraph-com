@@ -1,15 +1,18 @@
 package com.vibegraph.mcp.orchestration;
 
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -42,6 +45,15 @@ public class AgentTask {
 
     @Column(name = "replacement_task_id", length = 120)
     private String replacementTaskId;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
 
     // IDs of tasks this task explicitly depends on
     @ElementCollection
@@ -77,6 +89,8 @@ public class AgentTask {
         this.status = TaskStatus.PENDING;
         this.retryCount = 0;
         this.maxRetries = maxRetries;
+        this.createdAt = Instant.now();
+        this.updatedAt = this.createdAt;
     }
 
     public String getId() {
@@ -93,6 +107,14 @@ public class AgentTask {
 
     public void setStatus(TaskStatus status) {
         this.status = status;
+        if (status == TaskStatus.COMPLETED
+                || status == TaskStatus.SUPERSEDED
+                || status == TaskStatus.FAILED_TERMINAL) {
+            if (this.completedAt == null) {
+                this.completedAt = Instant.now();
+            }
+        }
+        this.updatedAt = Instant.now();
     }
 
     public int getRetryCount() {
@@ -137,6 +159,45 @@ public class AgentTask {
 
     public String getReplacementTaskId() {
         return replacementTaskId;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
+    }
+
+    @PrePersist
+    void initializeTimestamps() {
+        Instant now = Instant.now();
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+        initializeCompletionTimestamp();
+    }
+
+    @PreUpdate
+    void refreshTimestamps() {
+        updatedAt = Instant.now();
+        initializeCompletionTimestamp();
+    }
+
+    private void initializeCompletionTimestamp() {
+        if (completedAt == null
+                && (status == TaskStatus.COMPLETED
+                || status == TaskStatus.SUPERSEDED
+                || status == TaskStatus.FAILED_TERMINAL)) {
+            completedAt = updatedAt;
+        }
     }
 
     void setReplacementTaskId(String replacementTaskId) {

@@ -41,14 +41,14 @@ spring:
               - openid
               - profile
               - email
-            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL}/login/oauth2/code/{registrationId}
           github:
             client-id: ${GITHUB_CLIENT_ID}
             client-secret: ${GITHUB_CLIENT_SECRET}
             scope:
               - read:user
               - user:email
-            redirect-uri: ${OAUTH_REDIRECT_BASE_URL:{baseUrl}}/login/oauth2/code/{registrationId}
+            redirect-uri: ${OAUTH_REDIRECT_BASE_URL}/login/oauth2/code/{registrationId}
 
   ai:
     mcp:
@@ -61,10 +61,31 @@ spring:
 
 vibegraph:
   auth:
+    api-key-encryption:
+      # No default in production: startup must fail instead of encrypting with a shared/dev key.
+      current-key: ${API_KEY_ENCRYPTION_KEY_CURRENT}
+      previous-key: ${API_KEY_ENCRYPTION_KEY_PREVIOUS:}
+      legacy-secret: ${API_KEY_ENCRYPTION_LEGACY_SECRET:${JWT_SECRET:}}
     oauth:
       frontend-url: ${FRONTEND_URL}
       success-path: ${OAUTH_SUCCESS_PATH:/}
       login-path: ${OAUTH_LOGIN_PATH:/login}
+
+  cli:
+    device:
+      frontend-url: ${VIBEGRAPH_CLI_DEVICE_FRONTEND_URL:${FRONTEND_URL}}
+      ttl-seconds: ${VIBEGRAPH_CLI_DEVICE_TTL_SECONDS:600}
+      poll-interval-seconds: ${VIBEGRAPH_CLI_DEVICE_POLL_INTERVAL_SECONDS:2}
+      cleanup-cron: "${VIBEGRAPH_CLI_DEVICE_CLEANUP_CRON:0 20 3 * * ?}"
+
+  mcp:
+    orchestration:
+      retention:
+        enabled: ${VIBEGRAPH_MCP_TASK_RETENTION_ENABLED:true}
+        retention-days: ${VIBEGRAPH_MCP_TASK_RETENTION_DAYS:90}
+        batch-size: ${VIBEGRAPH_MCP_TASK_RETENTION_BATCH_SIZE:500}
+        max-batches: ${VIBEGRAPH_MCP_TASK_RETENTION_MAX_BATCHES:20}
+        cron: "${VIBEGRAPH_MCP_TASK_RETENTION_CRON:0 15 3 * * ?}"
 
   projects:
     allowed-root: ${VIBEGRAPH_PROJECTS_ALLOWED_ROOT:}

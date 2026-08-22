@@ -8,6 +8,7 @@ vi.mock('@/lib/api', () => ({
     register: vi.fn(),
     logout: vi.fn(),
     me: vi.fn(),
+    meOptional: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number
@@ -33,6 +34,7 @@ const mockAuthApi = authApi as {
   register: ReturnType<typeof vi.fn>
   logout: ReturnType<typeof vi.fn>
   me: ReturnType<typeof vi.fn>
+  meOptional: ReturnType<typeof vi.fn>
 }
 
 const fakeUser: User = {
