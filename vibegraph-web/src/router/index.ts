@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 // stack (Sigma/Graphology/d3-force — the heaviest part of the app). Route-level
 // code splitting keeps first paint to just the shell + the visited view.
 const LandingView = () => import('@/views/LandingView.vue')
+const DocsView = () => import('@/views/DocsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const CliAuthorizeView = () => import('@/views/CliAuthorizeView.vue')
 const RegisterView = () => import('@/views/RegisterView.vue')
@@ -34,6 +35,11 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: LandingView,
+    },
+    {
+      path: '/docs',
+      name: 'docs',
+      component: DocsView,
     },
     {
       path: '/login',
