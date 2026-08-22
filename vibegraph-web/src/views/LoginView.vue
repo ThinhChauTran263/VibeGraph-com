@@ -81,9 +81,13 @@ function preserveOAuthRedirect(): void {
 <template>
   <main class="auth-page">
     <header class="auth-page__header">
-      <RouterLink class="auth-brand" :to="{ name: 'home' }" :aria-label="t('auth.homeAria')">
-        <BrandMark :size="30" :show-wordmark="true" />
-      </RouterLink>
+      <BrandMark
+        class="auth-brand"
+        :size="30"
+        :show-wordmark="true"
+        glyph-to="/"
+        :glyph-aria-label="t('auth.homeAria')"
+      />
       <LanguageSelector />
     </header>
 
@@ -129,12 +133,25 @@ function preserveOAuthRedirect(): void {
         <div class="oauth-actions" aria-label="OAuth sign-in options">
           <p class="oauth-actions__label">{{ t('auth.continueWith') }}</p>
           <div class="oauth-actions__buttons">
-            <a :href="oauthLoginUrl('google')" class="oauth-button oauth-button--google" @click="preserveOAuthRedirect">
+            <a
+              :href="oauthLoginUrl('google')"
+              class="oauth-button oauth-button--google"
+              @click="preserveOAuthRedirect"
+            >
               <img class="oauth-button__icon" :src="googleLogoUrl" alt="" aria-hidden="true" />
               <span class="oauth-button__text">{{ t('auth.signInWithGoogle') }}</span>
             </a>
-            <a :href="oauthLoginUrl('github')" class="oauth-button oauth-button--github" @click="preserveOAuthRedirect">
-              <img class="oauth-button__icon oauth-button__icon--github" :src="githubLogoUrl" alt="" aria-hidden="true" />
+            <a
+              :href="oauthLoginUrl('github')"
+              class="oauth-button oauth-button--github"
+              @click="preserveOAuthRedirect"
+            >
+              <img
+                class="oauth-button__icon oauth-button__icon--github"
+                :src="githubLogoUrl"
+                alt=""
+                aria-hidden="true"
+              />
               <span class="oauth-button__text">{{ t('auth.signInWithGitHub') }}</span>
             </a>
           </div>
@@ -143,7 +160,9 @@ function preserveOAuthRedirect(): void {
 
       <p class="auth-card__footer">
         {{ t('auth.noAccount') }}
-        <RouterLink :to="{ name: 'register' }" class="auth-link">{{ t('auth.createAccount') }}</RouterLink>
+        <RouterLink :to="{ name: 'register' }" class="auth-link">{{
+          t('auth.createAccount')
+        }}</RouterLink>
       </p>
     </div>
   </main>

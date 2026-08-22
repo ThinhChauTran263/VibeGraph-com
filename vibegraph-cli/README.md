@@ -22,8 +22,8 @@ Requires Node.js 20+.
 vibegraph config set-url http://localhost:8080
 # Sign in in the browser and choose the project API key owned by your account.
 vibegraph login
-vibegraph push --root ./projects/demo
-vibegraph watch --root ./projects/demo
+vibegraph push
+vibegraph watch
 ```
 
 For the full walkthrough, see **[docs/local-patch.md](../docs/local-patch.md)**.
@@ -78,10 +78,10 @@ vibegraph config set-url <url>
 ### Projects
 
 ```bash
-vibegraph push --root <hostPath> [--dry-run]
+vibegraph push
+vibegraph push --dry-run
 vibegraph projects list
 vibegraph projects import-local --path <containerPath> --name <name>
-vibegraph projects push <projectId> --root <hostPath> [--dry-run]
 vibegraph projects analyze <projectId>
 vibegraph projects status <projectId>
 vibegraph projects delete <projectId>
@@ -90,13 +90,10 @@ vibegraph projects delete <projectId>
 ### Watch
 
 ```bash
-vibegraph watch --root <hostPath>
-vibegraph watch <projectId> --root <hostPath>
+vibegraph watch
 ```
 
-The root-only forms resolve the project from the configured API key. The project-ID forms are
-retained for compatibility. Push and watch prefer `X-API-Key`; they use the legacy Bearer token
-only when a project ID is explicitly supplied and no API key is configured.
+Push and watch use the current folder and resolve the project from the configured API key.
 
 Watch continuously monitors for file changes and auto-pushes patches. Debounces at 800ms. Press
 Ctrl+C to stop.
@@ -104,7 +101,7 @@ Ctrl+C to stop.
 ### Ignore
 
 ```bash
-vibegraph ignore init [--root <path>]
+vibegraph ignore init
 ```
 
 Generates a `.vibegraphignore` file with default rules.
@@ -125,10 +122,11 @@ The recommended developer-machine setup is the local stdio proxy. It lets the ID
 never contains the raw project API key.
 
 ```bash
-vibegraph config set-url https://vibegraph.tech
+vibegraph config set-url https://api.vibegraph.tech
 vibegraph login
 vibegraph doctor
 vibegraph mcp config
+vibegraph mcp doctor
 ```
 
 `vibegraph mcp config` prints copy/paste JSON in the common `mcpServers` format:
@@ -157,14 +155,21 @@ vibegraph mcp install vscode
 vibegraph mcp install generic --path ./path/to/the/ide-mcp.json
 ```
 
-The install command creates parent directories, merges the existing JSON, and preserves an
-existing `vibegraph` entry. For an IDE that is not listed, use `generic --path` if it accepts the
+The install command creates parent directories, merges the existing JSON, and replaces a stale
+`vibegraph` entry while preserving every other MCP server. It verifies initialize and tools/list
+before reporting that MCP is ready. For an IDE that is not listed, use `generic --path` if it accepts the
 standard `mcpServers` format, or run `vibegraph mcp config` and paste the output into that IDE's
 MCP settings file. You can choose a different server key when copying JSON:
 
 ```bash
 vibegraph mcp config my-vibegraph
 ```
+
+If the IDE says the server was added but no tools appear, run `vibegraph mcp doctor`. A successful
+result reports the server name, protocol version, and tool count. Then restart or reload the IDE's
+MCP server. If the doctor command reports an authentication error, run `vibegraph key change` and
+select an active key owned by your account. Do not paste a `vibegraph>` shell prompt into JSON and
+do not wrap the generated object inside a second `mcpServers` object.
 
 Some clients only support remote Streamable HTTP servers. In that case, configure the `/mcp`
 endpoint directly and put the project API key in the IDE's secret/environment store, never in a
@@ -174,7 +179,7 @@ committed workspace file:
 {
   "mcpServers": {
     "vibegraph": {
-      "url": "https://vibegraph.tech/mcp",
+      "url": "https://api.vibegraph.tech/mcp",
       "transport": "streamable-http",
       "headers": {
         "X-API-Key": "<PROJECT_API_KEY>"

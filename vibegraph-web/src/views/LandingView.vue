@@ -325,8 +325,7 @@ const commandsData = {
 }`,
   },
   plan: {
-    command:
-      'plan_code_change({ projectId: "<selected-project>", changeRequest: "<change>" })',
+    command: 'plan_code_change({ projectId: "<selected-project>", changeRequest: "<change>" })',
     output: `{
   "source": "selected project graph",
   "result": "Plan returned by VibeGraph at call time",
@@ -620,12 +619,20 @@ onBeforeUnmount(() => {
     <!-- ── Nav ── -->
     <header class="lp-nav" :class="{ 'lp-nav--scrolled': scrolled }">
       <div class="lp-nav__inner">
-        <BrandMark :size="30" />
+        <BrandMark :size="30" glyph-to="/" glyph-aria-label="VibeGraph home" />
         <nav class="lp-nav__links" aria-label="Primary">
-          <a href="#goals" :class="{ 'lp-nav__link--active': activeSection === 'goals' }">{{ t('landing.nav.goals') }}</a>
-          <a href="#features" :class="{ 'lp-nav__link--active': activeSection === 'features' }">{{ t('landing.nav.features') }}</a>
-          <a href="#how" :class="{ 'lp-nav__link--active': activeSection === 'how' }">{{ t('landing.nav.howItWorks') }}</a>
-          <a href="#guide" :class="{ 'lp-nav__link--active': activeSection === 'guide' }">{{ t('landing.nav.guide') }}</a>
+          <a href="#goals" :class="{ 'lp-nav__link--active': activeSection === 'goals' }">{{
+            t('landing.nav.goals')
+          }}</a>
+          <a href="#features" :class="{ 'lp-nav__link--active': activeSection === 'features' }">{{
+            t('landing.nav.features')
+          }}</a>
+          <a href="#how" :class="{ 'lp-nav__link--active': activeSection === 'how' }">{{
+            t('landing.nav.howItWorks')
+          }}</a>
+          <a href="#guide" :class="{ 'lp-nav__link--active': activeSection === 'guide' }">{{
+            t('landing.nav.guide')
+          }}</a>
           <RouterLink to="/docs">{{ publicCopy.nav.docs }}</RouterLink>
         </nav>
         <div class="lp-nav__actions">
@@ -766,17 +773,25 @@ onBeforeUnmount(() => {
               <div class="telemetry-inner">
                 <div v-if="selectedNode" class="telemetry-grid">
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.targetSymbol') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.targetSymbol')
+                    }}</span>
                     <span class="telemetry-data text-accent">{{ selectedNode.label }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.symbolType') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.symbolType')
+                    }}</span>
                     <span class="telemetry-data text-capitalize">{{ selectedNode.type }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.blastRadius') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.blastRadius')
+                    }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
-                      {{ t('landing.graph.telemetry.affected', { count: activeImpactNodes.length }) }}
+                      {{
+                        t('landing.graph.telemetry.affected', { count: activeImpactNodes.length })
+                      }}
                     </span>
                   </div>
                   <div class="telemetry-cell">
@@ -976,7 +991,9 @@ onBeforeUnmount(() => {
                       <span class="mock-url-prefix">https://github.com/</span>
                       <span class="mock-url-text">ThinhChauTran263/VibeGraph</span>
                     </div>
-                    <button class="btn btn--primary btn--sm">{{ t('landing.how.mock.analyze') }}</button>
+                    <button class="btn btn--primary btn--sm">
+                      {{ t('landing.how.mock.analyze') }}
+                    </button>
                   </div>
                 </div>
 
@@ -1068,9 +1085,9 @@ onBeforeUnmount(() => {
                         <circle cx="140" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip mini-canvas-tip--danger"
-                        >{{ t('landing.how.mock.upstreamRiskHigh') }}</span
-                      >
+                      <span class="mini-canvas-tip mini-canvas-tip--danger">{{
+                        t('landing.how.mock.upstreamRiskHigh')
+                      }}</span>
                     </div>
                   </div>
                 </div>
@@ -1116,12 +1133,12 @@ onBeforeUnmount(() => {
 npm install -g vibegraph-cli
 
 # Point the CLI at production and sign in in your browser
-vibegraph config set-url https://vibegraph.tech
+vibegraph config set-url https://api.vibegraph.tech
 vibegraph login
 
 # Push or watch a project
-vibegraph push --root ./your-project
-vibegraph watch --root ./your-project</code></pre>
+vibegraph push
+vibegraph watch</code></pre>
               </div>
               <p class="text-sm text-dim">
                 {{ t('landing.guide.step1.envLead') }}
@@ -1138,18 +1155,17 @@ vibegraph watch --root ./your-project</code></pre>
               </p>
               <ul class="guide-list">
                 <li>
-                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong>:
+                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong
+                  >:
                   {{ t('landing.guide.step2.localBody') }}
                 </li>
                 <li>
-                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong>:
-                  {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
+                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong
+                  >: {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
                   <code>.tar</code> {{ t('landing.guide.step2.archiveBodyOr') }}
                   <code>.tar.gz</code> {{ t('landing.guide.step2.archiveBodyTail') }}
                 </li>
-                <li>
-                  🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}
-                </li>
+                <li>🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}</li>
               </ul>
               <p class="text-sm text-dim">
                 {{ t('landing.guide.step2.note') }}
@@ -1169,7 +1185,7 @@ vibegraph watch --root ./your-project</code></pre>
                 <pre><code>{
   "mcpServers": {
     "vibegraph": {
-      "url": "https://vibegraph.tech/mcp",
+      "url": "https://api.vibegraph.tech/mcp",
       "transport": "streamable-http",
       "headers": { "X-API-Key": "&lt;PROJECT_API_KEY&gt;" }
     }
@@ -1199,15 +1215,18 @@ vibegraph watch --root ./your-project</code></pre>
           </p>
           <ul class="guide-list">
             <li>
-              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong>:
+              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong
+              >:
               {{ t('landing.engine.items.private.body') }}
             </li>
             <li>
-              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong>:
+              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong
+              >:
               {{ t('landing.engine.items.incremental.body') }}
             </li>
             <li>
-              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong>:
+              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong
+              >:
               {{ t('landing.engine.items.mcp.body') }}
             </li>
           </ul>
@@ -1317,7 +1336,7 @@ vibegraph watch --root ./your-project</code></pre>
     <footer class="lp-footer">
       <div class="footer-top">
         <div class="footer-brand">
-          <BrandMark :size="24" />
+          <BrandMark :size="24" glyph-to="/" glyph-aria-label="VibeGraph home" />
           <span class="lp-footer__note">{{ t('landing.footer.note') }}</span>
         </div>
         <div class="footer-links">
@@ -1330,9 +1349,9 @@ vibegraph watch --root ./your-project</code></pre>
           </div>
           <div class="footer-col">
             <h4>{{ t('landing.footer.resources') }}</h4>
-            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank"
-              >{{ t('landing.footer.githubRepo') }}</a
-            >
+            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank">{{
+              t('landing.footer.githubRepo')
+            }}</a>
             <a href="#engine">{{ t('landing.footer.engine') }}</a>
           </div>
         </div>

@@ -127,7 +127,7 @@ never paste a raw key into a committed JSON file:
 {
   "mcpServers": {
     "vibegraph": {
-      "url": "https://vibegraph.tech/mcp",
+      "url": "https://api.vibegraph.tech/mcp",
       "transport": "streamable-http",
       "headers": {
         "X-API-Key": "<PROJECT_API_KEY>"

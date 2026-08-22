@@ -60,8 +60,10 @@ async function mountLayout(options: MountLayoutOptions = {}) {
     },
   })
   const account = useAccountStore(pinia)
-  if (options.sessionState !== undefined) account.sessionState = options.sessionState as typeof account.sessionState
-  if (options.sessionStateError) vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
+  if (options.sessionState !== undefined)
+    account.sessionState = options.sessionState as typeof account.sessionState
+  if (options.sessionStateError)
+    vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
   const wrapper = mount(UserLayout, {
     attachTo: document.body,
     global: { plugins: [router, pinia, i18n] },
@@ -110,6 +112,16 @@ describe('UserLayout', () => {
     expect(navigation.text()).toContain('880 credits')
   })
 
+  it('links the brand glyph to the dashboard without linking the wordmark', async () => {
+    const { wrapper } = await mountLayout()
+
+    const glyphLink = wrapper.get('header a.brand__glyph-link')
+    expect(glyphLink.attributes('href')).toBe('/dashboard')
+    expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
+    expect(glyphLink.find('.brand__word').exists()).toBe(false)
+    expect(wrapper.get('header .brand__word').text()).toBe('VibeGraph')
+  })
+
   it('collapses to accessible icon-only navigation and expands with the hamburger', async () => {
     const { wrapper } = await mountLayout()
 
@@ -153,8 +165,12 @@ describe('UserLayout', () => {
 
     const sidebar = wrapper.get('aside[aria-label="User navigation"]')
     expect(sidebar.classes()).toContain('open')
-    expect(wrapper.get('button[aria-label="Open navigation"]').attributes('aria-expanded')).toBe('true')
-    expect(document.activeElement).toBe(sidebar.get('button[aria-label="Close navigation"]').element)
+    expect(wrapper.get('button[aria-label="Open navigation"]').attributes('aria-expanded')).toBe(
+      'true',
+    )
+    expect(document.activeElement).toBe(
+      sidebar.get('button[aria-label="Close navigation"]').element,
+    )
 
     await sidebar.trigger('keydown', { key: 'Escape' })
     await nextTick()

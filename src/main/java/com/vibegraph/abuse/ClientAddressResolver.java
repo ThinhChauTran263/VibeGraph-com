@@ -20,9 +20,20 @@ public class ClientAddressResolver {
         if (!properties.isTrustProxy() || !isTrustedProxy(remote)) {
             return remote;
         }
-        String forwarded = request.getHeader("X-Forwarded-For");
+        String[] forwardedHeaders = {"X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"};
+        for (String headerName : forwardedHeaders) {
+            Optional<String> forwardedAddress =
+                    resolveForwardedHeader(request.getHeader(headerName));
+            if (forwardedAddress.isPresent()) {
+                return forwardedAddress.get();
+            }
+        }
+        return remote;
+    }
+
+    private Optional<String> resolveForwardedHeader(String forwarded) {
         if (forwarded == null || forwarded.isBlank()) {
-            return remote;
+            return Optional.empty();
         }
         // S-M2: walk the chain right-to-left and take the right-most token outside the
         // trusted proxy range. Each trusted hop appends the address it received on the
@@ -39,9 +50,9 @@ public class ClientAddressResolver {
             if (isTrustedProxy(address) || !isPublicClientAddress(address)) {
                 continue;
             }
-            return address;
+            return Optional.of(address);
         }
-        return remote;
+        return Optional.empty();
     }
 
     private boolean isTrustedProxy(String remote) {

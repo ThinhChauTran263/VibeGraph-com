@@ -196,9 +196,13 @@ function signOut(): void {
         >
           <AppIcon name="close" />
         </button>
-        <RouterLink to="/dashboard" :aria-label="t('user.layout.overviewLinkLabel')"
-          ><BrandMark :size="30" :show-wordmark="!collapsed" /></RouterLink
-        ><button
+        <BrandMark
+          :size="30"
+          :show-wordmark="!collapsed"
+          glyph-to="/dashboard"
+          :glyph-aria-label="t('user.layout.overviewLinkLabel')"
+        />
+        <button
           class="sidebar__toggle"
           type="button"
           aria-controls="user-sidebar"
@@ -293,7 +297,10 @@ function signOut(): void {
       <!-- KeepAlive: sidebar navigation must feel instant — views stay mounted
            (no refetch flash, the graph canvas survives) and each view silently
            refreshes its data on re-activation via useSilentRefresh. -->
-      <RouterView v-if="accountStateReady && (!restricted || reportsRouteActive)" v-slot="{ Component }">
+      <RouterView
+        v-if="accountStateReady && (!restricted || reportsRouteActive)"
+        v-slot="{ Component }"
+      >
         <KeepAlive :max="8">
           <component :is="Component" />
         </KeepAlive>
@@ -489,9 +496,6 @@ function signOut(): void {
 .collapsed #user-sidebar header {
   justify-content: center;
 }
-.collapsed #user-sidebar header a {
-  display: none;
-}
 .collapsed #user-sidebar nav a,
 .collapsed .signout,
 .collapsed .sidebar-language {
@@ -644,7 +648,11 @@ function signOut(): void {
   border: 1px solid color-mix(in srgb, var(--vg-danger) 30%, var(--vg-border));
   border-radius: var(--vg-radius-lg);
   background:
-    radial-gradient(circle at 0 0, color-mix(in srgb, var(--vg-danger) 13%, transparent), transparent 38%),
+    radial-gradient(
+      circle at 0 0,
+      color-mix(in srgb, var(--vg-danger) 13%, transparent),
+      transparent 38%
+    ),
     var(--vg-surface);
   box-shadow: var(--vg-shadow-sm);
 }
@@ -733,9 +741,6 @@ function signOut(): void {
     display: grid;
     place-items: center;
     flex: 0 0 auto;
-  }
-  .collapsed #user-sidebar header a {
-    display: flex;
   }
   .collapsed #user-sidebar nav a,
   .collapsed .nav-disabled,
