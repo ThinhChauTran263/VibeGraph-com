@@ -11,17 +11,17 @@ entity users {
   * id : UUID <<PK>>
   --
   * email : VARCHAR
-  password_hash : VARCHAR?
-  display_name : VARCHAR?
-  avatar_url : VARCHAR?
+  password_hash : VARCHAR
+  display_name : VARCHAR
+  avatar_url : VARCHAR
   email_verified : BOOLEAN
   role : VARCHAR
   quota_bytes : BIGINT
   used_bytes : BIGINT
   deactivated : BOOLEAN
-  deactivated_at : TIMESTAMPTZ?
-  deactivation_reason : VARCHAR?
-  deactivation_reason_safe : VARCHAR?
+  deactivated_at : TIMESTAMPTZ
+  deactivation_reason : VARCHAR
+  deactivation_reason_safe : VARCHAR
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -30,7 +30,7 @@ entity user_identities {
   user_id : UUID <<FK>>
   provider : VARCHAR
   provider_user_id : VARCHAR
-  email : VARCHAR?
+  email : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity projects {
@@ -40,25 +40,25 @@ entity projects {
   source_type : VARCHAR
   size_bytes : BIGINT
   status : VARCHAR
-  deleted_at : TIMESTAMPTZ?
+  deleted_at : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
 entity api_keys {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
-  project_id : VARCHAR? <<FK>>
+  project_id : VARCHAR <<FK>>
   key_hash : VARCHAR <<UNIQUE>>
   key_prefix : VARCHAR
-  name : VARCHAR?
+  name : VARCHAR
   created_at : TIMESTAMPTZ
-  last_used_at : TIMESTAMPTZ?
-  expires_at : TIMESTAMPTZ?
-  disabled_at : TIMESTAMPTZ?
-  deleted_at : TIMESTAMPTZ?
-  disabled_by : VARCHAR?
-  disabled_reason : VARCHAR?
-  locked_by : VARCHAR?
+  last_used_at : TIMESTAMPTZ
+  expires_at : TIMESTAMPTZ
+  disabled_at : TIMESTAMPTZ
+  deleted_at : TIMESTAMPTZ
+  disabled_by : VARCHAR
+  disabled_reason : VARCHAR
+  locked_by : VARCHAR
 }
 entity plans {
   * id : UUID <<PK>>
@@ -76,12 +76,12 @@ entity plans {
 entity user_account_settings {
   * user_id : UUID <<PK/FK>>
   plan_id : UUID <<FK>>
-  storage_quota_override_bytes : BIGINT?
-  credit_quota_override : INTEGER?
+  storage_quota_override_bytes : BIGINT
+  credit_quota_override : INTEGER
   api_key_creation_disabled : BOOLEAN
-  blocked_at : TIMESTAMPTZ?
-  blocked_reason : VARCHAR?
-  blocked_reason_safe : VARCHAR?
+  blocked_at : TIMESTAMPTZ
+  blocked_reason : VARCHAR
+  blocked_reason_safe : VARCHAR
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -118,8 +118,8 @@ entity credit_pricing_rules {
 entity credit_ledger {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
-  project_id : VARCHAR? <<FK>>
-  balance_id : UUID? <<FK>>
+  project_id : VARCHAR <<FK>>
+  balance_id : UUID <<FK>>
   source : VARCHAR
   operation_code : VARCHAR
   credits_delta : INTEGER
@@ -131,7 +131,7 @@ entity feature_flags {
   flag_key : VARCHAR <<UNIQUE>>
   scope : VARCHAR
   display_name : VARCHAR
-  description : VARCHAR?
+  description : VARCHAR
   enabled : BOOLEAN
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
@@ -143,11 +143,11 @@ entity announcements {
   target : VARCHAR
   title : VARCHAR
   body : VARCHAR
-  starts_at : TIMESTAMPTZ?
-  ends_at : TIMESTAMPTZ?
+  starts_at : TIMESTAMPTZ
+  ends_at : TIMESTAMPTZ
   dismissible : BOOLEAN
   active : BOOLEAN
-  created_by_user_id : UUID? <<FK>>
+  created_by_user_id : UUID <<FK>>
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -155,24 +155,24 @@ entity user_notifications {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
   announcement_id : UUID <<FK>>
-  read_at : TIMESTAMPTZ?
-  dismissed_at : TIMESTAMPTZ?
+  read_at : TIMESTAMPTZ
+  dismissed_at : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
 }
 entity feedback_reports {
   * id : UUID <<PK>>
-  user_id : UUID? <<FK>>
+  user_id : UUID <<FK>>
   status : VARCHAR
   category : VARCHAR
   title : VARCHAR
-  delete_after : TIMESTAMPTZ?
+  delete_after : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
-  closed_at : TIMESTAMPTZ?
+  closed_at : TIMESTAMPTZ
 }
 entity feedback_messages {
   * id : UUID <<PK>>
   report_id : UUID <<FK>>
-  sender_user_id : UUID? <<FK>>
+  sender_user_id : UUID <<FK>>
   sender_role : VARCHAR
   body : TEXT
   created_at : TIMESTAMPTZ
@@ -181,16 +181,16 @@ entity security_events {
   * id : UUID <<PK>>
   event_type : VARCHAR
   severity : VARCHAR
-  subject_user_id : UUID? <<FK>>
-  api_key_ref : VARCHAR?
-  source : VARCHAR?
-  description : VARCHAR?
+  subject_user_id : UUID <<FK>>
+  api_key_ref : VARCHAR
+  source : VARCHAR
+  description : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity request_events {
   * id : UUID <<PK>>
-  user_id : UUID? <<FK>>
-  api_key_ref : VARCHAR?
+  user_id : UUID <<FK>>
+  api_key_ref : VARCHAR
   ip_address : VARCHAR
   route : VARCHAR
   http_method : VARCHAR
@@ -202,8 +202,8 @@ entity ip_blocks {
   * id : UUID <<PK>>
   ip_address : VARCHAR <<UNIQUE>>
   safe_reason : VARCHAR
-  expires_at : TIMESTAMPTZ?
-  created_by : UUID? <<FK>>
+  expires_at : TIMESTAMPTZ
+  created_by : UUID <<FK>>
   active : BOOLEAN
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
@@ -211,19 +211,19 @@ entity ip_blocks {
 entity audit_logs {
   * id : UUID <<PK>>
   action : VARCHAR
-  actor_user_id : UUID? <<logical ref; no FK after V15>>
-  target_user_id : UUID? <<logical ref; no FK after V15>>
-  target_type : VARCHAR?
-  target_id : VARCHAR?
+  actor_user_id : UUID <<logical ref; no FK after V15>>
+  target_user_id : UUID <<logical ref; no FK after V15>>
+  target_type : VARCHAR
+  target_id : VARCHAR
   outcome : VARCHAR
-  ip_address : VARCHAR?
+  ip_address : VARCHAR
   details : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity audit_retention_settings {
   * id : SMALLINT <<PK>>
   retention_days : INTEGER
-  updated_by : UUID? <<FK>>
+  updated_by : UUID <<FK>>
   updated_at : TIMESTAMPTZ
 }
 entity refresh_sessions {
@@ -232,10 +232,10 @@ entity refresh_sessions {
   family_id : UUID
   token_hash : VARCHAR <<UNIQUE>>
   expires_at : TIMESTAMPTZ
-  last_used_at : TIMESTAMPTZ?
-  revoked_at : TIMESTAMPTZ?
-  revoke_reason : VARCHAR?
-  replaced_by_id : UUID?
+  last_used_at : TIMESTAMPTZ
+  revoked_at : TIMESTAMPTZ
+  revoke_reason : VARCHAR
+  replaced_by_id : UUID
   created_at : TIMESTAMPTZ
 }
 
@@ -288,8 +288,8 @@ class ":Project" as Project <<Node>> {
   fullName : String
   name : String
   path : String
-  createdAt : timestamp?
-  lastAnalyzedAt : timestamp?
+  createdAt : timestamp
+  lastAnalyzedAt : timestamp
 }
 class ":Package" as Package <<Node>> {
   projectId : String

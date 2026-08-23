@@ -1,15 +1,3 @@
-# VibeGraph - All Verified PlantUML Diagrams
-
-This generated file is the complete combined mirror of the three canonical verified
-PlantUML sources. Edit the canonical file for a diagram family, then rerun
-`scripts/sync-diagram-plantuml.ps1`. Evidence baselines and old-to-current decisions are
-recorded in `BASELINE-MANIFEST.md` and `changes/`.
-
----
-
-## Canonical copy: use cases
-
-<!-- canonical-copy-begin: plantuml_usecase.md -->
 # VibeGraph - Verified Use Case Diagrams
 
 These diagrams describe capabilities evidenced by the current source/configuration. They do
@@ -300,271 +288,319 @@ The old diagrams mention forgot-password, email verification, GitLab import, cla
 diagram generation, broad PNG/SVG export, and a 3D graph. Repository search found no current
 endpoint/service contract proving those features, so they are documented as stale in
 `changes/usecase.changes.md` rather than represented as live use cases.
-<!-- canonical-copy-end: plantuml_usecase.md -->
+# VibeGraph - Activity Diagrams (Sơ Đồ Hoạt Động)
 
----
+Tài liệu này chứa toàn bộ các biểu đồ Hoạt động mô tả luồng nghiệp vụ thực tế của hệ thống VibeGraph, tuân thủ đúng lý thuyết UML với hình thoi khởi đầu (Decision Node) và hình thoi hội tụ (Merge Node).
 
-## Canonical copy: activities
-
-<!-- canonical-copy-begin: plantuml_activity.md -->
-# VibeGraph - Verified Activity Diagrams
-
-## 3.1. Local login, OAuth and rotating refresh session
+## 3.1. Đăng ký, Đăng nhập, OAuth2 và Refresh Session
 
 ```plantuml
 @startuml
-|Guest/User|
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
+
+|Khách / Người dùng|
 start
-if (Authentication path?) then (register)
-  :POST /api/auth/register;
-  |AuthController / AuthService|
-  :Validate registration;
-  :Persist new User and default account settings;
-elseif (login)
-  :POST /api/auth/login;
-  |AuthController / AuthService|
-  :Throttle and authenticate existing User;
-else (OAuth callback)
-  :Complete Google/GitHub OAuth2 login;
-  |OAuth2LoginSuccessHandler / AuthService|
-  :Link or create verified provider identity;
-endif
-|AuthService / RefreshSessionService / JwtService|
-:Issue access JWT and hashed refresh-session token;
-|AuthController or OAuth2LoginSuccessHandler|
-:Use AuthCookieService to set access and refresh HttpOnly cookies;
-|Browser|
-:Use authenticated REST request;
-if (Access token expires?) then (yes)
+:Gửi yêu cầu xác thực (Đăng ký, Đăng nhập hoặc OAuth);
+
+|AuthController|
+:Nhận HTTP Request;
+:Throttle tần suất yêu cầu (Rate Limiting);
+
+|AuthService|
+switch (Phương thức xác thực?)
+case ( Đăng ký )
+  :Validate thông tin đăng ký;
+  :Mã hóa mật khẩu bằng BCrypt;
+  :Lưu User mới và AccountSettings vào PostgreSQL;
+case ( Đăng nhập )
+  :Xác thực Email và Mật khẩu trong PostgreSQL;
+case ( OAuth Callback )
+  :Xác thực Google/GitHub OAuth2 Token;
+  :Liên kết hoặc tạo mới User Identity;
+endswitch
+
+|JwtService|
+:Tạo JWT Access Token;
+
+|RefreshSessionService|
+:Tạo Hashed Refresh Session Token;
+:Lưu phiên làm mới vào CSDL PostgreSQL;
+
+|AuthCookieService|
+:Tạo HttpOnly Cookies cho Access & Refresh Token;
+:Gắn Cookies vào HTTP Response;
+
+|Khách / Người dùng|
+:Nhận phản hồi và lưu HttpOnly Cookie;
+
+|Trình duyệt (Browser)|
+:Gửi yêu cầu REST API kèm Cookie;
+switch (Access Token hết hạn?)
+case ( Có )
   :POST /api/auth/refresh;
-  |AuthController / AuthService / RefreshSessionService|
-  :Read refresh cookie, lock row and rotate family token;
-  |AuthController / AuthCookieService|
-  :Set replacement cookies or clear them on unauthorized refresh;
-else (no)
-endif
-|User|
-:POST /api/auth/logout;
-|AuthService / RefreshSessionService|
-:Revoke refresh session;
-|AuthController / AuthCookieService|
-:Clear authentication cookies;
+  |RefreshSessionService|
+  :Đọc Refresh Cookie, lock dòng và xoay vòng Token;
+  |AuthCookieService|
+  :Cấp Cookie thay thế hoặc xóa Cookie nếu không hợp lệ;
+case ( Không )
+  |AuthCookieService|
+endswitch
+
+|Khách / Người dùng|
+:Gửi yêu cầu POST /api/auth/logout;
+|RefreshSessionService|
+:Thu hồi (Revoke) phiên Refresh Session;
+|AuthCookieService|
+:Xóa toàn bộ Authentication Cookies;
+|Khách / Người dùng|
+:Đăng xuất thành công;
 stop
 @enduml
 ```
 
-Evidence: `src/main/java/com/vibegraph/auth/web/AuthController.java:60-135`,
-`src/main/java/com/vibegraph/auth/service/AuthService.java:82-208`,
-`src/main/java/com/vibegraph/auth/oauth/OAuth2LoginSuccessHandler.java:39-66`,
-`src/main/java/com/vibegraph/auth/service/RefreshSessionService.java:76-116`, migrations
-`src/main/resources/db/migration/V18__refresh_sessions.sql` and
-`src/main/resources/db/migration/V19__refresh_session_retention.sql`.
-
-## 3.2. Import and asynchronous analysis
+## 3.2. Import Project (Archive, GitHub, Local) và Phân tích bất đồng bộ
 
 ```plantuml
 @startuml
-|User|
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
+
+|Người dùng|
 start
-if (Source kind?) then (archive)
+:Yêu cầu Import dự án mã nguồn;
+
+split
+  :Chọn file nén (ZIP/Archive);
+  |ImportController|
   :POST /api/projects/import-archive;
   |ArchiveImportService|
-  :Extract archive and register project;
-elseif (GitHub)
+  :Giải nén file và kiểm tra cấu trúc;
+split again
+  |Người dùng|
+  :Cung cấp liên kết GitHub Repository;
+  |ImportController|
   :POST /api/projects/import-github;
   |TarballImportService|
-  :Fetch and extract GitHub tarball;
-else (local)
+  :Tải tarball từ GitHub và giải nén;
+split again
+  |Người dùng|
+  :Chọn đường dẫn thư mục cục bộ (Local);
+  |LocalProjectController|
   :POST /api/projects/import-local;
   |LocalImportService|
-  :Validate root and register local project;
-endif
-|Import service|
-:Persist ownership and project metadata;
-if (Synchronous archive request?) then (yes)
+  :Xác thực đường dẫn và kiểm tra quyền đọc;
+end split
+
+|ImportService|
+:Tạo bản ghi ProjectOwnership và metadata trong PostgreSQL;
+
+switch (Phương thức xử lý phân tích?)
+case ( Đồng bộ - Archive sync HTTP 200 )
   |AnalyzeService|
-  :Parse supported Java files;
-  :Infer flow/CPG edges;
-  :Atomic graphRepository.upsertAnalysis;
-  |Import service|
-  :Return imported project response (200);
-else (async archive, GitHub or local)
-  :Submit analysis directly to analysisExecutor;
-  |Import controller|
-  :Return 202 with ANALYZING/progress=0 after service submission;
+  :Phân tích các file Java và tạo CPG/Flow edges;
+  :Ghi kết quả phân tích vào Neo4j (Atomic);
+  |ImportController|
+  :Trả về HTTP 200 kèm thông tin dự án;
+case ( Bất đồng bộ - Async / GitHub / Local )
+  |ImportService|
+  :Đẩy tác vụ phân tích vào Executor chạy ngầm;
+  |ImportController|
+  :Trả về HTTP 202 (ANALYZING, progress = 0);
   |AnalyzeService|
-  :Parse supported Java files;
-  :Infer flow/CPG edges;
-  :Atomic graphRepository.upsertAnalysis;
-  |Import service|
-  :Mark ANALYZED or FAILED;
-  :Broadcast status over /topic/projects/{id}/status;
-endif
-|User|
-:Observe progress and final state;
+  :Phân tích mã nguồn Java và ghi đồ thị vào Neo4j;
+  |ImportService|
+  :Cập nhật trạng thái ANALYZED và phát sóng qua WebSocket;
+  |ImportController|
+endswitch
+
+|Người dùng|
+:Nhận kết quả và theo dõi tiến trình trên giao diện;
 stop
 @enduml
 ```
 
-Evidence: `src/main/java/com/vibegraph/graph/controller/ImportController.java:29-76`,
-`src/main/java/com/vibegraph/graph/controller/LocalProjectController.java:31-50`,
-`src/main/java/com/vibegraph/graph/service/impl/ArchiveImportServiceImpl.java:132-149`,
-`src/main/java/com/vibegraph/graph/service/impl/TarballImportServiceImpl.java:135-148`,
-`src/main/java/com/vibegraph/graph/service/impl/LocalImportServiceImpl.java:122-171`,
-`src/main/java/com/vibegraph/graph/service/impl/AnalyzeServiceImpl.java:39-120`.
-
-Manual `POST /api/projects/{id}/analyze` is a separate path:
-`src/main/java/com/vibegraph/graph/controller/ProjectController.java:105-121` queues
-`src/main/java/com/vibegraph/graph/service/ProjectAnalysisScheduler.java:55-105`, which
-coalesces duplicate manual requests.
-
-## 3.3. File watcher incremental update
+## 3.3. File Watcher - Cập nhật tăng dần (Incremental Update)
 
 ```plantuml
 @startuml
-|OS|
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
+
+|Hệ điều hành (OS)|
 start
-:CREATE/MODIFY/DELETE event;
-|FileWatcherServiceImpl|
-:WatchService receives event;
-:Reject ignored directories/extensions;
-:Debounce and emit FileChangeEvent;
+:Phát sinh sự kiện thay đổi file (CREATE / MODIFY / DELETE);
+
+|FileWatcherService|
+:WatchService bắt sự kiện từ OS;
+:Bỏ qua các thư mục/extension bị ignore (.git, target);
+:Debounce sự kiện và phát FileChangeEvent;
+
 |FileChangeBroadcaster|
-:Resolve normalized project-relative path;
-:getFileSlice(projectId, path) as before;
-:deleteFile(projectId, path);
-if (CREATE/MODIFY and file still exists?) then (yes)
-  :parseFile(path);
-  :upsertNodes;
-  :upsertEdges;
-else (DELETE/no file)
-endif
-:getFileSlice(projectId, path) as after;
-:Compute added/removed delta from before and after slices;
+:Xác định đường dẫn tương đối của file;
+:Lấy lát cắt đồ thị TRƯỚC thay đổi (getFileSlice);
+:Xóa dữ liệu cũ của file trong Neo4j (deleteFile);
+
+switch (Loại sự kiện thay đổi?)
+case ( Tạo mới / Sửa đổi )
+  |ParserService|
+  :Phân tích lại nội dung file Java (parseFile);
+  |GraphRepository|
+  :Cập nhật Nodes và Edges mới vào Neo4j;
+  |FileChangeBroadcaster|
+case ( Xóa file )
+  |FileChangeBroadcaster|
+  :Ghi nhận thao tác xóa file;
+endswitch
+
+|FileChangeBroadcaster|
+:Lấy lát cắt đồ thị SAU thay đổi (getFileSlice);
+:Tính toán Delta (Added / Removed nodes);
+
 |GraphUpdateController|
-:Broadcast INCREMENTAL update;
-|STOMP client|
-:Apply graph patch;
-stop
+:Phát sóng sự kiện INCREMENTAL qua WebSocket STOMP;
 
-note right
-The three replacement writes are separate repository calls.
-The source catches/logs failure after deletion; no rollback claim is made.
-SOURCE: src/main/java/com/vibegraph/graph/websocket/FileChangeBroadcaster.java:92-123
-end note
+|Client (Giao diện VibeGraph)|
+:Nhận sự kiện WebSocket và cập nhật đồ thị realtime;
+stop
 @enduml
 ```
 
-## 3.4. Graph/source/impact and CLI patch requests
+## 3.4. Khám phá Đồ thị / Mã nguồn & Cập nhật qua CLI Patch
 
 ```plantuml
 @startuml
-|Caller|
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
+
+|Người dùng / CLI|
 start
-if (Browser exploration request?) then (yes)
-  :GET graph, neighbors, impact or bounded source slice;
-  |Graph/source controller|
-  :Assert project ownership;
-  |GraphService / GraphRepository|
-  :Read requested graph or source data;
-  |GraphResponseFilter / GraphPayloadGuard|
-  :Filter and cap graph payload when applicable;
-  |Browser|
-  :Render Sigma.js graph or source/impact result;
-else (CLI patch)
-  :POST /api/projects/{id}/patch or /current/patch;
+switch (Loại yêu cầu?)
+case ( Khám phá đồ thị từ Web )
+  :Gửi yêu cầu GET Graph / Neighbors / Impact / Source;
+  |GraphController|
+  :Xác thực quyền truy cập dự án;
+  |GraphService|
+  :Truy vấn dữ liệu đồ thị từ Neo4j;
+  |GraphPayloadGuard|
+  :Lọc và giới hạn kích thước dữ liệu (Payload Cap);
+  |Giao diện Web|
+  :Render đồ thị tương tác bằng Sigma.js;
+case ( Cập nhật mã nguồn qua CLI Patch )
+  |Người dùng / CLI|
+  :Gửi yêu cầu POST /api/projects/{id}/patch;
   |LocalPatchController|
-  :Validate project-bound key and ownership;
-  |LocalPatchServiceImpl|
-  :Validate all entries, atomically write/delete files, then commit;
-  :Return requiresAnalyze=true when content changed;
+  :Xác thực API Key và quyền sở hữu dự án;
+  |LocalPatchService|
+  :Kiểm tra hợp lệ, ghi/xóa file nguyên tử và Commit;
   |PatchAnalysisScheduler|
-  :Coalesce and schedule full asynchronous re-analysis;
-endif
+  :Gộp và lập lịch phân tích lại toàn bộ bất đồng bộ;
+  |Người dùng / CLI|
+  :Nhận phản hồi patch thành công (requiresAnalyze = true);
+endswitch
+
 stop
 @enduml
 ```
 
-Evidence: `src/main/java/com/vibegraph/graph/controller/GraphController.java:27-136`,
-`src/main/java/com/vibegraph/graph/service/impl/GraphResponseFilter.java:25-176`,
-`src/main/java/com/vibegraph/graph/service/impl/GraphPayloadGuard.java:25-153`,
-`src/main/java/com/vibegraph/graph/controller/SourceController.java:29-53`,
-`src/main/java/com/vibegraph/patch/controller/LocalPatchController.java:25-77`,
-`src/main/java/com/vibegraph/patch/service/impl/LocalPatchServiceImpl.java:399-428`,
-`src/main/java/com/vibegraph/patch/service/PatchAnalysisScheduler.java:21-102`,
-`vibegraph-web/src/components/graph/GraphCanvas.vue` and
-`vibegraph-web/src/lib/api.ts:346-516`. No frontend caller for the local patch endpoint is
-claimed; the controller documents it as a CLI/API-key flow.
-
-## 3.5. Use-case UML response
+## 3.5. Tự động sinh sơ đồ UML (Use Case Diagram)
 
 ```plantuml
 @startuml
-|Browser|
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
+
+|Người dùng|
 start
-:GET /api/projects/{projectId}/diagrams/usecase?style=uml&mode=detailed;
+:Yêu cầu sinh sơ đồ UML (GET /api/projects/{id}/diagrams/usecase);
+
 |DiagramController|
-:Assert owner, feature and ANALYZED status;
+:Xác thực quyền sở hữu và kiểm tra trạng thái dự án (ANALYZED);
+
 |UseCaseDiagramServiceImpl|
-:Load graph through GraphService;
-:UseCaseInferenceEngine infers actors/goals/relations;
-:Return actors/use cases with source and confidence,\nrelations, inference warnings, PlantUML, Mermaid and views;
-|Browser / DiagramPanel|
-:Render sanitized SVG;
-:Zoom, fit, fullscreen, download PNG;
+:Tải cấu trúc đồ thị từ GraphService;
+
+|UseCaseInferenceEngine|
+:Phân tích các Node Controller, Route và Service;
+:Suy luận danh sách Actors, Goals và Mối quan hệ;
+
+|UseCaseDiagramServiceImpl|
+:Tổng hợp kết quả suy luận kèm độ tin cậy (Confidence score);
+:Sinh chuỗi mã sơ đồ (PlantUML và Mermaid syntax);
+
+|Giao diện Web (DiagramPanel)|
+:Render sơ đồ SVG an toàn (Sanitized SVG);
+:Cung cấp các công cụ tương tác (Zoom, Fit, Download PNG);
 stop
 @enduml
 ```
 
-Evidence: `src/main/java/com/vibegraph/diagram/controller/DiagramController.java:39-79`,
-`src/main/java/com/vibegraph/diagram/service/impl/UseCaseDiagramServiceImpl.java:35-116`,
-`src/main/java/com/vibegraph/diagram/service/impl/UseCaseInferenceEngine.java`,
-`vibegraph-web/src/components/diagram/DiagramPanel.vue:347-596`,
-`vibegraph-web/src/lib/api.ts:518-596`.
-
-## 3.6. MCP and admin event streams
+## 3.6. AI Assistant gọi MCP Server & Giám sát Admin
 
 ```plantuml
 @startuml
-|AI client|
-start
-:HTTP streamable request to /mcp;
-|ApiKeyAuthFilter / SecurityConfig|
-:Authenticate X-API-Key and project binding;
-|Spring AI MCP|
-:Resolve one of 18 registered tools;
-|MeteredToolCallback|
-:Check feature/ownership and meter credits;
-|MCP analyzer|
-:Resolve the selected tool's bounded data source;
-|AI client|
-:Receive bounded structured result;
-stop
+skinparam activity {
+  BackgroundColor white
+  BorderColor #333333
+  ArrowColor #666666
+}
 
-|Admin browser|
+|AI Coding Assistant|
 start
-:GET /api/admin/security/stream or /api/admin/audit-logs/stream;
-|Admin controller/service|
-:Authorize ADMIN and publish sanitized SSE events;
-|Admin browser|
-:Update security/audit console;
+:Gửi yêu cầu HTTP Streamable request tới /mcp;
+:Kèm theo Header X-API-Key;
+
+|ApiKeyAuthFilter|
+:Xác thực X-API-Key và kiểm tra liên kết dự án;
+switch (API Key có hợp lệ?)
+case ( Không )
+  :Trả về lỗi 401 Unauthorized;
+  stop
+case ( Có )
+  |Spring AI MCP Server|
+  :Xác định 1 trong 18 MCP Tools đã đăng ký;
+
+  |MeteredToolCallback|
+  :Kiểm tra quyền truy cập và trừ Credit sử dụng;
+
+  |MCP Tool Handler|
+  :Truy vấn dữ liệu từ Neo4j hoặc mã nguồn trong phạm vi cho phép;
+
+  |AI Coding Assistant|
+  :Nhận kết quả ngữ cảnh có cấu trúc (JSON Context);
+  stop
+endswitch
+
+|Quản trị viên (Admin)|
+start
+:Kết nối SSE Stream (/api/admin/security/stream hoặc audit-logs/stream);
+
+|AdminController|
+:Xác thực quyền ADMIN;
+
+|AdminService|
+:Phát sóng các sự kiện bảo mật và nhật ký kiểm toán (Sanitized SSE);
+
+|Quản trị viên (Admin)|
+:Cập nhật màn hình giám sát Security Dashboard realtime;
 stop
 @enduml
 ```
-
-Evidence: `src/main/java/com/vibegraph/common/config/McpServerConfig.java:49-108`,
-`src/main/java/com/vibegraph/mcp/MODULE-GUIDE.md:8-42`,
-`src/main/java/com/vibegraph/auth/web/ApiKeyAuthFilter.java:100-124`,
-`src/main/java/com/vibegraph/auth/config/SecurityConfig.java:175-191`,
-`src/main/java/com/vibegraph/auth/web/AdminSecurityMonitorController.java:20-33`,
-`src/main/java/com/vibegraph/auth/web/AdminAuditController.java:31-73`.
-<!-- canonical-copy-end: plantuml_activity.md -->
-
----
-
-## Canonical copy: ERD, components and classes
-
-<!-- canonical-copy-begin: plantuml_erd_component_class.md -->
 # VibeGraph - Verified ERD, Component and Class Diagrams
 
 ## PART 1: PostgreSQL control-plane ERD
@@ -578,17 +614,17 @@ entity users {
   * id : UUID <<PK>>
   --
   * email : VARCHAR
-  password_hash : VARCHAR?
-  display_name : VARCHAR?
-  avatar_url : VARCHAR?
+  password_hash : VARCHAR
+  display_name : VARCHAR
+  avatar_url : VARCHAR
   email_verified : BOOLEAN
   role : VARCHAR
   quota_bytes : BIGINT
   used_bytes : BIGINT
   deactivated : BOOLEAN
-  deactivated_at : TIMESTAMPTZ?
-  deactivation_reason : VARCHAR?
-  deactivation_reason_safe : VARCHAR?
+  deactivated_at : TIMESTAMPTZ
+  deactivation_reason : VARCHAR
+  deactivation_reason_safe : VARCHAR
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -597,7 +633,7 @@ entity user_identities {
   user_id : UUID <<FK>>
   provider : VARCHAR
   provider_user_id : VARCHAR
-  email : VARCHAR?
+  email : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity projects {
@@ -607,25 +643,25 @@ entity projects {
   source_type : VARCHAR
   size_bytes : BIGINT
   status : VARCHAR
-  deleted_at : TIMESTAMPTZ?
+  deleted_at : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
 entity api_keys {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
-  project_id : VARCHAR? <<FK>>
+  project_id : VARCHAR <<FK>>
   key_hash : VARCHAR <<UNIQUE>>
   key_prefix : VARCHAR
-  name : VARCHAR?
+  name : VARCHAR
   created_at : TIMESTAMPTZ
-  last_used_at : TIMESTAMPTZ?
-  expires_at : TIMESTAMPTZ?
-  disabled_at : TIMESTAMPTZ?
-  deleted_at : TIMESTAMPTZ?
-  disabled_by : VARCHAR?
-  disabled_reason : VARCHAR?
-  locked_by : VARCHAR?
+  last_used_at : TIMESTAMPTZ
+  expires_at : TIMESTAMPTZ
+  disabled_at : TIMESTAMPTZ
+  deleted_at : TIMESTAMPTZ
+  disabled_by : VARCHAR
+  disabled_reason : VARCHAR
+  locked_by : VARCHAR
 }
 entity plans {
   * id : UUID <<PK>>
@@ -643,12 +679,12 @@ entity plans {
 entity user_account_settings {
   * user_id : UUID <<PK/FK>>
   plan_id : UUID <<FK>>
-  storage_quota_override_bytes : BIGINT?
-  credit_quota_override : INTEGER?
+  storage_quota_override_bytes : BIGINT
+  credit_quota_override : INTEGER
   api_key_creation_disabled : BOOLEAN
-  blocked_at : TIMESTAMPTZ?
-  blocked_reason : VARCHAR?
-  blocked_reason_safe : VARCHAR?
+  blocked_at : TIMESTAMPTZ
+  blocked_reason : VARCHAR
+  blocked_reason_safe : VARCHAR
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -685,8 +721,8 @@ entity credit_pricing_rules {
 entity credit_ledger {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
-  project_id : VARCHAR? <<FK>>
-  balance_id : UUID? <<FK>>
+  project_id : VARCHAR <<FK>>
+  balance_id : UUID <<FK>>
   source : VARCHAR
   operation_code : VARCHAR
   credits_delta : INTEGER
@@ -698,7 +734,7 @@ entity feature_flags {
   flag_key : VARCHAR <<UNIQUE>>
   scope : VARCHAR
   display_name : VARCHAR
-  description : VARCHAR?
+  description : VARCHAR
   enabled : BOOLEAN
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
@@ -710,11 +746,11 @@ entity announcements {
   target : VARCHAR
   title : VARCHAR
   body : VARCHAR
-  starts_at : TIMESTAMPTZ?
-  ends_at : TIMESTAMPTZ?
+  starts_at : TIMESTAMPTZ
+  ends_at : TIMESTAMPTZ
   dismissible : BOOLEAN
   active : BOOLEAN
-  created_by_user_id : UUID? <<FK>>
+  created_by_user_id : UUID <<FK>>
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
 }
@@ -722,24 +758,24 @@ entity user_notifications {
   * id : UUID <<PK>>
   user_id : UUID <<FK>>
   announcement_id : UUID <<FK>>
-  read_at : TIMESTAMPTZ?
-  dismissed_at : TIMESTAMPTZ?
+  read_at : TIMESTAMPTZ
+  dismissed_at : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
 }
 entity feedback_reports {
   * id : UUID <<PK>>
-  user_id : UUID? <<FK>>
+  user_id : UUID <<FK>>
   status : VARCHAR
   category : VARCHAR
   title : VARCHAR
-  delete_after : TIMESTAMPTZ?
+  delete_after : TIMESTAMPTZ
   created_at : TIMESTAMPTZ
-  closed_at : TIMESTAMPTZ?
+  closed_at : TIMESTAMPTZ
 }
 entity feedback_messages {
   * id : UUID <<PK>>
   report_id : UUID <<FK>>
-  sender_user_id : UUID? <<FK>>
+  sender_user_id : UUID <<FK>>
   sender_role : VARCHAR
   body : TEXT
   created_at : TIMESTAMPTZ
@@ -748,16 +784,16 @@ entity security_events {
   * id : UUID <<PK>>
   event_type : VARCHAR
   severity : VARCHAR
-  subject_user_id : UUID? <<FK>>
-  api_key_ref : VARCHAR?
-  source : VARCHAR?
-  description : VARCHAR?
+  subject_user_id : UUID <<FK>>
+  api_key_ref : VARCHAR
+  source : VARCHAR
+  description : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity request_events {
   * id : UUID <<PK>>
-  user_id : UUID? <<FK>>
-  api_key_ref : VARCHAR?
+  user_id : UUID <<FK>>
+  api_key_ref : VARCHAR
   ip_address : VARCHAR
   route : VARCHAR
   http_method : VARCHAR
@@ -769,8 +805,8 @@ entity ip_blocks {
   * id : UUID <<PK>>
   ip_address : VARCHAR <<UNIQUE>>
   safe_reason : VARCHAR
-  expires_at : TIMESTAMPTZ?
-  created_by : UUID? <<FK>>
+  expires_at : TIMESTAMPTZ
+  created_by : UUID <<FK>>
   active : BOOLEAN
   created_at : TIMESTAMPTZ
   updated_at : TIMESTAMPTZ
@@ -778,19 +814,19 @@ entity ip_blocks {
 entity audit_logs {
   * id : UUID <<PK>>
   action : VARCHAR
-  actor_user_id : UUID? <<logical ref; no FK after V15>>
-  target_user_id : UUID? <<logical ref; no FK after V15>>
-  target_type : VARCHAR?
-  target_id : VARCHAR?
+  actor_user_id : UUID <<logical ref; no FK after V15>>
+  target_user_id : UUID <<logical ref; no FK after V15>>
+  target_type : VARCHAR
+  target_id : VARCHAR
   outcome : VARCHAR
-  ip_address : VARCHAR?
+  ip_address : VARCHAR
   details : VARCHAR
   created_at : TIMESTAMPTZ
 }
 entity audit_retention_settings {
   * id : SMALLINT <<PK>>
   retention_days : INTEGER
-  updated_by : UUID? <<FK>>
+  updated_by : UUID <<FK>>
   updated_at : TIMESTAMPTZ
 }
 entity refresh_sessions {
@@ -799,10 +835,10 @@ entity refresh_sessions {
   family_id : UUID
   token_hash : VARCHAR <<UNIQUE>>
   expires_at : TIMESTAMPTZ
-  last_used_at : TIMESTAMPTZ?
-  revoked_at : TIMESTAMPTZ?
-  revoke_reason : VARCHAR?
-  replaced_by_id : UUID?
+  last_used_at : TIMESTAMPTZ
+  revoked_at : TIMESTAMPTZ
+  revoke_reason : VARCHAR
+  replaced_by_id : UUID
   created_at : TIMESTAMPTZ
 }
 
@@ -855,8 +891,8 @@ class ":Project" as Project <<Node>> {
   fullName : String
   name : String
   path : String
-  createdAt : timestamp?
-  lastAnalyzedAt : timestamp?
+  createdAt : timestamp
+  lastAnalyzedAt : timestamp
 }
 class ":Package" as Package <<Node>> {
   projectId : String
@@ -1121,4 +1157,3 @@ The class views are verified compact module views, not an exhaustive rendering o
 indexed symbols. `Plan`, `UserCreditBalance`, `CreditLedger`, `AuditLog`, `FeatureFlag`, `Role`,
 `GraphService` and `ProjectService` remain in production code but are omitted from these compact
 slices. Exact source locations and old-versus-current decisions are in the change notes.
-<!-- canonical-copy-end: plantuml_erd_component_class.md -->
