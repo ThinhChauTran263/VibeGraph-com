@@ -8,7 +8,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { getLatestVersion, isNewerVersion, npmCommand } from "../lib/update-check.js";
+import { getLatestVersion, isNewerVersion, npmSpawnSpec } from "../lib/update-check.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1360,17 +1360,19 @@ async function checkForCliUpdate({ force = false } = {}) {
   if (!latestVersion || !isNewerVersion(CLI_VERSION, latestVersion)) return;
 
   console.log(`\nNew vibegraph-cli version ${latestVersion} is available (current ${CLI_VERSION}).`);
-  console.log("Press Enter to update now, or type n to continue without updating.");
+  console.log("Press Enter, Y, or y to update now; press N or n to continue.");
   const answer = await askQuestion("Update now? [Y/n] ");
   if (["", "y", "yes"].includes(answer.trim().toLowerCase())) {
     await updateCli(latestVersion);
   }
 }
 
-async function updateCli(version = "latest") {
+async function updateCli(version = "latest", { restart = true } = {}) {
   console.log(`Updating vibegraph-cli to ${version}...`);
   const exitCode = await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand(), ["install", "-g", `vibegraph-cli@${version}`], {
+    const npmArgs = ["install", "-g", `vibegraph-cli@${version}`];
+    const { command, args } = npmSpawnSpec(npmArgs);
+    const child = spawn(command, args, {
       stdio: "inherit",
       windowsHide: false,
     });
@@ -1380,7 +1382,26 @@ async function updateCli(version = "latest") {
   if (exitCode !== 0) {
     throw new CliError(`Update failed (npm exited with code ${exitCode ?? "unknown"}). Run: npm install -g vibegraph-cli@latest`, 1);
   }
-  console.log("VibeGraph CLI updated. Start a new terminal command to use the new version.");
+  console.log(`VibeGraph CLI ${version} installed.`);
+  if (restart) {
+    await restartCli();
+  }
+}
+
+async function restartCli() {
+  const scriptPath = process.argv[1] || fileURLToPath(import.meta.url);
+  const requestedArgs = process.argv.slice(2);
+  const firstArg = requestedArgs[0]?.replace(/^\//, "").toLowerCase();
+  const args = firstArg === "update" ? [] : requestedArgs;
+  const child = spawn(process.execPath, [scriptPath, ...args], {
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  process.exit(exitCode ?? 0);
 }
 
 async function saveApiKey(config, apiKey) {

@@ -97,8 +97,21 @@ export async function getLatestVersion({
   }
 }
 
-export function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+export function npmCommand(platform = process.platform) {
+  return platform === "win32" ? "npm.cmd" : "npm";
+}
+
+export function npmSpawnSpec(
+  npmArgs,
+  { platform = process.platform, comspec = process.env.ComSpec } = {},
+) {
+  if (platform === "win32") {
+    return {
+      command: comspec || "cmd.exe",
+      args: ["/d", "/s", "/c", npmCommand(platform), ...npmArgs],
+    };
+  }
+  return { command: npmCommand(platform), args: npmArgs };
 }
 
 export { CACHE_FILE_NAME, DEFAULT_TIMEOUT_MS, DEFAULT_TTL_MS, PACKAGE_NAME, REGISTRY_URL };

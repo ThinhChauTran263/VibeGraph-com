@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   getLatestVersion,
   isNewerVersion,
+  npmSpawnSpec,
 } from "../lib/update-check.js";
 
 test("version comparison only reports a newer semantic version", () => {
@@ -15,6 +16,29 @@ test("version comparison only reports a newer semantic version", () => {
   assert.equal(isNewerVersion("0.1.3", "0.1.3"), false);
   assert.equal(isNewerVersion("0.1.3", "0.1.2"), false);
   assert.equal(isNewerVersion("dev", "0.1.4"), false);
+});
+
+test("Windows npm updates run npm.cmd through cmd.exe", () => {
+  assert.deepEqual(
+    npmSpawnSpec(["install", "-g", "vibegraph-cli@0.1.11"], {
+      platform: "win32",
+      comspec: "C:\\Windows\\System32\\cmd.exe",
+    }),
+    {
+      command: "C:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", "npm.cmd", "install", "-g", "vibegraph-cli@0.1.11"],
+    },
+  );
+});
+
+test("Unix npm updates execute npm directly", () => {
+  assert.deepEqual(
+    npmSpawnSpec(["install", "-g", "vibegraph-cli@latest"], { platform: "linux" }),
+    {
+      command: "npm",
+      args: ["install", "-g", "vibegraph-cli@latest"],
+    },
+  );
 });
 
 test("latest version check caches the registry result", async () => {

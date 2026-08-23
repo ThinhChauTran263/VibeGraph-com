@@ -6,7 +6,10 @@ import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
 
 const route = useRoute()
-const projectId = computed(() => (route.params.projectId as string) || 'default')
+const projectId = computed(() => {
+  const value = route.params.projectId
+  return typeof value === 'string' && value.trim() ? value : null
+})
 const activeView = ref<'graph' | 'diagrams'>('graph')
 
 // Sidebar state lives in GraphCanvas (its resizer owns it) but the tab bar above
@@ -65,7 +68,7 @@ watch(sidebarWidth, (width) => {
       </span>
     </nav>
 
-    <KeepAlive>
+    <KeepAlive v-if="projectId">
       <GraphCanvas
         v-if="activeView === 'graph'"
         v-model:sidebar-width="sidebarWidth"
