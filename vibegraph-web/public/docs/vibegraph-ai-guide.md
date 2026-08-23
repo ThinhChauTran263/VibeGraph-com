@@ -24,6 +24,12 @@ vibegraph key status
 
 `vibegraph login` mở trình duyệt. Người dùng đăng nhập trên `vibegraph.tech`, chọn một project key thuộc tài khoản và quay lại terminal.
 
+Khi có bản mới, CLI interactive sẽ báo `New vibegraph-cli version ... is available`. Nhấn Enter để cập nhật tự động; hoặc chạy trực tiếp:
+
+```bash
+vibegraph update
+```
+
 ### Người dùng đã cài bản cũ
 
 ```bash
@@ -102,15 +108,6 @@ Chọn branch nếu cần
 ```
 
 Chỉ mô tả repository GitHub public qua URL HTTPS.
-
-### Backend/container-visible path
-
-```bash
-vibegraph projects create --path <backendPath>
-vibegraph projects analyze
-```
-
-Đây là path backend/container đọc được, không phải upload thư mục local từ máy người dùng.
 
 ## 5. Cài MCP tự động
 

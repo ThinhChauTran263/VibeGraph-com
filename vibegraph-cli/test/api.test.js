@@ -261,6 +261,67 @@ test("projects delete lists account projects, confirms a numbered choice, and cl
   }
 });
 
+test("projects delete prompts for account credentials when no account session is stored", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: "vbg_selected12345678wxyz",
+  });
+  const calls = [];
+  const prompts = [];
+  const answers = ["owner@example.com", "1", "no"];
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      if (String(url).endsWith("/api/auth/login")) {
+        return new Response(JSON.stringify({
+          success: true,
+          data: {
+            token: "account-jwt",
+            refreshToken: "refresh-token",
+            user: { id: "user-1", email: "owner@example.com" },
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        data: [{ id: "p1", name: "Alpha", status: "READY" }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+
+    await module.handleProjects(["delete"], {
+      askQuestion: async (prompt) => {
+        prompts.push(prompt);
+        return answers.shift();
+      },
+      askSecret: async (prompt) => {
+        prompts.push(prompt);
+        return "secret-password";
+      },
+    });
+
+    assert.deepEqual(prompts, ["Email: ", "Password: ", "Choose a project to delete [1-1]: ", "Delete \"Alpha\"? [y/N]: "]);
+    assert.equal(calls[0].url, "http://api.example.test/api/auth/login");
+    assert.deepEqual(JSON.parse(calls[0].options.body), {
+      email: "owner@example.com",
+      password: "secret-password",
+    });
+    assert.equal(calls[1].url, "http://api.example.test/api/projects");
+    assert.equal(calls[1].options.headers.Authorization, "Bearer account-jwt");
+    assert.equal(calls.length, 2);
+    const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));
+    assert.equal(saved.token, "account-jwt");
+    assert.equal(saved.apiKey, "vbg_selected12345678wxyz");
+    assert.equal(saved.password, undefined);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
 test("apiRequest formats backend error envelopes without [object Object]", async () => {
   const previousFetch = globalThis.fetch;
   const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;

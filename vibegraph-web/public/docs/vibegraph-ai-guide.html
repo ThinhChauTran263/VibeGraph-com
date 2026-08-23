@@ -34,6 +34,7 @@ vibegraph config set-url https://api.vibegraph.tech
 vibegraph login
 vibegraph key status</pre>
   <p><code>vibegraph login</code> mở trình duyệt để đăng nhập và chọn project key thuộc tài khoản.</p>
+  <p>Khi có bản mới, CLI interactive sẽ báo <code>New vibegraph-cli version ... is available</code>. Nhấn Enter để cập nhật tự động, hoặc chạy <code>vibegraph update</code>.</p>
   <h3>Cập nhật bản cũ</h3>
   <pre>npm uninstall -g vibegraph-cli
 npm install -g vibegraph-cli@latest
@@ -59,7 +60,6 @@ vibegraph projects status</pre>
   <ul>
     <li>Dashboard archive: <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code>, <code>.tgz</code>.</li>
     <li>Dashboard GitHub: repository public qua URL HTTPS, branch là tùy chọn.</li>
-    <li>Backend path: <code>vibegraph projects create --path &lt;backendPath&gt;</code>.</li>
   </ul>
 
   <h2>5. Cài MCP tự động</h2>

@@ -23,34 +23,49 @@ let simulationTimer: ReturnType<typeof setTimeout> | undefined
 let typingTimer: ReturnType<typeof setInterval> | undefined
 let importTimer: ReturnType<typeof setInterval> | undefined
 let importTypingTimer: ReturnType<typeof setInterval> | undefined
+let importLoopTimer: ReturnType<typeof setTimeout> | undefined
 let activeSectionFrame: number | undefined
 let autoDemoObserver: IntersectionObserver | undefined
 const codeAnimationCleanups: Array<() => void> = []
-let importAutoStarted = false
-let mcpAutoStarted = false
+let importDemoVisible = false
+let mcpDemoVisible = false
 
 const activeExample = computed(() => copy.value.docs.mcpExamples[selectedExample.value])
 const activeImportCard = computed(() => copy.value.docs.importCards[importPathIndex.value])
+const visibleCommands = computed(() => copy.value.docs.commands.filter(([command]) =>
+  !command.includes('projects create --path') && !command.includes('projects import-local'),
+))
 const docsSectionIds = ['status', 'install', 'downloads', 'import', 'push', 'commands', 'mcp', 'mcp-tools', 'keys', 'troubleshooting', 'videos']
 
 // Keep the demos readable: a human-paced typewriter is easier to follow than a rapid stream.
 const IMPORT_TYPING_INTERVAL_MS = 44
 const PROMPT_TYPING_INTERVAL_MS = 46
 const CODE_TYPING_INTERVAL_MS = 34
+const DEMO_LOOP_PAUSE_MS = 3_500
 
-function stopSimulation() {
+function stopMcpSimulation() {
   if (simulationTimer) clearTimeout(simulationTimer)
   if (typingTimer) clearInterval(typingTimer)
-  if (importTimer) clearInterval(importTimer)
-  if (importTypingTimer) clearInterval(importTypingTimer)
   simulationTimer = undefined
   typingTimer = undefined
+}
+
+function stopImportWalkthrough() {
+  if (importTimer) clearInterval(importTimer)
+  if (importTypingTimer) clearInterval(importTypingTimer)
+  if (importLoopTimer) clearTimeout(importLoopTimer)
   importTimer = undefined
   importTypingTimer = undefined
+  importLoopTimer = undefined
+}
+
+function stopSimulation() {
+  stopMcpSimulation()
+  stopImportWalkthrough()
 }
 
 function runImportWalkthrough() {
-  stopSimulation()
+  stopImportWalkthrough()
   importPhase.value = 0
   typedImportCommand.value = ''
   const command = activeImportCard.value?.[2] ?? ''
@@ -70,9 +85,14 @@ function runImportWalkthrough() {
     if (importTypingTimer) clearInterval(importTypingTimer)
     importTypingTimer = undefined
     importTimer = setInterval(() => {
-      if (importPhase.value >= copy.value.docs.importDemoSteps.length - 1) {
+      const lastStep = copy.value.docs.importDemoSteps.length - 1
+      if (importPhase.value >= lastStep - 1) {
+        importPhase.value = lastStep
         if (importTimer) clearInterval(importTimer)
         importTimer = undefined
+        if (importDemoVisible) {
+          importLoopTimer = setTimeout(runImportWalkthrough, DEMO_LOOP_PAUSE_MS)
+        }
         return
       }
       importPhase.value += 1
@@ -80,22 +100,13 @@ function runImportWalkthrough() {
   }, IMPORT_TYPING_INTERVAL_MS)
 }
 
-function resetImportWalkthrough() {
-  if (importTimer) clearInterval(importTimer)
-  importTimer = undefined
-  if (importTypingTimer) clearInterval(importTypingTimer)
-  importTypingTimer = undefined
-  typedImportCommand.value = ''
-  importPhase.value = -1
-}
-
 function selectImportPath(index: number) {
   importPathIndex.value = index
-  resetImportWalkthrough()
+  runImportWalkthrough()
 }
 
 function runSimulation(index = selectedExample.value) {
-  stopSimulation()
+  stopMcpSimulation()
   selectedExample.value = index
   const example = copy.value.docs.mcpExamples[index]
   if (!example) return
@@ -111,6 +122,9 @@ function runSimulation(index = selectedExample.value) {
     simulationPhase.value = 'tool'
     simulationTimer = setTimeout(() => {
       simulationPhase.value = 'result'
+      if (mcpDemoVisible) {
+        simulationTimer = setTimeout(() => runSimulation(index), DEMO_LOOP_PAUSE_MS)
+      }
     }, 250)
     return
   }
@@ -125,15 +139,12 @@ function runSimulation(index = selectedExample.value) {
       simulationPhase.value = 'tool'
       simulationTimer = setTimeout(() => {
         simulationPhase.value = 'result'
+        if (mcpDemoVisible) {
+          simulationTimer = setTimeout(() => runSimulation(index), DEMO_LOOP_PAUSE_MS)
+        }
       }, 650)
     }
   }, PROMPT_TYPING_INTERVAL_MS)
-}
-
-function resetSimulation() {
-  stopSimulation()
-  typedPrompt.value = ''
-  simulationPhase.value = 'idle'
 }
 
 let sectionObserver: IntersectionObserver | undefined
@@ -217,21 +228,22 @@ onMounted(() => {
     }
     autoDemoObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue
-        if (entry.target.id === 'import' && !importAutoStarted) {
-          importAutoStarted = true
-          runImportWalkthrough()
+        if (entry.target.classList.contains('import-demo')) {
+          importDemoVisible = entry.isIntersecting
+          if (entry.isIntersecting) runImportWalkthrough()
+          else stopImportWalkthrough()
         }
-        if (entry.target.id === 'mcp-tools' && !mcpAutoStarted) {
-          mcpAutoStarted = true
-          runSimulation()
+        if (entry.target.classList.contains('simulation-shell')) {
+          mcpDemoVisible = entry.isIntersecting
+          if (entry.isIntersecting) runSimulation()
+          else stopMcpSimulation()
         }
       }
     }, { threshold: 0.18 })
-    const importSection = document.getElementById('import')
-    const mcpSection = document.getElementById('mcp-tools')
-    if (importSection) autoDemoObserver.observe(importSection)
-    if (mcpSection) autoDemoObserver.observe(mcpSection)
+    const importDemo = document.querySelector('.import-demo')
+    const mcpDemo = document.querySelector('.simulation-shell')
+    if (importDemo) autoDemoObserver.observe(importDemo)
+    if (mcpDemo) autoDemoObserver.observe(mcpDemo)
   }
   setupCodeAnimations()
 })
@@ -252,6 +264,7 @@ onBeforeUnmount(() => {
     <header class="docs-nav">
       <div class="docs-nav__inner">
         <BrandMark
+          class="docs-brand"
           :size="28"
           glyph-to="/"
           glyph-aria-label="VibeGraph landing page"
@@ -355,14 +368,6 @@ vibegraph --version</code></pre>
                 <h3>{{ copy.docs.importDemoTitle }}</h3>
                 <p>{{ copy.docs.importDemoLead }}</p>
               </div>
-              <div class="simulation-actions">
-                <button class="simulation-button" type="button" @click="runImportWalkthrough">
-                  {{ importPhase < 0 ? copy.docs.importDemoRun : copy.docs.importDemoReplay }}
-                </button>
-                <button v-if="importPhase >= 0" class="simulation-reset" type="button" @click="resetImportWalkthrough">
-                  {{ copy.docs.importDemoReset }}
-                </button>
-              </div>
             </div>
             <div class="simulation-disclaimer">{{ copy.docs.importDemoDisclaimer }}</div>
             <div class="import-demo__source-preview">
@@ -412,7 +417,7 @@ vibegraph push</code></pre>
           <h2>{{ copy.docs.commandsTitle }}</h2>
           <p>{{ copy.docs.commandsBody }}</p>
           <div class="command-list">
-            <article v-for="command in copy.docs.commands" :key="command[0]" class="command-item">
+            <article v-for="command in visibleCommands" :key="command[0]" class="command-item">
               <code>{{ command[0] }}</code>
               <p>{{ command[1] }}</p>
             </article>
@@ -483,17 +488,9 @@ vibegraph mcp config generic</code></pre>
                   type="button"
                   role="tab"
                   :aria-selected="index === selectedExample"
-                  @click="resetSimulation(); selectedExample = index"
+                  @click="runSimulation(index)"
                 >
                   {{ example[0] }}
-                </button>
-              </div>
-              <div class="simulation-actions">
-                <button class="simulation-button" type="button" @click="runSimulation()">
-                  {{ simulationPhase === 'idle' ? copy.docs.simulationRun : copy.docs.simulationReplay }}
-                </button>
-                <button v-if="simulationPhase !== 'idle'" class="simulation-reset" type="button" @click="resetSimulation">
-                  {{ copy.docs.simulationReset }}
                 </button>
               </div>
             </div>
@@ -582,6 +579,9 @@ vibegraph auth clear</code></pre>
   display: flex;
   align-items: center;
   gap: var(--vg-space-6);
+}
+.docs-brand {
+  margin-left: -0.75rem;
 }
 .docs-nav nav {
   display: flex;
@@ -956,16 +956,13 @@ vibegraph auth clear</code></pre>
   border-bottom: 1px solid var(--vg-border);
   background: rgba(39, 47, 66, 0.24);
 }
-.simulation-tabs,
-.simulation-actions {
+.simulation-tabs {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
 }
-.simulation-tab,
-.simulation-button,
-.simulation-reset {
+.simulation-tab {
   border: 1px solid var(--vg-border-strong);
   border-radius: 999px;
   padding: 0.45rem 0.7rem;
@@ -980,13 +977,6 @@ vibegraph auth clear</code></pre>
   border-color: var(--vg-green-bright);
   background: rgba(126, 247, 166, 0.1);
 }
-.simulation-button {
-  color: #04100a;
-  border-color: var(--vg-green-bright);
-  background: var(--vg-green-bright);
-}
-.simulation-button:hover { filter: brightness(1.08); }
-.simulation-reset { color: var(--vg-text-dim); }
 .simulation-window { padding: 1rem 1.1rem 1.1rem; }
 .simulation-window__bar {
   display: flex;

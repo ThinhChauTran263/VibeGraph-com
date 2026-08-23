@@ -14,6 +14,14 @@ For a published release:
 npm install -g vibegraph-cli
 ```
 
+When a newer CLI is available, the interactive `vibegraph` shell checks npm in the background
+using a short-lived cache. It shows the new version and asks `Update now? [Y/n]`; press Enter to
+run the safe equivalent of `npm install -g vibegraph-cli@latest`. You can also update explicitly:
+
+```bash
+vibegraph update
+```
+
 Requires Node.js 20+.
 
 ## Quick Start
@@ -101,7 +109,9 @@ Push and watch use the current folder and resolve the project from the configure
 
 `projects push` is the namespaced equivalent of `push`; both use the selected project key by
 default. `projects delete` lists account-owned projects, asks for a numbered selection, and
-requires an explicit `yes` confirmation. Deleting the selected project clears its local key
+requires an explicit `yes` confirmation. If no account session is stored, it prompts for email
+and password inline before loading the project list; the password is not echoed in an interactive
+terminal. Deleting the selected project clears its local key
 metadata so the next operation tells the user to run `vibegraph key change`.
 
 Watch continuously monitors for file changes and auto-pushes patches. Debounces at 800ms. Press

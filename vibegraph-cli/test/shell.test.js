@@ -63,6 +63,7 @@ const SHELL_SUGGESTION_COMMANDS = [
   "watch --root ",
   "ignore init",
   "ignore init --root ",
+  "update",
 ];
 
 function runCli(args = [], options = {}) {
@@ -274,7 +275,7 @@ test("interactive header is compact and omits long usage", () => {
   const output = renderInteractiveHeader({ apiUrl: "http://api.example.test" }, "D:\\Projects\\demo");
   const plainOutput = output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "");
 
-  assert.match(plainOutput, /VibeGraph CLI v0\.1\.1/);
+  assert.match(plainOutput, /VibeGraph CLI v\d+\.\d+\.\d+/);
   assert.match(plainOutput, /D:\\Projects\\demo/);
   assert.match(plainOutput, /http:\/\/api\.example\.test/);
   assert.match(plainOutput, /Up\/Down select; Tab completes; Enter runs\./);
@@ -337,8 +338,8 @@ test("shell completer suggests slash commands and command templates", () => {
     "/projects create --path ",
     "/projects import-local --path ",
     "/projects analyze",
-  "/projects delete",
-  "/projects push",
+    "/projects delete",
+    "/projects push",
     "/push",
     "/push --dry-run",
     "/projects status",
@@ -346,6 +347,7 @@ test("shell completer suggests slash commands and command templates", () => {
     "/watch --root ",
     "/ignore init",
     "/ignore init --root ",
+    "/update",
   ]);
   assert.deepEqual(completeShellLine("projects "), [[
     "projects list",
@@ -370,7 +372,11 @@ test("shell completer suggests slash commands and command templates", () => {
     "key change",
     "key clear",
   ], "key "]);
-  assert.deepEqual(completeShellLine("push"), [["push", "push --dry-run"], "push"]);
+  assert.deepEqual(completeShellLine("push"), [[
+    "push",
+    "push --dry-run",
+    "projects push",
+  ], "push"]);
   assert.deepEqual(completeShellLine("watch --"), [["watch --root "], "watch --"]);
 });
 
@@ -386,6 +392,22 @@ test("live shell suggestions filter as the user types", () => {
   assert.deepEqual(
     getShellSuggestions("projects p").map(({ command }) => command),
     ["projects push"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("status").map(({ command }) => command),
+    ["key status", "auth status", "projects status"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("analyze").map(({ command }) => command),
+    ["projects analyze"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("mcp").map(({ command }) => command),
+    ["mcp config", "mcp doctor", "mcp install "],
+  );
+  assert.deepEqual(
+    getShellSuggestions("jects stat").map(({ command }) => command),
+    ["projects status"],
   );
   assert.deepEqual(getShellSuggestions("").map(({ command }) => command), []);
 });

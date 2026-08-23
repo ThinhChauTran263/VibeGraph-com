@@ -8,6 +8,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { getLatestVersion, isNewerVersion, npmCommand } from "../lib/update-check.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +62,8 @@ const SHELL_COMMANDS = [
   { command: "watch", description: "Watch the current folder and push changes" },
   { command: "watch --root ", description: "Watch a different local folder" },
   { command: "ignore init", description: "Create a .vibegraphignore file" },
-  { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
+  { command: "ignore init --root ", description: "Create .vibegraphignore under a path" },
+  { command: "update", description: "Install the latest CLI version" }
 ];
 const ANSI = {
   reset: "\x1b[0m",
@@ -107,6 +109,12 @@ async function main() {
     return;
   }
 
+  const firstArg = args[0]?.toLowerCase();
+  if (![
+    "--version", "-v", "help", "--help", "-h", "update", "mcp-proxy",
+  ].includes(firstArg)) {
+    await checkForCliUpdate();
+  }
   await dispatchCommand(args);
 }
 
@@ -125,6 +133,9 @@ async function dispatchCommand(args) {
     case "--version":
     case "-v":
       console.log(CLI_VERSION);
+      return;
+    case "update":
+      await updateCli();
       return;
     case "config":
       await handleConfig(rest);
@@ -215,6 +226,7 @@ function renderHelpBody() {
   vibegraph logout
   vibegraph me
   vibegraph doctor
+  vibegraph update
   vibegraph mcp config [cursor|vscode|generic] [--name <serverName>]
   vibegraph mcp doctor
   vibegraph mcp install <cursor|vscode|generic> [--path <file>]
@@ -241,6 +253,7 @@ Ignore:
 
 async function startInteractiveShell() {
   const config = await loadConfig();
+  await checkForCliUpdate();
   console.log(renderInteractiveHeader(config));
   return runInteractiveLineEditor();
 }
@@ -525,12 +538,17 @@ function getShellSuggestions(line, limit = 8) {
   }
   const slashPalette = normalized.startsWith("/");
   const query = slashPalette ? normalized.slice(1) : normalized;
-  const candidates = slashPalette
-    ? SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"))
-    : SHELL_COMMANDS;
+  const candidates = SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"));
   const suggestionLimit = slashPalette && !query ? Number.POSITIVE_INFINITY : limit;
   return candidates
-    .filter(({ command }) => command.toLowerCase().startsWith(query))
+    .filter(({ command }) => slashPalette
+      ? command.toLowerCase().startsWith(query)
+      : command.toLowerCase().includes(query))
+    .sort((left, right) => {
+      const leftStartsWithQuery = left.command.toLowerCase().startsWith(query);
+      const rightStartsWithQuery = right.command.toLowerCase().startsWith(query);
+      return Number(rightStartsWithQuery) - Number(leftStartsWithQuery);
+    })
     .slice(0, suggestionLimit);
 }
 
@@ -1319,6 +1337,38 @@ function openBrowser(url) {
   }
 }
 
+async function checkForCliUpdate() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return;
+  const latestVersion = await getLatestVersion({
+    currentVersion: CLI_VERSION,
+    configDir: CONFIG_DIR,
+  });
+  if (!latestVersion || !isNewerVersion(CLI_VERSION, latestVersion)) return;
+
+  console.log(`\nNew vibegraph-cli version ${latestVersion} is available (current ${CLI_VERSION}).`);
+  console.log("Press Enter to update now, or type n to continue without updating.");
+  const answer = await askQuestion("Update now? [Y/n] ");
+  if (["", "y", "yes"].includes(answer.trim().toLowerCase())) {
+    await updateCli(latestVersion);
+  }
+}
+
+async function updateCli(version = "latest") {
+  console.log(`Updating vibegraph-cli to ${version}...`);
+  const exitCode = await new Promise((resolve, reject) => {
+    const child = spawn(npmCommand(), ["install", "-g", `vibegraph-cli@${version}`], {
+      stdio: "inherit",
+      windowsHide: false,
+    });
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
+  if (exitCode !== 0) {
+    throw new CliError(`Update failed (npm exited with code ${exitCode ?? "unknown"}). Run: npm install -g vibegraph-cli@latest`, 1);
+  }
+  console.log("VibeGraph CLI updated. Start a new terminal command to use the new version.");
+}
+
 async function saveApiKey(config, apiKey) {
   validateApiKey(apiKey);
   await saveConfig({ ...config, apiKey, apiKeyId: undefined, project: undefined, apiKeys: undefined });
@@ -1395,11 +1445,14 @@ async function handleProjects(args, dependencies = {}) {
 
   if (subcommand === "delete") {
     if (args.length > 1) throw new CliError("Usage: vibegraph projects delete [projectId]", 2);
+    const ask = dependencies.askQuestion || askQuestion;
+    const askSecret = dependencies.askSecret || askPassword;
+    await ensureAccountSession(ask, askSecret);
     let projectId = args.shift();
     let selectedProject;
     if (!projectId) {
       const projects = await apiRequest("/api/projects", { auth: "jwt-only" });
-      selectedProject = await selectProjectForDeletion(projects, dependencies.askQuestion || askQuestion);
+      selectedProject = await selectProjectForDeletion(projects, ask);
       if (!selectedProject) return;
       projectId = selectedProject.id;
     }
@@ -1726,6 +1779,65 @@ async function askQuestion(prompt) {
   } finally {
     readline.close();
   }
+}
+
+async function askPassword(prompt) {
+  if (!process.stdin.isTTY || !process.stdin.setRawMode) {
+    throw new CliError("Password input requires an interactive terminal. Run: vibegraph login", 2);
+  }
+
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const onKeypress = (str, key = {}) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        reject(new CliError("Login cancelled.", 2));
+        return;
+      }
+      if (key.name === "return" || key.name === "enter") {
+        cleanup();
+        process.stdout.write("\n");
+        resolve(value);
+        return;
+      }
+      if (key.name === "backspace") {
+        value = value.slice(0, -1);
+        return;
+      }
+      if (!key.ctrl && !key.meta && str && !/^[\x00-\x1f\x7f]$/.test(str)) {
+        value += str;
+      }
+    };
+    const cleanup = () => {
+      process.stdin.off("keypress", onKeypress);
+      process.stdin.setRawMode(false);
+    };
+
+    emitKeypressEvents(process.stdin);
+    process.stdout.write(prompt);
+    process.stdin.setRawMode(true);
+    process.stdin.on("keypress", onKeypress);
+  });
+}
+
+async function ensureAccountSession(ask = askQuestion, askSecret = askPassword) {
+  const config = await loadConfig();
+  if (config.token) return config;
+
+  console.log("Account login required to delete a project.");
+  const email = (await ask("Email: ")).trim();
+  const password = await askSecret("Password: ");
+  if (!email || !password) {
+    throw new CliError("Email and password are required.", 2);
+  }
+
+  const response = await apiRequest("/api/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+  await persistAuth(response);
+  console.log(`Logged in as ${response.user.email}`);
+  return loadConfig();
 }
 
 async function selectProjectForDeletion(projects, ask = askQuestion) {
