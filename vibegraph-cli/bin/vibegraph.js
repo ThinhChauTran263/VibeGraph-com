@@ -541,15 +541,36 @@ function getShellSuggestions(line, limit = 8) {
   const candidates = SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"));
   const suggestionLimit = slashPalette && !query ? Number.POSITIVE_INFINITY : limit;
   return candidates
-    .filter(({ command }) => slashPalette
-      ? command.toLowerCase().startsWith(query)
-      : command.toLowerCase().includes(query))
+    .filter(({ command }) => matchesSuggestionQuery(command, query))
     .sort((left, right) => {
-      const leftStartsWithQuery = left.command.toLowerCase().startsWith(query);
-      const rightStartsWithQuery = right.command.toLowerCase().startsWith(query);
-      return Number(rightStartsWithQuery) - Number(leftStartsWithQuery);
+      return compareSuggestionMatch(left.command, right.command, query);
     })
     .slice(0, suggestionLimit);
+}
+
+// Suggestions stay useful when users type a short hint such as `/st` for `projects status`.
+function matchesSuggestionQuery(command, query) {
+  if (!query) return true;
+  const commandTokens = command.toLowerCase().split(/\s+/);
+  const queryTokens = query.split(/\s+/).filter(Boolean);
+  if (queryTokens.length === 1) {
+    return commandTokens.some((token) => token.startsWith(queryTokens[0]));
+  }
+  return queryTokens.every((queryToken, index) => index === 0
+    ? commandTokens[index]?.includes(queryToken)
+    : commandTokens[index]?.startsWith(queryToken));
+}
+
+function compareSuggestionMatch(leftCommand, rightCommand, query) {
+  const rank = (command) => {
+    const normalized = command.toLowerCase();
+    if (normalized.startsWith(query)) return 0;
+    const tokenStart = normalized.split(/\s+/).some((token) => token.startsWith(query));
+    if (tokenStart) return 1;
+    if (normalized.includes(query)) return 2;
+    return 3;
+  };
+  return rank(leftCommand) - rank(rightCommand);
 }
 
 function getNextSuggestionIndex(currentIndex, direction, suggestionCount) {
@@ -1439,6 +1460,13 @@ async function handleProjects(args, dependencies = {}) {
         method: "POST",
         auth: "api-key-only",
       });
+    // Analyze is asynchronous and production commonly returns 202 with an empty body.
+    if (result === null || result === undefined || (typeof result === "string" && !result.trim())) {
+      const config = await loadConfig();
+      const projectName = !projectId ? config.project?.name : null;
+      console.log(projectName ? `Analysis started for ${projectName}.` : "Analysis started.");
+      return;
+    }
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -1500,8 +1528,10 @@ async function handleProjects(args, dependencies = {}) {
       status: project.status,
       rootPath: project.rootPath,
       lastAnalyzedAt: project.lastAnalyzedAt || null,
-      nodeCount: project.nodeCount || null,
-      edgeCount: project.edgeCount || null,
+      // The backend ProjectResponse uses totalNodes/totalEdges; keep old field names in the
+      // CLI output for compatibility while accepting both response shapes during rollout.
+      nodeCount: project.totalNodes ?? project.nodeCount ?? null,
+      edgeCount: project.totalEdges ?? project.edgeCount ?? null,
     }, null, 2));
     return;
   }

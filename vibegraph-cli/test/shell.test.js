@@ -386,6 +386,10 @@ test("live shell suggestions filter as the user types", () => {
     ["help"],
   );
   assert.deepEqual(
+    getShellSuggestions("/st").map(({ command }) => command),
+    ["key status", "auth status", "projects status"],
+  );
+  assert.deepEqual(
     getShellSuggestions("/").map(({ command }) => command),
     SHELL_SUGGESTION_COMMANDS,
   );

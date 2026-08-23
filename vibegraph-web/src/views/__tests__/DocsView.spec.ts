@@ -55,7 +55,7 @@ describe('DocsView', () => {
 
   it('documents the published npm package and production install command', () => {
     const text = mountDocs().text()
-    expect(text).toContain('vibegraph-cli@0.1.4')
+    expect(text).toContain('vibegraph-cli@0.1.6')
     expect(text).toContain('npm install -g vibegraph-cli')
   })
 

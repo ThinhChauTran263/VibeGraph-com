@@ -195,9 +195,10 @@ test("projects analyze and status default to the selected API-key project", asyn
   try {
     globalThis.fetch = async (url, options = {}) => {
       calls.push({ url: String(url), options });
-      return new Response(JSON.stringify(String(url).endsWith("/analyze")
-        ? { success: true, data: { accepted: true } }
-        : { success: true, data: { id: "selected-project", name: "Selected", status: "READY" } }), {
+      if (String(url).endsWith("/analyze")) return new Response("", { status: 202 });
+      return new Response(JSON.stringify({ success: true, data: {
+        id: "selected-project", name: "Selected", status: "READY", totalNodes: 224, totalEdges: 391,
+      } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -211,7 +212,10 @@ test("projects analyze and status default to the selected API-key project", asyn
     assert.equal(calls[0].options.headers["X-API-Key"], "vbg_selected12345678wxyz");
     assert.equal(calls[1].url, "http://api.example.test/api/projects/current");
     assert.equal(calls[1].options.headers["X-API-Key"], "vbg_selected12345678wxyz");
+    assert.match(output, /Analysis started for Selected\./);
     assert.match(output, /selected-project/);
+    assert.match(output, /"nodeCount": 224/);
+    assert.match(output, /"edgeCount": 391/);
   } finally {
     globalThis.fetch = previousFetch;
     console.log = previousLog;
