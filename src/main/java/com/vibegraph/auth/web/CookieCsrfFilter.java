@@ -50,6 +50,12 @@ public class CookieCsrfFilter extends OncePerRequestFilter {
         if (SAFE_METHODS.contains(request.getMethod().toUpperCase())) {
             return false;
         }
+        // SockJS transport POSTs cannot carry the application's custom browser header.
+        // Authentication and per-project authorization are enforced by the STOMP
+        // interceptor after CONNECT/SUBSCRIBE, so do not apply REST cookie-CSRF here.
+        if (request.getRequestURI().startsWith("/ws/")) {
+            return false;
+        }
         Cookie[] cookies = request.getCookies();
         if (cookies == null) {
             return false;
