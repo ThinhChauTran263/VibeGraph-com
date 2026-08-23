@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -63,8 +64,9 @@ class ProjectApiIT {
                 Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class),
                 Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class),
                 Mockito.mock(CliRepositoryService.class),
-                Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class),
-                Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class));
+                 Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class),
+                 Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class),
+                 Mockito.mock(ApiKeyRequestContextAccessor.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

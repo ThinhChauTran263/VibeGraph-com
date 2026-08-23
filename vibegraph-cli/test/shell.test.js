@@ -24,6 +24,7 @@ import {
   parseWatchCommandArgs,
   renderInteractiveHeader,
   renderShellSuggestionPanel,
+  selectProjectForDeletion,
   truncateTerminalText,
 } from "../bin/vibegraph.js";
 
@@ -52,12 +53,12 @@ const SHELL_SUGGESTION_COMMANDS = [
   "projects list",
   "projects create --path ",
   "projects import-local --path ",
-  "projects analyze ",
-  "projects delete ",
-  "projects push ",
+  "projects analyze",
+  "projects delete",
+  "projects push",
   "push",
   "push --dry-run",
-  "projects status ",
+  "projects status",
   "watch",
   "watch --root ",
   "ignore init",
@@ -335,12 +336,12 @@ test("shell completer suggests slash commands and command templates", () => {
     "/projects list",
     "/projects create --path ",
     "/projects import-local --path ",
-    "/projects analyze ",
-    "/projects delete ",
-    "/projects push ",
+    "/projects analyze",
+  "/projects delete",
+  "/projects push",
     "/push",
     "/push --dry-run",
-    "/projects status ",
+    "/projects status",
     "/watch",
     "/watch --root ",
     "/ignore init",
@@ -350,10 +351,10 @@ test("shell completer suggests slash commands and command templates", () => {
     "projects list",
     "projects create --path ",
     "projects import-local --path ",
-    "projects analyze ",
-    "projects delete ",
-    "projects push ",
-    "projects status ",
+    "projects analyze",
+    "projects delete",
+    "projects push",
+    "projects status",
   ], "projects "]);
   assert.deepEqual(completeShellLine("  config s"), [[
     "  config show",
@@ -384,7 +385,7 @@ test("live shell suggestions filter as the user types", () => {
   );
   assert.deepEqual(
     getShellSuggestions("projects p").map(({ command }) => command),
-    ["projects push "],
+    ["projects push"],
   );
   assert.deepEqual(getShellSuggestions("").map(({ command }) => command), []);
 });
@@ -439,7 +440,7 @@ test("arrow selection keeps the typed buffer until the user accepts it", () => {
   const suggestions = getShellSuggestions("/", Number.POSITIVE_INFINITY);
 
   assert.equal(getSelectedSuggestionLine("/", suggestions, 0), "/help");
-  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), "projects push ");
+  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), "projects push");
   assert.equal(getSelectedSuggestionLine("/", suggestions, -1), null);
   assert.equal(getSelectedSuggestionLine("/", suggestions, suggestions.length), null);
 });
@@ -567,4 +568,19 @@ test("push and watch parsers accept project-bound root-only commands and legacy 
 test("push and watch parsers reject missing roots and unknown options", () => {
   assert.throws(() => parsePushCommandArgs(["--root"]), /Missing --root/);
   assert.throws(() => parseWatchCommandArgs(["--unknown", "value"]), /Unknown option/);
+});
+
+test("project deletion selects by number and requires explicit confirmation", async () => {
+  const projects = [
+    { id: "p1", name: "Alpha", status: "READY" },
+    { id: "p2", name: "Beta", status: "CREATED" },
+  ];
+  const answers = ["2", "yes"];
+  const selected = await selectProjectForDeletion(projects, async () => answers.shift());
+  assert.equal(selected.id, "p2");
+
+  const cancelled = await selectProjectForDeletion(projects, async (prompt) =>
+    prompt.startsWith("Choose") ? "1" : "",
+  );
+  assert.equal(cancelled, null);
 });

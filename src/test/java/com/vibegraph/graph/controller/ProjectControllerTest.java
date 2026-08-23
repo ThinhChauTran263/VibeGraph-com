@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.hamcrest.Matchers.containsString;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.common.exception.AccountBlockedException;
 import com.vibegraph.common.exception.ForbiddenException;
@@ -70,6 +71,7 @@ class ProjectControllerTest {
     private CliRepositoryService cliRepositoryService;
     private com.vibegraph.auth.service.CreditPricingService creditPricingService;
     private com.vibegraph.auth.service.CreditBalanceService creditBalanceService;
+    private ApiKeyRequestContextAccessor apiKeyRequestContextAccessor;
 
     @BeforeEach
     void setUp() {
@@ -87,10 +89,12 @@ class ProjectControllerTest {
         cliRepositoryService = Mockito.mock(CliRepositoryService.class);
         creditPricingService = Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class);
         creditBalanceService = Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class);
+        apiKeyRequestContextAccessor = Mockito.mock(ApiKeyRequestContextAccessor.class);
         ProjectController controller = new ProjectController(
                 projectService, projectAnalysisScheduler, ownershipRegistrar, ownershipGuard, ownershipQuery,
                 deletionOrchestrator, trashService, currentUser, accountSettingsService, featureGateService,
-                projectUsageService, cliRepositoryService, creditPricingService, creditBalanceService);
+                projectUsageService, cliRepositoryService, creditPricingService, creditBalanceService,
+                apiKeyRequestContextAccessor);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -202,6 +206,22 @@ class ProjectControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/projects/current resolves the project bound to the API key")
+    void shouldGetCurrentApiKeyProject() throws Exception {
+        when(apiKeyRequestContextAccessor.current())
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.web.ApiKeyRequestContext(
+                        "key-ref", "bound-project")));
+        when(projectService.getProject("bound-project"))
+                .thenReturn(ProjectResponse.builder().id("bound-project").name("Bound").build());
+
+        mockMvc.perform(get("/api/projects/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("bound-project"));
+
+        verify(ownershipGuard).assertOwner("bound-project");
+    }
+
+    @Test
     @DisplayName("GET /api/projects/{id} returns 403 when the ownership guard rejects a non-owner")
     void shouldReturn403WhenNotOwner() throws Exception {
         doThrow(new ForbiddenException("Access denied")).when(ownershipGuard).assertOwner("p1");
@@ -233,6 +253,25 @@ class ProjectControllerTest {
         verify(creditPricingService).calculateCredits("PROJECT_ANALYZE", 0, 0);
         verify(creditBalanceService).deductCredits(userId, 0L, "WEB", "PROJECT_ANALYZE", "p1");
         verify(projectAnalysisScheduler, times(1)).schedule("p1");
+    }
+
+    @Test
+    @DisplayName("POST /api/projects/current/analyze uses the API-key-bound project")
+    void shouldAnalyzeCurrentApiKeyProject() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(apiKeyRequestContextAccessor.current())
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.web.ApiKeyRequestContext(
+                        "key-ref", "bound-project")));
+        when(currentUser.id()).thenReturn(userId);
+        when(projectService.getProject("bound-project"))
+                .thenReturn(ProjectResponse.builder().id("bound-project").rootPath("/tmp/bound").build());
+
+        mockMvc.perform(post("/api/projects/current/analyze"))
+                .andExpect(status().isAccepted());
+
+        verify(ownershipGuard).assertOwner("bound-project");
+        verify(projectAnalysisScheduler).schedule("bound-project");
+        verify(creditBalanceService).deductCredits(userId, 0L, "CLI", "PROJECT_ANALYZE", "bound-project");
     }
 
     @Test

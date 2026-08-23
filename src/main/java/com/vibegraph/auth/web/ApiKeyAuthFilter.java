@@ -132,6 +132,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private boolean supportsApiKeyAuthentication(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.startsWith("/mcp")
+                || (request.getMethod().equals("GET") && path.equals("/api/projects/current"))
+                || (request.getMethod().equals("POST") && path.equals("/api/projects/current/analyze"))
                 || path.matches("/api/projects/[^/]+/patch")
                 || path.equals("/api/projects/current/patch");
     }

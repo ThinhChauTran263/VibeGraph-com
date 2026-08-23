@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,7 @@ import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
+import com.vibegraph.auth.web.ApiKeyRequestContext;
 import com.vibegraph.common.exception.FeatureDisabledException;
 import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.exception.InsufficientCreditsException;
@@ -218,14 +220,18 @@ class McpCreditMeteringTest {
     }
 
     @Test
-    @DisplayName("project-scoped calls reject missing, blank, and non-text project IDs")
+    @DisplayName("project-scoped calls default missing IDs from the bound API key and reject invalid IDs")
     void projectCall_invalidProjectId_blocksMeteringAndDelegate() {
         when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
         callback = buildCallback();
+        when(apiKeyContextAccessor.current()).thenReturn(Optional.of(new ApiKeyRequestContext("key-1", "p1")));
+        when(creditPricingService.calculateCredits("MCP_TOOL_CALL", 0, 0)).thenReturn(1L);
+        when(delegate.call("{\"projectId\":\"p1\"}")).thenReturn("defaulted");
 
-        assertThatThrownBy(() -> callback.call("{}"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("projectId");
+        assertThat(callback.call("{}")).isEqualTo("defaulted");
+        verify(ownershipGuard).assertOwner("p1", userId);
+        verify(creditBalanceService).deductCredits(userId, 1L, "MCP", "MCP_TOOL_CALL", "p1");
+
         assertThatThrownBy(() -> callback.call("{\"projectId\":\"  \"}"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("projectId");
@@ -236,7 +242,19 @@ class McpCreditMeteringTest {
         verify(currentUser, org.mockito.Mockito.times(3)).id();
         verify(accountAccessGuard, org.mockito.Mockito.times(3)).assertProductAccess(userId);
         verify(featureGateService, org.mockito.Mockito.times(3)).assertMcpToolEnabled("project_tool");
+    }
+
+    @Test
+    @DisplayName("project-scoped calls without a bound API key fail clearly")
+    void projectCall_missingProjectAndApiKey_blocksWork() {
+        when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
+
+        assertThatThrownBy(() -> callback.call("{}"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("project-bound API key");
         verifyNoInteractions(ownershipGuard, creditPricingService, creditBalanceService);
+        verify(delegate, never()).call("{}");
     }
 
     @Test
@@ -310,5 +328,15 @@ class McpCreditMeteringTest {
 
         assertThat(callback.getToolDefinition()).isSameAs(NON_PROJECT_TOOL);
         assertThat(callback.getToolMetadata()).isSameAs(metadata);
+    }
+
+    @Test
+    @DisplayName("projectId is optional in the exposed MCP schema")
+    void projectDefinition_makesProjectIdOptional() throws Exception {
+        when(delegate.getToolDefinition()).thenReturn(PROJECT_TOOL);
+        callback = buildCallback();
+
+        var schema = new ObjectMapper().readTree(callback.getToolDefinition().inputSchema());
+        assertThat(schema.path("required").findValuesAsText("projectId")).isEmpty();
     }
 }

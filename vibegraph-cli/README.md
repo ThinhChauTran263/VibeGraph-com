@@ -64,9 +64,10 @@ expired access token automatically. `vibegraph doctor` reports whether the legac
 active. For production automation, prefer a project-bound API key because it is scoped to one
 project and works without an interactive user session.
 
-Project management commands (`projects list/create/analyze/status/delete`) use the JWT user
-session. A project-bound API key intentionally authenticates only patch/watch and MCP operations,
-so a leaked key cannot enumerate or delete projects.
+Project management commands with an explicit ID use the JWT user session. After `vibegraph login`
+selects a project key, `projects analyze` and `projects status` can omit the ID: they use the
+project bound to that key through a restricted `/api/projects/current` endpoint. A project-bound
+key still cannot enumerate or delete projects.
 
 ### Config
 
@@ -82,9 +83,12 @@ vibegraph push
 vibegraph push --dry-run
 vibegraph projects list
 vibegraph projects import-local --path <containerPath> --name <name>
-vibegraph projects analyze <projectId>
-vibegraph projects status <projectId>
-vibegraph projects delete <projectId>
+vibegraph projects analyze            # analyzes the selected project
+vibegraph projects status             # shows the selected project
+vibegraph projects analyze <projectId> # legacy/account-session form
+vibegraph projects status <projectId>  # legacy/account-session form
+vibegraph projects push [--root <localPath>] [--dry-run]
+vibegraph projects delete              # choose a project from your account and confirm
 ```
 
 ### Watch
@@ -94,6 +98,11 @@ vibegraph watch
 ```
 
 Push and watch use the current folder and resolve the project from the configured API key.
+
+`projects push` is the namespaced equivalent of `push`; both use the selected project key by
+default. `projects delete` lists account-owned projects, asks for a numbered selection, and
+requires an explicit `yes` confirmation. Deleting the selected project clears its local key
+metadata so the next operation tells the user to run `vibegraph key change`.
 
 Watch continuously monitors for file changes and auto-pushes patches. Debounces at 800ms. Press
 Ctrl+C to stop.
@@ -157,7 +166,9 @@ vibegraph mcp install generic --path ./path/to/the/ide-mcp.json
 
 The install command creates parent directories, merges the existing JSON, and replaces a stale
 `vibegraph` entry while preserving every other MCP server. It verifies initialize and tools/list
-before reporting that MCP is ready. For an IDE that is not listed, use `generic --path` if it accepts the
+before reporting that MCP is ready. The generated stdio entry pins `VIBEGRAPH_CONFIG_DIR` to the
+same credential directory used by this CLI, and the proxy reloads that file before each request.
+Therefore `vibegraph key change` takes effect without manually copying a key into IDE JSON. For an IDE that is not listed, use `generic --path` if it accepts the
 standard `mcpServers` format, or run `vibegraph mcp config` and paste the output into that IDE's
 MCP settings file. You can choose a different server key when copying JSON:
 
@@ -166,8 +177,8 @@ vibegraph mcp config my-vibegraph
 ```
 
 If the IDE says the server was added but no tools appear, run `vibegraph mcp doctor`. A successful
-result reports the server name, protocol version, and tool count. Then restart or reload the IDE's
-MCP server. If the doctor command reports an authentication error, run `vibegraph key change` and
+result reports the server name, protocol version, and tool count. Reload the IDE's MCP server if it
+does not refresh its tool list. If the doctor command reports an authentication error, run `vibegraph key change` and
 select an active key owned by your account. Do not paste a `vibegraph>` shell prompt into JSON and
 do not wrap the generated object inside a second `mcpServers` object.
 
@@ -193,7 +204,7 @@ committed workspace file:
 IDE. It is not an OAuth client secret, JWT secret, or account-wide credential. In direct HTTP mode,
 switch projects by replacing this header value with the new project's key and restarting/reloading
 the IDE MCP server. With the CLI stdio proxy, run `vibegraph key change`, choose the new project,
-then restart/reload MCP; no JSON edit is needed. The local proxy and direct HTTP modes both charge
+and the running proxy reloads the saved key on its next request; no JSON edit is needed. The local proxy and direct HTTP modes both charge
 the selected project. If a key was rotated,
 deleted, disabled, expired, or belongs to another account, MCP returns an actionable error; run
 `vibegraph key change` to refresh and select an owned key.

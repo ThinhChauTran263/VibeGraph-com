@@ -181,6 +181,86 @@ test("apiRequest never falls back to a project API key for JWT-only requests", a
   }
 });
 
+test("projects analyze and status default to the selected API-key project", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousLog = console.log;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    apiKey: "vbg_selected12345678wxyz",
+    project: { id: "selected-project", name: "Selected" },
+  });
+  const calls = [];
+  let output = "";
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify(String(url).endsWith("/analyze")
+        ? { success: true, data: { accepted: true } }
+        : { success: true, data: { id: "selected-project", name: "Selected", status: "READY" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    console.log = (value) => { output += String(value); };
+
+    await module.handleProjects(["analyze"]);
+    await module.handleProjects(["status"]);
+
+    assert.equal(calls[0].url, "http://api.example.test/api/projects/current/analyze");
+    assert.equal(calls[0].options.headers["X-API-Key"], "vbg_selected12345678wxyz");
+    assert.equal(calls[1].url, "http://api.example.test/api/projects/current");
+    assert.equal(calls[1].options.headers["X-API-Key"], "vbg_selected12345678wxyz");
+    assert.match(output, /selected-project/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    console.log = previousLog;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("projects delete lists account projects, confirms a numbered choice, and clears a deleted selection", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
+  const { configDir, module } = await importCliWithConfig({
+    apiUrl: "http://api.example.test",
+    token: "legacy-jwt",
+    apiKey: "vbg_selected12345678wxyz",
+    apiKeyId: "key-1",
+    project: { id: "p2", name: "Beta" },
+    apiKeys: [{ id: "key-1", keyPrefix: "vbg_sel", project: { id: "p2", name: "Beta" } }],
+  });
+  const calls = [];
+  const answers = ["2", "yes"];
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      const payload = String(url).endsWith("/api/projects")
+        ? { success: true, data: [{ id: "p1", name: "Alpha", status: "READY" }, { id: "p2", name: "Beta", status: "CREATED" }] }
+        : { success: true, data: null };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    };
+
+    await module.handleProjects(["delete"], { askQuestion: async () => answers.shift() });
+
+    assert.equal(calls[0].url, "http://api.example.test/api/projects");
+    assert.equal(calls[0].options.headers.Authorization, "Bearer legacy-jwt");
+    assert.equal(calls[1].url, "http://api.example.test/api/projects/p2");
+    assert.equal(calls[1].options.method, "DELETE");
+    const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));
+    assert.equal(saved.apiKey, undefined);
+    assert.equal(saved.project, undefined);
+    assert.deepEqual(saved.apiKeys, []);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;
+    else process.env.VIBEGRAPH_CONFIG_DIR = previousConfigDir;
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
 test("apiRequest formats backend error envelopes without [object Object]", async () => {
   const previousFetch = globalThis.fetch;
   const previousConfigDir = process.env.VIBEGRAPH_CONFIG_DIR;
@@ -325,6 +405,8 @@ test("buildMcpServerConfig uses the CLI proxy and never embeds the API key", asy
 
     assert.equal(config.mcpServers.vibegraph.command, process.execPath);
     assert.deepEqual(config.mcpServers.vibegraph.args.slice(-2), ["mcp-proxy", "--stdio"]);
+    assert.equal(config.mcpServers.vibegraph.env.VIBEGRAPH_CONFIG_DIR, configDir);
+    assert.equal(config.mcpServers.vibegraph.env.VIBEGRAPH_API_KEY, "");
     assert.doesNotMatch(JSON.stringify(config), new RegExp(rawKey));
   } finally {
     if (previousConfigDir === undefined) delete process.env.VIBEGRAPH_CONFIG_DIR;

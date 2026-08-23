@@ -565,6 +565,7 @@ function onRelationSelect(payload: RelationHoverPayload): void {
 
 onMounted(() => {
   if (props.projectId) {
+    filters.setProject?.(props.projectId)
     load(props.projectId)
   }
 })
@@ -579,6 +580,7 @@ onActivated(() => {
 watch(
   () => props.projectId,
   (newId) => {
+    filters.setProject?.(newId)
     resetExpand()
     if (newId) load(newId)
   },

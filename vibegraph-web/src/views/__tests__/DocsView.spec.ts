@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import DocsView from '../DocsView.vue'
 import i18n from '@/language'
 
 describe('DocsView', () => {
+  afterEach(() => vi.useRealTimers())
+
   function mountDocs() {
     return mount(DocsView, {
       global: {
@@ -46,6 +48,8 @@ describe('DocsView', () => {
     expect(text).toContain('EEXIST')
     expect(text).toContain('Unknown command: vibegraph')
     expect(wrapper.find('.docs-nav').find('.docs-nav__inner').exists()).toBe(true)
+    expect(wrapper.find('a[download][href="/docs/vibegraph-ai-guide.md"]').exists()).toBe(true)
+    expect(wrapper.find('a[download][href="/docs/vibegraph-ai-guide.html"]').exists()).toBe(true)
   })
 
   it('documents the published npm package and production install command', () => {
@@ -61,5 +65,47 @@ describe('DocsView', () => {
     expect(cards[0]?.text()).toContain('VIDEO 1')
     expect(cards[6]?.text()).toContain('VIDEO 7')
     expect(wrapper.text()).toContain('will be recorded later')
+  })
+
+  it('documents four import paths and the complete MCP tool registry', () => {
+    const wrapper = mountDocs()
+    expect(wrapper.findAll('.import-card')).toHaveLength(4)
+    expect(wrapper.findAll('.mcp-tool-card')).toHaveLength(18)
+    expect(wrapper.text()).toContain('CLI Push')
+    expect(wrapper.text()).toContain('Archive upload')
+    expect(wrapper.text()).toContain('Public GitHub')
+    expect(wrapper.text()).toContain('Local backend path')
+    expect(wrapper.text()).toContain('See the import hand-off')
+    expect(wrapper.text()).toContain('Illustrative import flow — no upload or analysis started')
+  })
+
+  it('plays the import walkthrough without starting an upload', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountDocs()
+    await wrapper.get('.import-demo .simulation-button').trigger('click')
+    vi.advanceTimersByTime(8_000)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.import-demo__step--active')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Graph becomes available to dashboard/MCP')
+  })
+
+  it('keeps the current section marked for navigation context', async () => {
+    const wrapper = mountDocs()
+    expect(wrapper.find('.docs-sidebar a.is-active').attributes('href')).toBe('#status')
+  })
+
+  it('runs an explicitly illustrative MCP conversation simulation', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountDocs()
+    expect(wrapper.text()).toContain('Illustrative simulation — no live MCP call')
+    expect(wrapper.find('.chat-line--tool').exists()).toBe(false)
+
+    await wrapper.get('.simulation-shell .simulation-button').trigger('click')
+    vi.advanceTimersByTime(10_000)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.chat-line--user').text()).toContain('OrderService.createOrder')
+    expect(wrapper.get('.chat-line--tool').text()).toContain('get_impact_analysis')
+    expect(wrapper.get('.chat-line--agent').text()).toContain('direct and transitive callers')
   })
 })
