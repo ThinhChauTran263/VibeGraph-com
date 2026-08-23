@@ -178,7 +178,10 @@ function clearSearch(): void {
 }
 
 .search-bar__results {
-  margin-top: 0.5rem;
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  left: 0;
   max-height: 20rem;
   overflow: auto;
   border: 1px solid #1f2937;

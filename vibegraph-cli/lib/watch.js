@@ -7,7 +7,7 @@
 import { watch } from "node:fs";
 import path from "node:path";
 import { getMaxTotalBytes, loadIgnoreRules, shouldIgnore } from "./ignore.js";
-import { loadSnapshot, diffSnapshot } from "./snapshot.js";
+import { loadSnapshot, saveSnapshot, diffSnapshot } from "./snapshot.js";
 import { scanDirectory, buildFileStateMap } from "./scanner.js";
 import { createPatchRequest, resolveSnapshotId } from "./project-target.js";
 import { executePush } from "./push.js";

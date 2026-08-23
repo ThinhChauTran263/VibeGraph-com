@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import SearchBar from '../SearchBar.vue'
+import searchBarSource from '../SearchBar.vue?raw'
 import type { GraphNode } from '@/types/graph'
 
 function node(overrides: Partial<GraphNode>): GraphNode {
@@ -92,6 +93,17 @@ describe('SearchBar', () => {
     await typeAndSettle(wrapper, 'missing')
 
     expect(wrapper.text()).toContain('No matching nodes.')
+  })
+
+  it('keeps results out of the toolbar layout flow', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await typeAndSettle(wrapper, 'order')
+
+    expect(wrapper.find('.search-bar__results').exists()).toBe(true)
+    expect(searchBarSource).toMatch(
+      /\.search-bar__results\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(100% \+ 0\.5rem\);/,
+    )
   })
 
   it('clears the query and emits clear', async () => {
