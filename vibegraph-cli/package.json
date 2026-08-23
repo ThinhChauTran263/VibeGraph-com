@@ -1,6 +1,6 @@
 {
   "name": "vibegraph-cli",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Production CLI for VibeGraph project push, watch, authentication, and MCP workflows.",
   "type": "module",
   "bin": {

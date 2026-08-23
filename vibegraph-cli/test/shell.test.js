@@ -5,10 +5,12 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
 import {
   buildLiveSuggestionClearSequence,
+  askPassword,
   completeShellLine,
   getNextSuggestionIndex,
   getSuggestionWindow,
@@ -27,6 +29,28 @@ import {
   selectProjectForDeletion,
   truncateTerminalText,
 } from "../bin/vibegraph.js";
+
+test("password input resumes stdin after the email readline prompt paused it", async () => {
+  const input = new EventEmitter();
+  input.isTTY = true;
+  input.isRaw = false;
+  input.resumeCalls = 0;
+  input.resume = () => { input.resumeCalls += 1; };
+  input.setRawMode = (enabled) => { input.isRaw = enabled; };
+  const writes = [];
+  const output = { write: (value) => { writes.push(value); } };
+
+  const passwordPromise = askPassword("Password: ", input, output);
+  input.emit("keypress", "s", { name: "s" });
+  input.emit("keypress", "3", { name: "3" });
+  input.emit("keypress", "c", { name: "c" });
+  input.emit("keypress", "r", { name: "return" });
+
+  assert.equal(await passwordPromise, "s3c");
+  assert.equal(input.resumeCalls, 1);
+  assert.equal(input.isRaw, false);
+  assert.deepEqual(writes, ["Password: ", "\n"]);
+});
 
 const cliPath = fileURLToPath(new URL("../bin/vibegraph.js", import.meta.url));
 const SHELL_SUGGESTION_COMMANDS = [

@@ -426,7 +426,7 @@ async function runInteractiveLineEditor() {
     } catch (error) {
       console.error(error instanceof CliError ? error.message : error?.stack || String(error));
     } finally {
-      if (!closed && process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+      if (!closed) enableInteractiveInput(process.stdin);
       if (!closed) process.stdin.on("keypress", onKeypress);
       processing = false;
       render();
@@ -434,7 +434,7 @@ async function runInteractiveLineEditor() {
   };
 
   emitKeypressEvents(process.stdin);
-  if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+  enableInteractiveInput(process.stdin);
   process.stdin.on("keypress", onKeypress);
   process.stdin.once("end", finish);
   render();
@@ -795,6 +795,7 @@ export {
   probeMcpProxy,
   handleDoctor,
   handleProjects,
+  askPassword,
   selectProjectForDeletion,
   maskApiKey,
   parsePushCommandArgs,
@@ -1811,8 +1812,8 @@ async function askQuestion(prompt) {
   }
 }
 
-async function askPassword(prompt) {
-  if (!process.stdin.isTTY || !process.stdin.setRawMode) {
+async function askPassword(prompt, input = process.stdin, output = process.stdout) {
+  if (!input.isTTY || !input.setRawMode) {
     throw new CliError("Password input requires an interactive terminal. Run: vibegraph login", 2);
   }
 
@@ -1826,7 +1827,7 @@ async function askPassword(prompt) {
       }
       if (key.name === "return" || key.name === "enter") {
         cleanup();
-        process.stdout.write("\n");
+        output.write("\n");
         resolve(value);
         return;
       }
@@ -1839,15 +1840,21 @@ async function askPassword(prompt) {
       }
     };
     const cleanup = () => {
-      process.stdin.off("keypress", onKeypress);
-      process.stdin.setRawMode(false);
+      input.off("keypress", onKeypress);
+      input.setRawMode(false);
     };
 
-    emitKeypressEvents(process.stdin);
-    process.stdout.write(prompt);
-    process.stdin.setRawMode(true);
-    process.stdin.on("keypress", onKeypress);
+    emitKeypressEvents(input);
+    output.write(prompt);
+    enableInteractiveInput(input);
+    input.on("keypress", onKeypress);
   });
+}
+
+function enableInteractiveInput(input) {
+  // Closing a readline interface pauses stdin; resume it before raw key handling takes over.
+  input.resume();
+  if (input.isTTY && input.setRawMode) input.setRawMode(true);
 }
 
 async function ensureAccountSession(ask = askQuestion, askSecret = askPassword) {
