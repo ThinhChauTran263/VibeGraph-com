@@ -168,6 +168,38 @@ class Neo4jGraphRepositoryIT {
     }
 
     @Test
+    @DisplayName("full analysis removes nodes and edges missing from the latest source tree")
+    void upsertAnalysisReplacesStaleGraphData() {
+        NodeData user = NodeData.of(
+                "Class", "User", "com.example.User",
+                "src/User.java", 1, 20, Map.of());
+        NodeData service = NodeData.of(
+                "Class", "UserService", "com.example.UserService",
+                "src/UserService.java", 1, 30, Map.of());
+
+        repository.upsertAnalysis(
+                projectId,
+                "Replace Repo",
+                "/tmp/demo",
+                List.of(user, service),
+                List.of(EdgeData.of("CALLS", "com.example.UserService", "com.example.User")));
+
+        repository.upsertAnalysis(
+                projectId,
+                "Replace Repo",
+                "/tmp/demo",
+                List.of(service),
+                List.of());
+
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+        assertThat(graph.getNodes())
+                .extracting(NodeDto::getFullName)
+                .contains("com.example.UserService")
+                .doesNotContain("com.example.User");
+        assertThat(graph.getEdges()).isEmpty();
+    }
+
+    @Test
     @DisplayName("B-M11: a mid-write failure rolls the whole analysis graph back (no half-written project)")
     void upsertAnalysisRollsBackOnMidWriteFailure() {
         NodeData clazz = NodeData.of(
@@ -188,6 +220,36 @@ class Neo4jGraphRepositoryIT {
         GraphDataResponse graph = repository.getFullGraph(projectId);
         assertThat(graph.getNodes()).isEmpty();
         assertThat(graph.getEdges()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("failed full replacement keeps the previously committed graph")
+    void upsertAnalysisFailedReplacementKeepsPreviousGraph() {
+        NodeData existing = NodeData.of(
+                "Class", "Existing", "com.example.Existing",
+                "src/Existing.java", 1, 20, Map.of());
+        repository.upsertAnalysis(
+                projectId, "Stable Repo", "/tmp/demo", List.of(existing), List.of());
+
+        NodeData replacement = NodeData.of(
+                "Class", "Replacement", "com.example.Replacement",
+                "src/Replacement.java", 1, 20, Map.of());
+        EdgeData poisoned = EdgeData.of(
+                "CALLS",
+                "com.example.Replacement",
+                "com.example.Replacement",
+                Map.of("poison", new Object()));
+
+        assertThatThrownBy(() -> repository.upsertAnalysis(
+                projectId, "Broken Repo", "/tmp/demo", List.of(replacement), List.of(poisoned)))
+                .isInstanceOf(RuntimeException.class);
+
+        GraphDataResponse graph = repository.getFullGraph(projectId);
+        assertThat(graph.getNodes())
+                .extracting(NodeDto::getFullName)
+                .contains("com.example.Existing")
+                .doesNotContain("com.example.Replacement");
+        assertThat(repository.findProject(projectId).name()).isEqualTo("Stable Repo");
     }
 
     @Test

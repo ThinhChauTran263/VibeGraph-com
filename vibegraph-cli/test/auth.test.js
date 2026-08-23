@@ -28,12 +28,12 @@ function runCli(args, env) {
   });
 }
 
-test("manual auth set-key is rejected so ownership is established by browser login", async () => {
+test("manual key set-key is rejected so ownership is established by browser login", async () => {
   const configDir = await mkdtemp(path.join(tmpdir(), "vg-auth-config-"));
   const apiKey = "vbg_abcd1234secretwxyz";
   const env = { VIBEGRAPH_CONFIG_DIR: configDir };
   try {
-    const setResult = await runCli(["auth", "set-key", apiKey], env);
+    const setResult = await runCli(["key", "set-key", apiKey], env);
     assert.equal(setResult.code, 2);
     assert.match(setResult.stderr, /cannot verify account ownership/i);
     assert.doesNotMatch(setResult.stderr, new RegExp(apiKey));
@@ -42,7 +42,7 @@ test("manual auth set-key is rejected so ownership is established by browser log
   }
 });
 
-test("auth clear removes the selected project credential", async () => {
+test("key clear removes the selected project credential", async () => {
   const configDir = await mkdtemp(path.join(tmpdir(), "vg-auth-config-"));
   const env = { VIBEGRAPH_CONFIG_DIR: configDir };
   try {
@@ -56,7 +56,7 @@ test("auth clear removes the selected project credential", async () => {
       `${JSON.stringify({ token: "legacy-jwt", apiKey: "vbg_abcd1234secretwxyz", apiKeyId: "key-1", project: { id: "project-1" } })}\n`,
       "utf8",
     );
-    const clearResult = await runCli(["auth", "clear"], env);
+    const clearResult = await runCli(["key", "clear"], env);
 
     assert.equal(clearResult.code, 0);
     const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));

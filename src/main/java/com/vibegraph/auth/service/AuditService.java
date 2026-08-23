@@ -27,6 +27,7 @@ import com.vibegraph.auth.repository.AuditLogSpecifications;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
 import com.vibegraph.auth.repository.UserRepository;
+import com.vibegraph.abuse.ClientAddressResolver;
 import com.vibegraph.common.exception.UnauthorizedException;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +45,7 @@ public class AuditService {
     private final UserRepository userRepository;
     private final Clock clock;
     private final CurrentUser currentUser;
+    private final ClientAddressResolver clientAddressResolver;
 
     public AuditLogResponse record(
             String action,
@@ -148,7 +150,7 @@ public class AuditService {
             return null;
         }
         HttpServletRequest request = attributes.getRequest();
-        String ip = request.getRemoteAddr();
+        String ip = clientAddressResolver.resolve(request);
         return ip == null ? null : ip.substring(0, Math.min(ip.length(), 64));
     }
 

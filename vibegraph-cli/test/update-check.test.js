@@ -35,6 +35,46 @@ test("latest version check caches the registry result", async () => {
   }
 });
 
+test("forced startup checks bypass the cache", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-update-check-"));
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: true, async json() { return { version: "0.1.8" }; } };
+  };
+  try {
+    await getLatestVersion({ currentVersion: "0.1.7", configDir, fetchImpl, now: 1000 });
+    assert.equal(await getLatestVersion({
+      currentVersion: "0.1.7",
+      configDir,
+      fetchImpl,
+      now: 2000,
+      force: true,
+    }), "0.1.8");
+    assert.equal(calls, 2);
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("startup keeps the last known update when the registry is unavailable", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-update-check-"));
+  try {
+    const fetchImpl = async () => ({ ok: true, async json() { return { version: "0.1.8" }; } });
+    await getLatestVersion({ currentVersion: "0.1.7", configDir, fetchImpl, now: 1000 });
+    const result = await getLatestVersion({
+      currentVersion: "0.1.7",
+      configDir,
+      fetchImpl: async () => { throw new Error("offline"); },
+      now: 2000,
+      force: true,
+    });
+    assert.equal(result, "0.1.8");
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
 test("latest version check fails silently when the registry is unavailable", async () => {
   const configDir = await mkdtemp(path.join(tmpdir(), "vg-update-check-"));
   try {

@@ -66,8 +66,6 @@ const SHELL_SUGGESTION_COMMANDS = [
   "key list",
   "key change",
   "key clear",
-  "auth status",
-  "auth clear",
   "me",
   "logout",
   "config show",
@@ -79,7 +77,6 @@ const SHELL_SUGGESTION_COMMANDS = [
   "projects import-local --path ",
   "projects analyze",
   "projects delete",
-  "projects push",
   "push",
   "push --dry-run",
   "projects status",
@@ -350,8 +347,6 @@ test("shell completer suggests slash commands and command templates", () => {
     "/key list",
     "/key change",
     "/key clear",
-    "/auth status",
-    "/auth clear",
     "/me",
     "/logout",
     "/config show",
@@ -363,7 +358,6 @@ test("shell completer suggests slash commands and command templates", () => {
     "/projects import-local --path ",
     "/projects analyze",
     "/projects delete",
-    "/projects push",
     "/push",
     "/push --dry-run",
     "/projects status",
@@ -379,17 +373,12 @@ test("shell completer suggests slash commands and command templates", () => {
     "projects import-local --path ",
     "projects analyze",
     "projects delete",
-    "projects push",
     "projects status",
   ], "projects "]);
   assert.deepEqual(completeShellLine("  config s"), [[
     "  config show",
     "  config set-url ",
   ], "  config s"]);
-  assert.deepEqual(completeShellLine("auth "), [[
-    "auth status",
-    "auth clear",
-  ], "auth "]);
   assert.deepEqual(completeShellLine("key "), [[
     "key status",
     "key list",
@@ -399,7 +388,6 @@ test("shell completer suggests slash commands and command templates", () => {
   assert.deepEqual(completeShellLine("push"), [[
     "push",
     "push --dry-run",
-    "projects push",
   ], "push"]);
   assert.deepEqual(completeShellLine("watch --"), [["watch --root "], "watch --"]);
 });
@@ -411,7 +399,7 @@ test("live shell suggestions filter as the user types", () => {
   );
   assert.deepEqual(
     getShellSuggestions("/st").map(({ command }) => command),
-    ["key status", "auth status", "projects status"],
+    ["key status", "projects status"],
   );
   assert.deepEqual(
     getShellSuggestions("/").map(({ command }) => command),
@@ -419,11 +407,11 @@ test("live shell suggestions filter as the user types", () => {
   );
   assert.deepEqual(
     getShellSuggestions("projects p").map(({ command }) => command),
-    ["projects push"],
+    [],
   );
   assert.deepEqual(
     getShellSuggestions("status").map(({ command }) => command),
-    ["key status", "auth status", "projects status"],
+    ["key status", "projects status"],
   );
   assert.deepEqual(
     getShellSuggestions("analyze").map(({ command }) => command),
@@ -438,6 +426,19 @@ test("live shell suggestions filter as the user types", () => {
     ["projects status"],
   );
   assert.deepEqual(getShellSuggestions("").map(({ command }) => command), []);
+});
+
+test("removed command aliases are rejected", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-shell-config-"));
+  try {
+    for (const args of [["auth", "status"], ["auth", "clear"], ["projects", "push"]]) {
+      const result = await runCli(args, { env: { VIBEGRAPH_CONFIG_DIR: configDir } });
+      assert.equal(result.code, 2);
+      assert.match(result.stderr, /Unknown command|Unknown projects command/);
+    }
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
 });
 
 test("live shell suggestion panel includes descriptions", () => {
@@ -490,7 +491,7 @@ test("arrow selection keeps the typed buffer until the user accepts it", () => {
   const suggestions = getShellSuggestions("/", Number.POSITIVE_INFINITY);
 
   assert.equal(getSelectedSuggestionLine("/", suggestions, 0), "/help");
-  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), "projects push");
+  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), null);
   assert.equal(getSelectedSuggestionLine("/", suggestions, -1), null);
   assert.equal(getSelectedSuggestionLine("/", suggestions, suggestions.length), null);
 });
@@ -555,8 +556,7 @@ test("parseShellArgs preserves UNC paths and trailing path backslashes", () => {
     "set-url",
     "\\\\server\\share",
   ]);
-  assert.deepEqual(parseShellArgs('projects push demo --root "D:\\Projects\\demo\\"'), [
-    "projects",
+  assert.deepEqual(parseShellArgs('push demo --root "D:\\Projects\\demo\\"'), [
     "push",
     "demo",
     "--root",

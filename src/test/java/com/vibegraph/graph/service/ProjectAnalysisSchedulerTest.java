@@ -1,4 +1,4 @@
-package com.vibegraph.patch.service;
+package com.vibegraph.graph.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -12,28 +12,23 @@ import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
 import com.vibegraph.graph.repository.GraphRepository;
-import com.vibegraph.graph.service.AnalyzeService;
-import com.vibegraph.graph.service.ProjectService;
-import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
-@DisplayName("Patch analysis scheduler")
-class PatchAnalysisSchedulerTest {
+@DisplayName("Project analysis scheduler")
+class ProjectAnalysisSchedulerTest {
 
     @Test
-    @DisplayName("schedule analyzes pushed source and re-arms realtime watcher")
-    void scheduleAnalyzesPushedSource() {
+    @DisplayName("successful analysis broadcasts the replacement graph")
+    void successfulAnalysisBroadcastsReplacementGraph() {
         ProjectService projectService = org.mockito.Mockito.mock(ProjectService.class);
         AnalyzeService analyzeService = org.mockito.Mockito.mock(AnalyzeService.class);
         GraphRepository graphRepository = org.mockito.Mockito.mock(GraphRepository.class);
         GraphUpdateController graphUpdateController = org.mockito.Mockito.mock(GraphUpdateController.class);
-        FileChangeBroadcaster fileChangeBroadcaster = org.mockito.Mockito.mock(FileChangeBroadcaster.class);
-        PatchAnalysisScheduler scheduler = new PatchAnalysisScheduler(
+        ProjectAnalysisScheduler scheduler = new ProjectAnalysisScheduler(
                 projectService,
                 analyzeService,
                 graphRepository,
                 graphUpdateController,
-                fileChangeBroadcaster,
                 Runnable::run);
         when(projectService.getProject("p1")).thenReturn(ProjectResponse.builder()
                 .id("p1")
@@ -51,8 +46,7 @@ class PatchAnalysisSchedulerTest {
         verify(projectService).markAnalyzing("p1");
         verify(projectService).markAnalyzed("p1", 2, 3, 4);
         verify(graphUpdateController).broadcastFullUpdate("p1", graph);
-        verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZING, 0, "Analyzing pushed changes");
+        verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZING, 0, "Analysis queued");
         verify(graphUpdateController).broadcastStatus("p1", ProjectStatus.ANALYZED, 100);
-        verify(fileChangeBroadcaster).watchProject("p1", "/tmp/repo");
     }
 }

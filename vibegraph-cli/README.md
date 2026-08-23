@@ -44,8 +44,8 @@ For the full walkthrough, see **[docs/local-patch.md](../docs/local-patch.md)**.
 vibegraph login
 vibegraph key change
 vibegraph key list
-vibegraph auth status
-vibegraph auth clear
+vibegraph key status
+vibegraph key clear
 ```
 
 `vibegraph login` opens a short-lived browser authorization page. After sign-in, choose one of your
@@ -54,7 +54,7 @@ owned, active project keys. The CLI stores the selected credential and its `apiK
 `vibegraph key change` repeats the browser flow and refreshes the account's key list. `key list`
 prints only masked metadata (`key prefix | project name`) from the last browser refresh.
 
-Raw-key commands (`login <apiKey>`, `login --key`, `key add`, and `auth set-key`) are rejected in
+Raw-key commands (`login <apiKey>`, `login --key`, `key add`, and `key set-key`) are rejected in
 production because a bearer key alone cannot prove that it belongs to the signed-in account. This
 prevents accidentally configuring a leaked key from another user. Use browser login instead.
 
@@ -95,7 +95,6 @@ vibegraph projects analyze            # analyzes the selected project
 vibegraph projects status             # shows the selected project
 vibegraph projects analyze <projectId> # legacy/account-session form
 vibegraph projects status <projectId>  # legacy/account-session form
-vibegraph projects push [--root <localPath>] [--dry-run]
 vibegraph projects delete              # choose a project from your account and confirm
 ```
 
@@ -107,8 +106,7 @@ vibegraph watch
 
 Push and watch use the current folder and resolve the project from the configured API key.
 
-`projects push` is the namespaced equivalent of `push`; both use the selected project key by
-default. `projects delete` lists account-owned projects, asks for a numbered selection, and
+`projects delete` lists account-owned projects, asks for a numbered selection, and
 requires an explicit `yes` confirmation. If no account session is stored, it prompts for email
 and password inline before loading the project list; the password is not echoed in an interactive
 terminal. Deleting the selected project clears its local key

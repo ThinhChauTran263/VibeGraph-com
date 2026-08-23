@@ -516,8 +516,8 @@ vibegraph mcp config generic</code></pre>
           <h2>{{ copy.docs.keysTitle }}</h2>
           <pre><code>vibegraph key list
 vibegraph key change
-vibegraph auth status
-vibegraph auth clear</code></pre>
+vibegraph key status
+vibegraph key clear</code></pre>
           <p>{{ copy.docs.keysBody }}</p>
           <p>{{ copy.docs.keyMeaning }}</p>
           <h3>{{ copy.docs.creditTitle }}</h3>

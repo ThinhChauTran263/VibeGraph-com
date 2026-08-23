@@ -42,8 +42,6 @@ const SHELL_COMMANDS = [
   { command: "key list", description: "List API keys available to this CLI" },
   { command: "key change", description: "Choose a different project API key" },
   { command: "key clear", description: "Clear the stored API key" },
-  { command: "auth status", description: "Show masked API-key status" },
-  { command: "auth clear", description: "Clear the stored API key" },
   { command: "me", description: "Show the current authenticated user" },
   { command: "logout", description: "Clear local auth state" },
   { command: "config show", description: "Show API URL and auth state" },
@@ -55,7 +53,6 @@ const SHELL_COMMANDS = [
   { command: "projects import-local --path ", description: "Import a local Docker-mounted project" },
   { command: "projects analyze", description: "Analyze the selected project" },
   { command: "projects delete", description: "Choose and delete a project" },
-  { command: "projects push", description: "Push local file changes to the selected project" },
   { command: "push", description: "Push the current folder using the selected project key" },
   { command: "push --dry-run", description: "Preview changes for the current folder" },
   { command: "projects status", description: "Show the selected project status" },
@@ -140,9 +137,6 @@ async function dispatchCommand(args) {
     case "config":
       await handleConfig(rest);
       return;
-    case "auth":
-      await handleAuth(rest);
-      return;
     case "key":
       await handleAuth(rest);
       return;
@@ -219,8 +213,6 @@ function renderHelpBody() {
   vibegraph key clear
   vibegraph config show
   vibegraph config set-url <url>
-  vibegraph auth status
-  vibegraph auth clear
   vibegraph register --email <email> --password <password> --name <displayName>
   vibegraph login --email <email> --password <password>
   vibegraph logout
@@ -239,7 +231,6 @@ Projects:
   vibegraph projects import-local --path <backendPath> [--name <name>]
   vibegraph projects analyze [projectId]
   vibegraph projects delete
-  vibegraph projects push [--root <localPath>] [--dry-run]
   vibegraph projects status [projectId]
 
 Watch:
@@ -253,7 +244,7 @@ Ignore:
 
 async function startInteractiveShell() {
   const config = await loadConfig();
-  await checkForCliUpdate();
+  await checkForCliUpdate({ force: true });
   console.log(renderInteractiveHeader(config));
   return runInteractiveLineEditor();
 }
@@ -1359,11 +1350,12 @@ function openBrowser(url) {
   }
 }
 
-async function checkForCliUpdate() {
+async function checkForCliUpdate({ force = false } = {}) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) return;
   const latestVersion = await getLatestVersion({
     currentVersion: CLI_VERSION,
     configDir: CONFIG_DIR,
+    force,
   });
   if (!latestVersion || !isNewerVersion(CLI_VERSION, latestVersion)) return;
 
@@ -1508,12 +1500,6 @@ async function handleProjects(args, dependencies = {}) {
       console.log("The deleted project was selected. Run: vibegraph key change");
     }
     console.log(`Deleted project ${selectedProject?.name || projectId}`);
-    return;
-  }
-
-  if (subcommand === "push") {
-    const parsed = parsePushCommandArgs(args);
-    await executePushCommand(parsed);
     return;
   }
 

@@ -94,11 +94,6 @@ public class SecurityConfig {
     private final StatelessSessionCookieFilter statelessSessionCookieFilter;
 
     @Bean
-    public ClientAddressResolver clientAddressResolver() {
-        return new ClientAddressResolver(abuseProperties);
-    }
-
-    @Bean
     public IpBlockFilter ipBlockFilter(ClientAddressResolver resolver) {
         return new IpBlockFilter(resolver, ipBlockService, objectMapper);
     }
@@ -128,7 +123,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-            io.micrometer.core.instrument.MeterRegistry meterRegistry) throws Exception {
+            io.micrometer.core.instrument.MeterRegistry meterRegistry,
+            ClientAddressResolver clientAddressResolver) throws Exception {
         boolean demoPermit = realtimeProperties.isDemoPermit();
         if (demoPermit) {
             log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
@@ -201,7 +197,7 @@ public class SecurityConfig {
                         .successHandler(oAuth2LoginSuccessHandler)
                         .failureHandler(oAuth2LoginFailureHandler))
                 .addFilterBefore(statelessSessionCookieFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(ipBlockFilter(clientAddressResolver), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(cookieCsrfFilter, UsernamePasswordAuthenticationFilter.class)
                 // H13: rate-limit must run BEFORE the auth filters. ApiKeyAuthFilter spends up to
                 // 5 BCrypt rounds (~100ms each) per request with a wrong key that matches an
@@ -213,7 +209,7 @@ public class SecurityConfig {
                 // rejects custom classes as anchors ("does not have a registered order"); the JWT
                 // filter sits at UsernamePasswordAuthenticationFilter via addFilterAt below, so
                 // anchoring there puts the limiter directly in front of the auth filters.
-                .addFilterBefore(rateLimitFilter(clientAddressResolver(), meterRegistry), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter(clientAddressResolver, meterRegistry), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 // Identity buckets must sit behind the auth filters: the user id comes from the
@@ -225,7 +221,7 @@ public class SecurityConfig {
                 // only accepts its own filters as ordering anchors, and AuthorizationFilter sits at
                 // the end of the chain — which is exactly where the limiter used to live, so this
                 // position is already known to assemble.
-                .addFilterBefore(identityRateLimitFilter(clientAddressResolver(), meterRegistry),
+                .addFilterBefore(identityRateLimitFilter(clientAddressResolver, meterRegistry),
                         org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();

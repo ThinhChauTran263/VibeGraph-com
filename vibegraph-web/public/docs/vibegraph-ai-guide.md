@@ -51,6 +51,7 @@ npm install -g vibegraph-cli@latest
 vibegraph key list
 vibegraph key change
 vibegraph key status
+vibegraph key clear
 vibegraph doctor
 ```
 

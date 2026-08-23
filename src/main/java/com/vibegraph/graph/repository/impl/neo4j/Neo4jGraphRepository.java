@@ -195,6 +195,10 @@ public class Neo4jGraphRepository implements GraphRepository {
         int[] stepsDone = {0};
         try (Session session = neo4jDriver.session()) {
             return session.executeWrite(tx -> {
+                // A full analysis is a replacement snapshot, not an additive merge. Clear the
+                // previous derived graph inside the same transaction so deleted source files
+                // cannot leave stale symbols behind, while a failed write still rolls back.
+                runProjectGraphClear(tx::run, projectId);
                 runProjectUpsert(tx::run, projectId, name, path);
                 listener.onStep(++stepsDone[0], totalSteps);
                 for (Map.Entry<String, List<Map<String, Object>>> group : nodesByLabel.entrySet()) {
@@ -209,6 +213,14 @@ public class Neo4jGraphRepository implements GraphRepository {
                 return persisted;
             });
         }
+    }
+
+    private void runProjectGraphClear(CypherRunner runner, String projectId) {
+        runner.run(
+                "MATCH (n {projectId: $projectId}) "
+                        + "WHERE NOT n:Project "
+                        + "DETACH DELETE n",
+                Map.of("projectId", projectId));
     }
 
     private void runProjectUpsert(CypherRunner runner, String projectId, String name, String path) {

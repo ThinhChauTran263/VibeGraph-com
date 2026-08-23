@@ -235,6 +235,7 @@ describe('Admin UserDetailDrawer', () => {
     await saveBtn!.trigger('click')
     await flushPromises()
     expect(store.updatePlan).toHaveBeenCalledWith('usr-1', 'PRO')
+    expect(store.fetchCreditOverview).toHaveBeenCalledWith('usr-1')
     expect(wrapper.emitted()).toHaveProperty('updated')
   })
 

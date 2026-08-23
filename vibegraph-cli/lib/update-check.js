@@ -49,12 +49,14 @@ export async function getLatestVersion({
   now = Date.now(),
   ttlMs = DEFAULT_TTL_MS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  force = false,
 } = {}) {
   if (typeof fetchImpl !== "function") return null;
   const cacheFile = path.join(configDir, CACHE_FILE_NAME);
   const cached = await readCache(cacheFile);
   if (
-    cached
+    !force
+    && cached
     && typeof cached.checkedAt === "number"
     && now - cached.checkedAt < ttlMs
     && typeof cached.latestVersion === "string"
@@ -66,17 +68,30 @@ export async function getLatestVersion({
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(REGISTRY_URL, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return isNewerVersion(currentVersion, cached?.latestVersion) ? cached.latestVersion : null;
+    }
     const payload = await response.json();
     const latestVersion = typeof payload?.version === "string" ? payload.version.trim() : "";
-    if (!parseVersion(latestVersion)) return null;
-    await writeCache(cacheFile, { checkedAt: now, latestVersion });
+    if (!parseVersion(latestVersion)) {
+      return isNewerVersion(currentVersion, cached?.latestVersion) ? cached.latestVersion : null;
+    }
+    try {
+      await writeCache(cacheFile, { checkedAt: now, latestVersion });
+    } catch {
+      // A read-only config directory must not hide a valid registry response.
+    }
     return isNewerVersion(currentVersion, latestVersion) ? latestVersion : null;
   } catch {
-    return null;
+    // A failed registry check must never block startup; use the last known result instead.
+    return isNewerVersion(currentVersion, cached?.latestVersion) ? cached.latestVersion : null;
   } finally {
     clearTimeout(timeout);
   }

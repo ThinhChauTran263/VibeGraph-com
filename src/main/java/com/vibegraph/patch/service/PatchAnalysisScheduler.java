@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.service.AnalysisProgressListener;
 import com.vibegraph.graph.service.AnalyzeService;
 import com.vibegraph.graph.service.ProjectService;
@@ -31,6 +32,7 @@ public class PatchAnalysisScheduler {
 
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
+    private final GraphRepository graphRepository;
     private final GraphUpdateController graphUpdateController;
     private final FileChangeBroadcaster fileChangeBroadcaster;
     private final Executor analysisExecutor;
@@ -40,11 +42,13 @@ public class PatchAnalysisScheduler {
     public PatchAnalysisScheduler(
             ProjectService projectService,
             AnalyzeService analyzeService,
+            GraphRepository graphRepository,
             GraphUpdateController graphUpdateController,
             FileChangeBroadcaster fileChangeBroadcaster,
             @Qualifier("analysisExecutor") Executor analysisExecutor) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
+        this.graphRepository = graphRepository;
         this.graphUpdateController = graphUpdateController;
         this.fileChangeBroadcaster = fileChangeBroadcaster;
         this.analysisExecutor = analysisExecutor;
@@ -93,6 +97,7 @@ public class PatchAnalysisScheduler {
                     projectId, project.getName(), project.getRootPath(), listener);
             projectService.markAnalyzed(
                     projectId, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
+            graphUpdateController.broadcastFullUpdate(projectId, graphRepository.getFullGraph(projectId));
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.ANALYZED, 100);
             fileChangeBroadcaster.watchProject(projectId, project.getRootPath());
             log.info("Analyzed CLI-pushed project {} ({} files)", projectId, result.filesParsed());
