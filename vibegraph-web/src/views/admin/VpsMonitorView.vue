@@ -76,15 +76,20 @@ function points(key: MonitorChartKey): string {
   return chartPoints(monitor.samples.value, key, diskIo.value.status, network.value.status)
 }
 
-function miniPoints(key: 'cpuPercent' | 'memoryPercent'): string {
-  const values = monitor.samples.value.slice(-18)
+function miniPoints(key: 'cpuPercent' | 'memoryPercent' | 'networkBytesPerSecond'): string {
+  const values = monitor.samples.value
+    .slice(-18)
+    .map((sample) => sample[key])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
   if (values.length < 2) return ''
   const width = 220
   const height = 28
+  const networkPeak = key === 'networkBytesPerSecond' ? Math.max(...values, 1) : 100
   return values
-    .map((sample, index) => {
+    .map((value, index) => {
       const x = (index / (values.length - 1)) * width
-      const y = height - (Math.max(0, Math.min(100, sample[key])) / 100) * (height - 4) - 2
+      const normalized = key === 'networkBytesPerSecond' ? (value / networkPeak) * 100 : value
+      const y = height - (Math.max(0, Math.min(100, normalized)) / 100) * (height - 4) - 2
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     .join(' ')
@@ -262,6 +267,9 @@ onUnmounted(() => {
           NETWORK <b>{{ network.status === 'MEASURED' ? 'stable' : network.status }}</b>
         </div>
         <div class="kpi-value"><strong>{{ metricRate(network.outBytesPerSecond, network.status) }}</strong><span>out</span></div>
+        <svg class="kpi-spark" viewBox="0 0 220 28" preserveAspectRatio="none" aria-hidden="true">
+          <polyline :points="miniPoints('networkBytesPerSecond')" />
+        </svg>
         <small>{{
           isAvailable(network.status)
             ? `in ${rate(network.inBytesPerSecond)} · out ${rate(network.outBytesPerSecond)} · ${network.droppedPackets} drops`

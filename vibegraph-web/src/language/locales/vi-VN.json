@@ -1005,11 +1005,31 @@
           "unknown": "Không khả dụng"
         },
         "loading": "Đang tải số liệu realtime...",
+        "live": "Realtime",
         "memoryOf": "RAM / {total}",
+        "offline": "Mất kết nối",
         "openMonitor": "Mở VPS Monitor",
+        "details": {
+          "available": "khả dụng",
+          "average": "TB",
+          "current": "hiện tại",
+          "drops": "gói rớt",
+          "free": "còn trống",
+          "in": "vào",
+          "of": "trên",
+          "out": "ra",
+          "peak": "đỉnh",
+          "used": "đã dùng"
+        },
         "services": "service khỏe",
         "servicesUnavailable": "Chưa có dữ liệu Docker",
         "title": "Hạ tầng",
+        "summary": {
+          "healthy": "VPS đang ổn định",
+          "watch": "VPS cần theo dõi",
+          "critical": "VPS đang quá tải",
+          "unknown": "Chưa xác định trạng thái VPS"
+        },
         "unavailable": "Chưa có số liệu realtime",
         "updated": "Cập nhật {time}"
       },

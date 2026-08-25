@@ -93,6 +93,12 @@ describe('Admin DashboardView', () => {
         breakdown: [],
         status: 'MEASURED',
       },
+      network: {
+        inBytesPerSecond: 7_707_853,
+        outBytesPerSecond: 2_516_582,
+        droppedPackets: 0,
+        status: 'MEASURED',
+      },
       containers: [
         {
           name: 'backend',
@@ -145,20 +151,68 @@ describe('Admin DashboardView', () => {
     expect(wrapper.text()).toContain('Online Users')
     expect(wrapper.text()).toContain('Infrastructure')
     expect(wrapper.text()).not.toContain('Server Disk')
-    expect(wrapper.get('[data-test="infrastructure-card"]').text()).toContain('27.9%')
-    expect(wrapper.get('[data-test="infrastructure-card"]').text()).toContain('2.7 GB')
-    expect(wrapper.get('[data-test="infrastructure-card"]').text()).toContain('RAM of 7.8 GB')
-    expect(wrapper.get('[data-test="infrastructure-card"]').text()).toContain('2/2')
-    expect(wrapper.get('[data-test="infrastructure-card"]').text()).toContain('services healthy')
-    expect(wrapper.get('[data-test="infrastructure-card-link"]').attributes('href')).toBe(
-      '/admin/vps-monitor',
-    )
+    const infrastructureCard = wrapper.get('[data-test="infrastructure-card"]')
+    expect(infrastructureCard.text()).toContain('Live')
+    expect(infrastructureCard.text()).toContain('OK')
+    expect(infrastructureCard.text()).toContain('VPS is healthy')
+    expect(infrastructureCard.text()).toContain('4 vCPU')
+    expect(infrastructureCard.text()).toContain('7.8 GB RAM')
+    expect(infrastructureCard.text()).toContain('CPU')
+    expect(infrastructureCard.text()).toContain('27.9%')
+    expect(infrastructureCard.text()).toContain('RAM')
+    expect(infrastructureCard.text()).toContain('34.6%')
+    expect(infrastructureCard.text()).toContain('SSD')
+    expect(infrastructureCard.text()).toContain('49.2%')
+    expect(infrastructureCard.text()).toContain('NET')
+    expect(infrastructureCard.text()).toContain('2.4 MB/s')
+    expect(infrastructureCard.text()).toContain('34.6% used')
+    expect(infrastructureCard.text()).toContain('5.1 GB available')
+    expect(infrastructureCard.text()).toContain('23.3 GB used')
+    expect(infrastructureCard.text()).toContain('24.1 GB free')
+    expect(infrastructureCard.text()).toContain('in 7.4 MB/s')
+    expect(infrastructureCard.text()).toContain('0 drops')
+    expect(infrastructureCard.findAll('.infrastructure-mini')).toHaveLength(4)
+    expect(infrastructureCard.findAll('.infrastructure-mini-sparkline')).toHaveLength(3)
+    expect(infrastructureCard.findAll('.infrastructure-disk-bar')).toHaveLength(1)
+    expect(infrastructureCard.find('.infrastructure-health-ring').exists()).toBe(true)
+    expect(infrastructureCard.text()).not.toContain('services healthy')
+    expect(wrapper.find('[data-test="infrastructure-card-link"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Top Storage Projects')
     expect(wrapper.text()).toContain('Plan Distribution')
     expect(wrapper.text()).toContain('Security / Abuse Alerts')
     expect(wrapper.findAll('[data-test="echart"]')).toHaveLength(5)
     expect(wrapper.find('[data-test="plan-distribution-panel"]').classes()).toContain('panel--wide')
     expect(wrapper.find('[data-test="security-alerts-panel"]').classes()).toContain('panel--wide')
+    wrapper.unmount()
+  })
+
+  it('keeps storage rankings compact while preserving overflow items for scrolling', async () => {
+    const projects = Array.from({ length: 7 }, (_, index) => ({
+      id: `project-${index + 1}`,
+      name: `project-${index + 1}`,
+      ownerEmail: `owner-${index + 1}@example.com`,
+      usedBytes: (index + 1) * 1024,
+    }))
+    const users = Array.from({ length: 6 }, (_, index) => ({
+      id: `user-${index + 1}`,
+      name: `User ${index + 1}`,
+      ownerEmail: `user-${index + 1}@example.com`,
+      usedBytes: (index + 1) * 1024,
+    }))
+    const wrapper = mountDashboard(createOverview({ topStorageProjects: projects, topStorageUsers: users }))
+
+    await settleCharts()
+
+    const projectChart = wrapper
+      .findAllComponents({ name: 'VChart' })
+      .find((chart) => chart.classes().includes('storage-project-chart'))
+    if (!projectChart) throw new Error('Storage project chart was not rendered')
+    const projectOption = projectChart.props('option') as { yAxis: { data: string[] } }
+
+    expect(projectOption.yAxis.data).toHaveLength(5)
+    expect(wrapper.get('.storage-users-list').classes()).toContain('storage-users-list')
+    expect(wrapper.findAll('.storage-users-list .compact-row')).toHaveLength(6)
+    expect(wrapper.get('.storage-projects-panel .panel-header').text()).toContain('Count · 5')
     wrapper.unmount()
   })
 
@@ -173,9 +227,7 @@ describe('Admin DashboardView', () => {
     const card = wrapper.get('[data-test="infrastructure-card"]')
     expect(card.text()).toContain('Infrastructure')
     expect(card.text()).toContain('Live metrics unavailable')
-    expect(wrapper.get('[data-test="infrastructure-card-link"]').attributes('href')).toBe(
-      '/admin/vps-monitor',
-    )
+    expect(wrapper.find('[data-test="infrastructure-card-link"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

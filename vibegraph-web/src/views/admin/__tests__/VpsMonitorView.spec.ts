@@ -140,6 +140,7 @@ describe('VpsMonitorView', () => {
     expect(wrapper.text()).toContain('2.7 GB')
     expect(wrapper.text()).toContain('in 8.2 MB/s')
     expect(wrapper.text()).toContain('out 2.7 MB/s')
+    expect(wrapper.find('.kpi-net .kpi-spark').exists()).toBe(true)
     expect(wrapper.text()).toContain('3.10 GB · Peak 4.01 GB · After cooldown 3.17 GB')
     expect(wrapper.text()).toContain('+910 MB peak')
     expect(wrapper.text()).toContain('Confidence HIGH')

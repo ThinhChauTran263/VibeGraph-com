@@ -144,7 +144,8 @@
   overflow: visible;
 }
 .kpi-cpu .kpi-spark polyline,
-.kpi-ram .kpi-spark polyline {
+.kpi-ram .kpi-spark polyline,
+.kpi-net .kpi-spark polyline {
   fill: none;
   stroke: currentColor;
   stroke-width: 2;

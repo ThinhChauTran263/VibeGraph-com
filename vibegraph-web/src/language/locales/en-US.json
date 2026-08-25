@@ -1005,11 +1005,31 @@
           "unknown": "Unavailable"
         },
         "loading": "Loading live metrics...",
+        "live": "Live",
         "memoryOf": "RAM of {total}",
+        "offline": "Offline",
         "openMonitor": "Open VPS Monitor",
+        "details": {
+          "available": "available",
+          "average": "avg",
+          "current": "current",
+          "drops": "drops",
+          "free": "free",
+          "in": "in",
+          "of": "of",
+          "out": "out",
+          "peak": "peak",
+          "used": "used"
+        },
         "services": "services healthy",
         "servicesUnavailable": "Docker metrics unavailable",
         "title": "Infrastructure",
+        "summary": {
+          "healthy": "VPS is healthy",
+          "watch": "VPS needs attention",
+          "critical": "VPS is overloaded",
+          "unknown": "VPS status unavailable"
+        },
         "unavailable": "Live metrics unavailable",
         "updated": "Updated {time}"
       },
