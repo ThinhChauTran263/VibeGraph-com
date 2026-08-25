@@ -27,7 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 @Component
 public final class CAdvisorContainerCollector {
 
-    private static final long MAX_RESPONSE_BYTES = 2_000_000L;
+    // cAdvisor keeps a bounded history per container; Docker 29 stacks can exceed 2 MB.
+    private static final long MAX_RESPONSE_BYTES = 16_000_000L;
 
     private final URI endpoint;
     private final HttpClient httpClient;

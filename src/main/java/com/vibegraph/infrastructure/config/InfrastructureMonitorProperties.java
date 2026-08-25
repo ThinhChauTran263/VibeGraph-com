@@ -43,8 +43,8 @@ public class InfrastructureMonitorProperties {
     private long cAdvisorConnectTimeoutMs = 500;
 
     @Min(16_384)
-    @Max(2_000_000)
-    private long cAdvisorMaxResponseBytes = 2_000_000;
+    @Max(16_000_000)
+    private long cAdvisorMaxResponseBytes = 8_000_000;
 
     @Min(1_000)
     private long sseTimeoutMs = 1_800_000;
