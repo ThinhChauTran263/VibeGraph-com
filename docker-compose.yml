@@ -56,7 +56,7 @@ services:
   # On non-Linux development hosts the sidecar may be unavailable; the API then reports
   # container metrics as UNAVAILABLE instead of fabricating values.
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.54.0
+    image: ghcr.io/google/cadvisor:0.54.0
     container_name: vibegraph-cadvisor
     restart: unless-stopped
     expose:
