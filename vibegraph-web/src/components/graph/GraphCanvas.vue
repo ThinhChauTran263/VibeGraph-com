@@ -161,11 +161,18 @@ const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
 // At the fit view the full graph is already loaded/layouted, but its dense edge
-// layer stays hidden until the user zooms in. Zooming back to fit hides it again.
+// layer stays hidden until the user zooms in. Very large graphs keep the legacy
+// always-visible edge mode because hiding thousands of edges is not useful.
 const graphEdgesVisible = ref(false)
 const EDGE_VISIBLE_RATIO = 0.45
+const LARGE_GRAPH_EDGE_THRESHOLD = 5000
 const MAX_FIT_NODE_SIZE_MULTIPLIER = 1.5
 const fitNodeSizeMultiplier = ref(MAX_FIT_NODE_SIZE_MULTIPLIER)
+const lastCameraRatio = ref(1)
+
+function isLargeGraph(): boolean {
+  return (graphInstance.value?.order ?? 0) > LARGE_GRAPH_EDGE_THRESHOLD
+}
 
 /**
  * Ease the fit-only node enlargement away while zooming toward the edge reveal
@@ -179,6 +186,24 @@ function resolveFitNodeSizeMultiplier(ratio: number): number {
   const progress = (1 - ratio) / (1 - EDGE_VISIBLE_RATIO)
   const raw = MAX_FIT_NODE_SIZE_MULTIPLIER - progress * (MAX_FIT_NODE_SIZE_MULTIPLIER - 1)
   return Math.round(raw * 20) / 20
+}
+
+function syncGraphDisplayState(ratio: number): boolean {
+  const largeGraph = isLargeGraph()
+  const nextEdgesVisible =
+    largeGraph || (Number.isFinite(ratio) && ratio <= EDGE_VISIBLE_RATIO)
+  const edgeVisibilityChanged = nextEdgesVisible !== graphEdgesVisible.value
+  graphEdgesVisible.value = nextEdgesVisible
+
+  const nextNodeSizeMultiplier = largeGraph ? 1 : resolveFitNodeSizeMultiplier(ratio)
+  const nodeSizeMultiplierChanged = nextNodeSizeMultiplier !== fitNodeSizeMultiplier.value
+  if (nodeSizeMultiplierChanged) fitNodeSizeMultiplier.value = nextNodeSizeMultiplier
+
+  const nextDensity = resolveFocusLabelDensity(ratio)
+  const densityChanged = nextDensity !== labelDensity.value
+  if (densityChanged) labelDensity.value = nextDensity
+
+  return edgeVisibilityChanged || nodeSizeMultiplierChanged || densityChanged
 }
 
 // Node types present in the currently highlighted cluster (selected/hovered node +
@@ -315,16 +340,8 @@ const {
     applyFocusReducers()
   },
   onCameraRatioChange: (ratio: number) => {
-    const nextEdgesVisible = Number.isFinite(ratio) && ratio <= EDGE_VISIBLE_RATIO
-    const edgeVisibilityChanged = nextEdgesVisible !== graphEdgesVisible.value
-    graphEdgesVisible.value = nextEdgesVisible
-    const nextNodeSizeMultiplier = resolveFitNodeSizeMultiplier(ratio)
-    const nodeSizeMultiplierChanged = nextNodeSizeMultiplier !== fitNodeSizeMultiplier.value
-    if (nodeSizeMultiplierChanged) fitNodeSizeMultiplier.value = nextNodeSizeMultiplier
-    const nextDensity = resolveFocusLabelDensity(ratio)
-    const densityChanged = nextDensity !== labelDensity.value
-    if (densityChanged) labelDensity.value = nextDensity
-    if (!edgeVisibilityChanged && !nodeSizeMultiplierChanged && !densityChanged) return
+    lastCameraRatio.value = ratio
+    if (!syncGraphDisplayState(ratio)) return
     // Apply the label-density reducer swap immediately so edge labels appear the
     // moment you cross the zoom threshold and then stay drawn every frame (the
     // per-frame budget + viewport culling keep that cheap) — no vanish/reload.
@@ -366,6 +383,7 @@ function withFilterVisibility(reducers: FocusReducers): FocusReducers {
 
 function applyFocusReducers(): void {
   if (!graphInstance.value) return
+  syncGraphDisplayState(lastCameraRatio.value)
   const graph = graphInstance.value
   // Filtering is a cheap Graphology attribute mutation. Apply it before focus
   // logic so a focused reducer can never reveal a filtered endpoint.
@@ -403,11 +421,19 @@ function applyFocusReducers(): void {
   const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers(withFilterVisibility({
     nodeReducer: (_node, attributes) => {
-      if (graphEdgesVisible.value || typeof attributes.size !== 'number') return attributes
+      if (
+        isLargeGraph() ||
+        graphEdgesVisible.value ||
+        typeof attributes.size !== 'number'
+      ) {
+        return attributes
+      }
       return { ...attributes, size: attributes.size * fitNodeSizeMultiplier.value }
     },
     edgeReducer: (_edge, attributes) => {
-      if (!graphEdgesVisible.value) return { ...attributes, hidden: true }
+      if (!isLargeGraph() && !graphEdgesVisible.value) {
+        return { ...attributes, hidden: true }
+      }
       return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
     },
   }), showEdgeLabels)

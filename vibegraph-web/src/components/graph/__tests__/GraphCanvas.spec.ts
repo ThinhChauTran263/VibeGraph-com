@@ -317,6 +317,45 @@ describe('GraphCanvas edge label toggle', () => {
     wrapper.unmount()
   })
 
+  it('keeps edges visible and node sizes unchanged for graphs above 5000 nodes', async () => {
+    selectedNode.value = null
+    nodes.value = []
+    loading.value = false
+    error.value = null
+    const largeGraph = new Graph({ type: 'directed', multi: true })
+    for (let index = 0; index < 5001; index += 1) {
+      largeGraph.addNode(`node-${index}`, { filterHidden: false, size: 10 })
+    }
+    largeGraph.addEdgeWithKey('edge', 'node-0', 'node-1', { filterHidden: false })
+    graphInstanceRef.value = largeGraph
+
+    const wrapper = mount(GraphCanvas, {
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
+    await flushPromises()
+    setReducers.mockClear()
+
+    capturedCameraRatioChange?.(1.1)
+    const reducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(reducers.edgeReducer('edge', { color: '#fff' }).hidden).not.toBe(true)
+    expect(reducers.nodeReducer('node-0', { size: 10 }).size).toBe(10)
+
+    largeGraph.dropNode('node-5000')
+    capturedCameraRatioChange?.(1.1)
+    const boundaryReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(boundaryReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(boundaryReducers.nodeReducer('node-0', { size: 10 }).size).toBe(15)
+
+    wrapper.unmount()
+  })
+
   it('forces edge labels off when toggled, and only shows them at edges density', async () => {
     // No selection -> applyFocusReducers takes the default path and pushes
     // (edgeLabelsEnabled && labelDensity === 'edges') straight to Sigma.
