@@ -37,6 +37,15 @@ public interface AnalyzeService {
                                   AnalysisProgressListener progressListener);
 
     /**
+     * Runs analysis inside a wider operation such as IMPORT. Implementations should avoid
+     * opening a second telemetry window so host-correlated evidence is not double-counted.
+     */
+    default AnalysisResult analyzeProjectWithinOperation(String projectId, String projectName,
+            String projectPath, AnalysisProgressListener progressListener) {
+        return analyzeProject(projectId, projectName, projectPath, progressListener);
+    }
+
+    /**
      * Result summary of an analysis run.
      */
     record AnalysisResult(

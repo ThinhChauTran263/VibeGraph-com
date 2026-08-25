@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref }
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { useAdminRealtime } from '@/composables/useAdminRealtime'
+import { useInfrastructureMonitor } from '@/composables/useInfrastructureMonitor'
 import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
 import {
@@ -31,6 +32,7 @@ import type {
   AdminSeriesPoint,
   AdminStorageSubject,
 } from '@/types/api'
+type InfrastructureHealth = 'HEALTHY' | 'WATCH' | 'CRITICAL' | 'UNKNOWN'
 
 // F-M6 split: echarts (registration + VChart) loads as its own async chunk so the
 // ~500 kB chart bundle stays out of this route chunk until a chart actually renders.
@@ -45,7 +47,6 @@ const chartModes = reactive<Record<ChartId, ChartMode>>({
   totalUsers: 'line',
   onlineUsers: 'line',
   credits: 'bar',
-  storage: 'pie',
 })
 const chartUpdateOptions = {
   notMerge: true,
@@ -57,12 +58,20 @@ const POLL_INTERVAL_MS = 30_000
 const CONNECTED_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const realtime = useAdminRealtime()
+const infrastructureMonitor = useInfrastructureMonitor()
 const realtimeConnected = computed(() => realtime.status.value === 'connected')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let lastOverviewRefreshAt = 0
 let overviewRefreshInFlight = false
 
 const overview = computed(() => adminStore.overview)
+const infrastructure = computed(() =>
+  infrastructureMonitor.hasSnapshot.value ? infrastructureMonitor.snapshot.value : null,
+)
+const infrastructureLoading = computed(() => infrastructureMonitor.loading.value)
+const infrastructureUnavailable = computed(
+  () => Boolean(infrastructureMonitor.error.value) && !infrastructureMonitor.hasSnapshot.value,
+)
 const onlineSamples = computed<OnlineSample[]>(() => {
   const samplesByMinute = new Map<number, OnlineSample>()
   for (const point of overview.value?.onlineUserHistory ?? []) {
@@ -81,7 +90,6 @@ const onlineSamples = computed<OnlineSample[]>(() => {
 })
 const userGrowth = computed(() => overview.value?.userGrowth ?? [])
 const creditConsumption = computed(() => overview.value?.creditConsumption ?? [])
-const storage = computed(() => overview.value?.storage ?? null)
 const planDistribution = computed(() => overview.value?.planDistribution ?? [])
 const topStorageUsers = computed(() => overview.value?.topStorageUsers ?? [])
 const topStorageProjects = computed(() => overview.value?.topStorageProjects ?? [])
@@ -101,11 +109,6 @@ const planDistributionChartOption = computed(() => {
   return createHorizontalBarOption(planDistribution.value, (value) =>
     formatNumber(value, activeLocale),
   )
-})
-
-const storagePercent = computed(() => {
-  if (!storage.value?.totalBytes) return 0
-  return Math.min(100, Math.round((storage.value.usedBytes / storage.value.totalBytes) * 100))
 })
 
 const totalUserPoints = computed<AdminDistributionPoint[]>(() => {
@@ -129,16 +132,6 @@ const onlineUserPoints = computed<AdminDistributionPoint[]>(() => {
 
 const creditPoints = computed<AdminDistributionPoint[]>(() => {
   return bucketSeries(creditConsumption.value, period.value)
-})
-
-const storagePoints = computed<AdminDistributionPoint[]>(() => {
-  if (!storage.value) return []
-  const used = storage.value.usedBytes
-  const available = Math.max(storage.value.totalBytes - used, 0)
-  return [
-    { label: t('admin.overview.charts.storage.usedLabel'), value: used },
-    { label: t('admin.overview.charts.storage.availableLabel'), value: available },
-  ]
 })
 
 const dashboardCharts = computed<DashboardChart[]>(() => [
@@ -187,27 +180,6 @@ const dashboardCharts = computed<DashboardChart[]>(() => [
     tone: 'cyan',
     valueKind: 'number',
   },
-  {
-    id: 'storage',
-    title: t('admin.overview.charts.storage.title'),
-    eyebrow:
-      storage.value?.sourceLabel ||
-      storage.value?.mountPath ||
-      t('admin.overview.charts.storage.serverDisk'),
-    value: storage.value
-      ? t('admin.overview.charts.storage.usedPercent', { percent: storagePercent.value })
-      : t('admin.overview.charts.storage.unavailable'),
-    subtitle: storage.value
-      ? t('admin.overview.charts.storage.usedOf', {
-          used: formatBytes(storage.value.usedBytes),
-          total: formatBytes(storage.value.totalBytes),
-        })
-      : t('admin.overview.charts.storage.unavailableEnvironment'),
-    points: storagePoints.value,
-    emptyText: t('admin.overview.charts.storage.unavailableEnvironment'),
-    tone: 'amber',
-    valueKind: 'bytes',
-  },
 ])
 
 onMounted(async () => {
@@ -215,6 +187,7 @@ onMounted(async () => {
   pollTimer = setInterval(pollOverview, POLL_INTERVAL_MS)
   if (document.visibilityState === 'visible') {
     await loadOverview()
+    infrastructureMonitor.start()
     realtime.start()
   } else {
     loading.value = false
@@ -230,14 +203,17 @@ onUnmounted(() => {
     clearInterval(pollTimer)
     pollTimer = null
   }
+  infrastructureMonitor.stop()
 })
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') {
     realtime.stop()
+    infrastructureMonitor.stop()
     return
   }
   realtime.start()
+  infrastructureMonitor.start()
   void loadOverview()
 }
 
@@ -265,6 +241,40 @@ async function loadOverview(): Promise<void> {
     overviewRefreshInFlight = false
     loading.value = false
   }
+}
+
+const infrastructureHealth = computed<InfrastructureHealth>(() => {
+  const status = infrastructure.value?.health ?? infrastructure.value?.status
+  return status === 'HEALTHY' || status === 'WATCH' || status === 'CRITICAL' ? status : 'UNKNOWN'
+})
+
+const healthyContainerCount = computed(() => {
+  const containers = infrastructure.value?.containers ?? []
+  return containers.filter((container) => container.healthy).length
+})
+
+function infrastructureHealthLabel(health: InfrastructureHealth): string {
+  return t(`admin.overview.infrastructure.health.${health.toLowerCase()}`)
+}
+
+function isInfrastructureMetricAvailable(status?: string): boolean {
+  const normalized = status?.toUpperCase()
+  return normalized !== undefined && !['UNKNOWN', 'UNAVAILABLE', 'WARMING_UP'].includes(normalized)
+}
+
+function formatPercent(value: number | undefined): string {
+  return `${new Intl.NumberFormat(locale.value, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value ?? 0)}%`
+}
+
+function formatInfrastructurePercent(value: number | undefined, status?: string): string {
+  return isInfrastructureMetricAvailable(status) ? formatPercent(value) : '—'
+}
+
+function formatInfrastructureBytes(value: number | undefined, status?: string): string {
+  return isInfrastructureMetricAvailable(status) ? formatBytes(value) : '—'
 }
 
 function formatNumber(value: number | undefined, activeLocale = locale.value): string {
@@ -884,6 +894,74 @@ function subjectKey(item: AdminStorageSubject): string {
             <p v-else class="empty-state">{{ card.emptyText }}</p>
           </div>
         </article>
+
+        <article class="chart-card infrastructure-card" data-test="infrastructure-card">
+          <div class="chart-card__top">
+            <div>
+              <span class="chart-card__eyebrow">{{ t('admin.overview.infrastructure.eyebrow') }}</span>
+              <h4>{{ t('admin.overview.infrastructure.title') }}</h4>
+            </div>
+            <span
+              class="infrastructure-status"
+              :class="'infrastructure-status--' + infrastructureHealth.toLowerCase()"
+            >
+              <span class="status-dot status-dot--inline"></span>
+              {{ infrastructureHealthLabel(infrastructureHealth) }}
+            </span>
+          </div>
+
+          <template v-if="infrastructure && !infrastructureUnavailable">
+            <div class="infrastructure-summary">
+              <div>
+                <strong>{{ formatInfrastructurePercent(infrastructure.host.cpuPercent, infrastructure.host.status) }}</strong>
+                <span>{{ t('admin.overview.infrastructure.cpu') }}</span>
+              </div>
+              <div>
+                <strong>{{ formatInfrastructureBytes(infrastructure.memory.usedBytes, infrastructure.memory.status) }}</strong>
+                <span>
+                  {{ t('admin.overview.infrastructure.memoryOf', { total: formatInfrastructureBytes(infrastructure.memory.totalBytes, infrastructure.memory.status) }) }}
+                </span>
+              </div>
+              <div>
+                <strong>{{ formatInfrastructurePercent(infrastructure.disk.usedPercent, infrastructure.disk.status) }}</strong>
+                <span>
+                  {{ t('admin.overview.infrastructure.diskOf', { total: formatInfrastructureBytes(infrastructure.disk.totalBytes, infrastructure.disk.status) }) }}
+                </span>
+              </div>
+              <div>
+                <strong>{{
+                  infrastructure.containers.length
+                    ? `${healthyContainerCount}/${infrastructure.containers.length}`
+                    : '—'
+                }}</strong>
+                <span>{{
+                  infrastructure.containers.length
+                    ? t('admin.overview.infrastructure.services')
+                    : t('admin.overview.infrastructure.servicesUnavailable')
+                }}</span>
+              </div>
+            </div>
+            <p class="infrastructure-meta">
+              {{ t('admin.overview.infrastructure.updated', { time: new Date(infrastructure.capturedAt).toLocaleTimeString(locale) }) }}
+            </p>
+          </template>
+          <p v-else class="infrastructure-unavailable">
+            {{
+              infrastructureLoading
+                ? t('admin.overview.infrastructure.loading')
+                : t('admin.overview.infrastructure.unavailable')
+            }}
+          </p>
+
+          <a
+            class="infrastructure-link"
+            data-test="infrastructure-card-link"
+            href="/admin/vps-monitor"
+          >
+            <span>{{ t('admin.overview.infrastructure.openMonitor') }}</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </article>
       </div>
     </section>
 
@@ -1256,6 +1334,128 @@ function subjectKey(item: AdminStorageSubject): string {
   --chart-color: #f59e0b;
 }
 
+.infrastructure-card {
+  --chart-color: #22d3ee;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.infrastructure-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vg-space-1);
+  padding: var(--vg-space-1) var(--vg-space-2);
+  border: 1px solid var(--vg-border);
+  border-radius: 999px;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.infrastructure-status--healthy {
+  color: var(--vg-green-bright);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.infrastructure-status--healthy .status-dot {
+  background: var(--vg-green-bright);
+}
+
+.infrastructure-status--watch {
+  color: var(--vg-amber);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.infrastructure-status--watch .status-dot {
+  background: var(--vg-amber);
+}
+
+.infrastructure-status--critical {
+  color: var(--vg-danger);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.infrastructure-status--critical .status-dot {
+  background: var(--vg-danger);
+}
+
+.status-dot--inline {
+  width: 6px;
+  height: 6px;
+  margin-right: 0;
+}
+
+.infrastructure-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vg-space-2);
+  margin-top: var(--vg-space-4);
+}
+
+.infrastructure-summary > div {
+  min-width: 0;
+  padding: var(--vg-space-3);
+  background: var(--vg-bg);
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+}
+
+.infrastructure-summary strong,
+.infrastructure-summary span {
+  display: block;
+}
+
+.infrastructure-summary strong {
+  color: var(--vg-text);
+  font-family: var(--vg-font-display);
+  font-size: var(--vg-text-xl);
+  line-height: 1.1;
+}
+
+.infrastructure-summary span,
+.infrastructure-meta,
+.infrastructure-unavailable {
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+}
+
+.infrastructure-summary span {
+  margin-top: var(--vg-space-1);
+}
+
+.infrastructure-meta {
+  margin: var(--vg-space-3) 0 0;
+}
+
+.infrastructure-unavailable {
+  flex: 1;
+  margin: var(--vg-space-4) 0;
+}
+
+.infrastructure-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vg-space-3);
+  margin-top: auto;
+  padding: var(--vg-space-3);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: var(--vg-radius-sm);
+  background: rgba(34, 211, 238, 0.08);
+  color: var(--vg-blue-bright);
+  font-size: var(--vg-text-sm);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.infrastructure-link:hover {
+  border-color: rgba(34, 211, 238, 0.65);
+  background: rgba(34, 211, 238, 0.14);
+}
+
 .mini-bars,
 .alerts,
 .compact-list {
@@ -1427,6 +1627,10 @@ function subjectKey(item: AdminStorageSubject): string {
   .chart-card__metric span {
     min-width: 0;
     flex: none;
+  }
+
+  .infrastructure-summary {
+    grid-template-columns: 1fr;
   }
 
   .segmented,

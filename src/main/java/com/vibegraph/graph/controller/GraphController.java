@@ -1,6 +1,7 @@
 package com.vibegraph.graph.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,7 @@ import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 import com.vibegraph.graph.service.impl.GraphResponseFilter;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +36,12 @@ public class GraphController {
     private final GraphPayloadGuard payloadGuard;
     private final GraphPayloadProperties payloadProperties;
     private final ProjectOwnershipGuard ownershipGuard;
+    private OperationTelemetryRecorder telemetryRecorder;
+
+    @Autowired(required = false)
+    void setTelemetryRecorder(OperationTelemetryRecorder telemetryRecorder) {
+        this.telemetryRecorder = telemetryRecorder;
+    }
 
     /**
      * Full project graph. The HTTP payload is capped by the configured server defaults
@@ -57,22 +65,34 @@ public class GraphController {
             @RequestParam(required = false) java.util.List<String> edgeTypes,
             @RequestParam(required = false) Integer maxDepth) {
         ownershipGuard.assertOwner(projectId);
-        int effectiveNodeLimit = clamp(nodeLimit, payloadProperties.getNodeLimit(),
-                payloadProperties.getMaxNodeLimit());
-        int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
-                payloadProperties.getMaxEdgeLimit());
-        GraphDataResponse full = graphService.getFullGraph(projectId);
-        GraphDataResponse view = selectView(full, mode, includeDeep);
-        GraphDataResponse filtered = graphResponseFilter.apply(view, GraphFilterRequest.builder()
-                .packagePath(packagePath)
-                .packageFilter(packageFilter)
-                .includeTypes(includeTypes)
-                .nodeTypes(nodeTypes)
-                .edgeTypes(edgeTypes)
-                .maxDepth(maxDepth)
-                .build());
-        GraphDataResponse capped = payloadGuard.cap(filtered, effectiveNodeLimit, effectiveEdgeLimit);
-        return ResponseEntity.ok(ApiResponse.success(capped));
+        OperationTelemetryRecorder.OperationToken token = telemetryRecorder == null ? null
+                : telemetryRecorder.begin("API", "graph", projectId, null);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            int effectiveNodeLimit = clamp(nodeLimit, payloadProperties.getNodeLimit(),
+                    payloadProperties.getMaxNodeLimit());
+            int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
+                    payloadProperties.getMaxEdgeLimit());
+            GraphDataResponse full = graphService.getFullGraph(projectId);
+            GraphDataResponse view = selectView(full, mode, includeDeep);
+            GraphDataResponse filtered = graphResponseFilter.apply(view, GraphFilterRequest.builder()
+                    .packagePath(packagePath)
+                    .packageFilter(packageFilter)
+                    .includeTypes(includeTypes)
+                    .nodeTypes(nodeTypes)
+                    .edgeTypes(edgeTypes)
+                    .maxDepth(maxDepth)
+                    .build());
+            GraphDataResponse capped = payloadGuard.cap(filtered, effectiveNodeLimit, effectiveEdgeLimit);
+            if (telemetryRecorder != null) {
+                telemetryRecorder.complete(token, capped.getNodes() == null ? 0 : capped.getNodes().size(),
+                        capped.getEdges() == null ? 0 : capped.getEdges().size(), 0);
+            }
+            return ResponseEntity.ok(ApiResponse.success(capped));
+        } catch (RuntimeException | Error ex) {
+            if (telemetryRecorder != null) telemetryRecorder.fail(token, ex);
+            throw ex;
+        }
     }
 
     /**

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -744,6 +745,19 @@ class ParserServiceTest {
                     .anyMatch(n -> n.name().equals("SampleUserService"));
             assertThat(results).flatExtracting(ParseResult::getEdges)
                     .as("edges must not be empty").isNotEmpty();
+        }
+
+        @Test
+        @DisplayName("bounded project parsing stops before returning an oversized aggregate")
+        void boundedParseRejectsOversizedAggregate() throws IOException {
+            Files.writeString(tempDir.resolve("Alpha.java"), "public class Alpha { void run() {} }");
+            Files.writeString(tempDir.resolve("Beta.java"), "public class Beta { void run() {} }");
+
+            assertThatThrownBy(() -> parserService.parseProject(
+                    tempDir, ParseProgressListener.NOOP, 1, 100))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("too large to analyze")
+                    .hasMessageContaining("1 / 100");
         }
     }
 }

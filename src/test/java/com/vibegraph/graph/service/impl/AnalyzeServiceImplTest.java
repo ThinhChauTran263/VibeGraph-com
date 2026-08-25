@@ -11,10 +11,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,6 +25,8 @@ import com.vibegraph.graph.config.AnalyzeLimitProperties;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
+import com.vibegraph.graph.service.AnalysisProgressListener;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 import com.vibegraph.parser.node.EdgeData;
 import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
@@ -53,7 +57,8 @@ class AnalyzeServiceImplTest {
     @Test
     @DisplayName("upserts the Project node with the human-readable display name, not the id")
     void upsertsProjectWithReadableName() {
-        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(ParseResult.builder().build()));
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(ParseResult.builder().build()));
 
         service.analyzeProject("44786872", "ThinhChauTran263/Lab7_Java6", "/tmp/repo");
 
@@ -67,7 +72,8 @@ class AnalyzeServiceImplTest {
     @Test
     @DisplayName("falls back to the projectId as name when no display name is supplied")
     void fallsBackToIdWhenNameBlank() {
-        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(ParseResult.builder().build()));
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(ParseResult.builder().build()));
 
         service.analyzeProject("p1", "   ", "/tmp/p1");
 
@@ -82,7 +88,7 @@ class AnalyzeServiceImplTest {
                         NodeData.of("Package", "example", "com.example", "", 0),
                         NodeData.of("Package", "example", "com.example", "", 0)))
                 .build();
-        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(result));
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt())).thenReturn(List.of(result));
         when(graphRepository.findProject("p1"))
                 .thenReturn(new ProjectMetadata("p1", "Demo", "/tmp/p1", null, null, 1, 1, 0));
 
@@ -104,7 +110,7 @@ class AnalyzeServiceImplTest {
                         NodeData.of("Class", "A", "com.A", "A.java", 1),
                         NodeData.of("Class", "B", "com.B", "B.java", 1)))
                 .build();
-        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(oversized));
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt())).thenReturn(List.of(oversized));
 
         assertThatThrownBy(() -> tightService.analyzeProject("p1", "p1", "/tmp/p1"))
                 .isInstanceOf(IllegalStateException.class)
@@ -112,6 +118,20 @@ class AnalyzeServiceImplTest {
 
         // The cap fires before any persistence — nothing is written to the graph.
         verify(graphRepository, never()).upsertAnalysis(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("analysis inside an import reuses the wider operation telemetry window")
+    void nestedAnalysisDoesNotOpenAnotherTelemetryWindow() {
+        OperationTelemetryRecorder telemetry = mock(OperationTelemetryRecorder.class);
+        AnalyzeServiceImpl nested = new AnalyzeServiceImpl(
+                parserService, graphRepository, new AnalyzeLimitProperties(), telemetry);
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(ParseResult.builder().build()));
+
+        nested.analyzeProjectWithinOperation("p1", "Demo", "/tmp/p1", AnalysisProgressListener.NOOP);
+
+        verify(telemetry, never()).begin(any(), any(), any(), any());
     }
 
     @Test
@@ -133,7 +153,7 @@ class AnalyzeServiceImplTest {
                         EdgeData.of("IMPLEMENTS", "com.example.StripePayment", "com.example.PaymentPort"),
                         EdgeData.of("CALLS", "com.example.CheckoutService.checkout(Order)", "com.example.PaymentPort.charge(Order)")))
                 .build();
-        when(parserService.parseProject(any(Path.class), any())).thenReturn(List.of(result));
+        when(parserService.parseProject(any(Path.class), any(), anyInt(), anyInt())).thenReturn(List.of(result));
         when(graphRepository.upsertAnalysis(anyString(), anyString(), anyString(), any(), any(), any())).thenReturn(6);
 
         service.analyzeProject("p1", "p1", "/tmp/p1");

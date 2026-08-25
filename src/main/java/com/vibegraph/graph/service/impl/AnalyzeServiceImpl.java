@@ -19,17 +19,44 @@ import com.vibegraph.parser.node.NodeData;
 import com.vibegraph.parser.node.ParseResult;
 import com.vibegraph.parser.service.ParserService;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AnalyzeServiceImpl implements AnalyzeService {
 
     private final ParserService parserService;
     private final GraphRepository graphRepository;
     private final AnalyzeLimitProperties analyzeLimits;
+    private final com.vibegraph.infrastructure.service.OperationTelemetryRecorder telemetryRecorder;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnalyzeServiceImpl(ParserService parserService, GraphRepository graphRepository,
+            AnalyzeLimitProperties analyzeLimits,
+            com.vibegraph.infrastructure.service.OperationTelemetryRecorder telemetryRecorder) {
+        this.parserService = parserService;
+        this.graphRepository = graphRepository;
+        this.analyzeLimits = analyzeLimits;
+        this.telemetryRecorder = telemetryRecorder;
+    }
+
+    /** Compatibility constructor for focused unit tests that do not load infrastructure telemetry. */
+    public AnalyzeServiceImpl(ParserService parserService, GraphRepository graphRepository,
+            AnalyzeLimitProperties analyzeLimits) {
+        this(parserService, graphRepository, analyzeLimits,
+                new com.vibegraph.infrastructure.service.OperationTelemetryRecorder() {
+                    @Override
+                    public OperationToken begin(String type, String operation, String projectId, String projectName) {
+                        return new OperationToken("test");
+                    }
+
+                    @Override public void complete(OperationToken token, int nodes, int edges, long storageAddedBytes) { }
+                    @Override public void fail(OperationToken token, Throwable error) { }
+                    @Override public void stop(OperationToken token, String reason) { }
+                    @Override public java.util.List<com.vibegraph.infrastructure.dto.InfrastructureSnapshot.OperationEvidence>
+                            recent(int limit, String type) { return java.util.List.of(); }
+                });
+    }
 
     /** Overall % at which the parse phase begins (after the project workspace is ready). */
     private static final int PARSE_START_PCT = 5;
@@ -38,6 +65,26 @@ public class AnalyzeServiceImpl implements AnalyzeService {
 
     @Override
     public AnalysisResult analyzeProject(String projectId, String projectName, String projectPath,
+                                         AnalysisProgressListener progressListener) {
+        var token = telemetryRecorder.begin("ANALYZE", "analyzeProject", projectId, projectName);
+        try {
+            com.vibegraph.infrastructure.service.OperationTelemetryRecorder.requireAccepted(token);
+            AnalysisResult result = analyzeProjectInternal(projectId, projectName, projectPath, progressListener);
+            telemetryRecorder.complete(token, result.nodesUpserted(), result.edgesUpserted(), 0);
+            return result;
+        } catch (RuntimeException | Error ex) {
+            telemetryRecorder.fail(token, ex);
+            throw ex;
+        }
+    }
+
+    @Override
+    public AnalysisResult analyzeProjectWithinOperation(String projectId, String projectName,
+            String projectPath, AnalysisProgressListener progressListener) {
+        return analyzeProjectInternal(projectId, projectName, projectPath, progressListener);
+    }
+
+    private AnalysisResult analyzeProjectInternal(String projectId, String projectName, String projectPath,
                                          AnalysisProgressListener progressListener) {
         AnalysisProgressListener progress = progressListener != null ? progressListener : AnalysisProgressListener.NOOP;
         Path root = Path.of(projectPath);
@@ -53,7 +100,7 @@ public class AnalyzeServiceImpl implements AnalyzeService {
                     : PARSE_START_PCT + (int) Math.round((filesParsed / (double) totalFiles) * (PARSE_END_PCT - PARSE_START_PCT));
             progress.onProgress(Math.min(PARSE_END_PCT, pct),
                     "Parsing files (" + filesParsed + "/" + totalFiles + ")");
-        });
+        }, analyzeLimits.getMaxNodes(), analyzeLimits.getMaxEdges());
 
         progress.onProgress(72, "Building relationships");
 

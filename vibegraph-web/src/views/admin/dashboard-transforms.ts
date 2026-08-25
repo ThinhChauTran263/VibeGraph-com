@@ -7,7 +7,7 @@
 import type { AdminDistributionPoint, AdminSeriesPoint } from '@/types/api'
 
 export type ChartMode = 'line' | 'bar' | 'pie'
-export type ChartId = 'totalUsers' | 'onlineUsers' | 'credits' | 'storage'
+export type ChartId = 'totalUsers' | 'onlineUsers' | 'credits'
 export type ChartTone = 'blue' | 'green' | 'cyan' | 'amber'
 export type Period = 'day' | 'month' | 'quarter' | 'year'
 

@@ -40,6 +40,7 @@ import com.vibegraph.graph.service.ImportCreditBilling;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -70,6 +71,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
     private final ConcurrentImportGuard concurrentImportGuard;
     private final GraphRepository graphRepository;
     private final ImportCreditBilling importCreditBilling;
+    private OperationTelemetryRecorder telemetryRecorder;
 
     public ArchiveImportServiceImpl(ArchiveImportProperties properties,
                                     ArchiveExtractor archiveExtractor,
@@ -103,6 +105,11 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         this.importCreditBilling = importCreditBilling;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTelemetryRecorder(OperationTelemetryRecorder telemetryRecorder) {
+        this.telemetryRecorder = telemetryRecorder;
+    }
+
     @Override
     public ProjectResponse importArchive(String name, MultipartFile file) {
         featureGateService.assertEnabled(FeatureGateService.IMPORT_ARCHIVE);
@@ -116,7 +123,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             throw e;
         }
         try {
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath());
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProjectWithinOperation(
+                    ctx.projectId(), ctx.name(), ctx.rootPath(), AnalysisProgressListener.NOOP);
             projectService.updateProjectStats(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             fileChangeBroadcaster.watchProject(ctx.projectId(), ctx.rootPath());
@@ -134,12 +142,18 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
 
     @Override
     public ProjectResponse importArchiveAsync(String name, MultipartFile file) {
+        return importArchiveAsync(name, file, null);
+    }
+
+    @Override
+    public ProjectResponse importArchiveAsync(String name, MultipartFile file,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
         featureGateService.assertEnabled(FeatureGateService.IMPORT_ARCHIVE);
         validate(name, file);
         ConcurrentImportGuard.Lease lease = concurrentImportGuard.acquire(currentUser.id());
         ImportContext ctx = null;
         try {
-            ctx = prepare(name, file);
+            ctx = prepare(name, file, telemetryToken);
             projectService.markAnalyzing(ctx.projectId());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0);
             ProjectResponse response = projectService.getProject(ctx.projectId());
@@ -149,6 +163,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
         } catch (RejectedExecutionException ex) {
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
             if (ctx != null) {
+                completeTelemetryFailure(telemetryToken, ex);
                 projectService.markFailed(ctx.projectId(), reason);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
                 cleanup(ctx.workspace(), ctx.projectId());
@@ -156,6 +171,7 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             lease.close();
             throw new ServiceBusyException(reason);
         } catch (RuntimeException e) {
+            completeTelemetryFailure(telemetryToken, e);
             lease.close();
             throw e;
         }
@@ -177,6 +193,11 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
      * errors surface immediately to the caller even on the async path.
      */
     private ImportContext prepare(String name, MultipartFile file) {
+        return prepare(name, file, null);
+    }
+
+    private ImportContext prepare(String name, MultipartFile file,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
         validate(name, file);
 
         // Blocked/exhausted account check before we consume any server resources (extract, etc.).
@@ -221,7 +242,9 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
             // Record storage usage synchronously
             projectUsageService.recordImport(createdProjectId, userId, totalSize);
 
-            return new ImportContext(workspace, project.getId(), project.getRootPath(), name, extraction.javaFiles().size(), totalSize, userId, null);
+            attachTelemetry(telemetryToken, project);
+            return new ImportContext(workspace, project.getId(), project.getRootPath(), name,
+                    extraction.javaFiles().size(), totalSize, userId, telemetryToken, null);
         } catch (ArchiveImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -245,8 +268,8 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
                 projectService.updateProgress(ctx.projectId(), percent);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
             };
-            AnalyzeService.AnalysisResult result =
-                    analyzeService.analyzeProject(ctx.projectId(), ctx.name(), ctx.rootPath(), listener);
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProjectWithinOperation(
+                    ctx.projectId(), ctx.name(), ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZED, 100);
@@ -254,7 +277,9 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
 
             log.info("Async-imported archive '{}' as project {} ({} .java files)",
                     ctx.name(), ctx.projectId(), ctx.javaFileCount());
+            completeTelemetry(ctx, result);
         } catch (RuntimeException e) {
+            completeTelemetryFailure(ctx == null ? null : ctx.telemetryToken(), e);
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
             // B-M11: the FAILED project's workspace is removed below, so any graph the
@@ -274,11 +299,44 @@ public class ArchiveImportServiceImpl implements ArchiveImportService {
 
     /** Synchronous import state handed to the background analysis task. */
     private record ImportContext(Path workspace, String projectId, String rootPath, String name,
-            int javaFileCount, long totalSize, UUID userId, ConcurrentImportGuard.Lease lease) {
+            int javaFileCount, long totalSize, UUID userId,
+            OperationTelemetryRecorder.OperationToken telemetryToken,
+            ConcurrentImportGuard.Lease lease) {
 
         private ImportContext withLease(ConcurrentImportGuard.Lease acquiredLease) {
             return new ImportContext(workspace, projectId, rootPath, name, javaFileCount,
-                    totalSize, userId, acquiredLease);
+                    totalSize, userId, telemetryToken, acquiredLease);
+        }
+    }
+
+    private void attachTelemetry(OperationTelemetryRecorder.OperationToken token,
+            ProjectResponse project) {
+        if (telemetryRecorder == null || token == null || project == null) return;
+        try {
+            telemetryRecorder.attach(token, project.getId(), project.getName());
+        } catch (RuntimeException ex) {
+            log.debug("Unable to attach archive telemetry token {}: {}", token.id(), ex.getMessage());
+        }
+    }
+
+    private void completeTelemetry(ImportContext ctx, AnalyzeService.AnalysisResult result) {
+        if (telemetryRecorder == null || ctx == null || ctx.telemetryToken() == null || result == null) return;
+        try {
+            telemetryRecorder.complete(ctx.telemetryToken(), result.nodesUpserted(),
+                    result.edgesUpserted(), ctx.totalSize());
+        } catch (RuntimeException ex) {
+            log.debug("Unable to complete archive telemetry token {}: {}", ctx.telemetryToken(),
+                    ex.getMessage());
+        }
+    }
+
+    private void completeTelemetryFailure(OperationTelemetryRecorder.OperationToken token,
+            Throwable error) {
+        if (telemetryRecorder == null || token == null) return;
+        try {
+            telemetryRecorder.fail(token, error);
+        } catch (RuntimeException ex) {
+            log.debug("Unable to fail archive telemetry token {}: {}", token.id(), ex.getMessage());
         }
     }
 

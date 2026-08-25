@@ -51,6 +51,7 @@ import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.service.TarballImportService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -82,6 +83,7 @@ public class TarballImportServiceImpl implements TarballImportService {
     private final GraphRepository graphRepository;
     private final ImportCreditBilling importCreditBilling;
     private final ProjectOwnershipRepository ownershipRepository;
+    private OperationTelemetryRecorder telemetryRecorder;
 
     public TarballImportServiceImpl(GitHubUrlParser urlParser,
             GitHubPreFlightService preFlightService,
@@ -125,8 +127,19 @@ public class TarballImportServiceImpl implements TarballImportService {
         this.ownershipRepository = ownershipRepository;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTelemetryRecorder(OperationTelemetryRecorder telemetryRecorder) {
+        this.telemetryRecorder = telemetryRecorder;
+    }
+
     @Override
     public ProjectResponse importFromGithub(GithubImportRequest request) {
+        return importFromGithub(request, null);
+    }
+
+    @Override
+    public ProjectResponse importFromGithub(GithubImportRequest request,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
         featureGateService.assertEnabled(FeatureGateService.IMPORT_GITHUB);
         UUID userId = currentUser.id();
         accountSettingsService.assertNotBlocked(userId);
@@ -164,6 +177,8 @@ public class TarballImportServiceImpl implements TarballImportService {
             ctx = activeDuplicate.isPresent()
                     ? prepareRefresh(activeDuplicate.get(), resolved, userId, hardLimitBytes)
                     : prepareWorkspace(resolved, userId, hardLimitBytes);
+            ctx = ctx.withTelemetryToken(telemetryToken);
+            attachTelemetry(ctx);
             projectService.markAnalyzing(ctx.projectId());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, 0,
                     ctx.refresh() ? "New commits detected; refreshing the existing project"
@@ -174,6 +189,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             return response;
         } catch (RejectedExecutionException ex) {
             String reason = "Server is busy analyzing other projects. Please retry shortly.";
+            completeTelemetryFailure(telemetryToken, ex);
             if (ctx != null) {
                 projectService.markFailed(ctx.projectId(), reason);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED, 0, reason);
@@ -184,6 +200,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             lease.close();
             throw new ServiceBusyException(reason);
         } catch (RuntimeException e) {
+            completeTelemetryFailure(telemetryToken, e);
             if (ctx != null) {
                 cleanup(ctx.workspace(), ctx.refresh() ? null : ctx.projectId());
             }
@@ -228,7 +245,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             log.info("Imported GitHub tarball {}@{} as project {} ({} .java files)",
                     ref.displayName(), ref.ref(), project.getId(), extraction.javaFiles().size());
             return new ImportContext(workspace, project.getId(), project.getRootPath(), ref.displayName(),
-                    ref.ref(), extraction.javaFiles().size(), ref.commitSha(), false);
+                    ref.ref(), extraction.javaFiles().size(), totalSize, ref.commitSha(), false);
         } catch (GithubImportException e) {
             cleanup(workspace, createdProjectId);
             throw e;
@@ -291,7 +308,7 @@ public class TarballImportServiceImpl implements TarballImportService {
             log.info("Refreshing GitHub project {} from {}@{} ({} .java files)",
                     projectId, ref.displayName(), ref.ref(), extraction.javaFiles().size());
             return new ImportContext(workspace, projectId, rootPath.toString(), ref.displayName(), ref.ref(),
-                    extraction.javaFiles().size(), ref.commitSha(), true);
+                    extraction.javaFiles().size(), totalSize, ref.commitSha(), true);
         } catch (GithubImportException e) {
             restoreWatchIfSwapped(swapped, projectId, rootPath);
             cleanup(workspace, null);
@@ -352,8 +369,8 @@ public class TarballImportServiceImpl implements TarballImportService {
                 projectService.updateProgress(ctx.projectId(), percent);
                 graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.ANALYZING, percent, phase);
             };
-            AnalyzeService.AnalysisResult result = analyzeService.analyzeProject(ctx.projectId(), ctx.repository(),
-                    ctx.rootPath(), listener);
+            AnalyzeService.AnalysisResult result = analyzeService.analyzeProjectWithinOperation(
+                    ctx.projectId(), ctx.repository(), ctx.rootPath(), listener);
             projectService.markAnalyzed(ctx.projectId(),
                     result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
             if (ctx.sourceRef() != null) {
@@ -367,7 +384,9 @@ public class TarballImportServiceImpl implements TarballImportService {
 
             log.info("GitHub analysis complete for project {} from {}@{} ({} .java files)",
                     ctx.projectId(), ctx.repository(), ctx.ref(), ctx.javaFileCount());
+            completeTelemetry(ctx, result);
         } catch (RuntimeException e) {
+            completeTelemetryFailure(ctx == null ? null : ctx.telemetryToken(), e);
             projectService.markFailed(ctx.projectId(), e.getMessage());
             graphUpdateController.broadcastStatus(ctx.projectId(), ProjectStatus.FAILED.name(), 0, e.getMessage());
             // B-M11: the FAILED project's workspace is removed below, so any graph the
@@ -386,16 +405,56 @@ public class TarballImportServiceImpl implements TarballImportService {
     }
 
     private record ImportContext(Path workspace, String projectId, String rootPath, String repository, String ref,
-            int javaFileCount, String sourceRef, boolean refresh, ConcurrentImportGuard.Lease lease) {
+            int javaFileCount, long totalSize, String sourceRef, boolean refresh,
+            OperationTelemetryRecorder.OperationToken telemetryToken,
+            ConcurrentImportGuard.Lease lease) {
 
         private ImportContext(Path workspace, String projectId, String rootPath, String repository, String ref,
-                int javaFileCount, String sourceRef, boolean refresh) {
-            this(workspace, projectId, rootPath, repository, ref, javaFileCount, sourceRef, refresh, null);
+                int javaFileCount, long totalSize, String sourceRef, boolean refresh) {
+            this(workspace, projectId, rootPath, repository, ref, javaFileCount, totalSize, sourceRef,
+                    refresh, null, null);
+        }
+
+        private ImportContext withTelemetryToken(
+                OperationTelemetryRecorder.OperationToken operationTelemetryToken) {
+            return new ImportContext(workspace, projectId, rootPath, repository, ref, javaFileCount,
+                    totalSize, sourceRef, refresh, operationTelemetryToken, lease);
         }
 
         private ImportContext withLease(ConcurrentImportGuard.Lease acquiredLease) {
-            return new ImportContext(workspace, projectId, rootPath, repository, ref, javaFileCount, sourceRef,
-                    refresh, acquiredLease);
+            return new ImportContext(workspace, projectId, rootPath, repository, ref, javaFileCount,
+                    totalSize, sourceRef, refresh, telemetryToken, acquiredLease);
+        }
+    }
+
+    private void attachTelemetry(ImportContext ctx) {
+        if (telemetryRecorder == null || ctx == null || ctx.telemetryToken() == null) return;
+        try {
+            telemetryRecorder.attach(ctx.telemetryToken(), ctx.projectId(), ctx.repository());
+        } catch (RuntimeException ex) {
+            log.debug("Unable to attach GitHub telemetry token {}: {}", ctx.telemetryToken().id(),
+                    ex.getMessage());
+        }
+    }
+
+    private void completeTelemetry(ImportContext ctx, AnalyzeService.AnalysisResult result) {
+        if (telemetryRecorder == null || ctx == null || ctx.telemetryToken() == null || result == null) return;
+        try {
+            telemetryRecorder.complete(ctx.telemetryToken(), result.nodesUpserted(),
+                    result.edgesUpserted(), ctx.totalSize());
+        } catch (RuntimeException ex) {
+            log.debug("Unable to complete GitHub telemetry token {}: {}", ctx.telemetryToken(),
+                    ex.getMessage());
+        }
+    }
+
+    private void completeTelemetryFailure(OperationTelemetryRecorder.OperationToken token,
+            Throwable error) {
+        if (telemetryRecorder == null || token == null) return;
+        try {
+            telemetryRecorder.fail(token, error);
+        } catch (RuntimeException ex) {
+            log.debug("Unable to fail GitHub telemetry token {}: {}", token.id(), ex.getMessage());
         }
     }
 

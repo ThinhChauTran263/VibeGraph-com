@@ -746,6 +746,7 @@
       "operations": "Operations",
       "nav": {
         "overview": "Overview",
+        "vpsMonitor": "VPS Monitor",
         "users": "Users",
         "feedbackReports": "Feedback / Reports",
         "plansCredits": "Plans & Credits",
@@ -992,6 +993,25 @@
           "newUsersAcross": "{formattedCount} new users across {buckets} · {count}",
           "title": "Total Users"
         }
+      },
+      "infrastructure": {
+        "cpu": "CPU load",
+        "diskOf": "SSD of {total}",
+        "eyebrow": "Production host",
+        "health": {
+          "healthy": "Healthy",
+          "watch": "Watch",
+          "critical": "Critical",
+          "unknown": "Unavailable"
+        },
+        "loading": "Loading live metrics...",
+        "memoryOf": "RAM of {total}",
+        "openMonitor": "Open VPS Monitor",
+        "services": "services healthy",
+        "servicesUnavailable": "Docker metrics unavailable",
+        "title": "Infrastructure",
+        "unavailable": "Live metrics unavailable",
+        "updated": "Updated {time}"
       },
       "details": {
         "planDistribution": {

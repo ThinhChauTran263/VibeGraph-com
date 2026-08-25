@@ -8,6 +8,10 @@ import { clearStoredSession, fetchWithSessionRefresh, redirectToLogin } from './
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
 import type { ApiErrorCode, ApiErrorPayload } from '@/types/api'
+import type {
+  InfrastructureOperationSnapshot,
+  InfrastructureSnapshot,
+} from '@/types/infrastructure'
 
 /**
  * A node as returned inside an impact-analysis result. Mirrors the backend
@@ -747,6 +751,20 @@ export const accountApi = {
 export const adminApi = {
   getOverview(): Promise<AdminOverview> {
     return api.get<AdminOverview>('/api/admin/overview')
+  },
+  getInfrastructureSnapshot(): Promise<InfrastructureSnapshot> {
+    return api.get<InfrastructureSnapshot>('/api/admin/infrastructure')
+  },
+  listInfrastructureOperations(
+    params: { limit?: number; type?: string } = {},
+  ): Promise<InfrastructureOperationSnapshot[]> {
+    const query = new URLSearchParams({
+      limit: String(params.limit ?? 50),
+      type: params.type ?? 'ALL',
+    })
+    return api.get<InfrastructureOperationSnapshot[]>(
+      `/api/admin/infrastructure/operations?${query}`,
+    )
   },
   listPlans(): Promise<AdminPlan[]> {
     return api.get<AdminPlan[]>('/api/admin/plans')

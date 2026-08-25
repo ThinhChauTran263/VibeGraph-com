@@ -23,6 +23,7 @@ import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 public final class MeteredToolCallback implements ToolCallback {
 
@@ -40,6 +41,7 @@ public final class MeteredToolCallback implements ToolCallback {
     private final McpTaskExecutionCoordinator taskCoordinator;
     /** Whether the delegate's input schema declares projectId — immutable per tool, computed once. */
     private final boolean declaresProjectId;
+    private final OperationTelemetryRecorder telemetryRecorder;
 
     public MeteredToolCallback(
             ToolCallback delegate,
@@ -66,6 +68,23 @@ public final class MeteredToolCallback implements ToolCallback {
             ApiKeyRequestContextAccessor apiKeyContextAccessor,
             ObjectMapper objectMapper,
             McpTaskExecutionCoordinator taskCoordinator) {
+        this(delegate, currentUser, creditPricingService, creditBalanceService, ownershipGuard,
+                featureGateService, accountAccessGuard, apiKeyContextAccessor, objectMapper,
+                taskCoordinator, null);
+    }
+
+    public MeteredToolCallback(
+            ToolCallback delegate,
+            CurrentUser currentUser,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            ProjectOwnershipGuard ownershipGuard,
+            FeatureGateService featureGateService,
+            AccountAccessGuard accountAccessGuard,
+            ApiKeyRequestContextAccessor apiKeyContextAccessor,
+            ObjectMapper objectMapper,
+            McpTaskExecutionCoordinator taskCoordinator,
+            OperationTelemetryRecorder telemetryRecorder) {
         this.delegate = delegate;
         this.currentUser = currentUser;
         this.creditPricingService = creditPricingService;
@@ -76,6 +95,7 @@ public final class MeteredToolCallback implements ToolCallback {
         this.apiKeyContextAccessor = apiKeyContextAccessor;
         this.objectMapper = objectMapper;
         this.taskCoordinator = taskCoordinator;
+        this.telemetryRecorder = telemetryRecorder;
         this.declaresProjectId = computeDeclaresProjectId();
     }
 
@@ -133,14 +153,26 @@ public final class MeteredToolCallback implements ToolCallback {
             ownershipGuard.assertOwner(projectId, userId);
         }
 
-        long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
-        creditBalanceService.deductCredits(
-                userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
-        if (taskCoordinator == null) {
-            return invocation.call(effectiveInput);
+        OperationTelemetryRecorder.OperationToken token = telemetryRecorder == null ? null
+                : telemetryRecorder.begin("MCP", delegate.getToolDefinition().name(), projectId, null);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
+            creditBalanceService.deductCredits(
+                    userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
+            String result = taskCoordinator == null
+                    ? invocation.call(effectiveInput)
+                    : taskCoordinator.execute(delegate.getToolDefinition().name(), projectId,
+                            () -> invocation.call(effectiveInput));
+            if (telemetryRecorder != null) {
+                GraphCounts counts = graphCounts(result);
+                telemetryRecorder.complete(token, counts.nodes(), counts.edges(), 0);
+            }
+            return result;
+        } catch (RuntimeException | Error ex) {
+            if (telemetryRecorder != null) telemetryRecorder.fail(token, ex);
+            throw ex;
         }
-        return taskCoordinator.execute(delegate.getToolDefinition().name(), projectId,
-                () -> invocation.call(effectiveInput));
     }
 
     private String extractProjectId(String toolInput) {
@@ -161,6 +193,47 @@ public final class MeteredToolCallback implements ToolCallback {
             throw new IllegalArgumentException("projectId must be a non-blank string");
         }
         return projectId.textValue();
+    }
+
+    /** Extracts graph payload sizes without making assumptions about non-graph MCP responses. */
+    static GraphCounts graphCounts(String result) {
+        if (result == null || result.isBlank()) return GraphCounts.EMPTY;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(result);
+            if (root != null && root.isTextual()) {
+                root = mapper.readTree(root.textValue());
+            }
+            if (root == null) return GraphCounts.EMPTY;
+            int[] counts = {0, 0};
+            collectGraphCounts(root, counts);
+            return new GraphCounts(counts[0], counts[1]);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            return GraphCounts.EMPTY;
+        }
+    }
+
+    private static void collectGraphCounts(JsonNode node, int[] counts) {
+        if (node == null) return;
+        if (node.isObject()) {
+            counts[0] = Math.max(counts[0], countField(node, "nodes", "nodeCount"));
+            counts[1] = Math.max(counts[1], countField(node, "edges", "edgeCount"));
+            node.properties().forEach(entry -> collectGraphCounts(entry.getValue(), counts));
+        } else if (node.isArray()) {
+            node.forEach(child -> collectGraphCounts(child, counts));
+        }
+    }
+
+    private static int countField(JsonNode object, String arrayName, String countName) {
+        JsonNode array = object.get(arrayName);
+        if (array != null && array.isArray()) return array.size();
+        JsonNode count = object.get(countName);
+        if (count != null && count.canConvertToInt() && count.asInt() >= 0) return count.asInt();
+        return 0;
+    }
+
+    record GraphCounts(int nodes, int edges) {
+        private static final GraphCounts EMPTY = new GraphCounts(0, 0);
     }
 
     private String enrichProjectInput(String toolInput) {
