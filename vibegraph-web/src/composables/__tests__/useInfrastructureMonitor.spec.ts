@@ -60,6 +60,24 @@ describe('useInfrastructureMonitor', () => {
     expect(monitor.samples.value).toHaveLength(1)
   })
 
+  it('accepts nullable project names returned by infrastructure telemetry', async () => {
+    const value = validSnapshot()
+    value.latestOperation = {
+      id: 'op-null-project',
+      projectName: null,
+      durationMs: 100,
+    }
+    value.history = [value.latestOperation]
+    vi.spyOn(adminApi, 'getInfrastructureSnapshot').mockResolvedValue(value)
+    const monitor = useInfrastructureMonitor()
+
+    await monitor.refresh()
+
+    expect(monitor.error.value).toBeNull()
+    expect(monitor.snapshot.value.latestOperation?.projectName).toBeNull()
+    expect(monitor.snapshot.value.history[0]?.projectName).toBeNull()
+  })
+
   it.each([
     ['invalid timestamp', { capturedAt: 'not-a-date' }],
     ['non-finite CPU', { host: { ...validSnapshot().host, cpuPercent: Number.NaN } }],

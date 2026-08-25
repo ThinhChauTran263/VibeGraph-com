@@ -71,7 +71,7 @@ export interface InfrastructureOperationSnapshot {
   id: string
   traceId?: string | null
   projectId?: string | null
-  projectName: string
+  projectName: string | null
   type?: InfrastructureOperationType
   operation?: string
   status?: string

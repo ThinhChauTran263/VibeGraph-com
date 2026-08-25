@@ -35,6 +35,10 @@ function operationRam(operation: InfrastructureOperationSnapshot): string {
     preciseBytes(operation.ramAfterCooldownBytes),
   ].join(' → ')
 }
+
+function operationProjectLabel(operation: InfrastructureOperationSnapshot): string {
+  return operation.projectName ?? operation.projectId ?? 'Unknown project'
+}
 </script>
 
 <template>
@@ -73,7 +77,7 @@ function operationRam(operation: InfrastructureOperationSnapshot): string {
         <tbody>
           <tr v-for="operation in props.history" :key="operation.id">
             <td data-label="Project / operation">
-              {{ operation.projectName }} · {{ operation.operation ?? operation.type }}
+              {{ operationProjectLabel(operation) }} · {{ operation.operation ?? operation.type }}
             </td>
             <td data-label="Graph size">
               {{ (operation.nodes ?? operation.nodeCount ?? 0).toLocaleString() }} /

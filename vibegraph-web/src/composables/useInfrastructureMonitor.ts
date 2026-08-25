@@ -332,7 +332,7 @@ function isOperation(value: unknown): boolean {
   ]
   return (
     typeof value.id === 'string' &&
-    typeof value.projectName === 'string' &&
+    isOptionalString(value.projectName) &&
     isFiniteNumber(value.durationMs) &&
     numericFields.every((field) => isOptionalFiniteNumber(value[field])) &&
     isOptionalString(value.type) &&

@@ -82,6 +82,10 @@ function healthClass(value?: string): string {
   return `health-${(value ?? 'UNKNOWN').toLowerCase()}`
 }
 
+function operationProjectLabel(operation: InfrastructureOperationSnapshot): string {
+  return operation.projectName ?? operation.projectId ?? 'Unknown project'
+}
+
 function capacityEvidenceLabel(
   boundary: { measurementType?: string } | null | undefined,
   recordedLabel: string,
@@ -339,7 +343,9 @@ onUnmounted(() => {
             <div class="operation-title">
               <span class="operation-icon" aria-hidden="true">A</span>
               <div>
-                <h3>{{ latest.projectName }} · {{ latest.operation ?? latest.type }}</h3>
+                <h3>
+                  {{ operationProjectLabel(latest) }} · {{ latest.operation ?? latest.type }}
+                </h3>
                 <p class="operation-subtitle">
                   {{ (latest.nodes ?? latest.nodeCount ?? 0).toLocaleString() }} nodes ·
                   {{ (latest.edges ?? latest.edgeCount ?? 0).toLocaleString() }} edges · observed

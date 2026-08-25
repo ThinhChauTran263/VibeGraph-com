@@ -160,6 +160,20 @@ describe('VpsMonitorView', () => {
     wrapper.unmount()
   })
 
+  it('renders a safe project fallback when telemetry omits the project name', async () => {
+    vi.mocked(adminApi.getInfrastructureSnapshot).mockResolvedValueOnce({
+      ...snapshot,
+      latestOperation: { ...snapshot.latestOperation, projectName: null },
+      history: [{ ...snapshot.latestOperation, projectName: null }],
+    })
+    const wrapper = mount(VpsMonitorView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('project-1 · Analyze completed')
+    expect(wrapper.text()).not.toContain('null ·')
+    wrapper.unmount()
+  })
+
   it('does not fabricate unavailable host metrics', async () => {
     vi.mocked(adminApi.getInfrastructureSnapshot).mockResolvedValueOnce({
       ...snapshot,
