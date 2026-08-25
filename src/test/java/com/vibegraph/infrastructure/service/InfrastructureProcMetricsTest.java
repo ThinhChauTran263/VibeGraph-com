@@ -20,6 +20,22 @@ class InfrastructureProcMetricsTest {
     }
 
     @Test
+    void parsesKernelAvailableMemoryInsteadOfFreeMemory() {
+        long available = InfrastructureMetricsService.parseMemAvailableBytes(List.of(
+                "MemTotal:        8143896 kB",
+                "MemFree:         1766736 kB",
+                "MemAvailable:    4715064 kB"));
+
+        assertThat(available).isEqualTo(4_715_064L * 1024);
+    }
+
+    @Test
+    void treatsMissingKernelAvailableMemoryAsUnavailable() {
+        assertThat(InfrastructureMetricsService.parseMemAvailableBytes(List.of(
+                "MemTotal: 8143896 kB", "MemFree: 1766736 kB"))).isZero();
+    }
+
+    @Test
     void parsesNetworkAndWholeDiskCountersWithoutLoopbackOrPartitions() {
         var counters = InfrastructureMetricsService.parseProcCounters(
                 List.of(

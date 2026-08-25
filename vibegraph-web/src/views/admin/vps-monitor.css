@@ -368,6 +368,7 @@
 .disk-breakdown-bar i {
   display: block;
   height: 100%;
+  cursor: help;
   transition: width 0.4s ease;
 }
 .breakdown-fill-0 { background: var(--vg-blue); }
@@ -1029,7 +1030,8 @@
 }
 .vps-monitor-page .breakdown-list {
   flex: 0 1 auto;
-  max-height: 255px;
+  /* Keep four rows visible so a longer live breakdown scrolls inside the card. */
+  max-height: 204px;
   grid-auto-rows: 51px;
 }
 .vps-monitor-page .breakdown-list span,

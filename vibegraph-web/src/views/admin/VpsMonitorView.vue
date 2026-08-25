@@ -378,6 +378,9 @@ onUnmounted(() => {
             :key="item.key"
             :class="`breakdown-fill-${index % 4}`"
             :style="{ width: `${item.percentOfTotal ?? 0}%` }"
+            :title="`${item.label}: ${bytes(item.usedBytes)} (${percent(item.percentOfTotal)})`"
+            :aria-label="`${item.label}: ${bytes(item.usedBytes)} (${percent(item.percentOfTotal)})`"
+            role="img"
           ></i>
         </div>
         <div
@@ -418,6 +421,9 @@ onUnmounted(() => {
           :key="item.key"
           :class="`disk-fill-${index % 7}`"
           :style="{ width: `${item.percentOfTotal ?? 0}%` }"
+          :title="`${item.label}: ${bytes(item.usedBytes)} (${percent(item.percentOfTotal)})`"
+          :aria-label="`${item.label}: ${bytes(item.usedBytes)} (${percent(item.percentOfTotal)})`"
+          role="img"
         ></i>
       </div>
         <div class="disk-list">

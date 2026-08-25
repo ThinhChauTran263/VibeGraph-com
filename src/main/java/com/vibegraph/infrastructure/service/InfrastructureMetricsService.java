@@ -106,9 +106,9 @@ public class InfrastructureMetricsService {
         List<ContainerMetrics> containers = properties.isCAdvisorEnabled()
                 ? containerCollector.collect() : List.of();
         long totalMemory = totalMemory(os);
-        long freeMemory = freeMemory(os);
-        long usedMemory = Math.max(0, totalMemory - freeMemory);
-        MemoryMetrics memory = memory(totalMemory, freeMemory, usedMemory, containers);
+        long availableMemory = availableMemory(os);
+        long usedMemory = Math.max(0, totalMemory - availableMemory);
+        MemoryMetrics memory = memory(totalMemory, availableMemory, usedMemory, containers);
         DiskMetrics disk = disk();
         ProcMetrics proc = procMetrics();
         String status = status(cpu, memory.usedPercent(), disk.usedPercent());
@@ -308,7 +308,7 @@ public class InfrastructureMetricsService {
         }
     }
 
-    private MemoryMetrics memory(long total, long free, long used, List<ContainerMetrics> containers) {
+    private MemoryMetrics memory(long total, long available, long used, List<ContainerMetrics> containers) {
         double percent = ratio(used, total);
         long containerUsed = Math.min(used, containers.stream().mapToLong(ContainerMetrics::memoryUsedBytes).sum());
         List<ResourceBreakdown> rows = new ArrayList<>();
@@ -320,7 +320,7 @@ public class InfrastructureMetricsService {
         long other = Math.max(0, used - containerUsed - backend);
         rows.add(new ResourceBreakdown("host-other", "Host cache / other", other, ratio(other, total),
                 containers.isEmpty() ? "DERIVED" : "cAdvisor + derived", containers.isEmpty() ? "ESTIMATED" : "ESTIMATED"));
-        return new MemoryMetrics(total, used, free, percent, rows, "OperatingSystemMXBean", "MEASURED");
+        return new MemoryMetrics(total, used, available, percent, rows, "/proc/meminfo", "MEASURED");
     }
 
     private DiskMetrics disk() {
@@ -403,6 +403,32 @@ public class InfrastructureMetricsService {
 
     private long totalMemory(OperatingSystemMXBean os) {
         return os == null ? Runtime.getRuntime().maxMemory() : os.getTotalMemorySize();
+    }
+
+    private long availableMemory(OperatingSystemMXBean os) {
+        try {
+            long available = parseMemAvailableBytes(Files.readAllLines(Path.of("/proc/meminfo")));
+            if (available > 0) return available;
+        } catch (IOException | SecurityException ignored) {
+            // Fall back to the JVM-provided physical free value when procfs is restricted.
+        }
+        return freeMemory(os);
+    }
+
+    static long parseMemAvailableBytes(List<String> lines) {
+        if (lines == null) return 0L;
+        for (String line : lines) {
+            if (line == null || !line.startsWith("MemAvailable:")) continue;
+            String[] fields = line.trim().split("\\s+");
+            if (fields.length < 2) return 0L;
+            try {
+                long kib = Long.parseLong(fields[1]);
+                return kib > 0 && kib <= Long.MAX_VALUE / 1024 ? kib * 1024 : 0L;
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     private long freeMemory(OperatingSystemMXBean os) {
