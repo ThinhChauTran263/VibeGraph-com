@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useInfrastructureMonitor } from '@/composables/useInfrastructureMonitor'
 import type {
+  InfrastructureBreakdownItem,
+  InfrastructureContainerSnapshot,
   InfrastructureOperationSnapshot,
   InfrastructureOperationType,
 } from '@/types/infrastructure'
@@ -27,6 +29,8 @@ const historyFilter = ref<'ALL' | InfrastructureOperationType>('ALL')
 const snapshot = monitor.snapshot
 const host = computed(() => snapshot.value.host)
 const memory = computed(() => snapshot.value.memory)
+const memoryBreakdown = computed(() => groupBreakdownByLabel(memory.value.breakdown))
+const dockerServices = computed(() => groupContainersByName(snapshot.value.containers))
 const disk = computed(() => snapshot.value.disk)
 const network = computed(() => snapshot.value.network)
 const diskIo = computed(() => snapshot.value.diskIo)
@@ -45,6 +49,18 @@ const history = computed<InfrastructureOperationSnapshot[]>(() =>
 )
 const latest = computed(() => snapshot.value.latestOperation)
 const latestIncident = computed(() => snapshot.value.incidents[0] ?? null)
+const dockerPage = ref(0)
+const dockerPageSize = ref(5)
+const dockerPageCount = computed(() =>
+  Math.max(1, Math.ceil(dockerServices.value.length / dockerPageSize.value)),
+)
+const dockerPageItems = computed(() => {
+  const start = dockerPage.value * dockerPageSize.value
+  return dockerServices.value.slice(start, start + dockerPageSize.value)
+})
+watch(dockerPageCount, (pageCount) => {
+  dockerPage.value = Math.min(dockerPage.value, pageCount - 1)
+})
 const capacityRingStyle = computed(() => {
   const value = snapshot.value.capacity.safeHeadroomPercent
   if (value === null || !Number.isFinite(value)) {
@@ -98,13 +114,67 @@ function handleVisibility(): void {
   else monitor.stop()
 }
 
+function updateDockerPageSize(): void {
+  const nextSize = window.innerWidth < 680 ? 1 : window.innerWidth < 1100 ? 3 : 5
+  dockerPageSize.value = nextSize
+  dockerPage.value = Math.min(dockerPage.value, dockerPageCount.value - 1)
+}
+
+function moveDockerPage(direction: -1 | 1): void {
+  dockerPage.value = Math.max(0, Math.min(dockerPage.value + direction, dockerPageCount.value - 1))
+}
+
+function groupBreakdownByLabel(
+  items: readonly InfrastructureBreakdownItem[],
+): InfrastructureBreakdownItem[] {
+  const grouped = new Map<string, InfrastructureBreakdownItem>()
+  for (const item of items) {
+    const groupKey = item.label.trim().toLowerCase()
+    const current = grouped.get(groupKey)
+    if (current) {
+      current.usedBytes += item.usedBytes
+      current.percentOfTotal += item.percentOfTotal
+      continue
+    }
+    grouped.set(groupKey, { ...item, key: groupKey })
+  }
+  return [...grouped.values()]
+}
+
+function groupContainersByName(
+  items: readonly InfrastructureContainerSnapshot[],
+): InfrastructureContainerSnapshot[] {
+  const grouped = new Map<string, InfrastructureContainerSnapshot>()
+  for (const item of items) {
+    const groupKey = item.name.trim().toLowerCase()
+    const current = grouped.get(groupKey)
+    if (current) {
+      current.memoryUsedBytes = (current.memoryUsedBytes ?? 0) + (item.memoryUsedBytes ?? 0)
+      current.cpuPercent += item.cpuPercent
+      current.restartCount =
+        current.restartCount == null || item.restartCount == null
+          ? null
+          : current.restartCount + item.restartCount
+      current.healthKnown = Boolean(current.healthKnown && item.healthKnown)
+      current.healthy = current.healthy && item.healthy
+      if (!current.healthKnown) current.healthStatus = null
+      continue
+    }
+    grouped.set(groupKey, { ...item })
+  }
+  return [...grouped.values()]
+}
+
 onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('resize', updateDockerPageSize)
+  updateDockerPageSize()
   monitor.start()
 })
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('resize', updateDockerPageSize)
   monitor.stop()
 })
 </script>
@@ -287,14 +357,19 @@ onUnmounted(() => {
         </div>
         <div class="stack-bar">
           <i
-            v-for="(item, index) in memory.breakdown"
+            v-for="(item, index) in memoryBreakdown"
             :key="item.key"
             :class="`breakdown-fill-${index % 4}`"
             :style="{ width: `${item.percentOfTotal ?? 0}%` }"
           ></i>
         </div>
-        <div class="breakdown-list">
-          <div v-for="(item, index) in memory.breakdown" :key="item.key">
+        <div
+          class="breakdown-list"
+          role="region"
+          aria-label="VPS RAM usage breakdown"
+          tabindex="0"
+        >
+          <div v-for="(item, index) in memoryBreakdown" :key="item.key">
             <span><i :class="`breakdown-color-${index % 4}`"></i>{{ item.label }}</span
             ><b>{{ bytes(item.usedBytes) }}</b>
           </div>
@@ -506,38 +581,73 @@ onUnmounted(() => {
           <span
             :class="[
               'health-chip',
-              snapshot.containers.length && snapshot.containers.every((item) => item.healthKnown)
+              dockerServices.length && dockerServices.every((item) => item.healthKnown)
                 ? 'health-healthy'
                 : 'health-unknown',
             ]"
             >{{
-              snapshot.containers.length && snapshot.containers.every((item) => item.healthKnown)
-                ? `● ${snapshot.containers.filter((item) => item.healthy).length} / ${snapshot.containers.length} HEALTHY`
-                : snapshot.containers.length
+              dockerServices.length && dockerServices.every((item) => item.healthKnown)
+                ? `● ${dockerServices.filter((item) => item.healthy).length} / ${dockerServices.length} HEALTHY`
+                : dockerServices.length
                   ? '● RUNNING · HEALTH UNKNOWN'
                   : '● UNAVAILABLE'
             }}</span
           >
         </div>
-        <div v-if="snapshot.containers.length" class="services-grid">
-          <div v-for="service in snapshot.containers" :key="service.name" class="service-card">
-            <div>
-              <strong>{{ service.name }}</strong
-              ><i :class="{ healthy: service.healthy }"></i>
-            </div>
-            <b>{{ bytes(service.memoryUsedBytes) }} RAM</b
-            ><small
-              >CPU {{ percent(service.cpuPercent) }} ·
-              {{
-                service.restartCount == null
-                  ? 'restarts unavailable'
-                  : `${service.restartCount} restarts`
-              }}
-              ·
-              {{
-                service.healthKnown ? (service.healthStatus ?? 'health reported') : 'health unknown'
-              }}</small
+        <div
+          v-if="dockerServices.length"
+          class="services-viewport"
+          role="region"
+          aria-label="Docker service metrics"
+          tabindex="0"
+        >
+          <div v-if="dockerPageCount > 1" class="services-toolbar">
+            <button
+              type="button"
+              class="services-arrow"
+              aria-label="Previous Docker service row"
+              :disabled="dockerPage === 0"
+              @click="moveDockerPage(-1)"
             >
+              ←
+            </button>
+            <span>{{ dockerPage + 1 }} / {{ dockerPageCount }}</span>
+            <button
+              type="button"
+              class="services-arrow"
+              aria-label="Next Docker service row"
+              :disabled="dockerPage >= dockerPageCount - 1"
+              @click="moveDockerPage(1)"
+            >
+              →
+            </button>
+          </div>
+          <div class="services-grid">
+            <div
+              v-for="(service, index) in dockerPageItems"
+              :key="`${dockerPage}-${index}-${service.name}`"
+              class="service-card"
+            >
+              <div>
+                <strong>{{ service.name }}</strong
+                ><i :class="{ healthy: service.healthy }"></i>
+              </div>
+              <b>{{ bytes(service.memoryUsedBytes) }} RAM</b
+              ><small
+                >CPU {{ percent(service.cpuPercent) }} ·
+                {{
+                  service.restartCount == null
+                    ? 'restarts unavailable'
+                    : `${service.restartCount} restarts`
+                }}
+                ·
+                {{
+                  service.healthKnown
+                    ? (service.healthStatus ?? 'health reported')
+                    : 'health unknown'
+                }}</small
+              >
+            </div>
           </div>
         </div>
         <p v-else class="empty-service-state">

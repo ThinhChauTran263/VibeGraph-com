@@ -7,6 +7,14 @@ const MiB = 1024 ** 2
 // the telemetry API instead of these values.
 export function createInfrastructureMockSnapshot(): InfrastructureSnapshot {
   const capturedAt = new Date().toISOString()
+  const initScopeBreakdown = Array.from({ length: 12 }, (_, index) => ({
+    key: `init-scope-${index + 1}`,
+    label: 'init.scope',
+    usedBytes: index % 3 === 0 ? 6 * MiB : 208 * 1024,
+    percentOfTotal: index % 3 === 0 ? 0.8 : 0.03,
+    source: 'Host process',
+    status: 'MEASURED',
+  }))
   const latestOperation = {
     id: 'mock-operation-1',
     traceId: 'evt_01J9A7',
@@ -91,6 +99,22 @@ export function createInfrastructureMockSnapshot(): InfrastructureSnapshot {
       storageAddedBytes: 14.7 * MiB,
       measurementType: 'OBSERVED' as const,
     },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      ...latestOperation,
+      id: `mock-operation-${index + 5}`,
+      traceId: `evt_01J9A${index + 5}`,
+      projectName: index % 2 === 0 ? 'VibeGraph-com' : 'ASM_Final_Java6',
+      type: index % 3 === 0 ? ('MCP' as const) : index % 3 === 1 ? ('API' as const) : ('ANALYZE' as const),
+      operation: index % 3 === 0 ? 'get_project_architecture' : index % 3 === 1 ? 'Graph API' : 'Analyze completed',
+      durationMs: 1200 + index * 430,
+      nodes: 12000 + index * 1750,
+      edges: 36000 + index * 4200,
+      ramIncreaseBytes: (180 + index * 35) * MiB,
+      cpuAvgPercent: 20 + index * 4,
+      cpuPeakPercent: 42 + index * 6,
+      storageAddedBytes: index % 3 === 2 ? (20 + index * 3) * MiB : null,
+      measurementType: 'OBSERVED' as const,
+    })),
   ]
   return {
     capturedAt,
@@ -111,10 +135,19 @@ export function createInfrastructureMockSnapshot(): InfrastructureSnapshot {
       usedPercent: 34.6,
       status: 'HEALTHY',
       breakdown: [
+        ...initScopeBreakdown,
         { key: 'neo4j', label: 'Neo4j RAM', usedBytes: 1.59 * GiB, percentOfTotal: 20.4, source: 'Docker', status: 'MEASURED' },
         { key: 'backend', label: 'Backend RAM', usedBytes: 672 * MiB, percentOfTotal: 8.4, source: 'Docker', status: 'MEASURED' },
         { key: 'postgres-services', label: 'PostgreSQL + services RAM', usedBytes: 166 * MiB, percentOfTotal: 2.1, source: 'Docker', status: 'MEASURED' },
         { key: 'linux-other', label: 'Linux cache / other RAM', usedBytes: 272 * MiB, percentOfTotal: 3.5, source: 'Host', status: 'ESTIMATED' },
+        { key: 'docker-daemon', label: 'Docker daemon RAM', usedBytes: 48 * MiB, percentOfTotal: 0.6, source: 'Host', status: 'MEASURED' },
+        { key: 'caddy-proxy', label: 'Caddy proxy RAM', usedBytes: 32 * MiB, percentOfTotal: 0.4, source: 'Docker', status: 'MEASURED' },
+        { key: 'cadvisor', label: 'cAdvisor RAM', usedBytes: 26 * MiB, percentOfTotal: 0.3, source: 'Docker', status: 'MEASURED' },
+        { key: 'linux-kernel', label: 'Linux kernel RAM', usedBytes: 118 * MiB, percentOfTotal: 1.5, source: 'Host', status: 'ESTIMATED' },
+        { key: 'filesystem-cache', label: 'Filesystem cache RAM', usedBytes: 84 * MiB, percentOfTotal: 1.1, source: 'Host', status: 'ESTIMATED' },
+        { key: 'network-buffers', label: 'Network buffers RAM', usedBytes: 18 * MiB, percentOfTotal: 0.2, source: 'Host', status: 'ESTIMATED' },
+        { key: 'monitoring-agent', label: 'Monitoring agent RAM', usedBytes: 22 * MiB, percentOfTotal: 0.3, source: 'Host', status: 'MEASURED' },
+        { key: 'system-services', label: 'System services RAM', usedBytes: 74 * MiB, percentOfTotal: 0.9, source: 'Host', status: 'ESTIMATED' },
       ],
     },
     disk: {
@@ -141,6 +174,18 @@ export function createInfrastructureMockSnapshot(): InfrastructureSnapshot {
       { name: 'PostgreSQL', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 62 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0.01, restartCount: 0, source: 'Docker' },
       { name: 'Frontend', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 3.9 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0, restartCount: 0, source: 'Docker' },
       { name: 'Caddy', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 49.7 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0.07, restartCount: 0, source: 'Docker' },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        name: 'init.scope',
+        status: 'running',
+        healthy: false,
+        healthKnown: false,
+        healthStatus: null,
+        memoryUsedBytes: index % 3 === 0 ? 6 * MiB : 208 * 1024,
+        memoryLimitBytes: null,
+        cpuPercent: index === 7 ? 90 : 0,
+        restartCount: null,
+        source: 'Docker',
+      })),
     ],
     latestOperation,
     capacity: {

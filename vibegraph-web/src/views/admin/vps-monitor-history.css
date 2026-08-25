@@ -49,7 +49,12 @@
 }
 
 .table-wrap {
-  overflow-x: auto;
+  --history-header-height: 33px;
+  --history-row-height: 43px;
+  max-height: calc(var(--history-header-height) + 5 * var(--history-row-height));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 table {
@@ -60,7 +65,11 @@ table {
 }
 
 th {
-  padding: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--history-header-height);
+  padding: 0 10px;
   text-align: left;
   background: #09151a;
   color: #82959b;
@@ -69,9 +78,12 @@ th {
 }
 
 td {
-  padding: 12px 10px;
+  height: var(--history-row-height);
+  padding: 0 10px;
+  vertical-align: middle;
   border-top: 1px solid #1b2f36;
   color: #b7c5c9;
+  white-space: nowrap;
 }
 
 .success-text {
@@ -107,6 +119,10 @@ td {
     min-width: 0;
   }
 
+  .table-wrap {
+    max-height: 70vh;
+  }
+
   thead {
     display: none;
   }
@@ -126,11 +142,13 @@ td {
 
   tbody td {
     display: flex;
+    height: auto;
     justify-content: space-between;
     align-items: baseline;
     gap: 14px;
     padding: 9px 10px;
     text-align: right;
+    white-space: normal;
   }
 
   tbody td:first-child {

@@ -375,6 +375,10 @@
 .breakdown-fill-3 { background: #355663; }
 .breakdown-list {
   display: grid;
+  max-height: 306px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .breakdown-list > div,
 .disk-list > div {
@@ -384,6 +388,10 @@
   gap: 10px;
   padding: 11px 0;
   border-top: 1px solid var(--vg-border);
+}
+.breakdown-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
 }
 .breakdown-list span,
 .disk-list span {
@@ -414,9 +422,15 @@
   text-align: right;
   font: 600 10px var(--vg-font-mono);
 }
+.breakdown-list b {
+  width: 92px;
+  min-width: 92px;
+  font-variant-numeric: tabular-nums;
+}
 .available-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: center;
   margin-top: 14px;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--vg-green) 40%, transparent);
@@ -426,7 +440,11 @@
   font-size: 11px;
 }
 .available-row b {
+  width: 92px;
+  min-width: 92px;
+  text-align: right;
   font: 600 11px var(--vg-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .disk-panel {
   grid-column: 1/-1;
@@ -676,10 +694,46 @@
 .docker-panel {
   grid-area: docker;
 }
+.services-viewport {
+  position: relative;
+  min-width: 0;
+}
+.services-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-height: 25px;
+  margin: -4px 0 7px;
+  color: var(--vg-text-muted);
+  font: 9px var(--vg-font-mono);
+}
+.services-arrow {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid var(--vg-border);
+  border-radius: 7px;
+  background: var(--vg-bg);
+  color: var(--vg-text);
+  font: 700 14px var(--vg-font-mono);
+  cursor: pointer;
+}
+.services-arrow:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.services-arrow:not(:disabled):hover {
+  border-color: var(--vg-cyan);
+  color: var(--vg-cyan);
+}
 .services-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
+  min-height: 140px;
 }
 .empty-service-state {
   margin: 0;
@@ -690,6 +744,7 @@
   border-radius: 0.65rem;
 }
 .service-card {
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--vg-border);
   border-radius: 9px;
@@ -698,6 +753,12 @@
 .service-card > div {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.service-card > div strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .service-card > div i {
   width: 7px;
@@ -718,6 +779,18 @@
   margin-top: 4px;
   color: var(--vg-text-muted);
   font: 9px var(--vg-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.breakdown-list:focus-visible,
+.services-viewport:focus-visible {
+  outline: 2px solid var(--vg-cyan);
+  outline-offset: 3px;
+}
+
+.breakdown-list {
+  scrollbar-color: #355663 #0a171c;
+  scrollbar-width: thin;
 }
 .empty-operation {
   grid-area: operation;
@@ -823,9 +896,7 @@
   .evidence {
     padding: 0 var(--vg-space-4) var(--vg-space-4);
   }
-  .services-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  .services-grid { grid-template-columns: minmax(0, 1fr); }
   .monitor-footer {
     flex-direction: column;
   }
@@ -956,12 +1027,14 @@
   padding-left: 12px;
 }
 .vps-monitor-page .breakdown-list {
-  flex: 1 1 auto;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
+  flex: 0 1 auto;
+  max-height: 255px;
+  grid-auto-rows: 51px;
 }
 .vps-monitor-page .breakdown-list span,
 .vps-monitor-page .disk-list span { color: #93a3a8; }
 .vps-monitor-page .available-row {
+  padding-right: 23px;
   border-color: #274c43;
   background: #0c201d;
   color: #a8dfc1;
@@ -995,7 +1068,15 @@
 .vps-monitor-page .capacity-row { border-color: var(--monitor-line); }
 .vps-monitor-page .docker-panel { padding: 0; }
 .vps-monitor-page .docker-panel .panel-heading { padding: 18px 19px 15px; margin: 0; }
-.vps-monitor-page .services-grid { padding: 0 19px 18px; }
+.vps-monitor-page .services-viewport {
+  margin: 0 7px 18px 19px;
+}
+.vps-monitor-page .services-toolbar {
+  padding-right: 12px;
+}
+.vps-monitor-page .services-grid {
+  padding-right: 12px;
+}
 .vps-monitor-page .service-card { background: #09151a; border-color: #20363e; }
 .vps-monitor-page .monitor-footer { color: #71868d; }
 @media (max-width: 1100px) {

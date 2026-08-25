@@ -151,6 +151,41 @@ describe('VpsMonitorView', () => {
     wrapper.unmount()
   })
 
+  it('groups duplicate RAM labels and pages grouped Docker services one row at a time', async () => {
+    vi.mocked(adminApi.getInfrastructureSnapshot).mockResolvedValueOnce({
+      ...snapshot,
+      memory: {
+        ...snapshot.memory,
+        breakdown: [
+          { key: 'init-a', label: 'init.scope', usedBytes: 2 * 1024 ** 2, percentOfTotal: 0.2 },
+          { key: 'init-b', label: 'init.scope', usedBytes: 3 * 1024 ** 2, percentOfTotal: 0.3 },
+          ...snapshot.memory.breakdown,
+        ],
+      },
+      containers: Array.from({ length: 6 }, (_, index) => ({
+          name: index < 3 ? 'init.scope' : `service-${index}`,
+          status: 'running',
+          healthy: index > 2,
+          healthKnown: index > 2,
+          memoryUsedBytes: 1024,
+          cpuPercent: 0,
+          restartCount: index > 2 ? 0 : null,
+        })),
+    })
+
+    const wrapper = mount(VpsMonitorView)
+    await flushPromises()
+
+    expect(wrapper.findAll('.breakdown-list > div').filter((row) => row.text().includes('init.scope'))).toHaveLength(1)
+    expect(wrapper.find('.services-toolbar').text()).toContain('1 / 2')
+    await wrapper.get('button[aria-label="Next Docker service row"]').trigger('click')
+    expect(wrapper.find('.services-toolbar').text()).toContain('2 / 2')
+    expect(wrapper.text()).toContain('service-5')
+    await wrapper.get('button[aria-label="Previous Docker service row"]').trigger('click')
+    expect(wrapper.find('.services-toolbar').text()).toContain('1 / 2')
+    wrapper.unmount()
+  })
+
   it('shows a useful error state when the infrastructure API is unavailable', async () => {
     vi.mocked(adminApi.getInfrastructureSnapshot).mockRejectedValueOnce(new Error('offline'))
     const wrapper = mount(VpsMonitorView)
