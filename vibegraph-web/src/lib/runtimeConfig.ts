@@ -158,7 +158,7 @@ export const SIGMA_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_LABEL_GROW_ZOOM', 1.5,
  * them to the fixed size. This is separate from the node grow factor so node labels
  * can grow early for readability while edge labels stay calm until deep zoom.
  */
-export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, {
+export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 10, {
   min: 1,
 })
 
