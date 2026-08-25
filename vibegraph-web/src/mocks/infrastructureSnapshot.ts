@@ -174,6 +174,12 @@ export function createInfrastructureMockSnapshot(): InfrastructureSnapshot {
       { name: 'PostgreSQL', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 62 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0.01, restartCount: 0, source: 'Docker' },
       { name: 'Frontend', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 3.9 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0, restartCount: 0, source: 'Docker' },
       { name: 'Caddy', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 49.7 * MiB, memoryLimitBytes: 8 * GiB, cpuPercent: 0.07, restartCount: 0, source: 'Docker' },
+      { name: 'Redis', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 84 * MiB, memoryLimitBytes: 1 * GiB, cpuPercent: 0.12, restartCount: 0, source: 'Docker' },
+      { name: 'Worker', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 214 * MiB, memoryLimitBytes: 2 * GiB, cpuPercent: 2.4, restartCount: 1, source: 'Docker' },
+      { name: 'MinIO', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 128 * MiB, memoryLimitBytes: 2 * GiB, cpuPercent: 0.8, restartCount: 0, source: 'Docker' },
+      { name: 'Parser', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 176 * MiB, memoryLimitBytes: 2 * GiB, cpuPercent: 1.9, restartCount: 0, source: 'Docker' },
+      { name: 'Watcher', status: 'running', healthy: false, healthKnown: true, healthStatus: 'degraded', memoryUsedBytes: 96 * MiB, memoryLimitBytes: 1 * GiB, cpuPercent: 4.1, restartCount: 2, source: 'Docker' },
+      { name: 'Nginx', status: 'running', healthy: true, healthKnown: true, healthStatus: 'healthy', memoryUsedBytes: 36 * MiB, memoryLimitBytes: 512 * MiB, cpuPercent: 0.03, restartCount: 0, source: 'Docker' },
       ...Array.from({ length: 12 }, (_, index) => ({
         name: 'init.scope',
         status: 'running',

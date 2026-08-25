@@ -474,7 +474,7 @@
   column-gap: var(--vg-space-6);
 }
 .operation-grid {
-  grid-template-areas: 'operation capacity' 'docker capacity';
+  grid-template-areas: 'operation capacity' 'docker docker';
   align-items: stretch;
 }
 .operation-panel {
@@ -731,7 +731,7 @@
 }
 .services-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   min-height: 140px;
 }
@@ -1050,7 +1050,7 @@
 .disk-fill-5, .disk-color-5 { background: #4e737a !important; }
 .disk-fill-6, .disk-color-6 { background: #355663 !important; }
 .vps-monitor-page .operation-grid {
-  grid-template-areas: 'operation capacity' 'docker capacity';
+  grid-template-areas: 'operation capacity' 'docker docker';
   align-items: stretch;
 }
 .vps-monitor-page .operation-panel { padding: 0; }
@@ -1063,7 +1063,8 @@
 .vps-monitor-page .operation-trace { margin: 0 19px; }
 .vps-monitor-page .evidence { padding: 0 19px 18px; }
 .vps-monitor-page .capacity-panel { align-self: stretch; }
-.vps-monitor-page .capacity-score { margin: .3rem 0 1rem; }
+.vps-monitor-page .capacity-score { margin: .3rem 0 .65rem; }
+.vps-monitor-page .capacity-row { flex: 1 1 0; min-height: 0; padding: 9px 0; }
 .vps-monitor-page .capacity-ring::after { background: var(--monitor-panel-2); }
 .vps-monitor-page .capacity-row { border-color: var(--monitor-line); }
 .vps-monitor-page .docker-panel { padding: 0; }
@@ -1082,6 +1083,9 @@
 @media (max-width: 1100px) {
   .vps-monitor-page { padding: 18px 20px 28px; }
   .vps-monitor-page .monitor-grid { grid-template-columns: 1fr; }
+  .vps-monitor-page .operation-grid {
+    grid-template-areas: 'operation' 'capacity' 'docker';
+  }
   .vps-monitor-page .performance-panel,
   .vps-monitor-page .ram-panel,
   .vps-monitor-page .disk-panel { grid-column: auto; grid-row: auto; }

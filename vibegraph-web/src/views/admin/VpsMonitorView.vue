@@ -115,7 +115,16 @@ function handleVisibility(): void {
 }
 
 function updateDockerPageSize(): void {
-  const nextSize = window.innerWidth < 680 ? 1 : window.innerWidth < 1100 ? 3 : 5
+  const nextSize =
+    window.innerWidth < 680
+      ? 1
+      : window.innerWidth < 1100
+        ? 3
+        : window.innerWidth < 1500
+          ? 6
+          : window.innerWidth < 1800
+            ? 7
+            : 8
   dockerPageSize.value = nextSize
   dockerPage.value = Math.min(dockerPage.value, dockerPageCount.value - 1)
 }
@@ -622,7 +631,10 @@ onUnmounted(() => {
               →
             </button>
           </div>
-          <div class="services-grid">
+          <div
+            class="services-grid"
+            :style="{ gridTemplateColumns: `repeat(${dockerPageSize}, minmax(0, 1fr))` }"
+          >
             <div
               v-for="(service, index) in dockerPageItems"
               :key="`${dockerPage}-${index}-${service.name}`"

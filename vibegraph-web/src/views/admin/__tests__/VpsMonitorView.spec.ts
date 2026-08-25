@@ -127,7 +127,10 @@ describe('VpsMonitorView', () => {
     vi.spyOn(adminApi, 'getInfrastructureSnapshot').mockResolvedValue(snapshot)
   })
 
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
 
   it('renders the approved host cards and operation evidence labels', async () => {
     const wrapper = mount(VpsMonitorView)
@@ -183,6 +186,37 @@ describe('VpsMonitorView', () => {
     expect(wrapper.text()).toContain('service-5')
     await wrapper.get('button[aria-label="Previous Docker service row"]').trigger('click')
     expect(wrapper.find('.services-toolbar').text()).toContain('1 / 2')
+    wrapper.unmount()
+  })
+
+  it('shows six Docker services on a standard desktop before paging the remainder', async () => {
+    vi.stubGlobal('innerWidth', 1440)
+    vi.mocked(adminApi.getInfrastructureSnapshot).mockResolvedValueOnce({
+      ...snapshot,
+      containers: Array.from({ length: 10 }, (_, index) => ({
+        name: `service-${index + 1}`,
+        status: 'running',
+        healthy: true,
+        healthKnown: true,
+        memoryUsedBytes: (index + 1) * 1024,
+        cpuPercent: index / 10,
+        restartCount: 0,
+      })),
+    })
+
+    const wrapper = mount(VpsMonitorView)
+    await flushPromises()
+
+    expect(wrapper.findAll('.service-card')).toHaveLength(6)
+    expect(wrapper.find('.services-toolbar').text()).toContain('1 / 2')
+    expect(wrapper.text()).toContain('service-6')
+    expect(wrapper.text()).not.toContain('service-7')
+
+    await wrapper.get('button[aria-label="Next Docker service row"]').trigger('click')
+
+    expect(wrapper.findAll('.service-card')).toHaveLength(4)
+    expect(wrapper.text()).toContain('service-7')
+    expect(wrapper.text()).toContain('service-10')
     wrapper.unmount()
   })
 
