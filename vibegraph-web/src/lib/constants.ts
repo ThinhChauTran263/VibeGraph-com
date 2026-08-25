@@ -103,7 +103,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Class: '#F59E0B', // amber / gold
   Annotation: '#65A30D', // olive green (far from Class amber & Interface green)
   DBModel: '#CA8A04', // mustard
-  Record: '#7C2D12', // dark brown
+  Record: '#A3E635', // vivid lime
   Interface: '#22C55E', // green
   Route: '#15803D', // dark green
   Package: '#9333EA', // purple

@@ -268,6 +268,55 @@ describe('GraphCanvas', () => {
  * Sigma camera / timers), keeping the test non-flaky.
  */
 describe('GraphCanvas edge label toggle', () => {
+  it('hides default edges at fit and reveals them only after zoom-in', async () => {
+    selectedNode.value = null
+    nodes.value = []
+    loading.value = false
+    error.value = null
+    graphInstanceRef.value?.clear()
+    graphInstanceRef.value?.addNode('a', { filterHidden: false })
+    graphInstanceRef.value?.addNode('b', { filterHidden: false })
+    graphInstanceRef.value?.addEdgeWithKey('edge', 'a', 'b', { filterHidden: false })
+
+    const wrapper = mount(GraphCanvas, {
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
+    await flushPromises()
+    setReducers.mockClear()
+
+    capturedCameraRatioChange?.(1.1)
+    const fitReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(fitReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(fitReducers.nodeReducer('a', { size: 10 }).size).toBe(15)
+
+    capturedCameraRatioChange?.(0.9)
+    const earlyZoomReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(earlyZoomReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(earlyZoomReducers.nodeReducer('a', { size: 10 }).size).toBe(14)
+
+    capturedCameraRatioChange?.(0.45)
+    const edgeRevealReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(edgeRevealReducers.edgeReducer('edge', { color: '#fff' }).hidden).not.toBe(true)
+    expect(edgeRevealReducers.nodeReducer('a', { size: 10 }).size).toBe(10)
+
+    capturedCameraRatioChange?.(1)
+    const resetReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(resetReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    wrapper.unmount()
+  })
+
   it('forces edge labels off when toggled, and only shows them at edges density', async () => {
     // No selection -> applyFocusReducers takes the default path and pushes
     // (edgeLabelsEnabled && labelDensity === 'edges') straight to Sigma.

@@ -92,13 +92,13 @@ watch(sidebarWidth, (width) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.375rem;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  padding: 0.75rem 0.25rem;
   /* The bar's content box ends exactly at the sidebar column's right edge, so
      Graph/Diagrams sit flush with the sidebar's collapse arrow on one row
      instead of poking past the divider below. Collapsed sidebar publishes
-     100%, which reduces this back to a plain 1rem gutter. */
-  padding-right: calc(100% - var(--sidebar-width, 18rem) + 1rem);
+     100%, which reduces this back to a plain 0.25rem gutter. */
+  padding-right: calc(100% - var(--sidebar-width, 18rem) + 0.25rem);
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
@@ -108,6 +108,14 @@ watch(sidebarWidth, (width) => {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.graph-view__tabs-left {
+  flex-shrink: 0;
+}
+
+.graph-view__tabs-right {
+  flex-shrink: 0;
 }
 
 .graph-view__home {
@@ -165,7 +173,7 @@ watch(sidebarWidth, (width) => {
    the tab bar must not keep tracking its (now meaningless) column edge. */
 @media (max-width: 64rem) {
   .graph-view__tabs {
-    padding-right: 1rem;
+    padding-right: 0.25rem;
   }
 }
 </style>

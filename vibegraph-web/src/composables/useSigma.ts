@@ -137,9 +137,9 @@ export function useSigma(options: UseSigmaOptions) {
       // graph-space reference, exactly like grapuco.
       itemSizesReference: 'positions',
       zoomToSizeRatioFunction: zoomToSizeRatio,
-      // Bound zoom-out so the graph cannot shrink into a useless dot, and cap
-      // deep zoom so node growth remains predictable at the configured power.
-      maxCameraRatio: 4,
+      // The fit view already contains the entire graph. Do not let zoom-out shrink
+      // it into an unreadable subpixel cluster; zoom-in remains available normally.
+      maxCameraRatio: 1,
       minCameraRatio: 0.01,
       defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
@@ -157,8 +157,8 @@ export function useSigma(options: UseSigmaOptions) {
       // lib/sigmaRenderers.ts.
       defaultDrawNodeLabel: drawDefaultNodeLabel,
       defaultDrawNodeHover: drawHighlightNodeHover,
-      // Edge labels: hide entirely when the full text doesn't fit the edge
-      // (no "DEFI…" truncation). See lib/sigmaRenderers.ts.
+      // Edge labels shrink to fit short edges and keep their zoom-driven size on
+      // longer edges. See lib/sigmaRenderers.ts.
       defaultDrawEdgeLabel: drawEdgeTypeLabel,
     })
 

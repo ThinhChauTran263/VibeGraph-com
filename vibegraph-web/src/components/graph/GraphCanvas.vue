@@ -160,6 +160,26 @@ const hoveredRelation = ref<HoveredRelation | null>(null)
 const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
+// At the fit view the full graph is already loaded/layouted, but its dense edge
+// layer stays hidden until the user zooms in. Zooming back to fit hides it again.
+const graphEdgesVisible = ref(false)
+const EDGE_VISIBLE_RATIO = 0.45
+const MAX_FIT_NODE_SIZE_MULTIPLIER = 1.5
+const fitNodeSizeMultiplier = ref(MAX_FIT_NODE_SIZE_MULTIPLIER)
+
+/**
+ * Ease the fit-only node enlargement away while zooming toward the edge reveal
+ * threshold. Quantizing to 0.05 keeps reducer refreshes bounded while still
+ * making the visual change gradual instead of snapping from 1.5 to 1.
+ */
+function resolveFitNodeSizeMultiplier(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio >= 1) return MAX_FIT_NODE_SIZE_MULTIPLIER
+  if (ratio <= EDGE_VISIBLE_RATIO) return 1
+
+  const progress = (1 - ratio) / (1 - EDGE_VISIBLE_RATIO)
+  const raw = MAX_FIT_NODE_SIZE_MULTIPLIER - progress * (MAX_FIT_NODE_SIZE_MULTIPLIER - 1)
+  return Math.round(raw * 20) / 20
+}
 
 // Node types present in the currently highlighted cluster (selected/hovered node +
 // its bright neighbours, or the active flow's nodes). Drives the yellow ring around
@@ -295,9 +315,16 @@ const {
     applyFocusReducers()
   },
   onCameraRatioChange: (ratio: number) => {
+    const nextEdgesVisible = Number.isFinite(ratio) && ratio <= EDGE_VISIBLE_RATIO
+    const edgeVisibilityChanged = nextEdgesVisible !== graphEdgesVisible.value
+    graphEdgesVisible.value = nextEdgesVisible
+    const nextNodeSizeMultiplier = resolveFitNodeSizeMultiplier(ratio)
+    const nodeSizeMultiplierChanged = nextNodeSizeMultiplier !== fitNodeSizeMultiplier.value
+    if (nodeSizeMultiplierChanged) fitNodeSizeMultiplier.value = nextNodeSizeMultiplier
     const nextDensity = resolveFocusLabelDensity(ratio)
-    if (nextDensity === labelDensity.value) return
-    labelDensity.value = nextDensity
+    const densityChanged = nextDensity !== labelDensity.value
+    if (densityChanged) labelDensity.value = nextDensity
+    if (!edgeVisibilityChanged && !nodeSizeMultiplierChanged && !densityChanged) return
     // Apply the label-density reducer swap immediately so edge labels appear the
     // moment you cross the zoom threshold and then stay drawn every frame (the
     // per-frame budget + viewport culling keep that cheap) — no vanish/reload.
@@ -375,8 +402,12 @@ function applyFocusReducers(): void {
   // fully fit their edge.
   const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers(withFilterVisibility({
-    nodeReducer: (_node, attributes) => attributes,
+    nodeReducer: (_node, attributes) => {
+      if (graphEdgesVisible.value || typeof attributes.size !== 'number') return attributes
+      return { ...attributes, size: attributes.size * fitNodeSizeMultiplier.value }
+    },
     edgeReducer: (_edge, attributes) => {
+      if (!graphEdgesVisible.value) return { ...attributes, hidden: true }
       return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
     },
   }), showEdgeLabels)
@@ -494,6 +525,8 @@ function beginLayoutReveal(seq: number = loadSeq): void {
     clearTimeout(revealTimer.value)
     revealTimer.value = null
   }
+  fitNodeSizeMultiplier.value = MAX_FIT_NODE_SIZE_MULTIPLIER
+  graphEdgesVisible.value = false
   pendingRevealSeq = seq
   pendingInitialReveal.value = true
   graphReady.value = false

@@ -1,15 +1,19 @@
 package com.vibegraph.auth.oauth;
 
+import java.security.SecureRandom;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.stereotype.Component;
-import org.springframework.util.SerializationUtils;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,14 +26,24 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
 
     private static final String COOKIE_NAME = "vg_oauth2_auth_request";
     private static final int COOKIE_MAX_AGE_SECONDS = 180;
+    private static final int MAX_PENDING_REQUESTS = 4096;
+    private static final int NONCE_BYTES = 32;
     private static final String SAME_SITE = "Lax";
+    private final SecureRandom random = new SecureRandom();
+    private final Clock clock;
+    private final Map<String, PendingRequest> pending = new ConcurrentHashMap<>();
+
+    public HttpCookieOAuth2AuthorizationRequestRepository() {
+        this(Clock.systemUTC());
+    }
+
+    HttpCookieOAuth2AuthorizationRequestRepository(Clock clock) {
+        this.clock = clock;
+    }
 
     @Override
     public OAuth2AuthorizationRequest loadAuthorizationRequest(HttpServletRequest request) {
-        return findCookie(request)
-                .map(Cookie::getValue)
-                .flatMap(this::deserialize)
-                .orElse(null);
+        return findCookie(request).map(Cookie::getValue).flatMap(this::load).orElse(null);
     }
 
     @Override
@@ -41,7 +55,14 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
             expireCookie(request, response);
             return;
         }
-        ResponseCookie cookie = baseCookie(serialize(authorizationRequest), request)
+        evictExpired();
+        if (pending.size() >= MAX_PENDING_REQUESTS) {
+            evictOldest();
+        }
+        String nonce = nonce();
+        pending.put(nonce, new PendingRequest(authorizationRequest,
+                Instant.now(clock).plusSeconds(COOKIE_MAX_AGE_SECONDS)));
+        ResponseCookie cookie = baseCookie(nonce, request)
                 .maxAge(COOKIE_MAX_AGE_SECONDS)
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
@@ -51,7 +72,10 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
     public OAuth2AuthorizationRequest removeAuthorizationRequest(
             HttpServletRequest request,
             HttpServletResponse response) {
-        OAuth2AuthorizationRequest authorizationRequest = loadAuthorizationRequest(request);
+        OAuth2AuthorizationRequest authorizationRequest = findCookie(request)
+                .map(Cookie::getValue)
+                .flatMap(this::remove)
+                .orElse(null);
         expireCookie(request, response);
         return authorizationRequest;
     }
@@ -66,22 +90,47 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
                 .findFirst();
     }
 
-    private String serialize(OAuth2AuthorizationRequest authorizationRequest) {
-        byte[] bytes = SerializationUtils.serialize(authorizationRequest);
-        return Base64.getUrlEncoder().encodeToString(bytes);
-    }
-
-    private Optional<OAuth2AuthorizationRequest> deserialize(String value) {
-        try {
-            byte[] bytes = Base64.getUrlDecoder().decode(value);
-            Object object = SerializationUtils.deserialize(bytes);
-            if (object instanceof OAuth2AuthorizationRequest authorizationRequest) {
-                return Optional.of(authorizationRequest);
-            }
-            return Optional.empty();
-        } catch (IllegalArgumentException ex) {
+    private Optional<OAuth2AuthorizationRequest> load(String nonce) {
+        if (!validNonce(nonce)) {
             return Optional.empty();
         }
+        PendingRequest value = pending.get(nonce);
+        if (value == null || value.expiresAt().isBefore(Instant.now(clock))) {
+            pending.remove(nonce, value);
+            return Optional.empty();
+        }
+        return Optional.of(value.request());
+    }
+
+    private Optional<OAuth2AuthorizationRequest> remove(String nonce) {
+        if (!validNonce(nonce)) {
+            return Optional.empty();
+        }
+        PendingRequest value = pending.remove(nonce);
+        if (value == null || value.expiresAt().isBefore(Instant.now(clock))) {
+            return Optional.empty();
+        }
+        return Optional.of(value.request());
+    }
+
+    private String nonce() {
+        byte[] bytes = new byte[NONCE_BYTES];
+        random.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private boolean validNonce(String value) {
+        return value != null && value.length() <= 128 && value.matches("[A-Za-z0-9_-]{43}");
+    }
+
+    private void evictExpired() {
+        Instant now = Instant.now(clock);
+        pending.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
+    }
+
+    private void evictOldest() {
+        pending.entrySet().stream().min(Map.Entry.comparingByValue((a, b) ->
+                a.expiresAt().compareTo(b.expiresAt()))).ifPresent(entry -> pending.remove(entry.getKey()));
     }
 
     private void expireCookie(HttpServletRequest request, HttpServletResponse response) {
@@ -106,4 +155,6 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
         String forwardedProto = request == null ? null : request.getHeader("X-Forwarded-Proto");
         return forwardedProto != null && forwardedProto.equalsIgnoreCase("https");
     }
+
+    private record PendingRequest(OAuth2AuthorizationRequest request, Instant expiresAt) { }
 }
