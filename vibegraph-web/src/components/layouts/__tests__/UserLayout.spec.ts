@@ -132,6 +132,7 @@ describe('UserLayout', () => {
     await collapseButton.trigger('click')
 
     expect(wrapper.classes()).toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(false)
     const repositoriesLink = wrapper.get('a[aria-label="Repositories"]')
     expect(repositoriesLink.attributes('title')).toBe('Repositories')
     const expandButton = wrapper.get('button[aria-label="Expand sidebar"]')
@@ -140,6 +141,7 @@ describe('UserLayout', () => {
 
     await expandButton.trigger('click')
     expect(wrapper.classes()).not.toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(true)
   })
 
   it('shows the drawer close button only while the mobile drawer is open', async () => {

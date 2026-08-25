@@ -197,8 +197,9 @@ function signOut(): void {
           <AppIcon name="close" />
         </button>
         <BrandMark
+          v-if="!collapsed"
           :size="30"
-          :show-wordmark="!collapsed"
+          :show-wordmark="true"
           glyph-to="/"
           glyph-aria-label="VibeGraph landing page"
           wordmark-to="/dashboard"
