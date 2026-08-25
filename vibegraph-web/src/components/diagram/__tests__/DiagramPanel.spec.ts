@@ -270,6 +270,7 @@ describe('DiagramPanel', () => {
 
     await nextTick()
     expect(wrapper.get('[role="status"]').text()).toContain('Loading diagram')
+    expect(wrapper.findComponent({ name: 'LogoSpinner' }).exists()).toBe(true)
 
     slow.resolve(umlUseCaseResponse({ mermaidSyntax: '' }))
     await flushAsync()
