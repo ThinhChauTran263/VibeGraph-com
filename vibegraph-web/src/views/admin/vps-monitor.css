@@ -1062,9 +1062,24 @@
 .vps-monitor-page .cost-grid strong { font-size: 17px; }
 .vps-monitor-page .operation-trace { margin: 0 19px; }
 .vps-monitor-page .evidence { padding: 0 19px 18px; }
-.vps-monitor-page .capacity-panel { align-self: stretch; }
-.vps-monitor-page .capacity-score { margin: .3rem 0 .65rem; }
-.vps-monitor-page .capacity-row { flex: 1 1 0; min-height: 0; padding: 9px 0; }
+.vps-monitor-page .capacity-panel {
+  align-self: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+.vps-monitor-page .capacity-score { margin: .3rem 0 .55rem; }
+.vps-monitor-page .capacity-row {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 6px 0;
+  line-height: 1.15;
+}
+.vps-monitor-page .capacity-row span { line-height: 1.2; }
+.vps-monitor-page .capacity-row small {
+  margin-top: 2px;
+  line-height: 1.2;
+}
+.vps-monitor-page .capacity-row b { line-height: 1.2; }
 .vps-monitor-page .capacity-ring::after { background: var(--monitor-panel-2); }
 .vps-monitor-page .capacity-row { border-color: var(--monitor-line); }
 .vps-monitor-page .docker-panel { padding: 0; }
