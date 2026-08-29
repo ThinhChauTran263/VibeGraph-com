@@ -933,7 +933,9 @@ onUnmounted(() => {
           aria-label="Collapse sidebar panel"
           @click="toggleSidebar"
         >
-          <span aria-hidden="true">‹</span>
+          <svg class="graph-canvas__chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m14 6-6 6 6 6" />
+          </svg>
         </button>
       </div>
 
@@ -980,7 +982,9 @@ onUnmounted(() => {
           aria-label="Expand sidebar panel"
           @click="toggleSidebar"
         >
-          <span aria-hidden="true">›</span>
+          <svg class="graph-canvas__chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m10 6 6 6-6 6" />
+          </svg>
         </button>
 
         <button
@@ -1187,27 +1191,21 @@ onUnmounted(() => {
 }
 
 .graph-canvas__sidebar-topbar {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.375rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem;
   flex: 0 0 auto;
 }
 
 .graph-canvas__sidebar-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  flex: 1 1 auto;
+  gap: 0.25rem;
   min-width: 0;
-  /* Reserve room for the pinned collapse button so wrapped tabs never slide under it. */
-  padding-right: 2.25rem;
 }
 
 .graph-canvas__sidebar-collapse {
-  position: absolute;
-  top: 0;
-  right: 0;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -1225,6 +1223,16 @@ onUnmounted(() => {
     background 150ms ease,
     border-color 150ms ease,
     color 150ms ease;
+}
+
+.graph-canvas__chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.25;
 }
 
 .graph-canvas__sidebar-collapse:hover,
