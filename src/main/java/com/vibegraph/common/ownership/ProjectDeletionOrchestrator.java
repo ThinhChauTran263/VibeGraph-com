@@ -163,8 +163,12 @@ public class ProjectDeletionOrchestrator {
             }
             // Delete the whole per-import directory (…/uploads/github-<uuid>), not just the "source"
             // subdirectory the project points at, so no tarball or scratch file is left behind.
+            //
+            // The relative path always has at least one element here: startsWith is element-wise,
+            // so a candidate under the root with no elements left would have to equal the root, and
+            // the check above already rejected that. The equality check is the real guard.
             Path relative = workspaceRoot.relativize(candidate);
-            return relative.getNameCount() == 0 ? null : workspaceRoot.resolve(relative.getName(0));
+            return workspaceRoot.resolve(relative.getName(0));
         } catch (RuntimeException ex) {
             log.warn("Could not resolve the extracted sources of project {}: {}",
                     projectId, ex.getMessage());

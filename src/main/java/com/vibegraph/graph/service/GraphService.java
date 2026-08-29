@@ -5,6 +5,7 @@ import com.vibegraph.graph.dto.response.ImpactAnalysisResponse;
 import com.vibegraph.graph.dto.response.NodeDetailResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.model.ImpactProfile;
+import com.vibegraph.graph.repository.ProjectMetadata;
 
 import java.util.List;
 
@@ -14,6 +15,11 @@ import java.util.List;
 public interface GraphService {
 
     GraphDataResponse getFullGraph(String projectId);
+
+    /** Lightweight persisted counts used to reject oversized consumers before graph loading. */
+    default ProjectMetadata getProjectMetadata(String projectId) {
+        return null;
+    }
 
     NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops);
 

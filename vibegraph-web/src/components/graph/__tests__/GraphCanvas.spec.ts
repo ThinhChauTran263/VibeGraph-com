@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createTestingPinia } from '@pinia/testing'
 import { computed, ref } from 'vue'
 import Graph from 'graphology'
 import GraphCanvas from '../GraphCanvas.vue'
+import i18n from '@/language'
 import type { GraphData, GraphNode } from '@/types/graph'
 
 const selectedNode = ref<GraphNode | null>(null)
@@ -106,9 +108,22 @@ vi.mock('@/composables/useFilters', () => ({
   }),
 }))
 
+// The analyzing-status preflight in load() must not hit a real backend in unit
+// tests; keep every other lib/api export intact for child components.
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    projectApi: { get: vi.fn<() => Promise<never>>(() => Promise.reject(new Error('test: no backend'))) },
+  }
+})
+
 describe('GraphCanvas', () => {
   it('emits null when search selection is cleared', async () => {
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
 
     await wrapper.findComponent({ name: 'SearchBar' }).vm.$emit('clear')
 
@@ -130,7 +145,10 @@ describe('GraphCanvas', () => {
     selectedNode.value = selected
     selectNode.mockClear()
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
 
     await wrapper.findComponent({ name: 'NodeDetailPanel' }).vm.$emit('relationSelect', {
       edgeId: 'counterpart|CALLS|selected',
@@ -163,7 +181,10 @@ describe('GraphCanvas', () => {
     selectedNode.value = selected
     clearSelection.mockClear()
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     const panel = wrapper.findComponent({ name: 'NodeDetailPanel' })
 
     await panel.vm.$emit('relationSelect', {
@@ -210,7 +231,10 @@ describe('GraphCanvas', () => {
     graph.addEdgeWithKey('a|CALLS|b', 'a', 'b', { color: '#93c5fd' })
     graphInstanceRef.value = graph
 
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     await flushPromises()
 
     capturedRealtimePatched?.({
@@ -244,6 +268,94 @@ describe('GraphCanvas', () => {
  * Sigma camera / timers), keeping the test non-flaky.
  */
 describe('GraphCanvas edge label toggle', () => {
+  it('hides default edges at fit and reveals them only after zoom-in', async () => {
+    selectedNode.value = null
+    nodes.value = []
+    loading.value = false
+    error.value = null
+    graphInstanceRef.value?.clear()
+    graphInstanceRef.value?.addNode('a', { filterHidden: false })
+    graphInstanceRef.value?.addNode('b', { filterHidden: false })
+    graphInstanceRef.value?.addEdgeWithKey('edge', 'a', 'b', { filterHidden: false })
+
+    const wrapper = mount(GraphCanvas, {
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
+    await flushPromises()
+    setReducers.mockClear()
+
+    capturedCameraRatioChange?.(1.1)
+    const fitReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(fitReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(fitReducers.nodeReducer('a', { size: 10 }).size).toBe(15)
+
+    capturedCameraRatioChange?.(0.9)
+    const earlyZoomReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(earlyZoomReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(earlyZoomReducers.nodeReducer('a', { size: 10 }).size).toBe(14)
+
+    capturedCameraRatioChange?.(0.45)
+    const edgeRevealReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(edgeRevealReducers.edgeReducer('edge', { color: '#fff' }).hidden).not.toBe(true)
+    expect(edgeRevealReducers.nodeReducer('a', { size: 10 }).size).toBe(10)
+
+    capturedCameraRatioChange?.(1)
+    const resetReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(resetReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('keeps edges visible and node sizes unchanged for graphs above 5000 nodes', async () => {
+    selectedNode.value = null
+    nodes.value = []
+    loading.value = false
+    error.value = null
+    const largeGraph = new Graph({ type: 'directed', multi: true })
+    for (let index = 0; index < 5001; index += 1) {
+      largeGraph.addNode(`node-${index}`, { filterHidden: false, size: 10 })
+    }
+    largeGraph.addEdgeWithKey('edge', 'node-0', 'node-1', { filterHidden: false })
+    graphInstanceRef.value = largeGraph
+
+    const wrapper = mount(GraphCanvas, {
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
+    await flushPromises()
+    setReducers.mockClear()
+
+    capturedCameraRatioChange?.(1.1)
+    const reducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(reducers.edgeReducer('edge', { color: '#fff' }).hidden).not.toBe(true)
+    expect(reducers.nodeReducer('node-0', { size: 10 }).size).toBe(10)
+
+    largeGraph.dropNode('node-5000')
+    capturedCameraRatioChange?.(1.1)
+    const boundaryReducers = setReducers.mock.calls[setReducers.mock.calls.length - 1]?.[0] as {
+      nodeReducer: (node: string, attributes: Record<string, unknown>) => Record<string, unknown>
+      edgeReducer: (edge: string, attributes: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(boundaryReducers.edgeReducer('edge', { color: '#fff' }).hidden).toBe(true)
+    expect(boundaryReducers.nodeReducer('node-0', { size: 10 }).size).toBe(15)
+
+    wrapper.unmount()
+  })
+
   it('forces edge labels off when toggled, and only shows them at edges density', async () => {
     // No selection -> applyFocusReducers takes the default path and pushes
     // (edgeLabelsEnabled && labelDensity === 'edges') straight to Sigma.
@@ -254,7 +366,10 @@ describe('GraphCanvas edge label toggle', () => {
 
     // The zoom-driven density change applies its reducer swap synchronously, so the
     // captured onCameraRatioChange handler drives the batched setting immediately.
-    const wrapper = mount(GraphCanvas, { props: { projectId: 'project-1' } })
+    const wrapper = mount(GraphCanvas, {
+          props: { projectId: 'project-1' },
+          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+        })
     await flushPromises()
     setReducers.mockClear()
 

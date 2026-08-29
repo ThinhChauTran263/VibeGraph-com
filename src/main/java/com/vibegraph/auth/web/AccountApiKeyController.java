@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.vibegraph.auth.dto.ApiKeyCreateRequest;
 import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;
+import com.vibegraph.auth.dto.ApiKeyRevealResponse;
 import com.vibegraph.auth.service.ApiKeyService;
 import com.vibegraph.common.dto.response.ApiResponse;
 
@@ -41,6 +42,14 @@ public class AccountApiKeyController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<ApiKeyResponse>>> list() {
         return ResponseEntity.ok(ApiResponse.success(apiKeyService.listForCurrentUser()));
+    }
+
+    @PostMapping("/{id}/reveal")
+    public ResponseEntity<ApiResponse<ApiKeyRevealResponse>> reveal(@PathVariable UUID id) {
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(ApiResponse.success(
+                        new ApiKeyRevealResponse(id, apiKeyService.revealForCurrentUser(id))));
     }
 
     @PatchMapping("/{id}/disable")

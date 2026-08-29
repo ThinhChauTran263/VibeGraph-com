@@ -4,7 +4,7 @@
  */
 
 import path from "node:path";
-import { loadIgnoreRules } from "./ignore.js";
+import { getMaxTotalBytes, loadIgnoreRules } from "./ignore.js";
 import { loadSnapshot, saveSnapshot, diffSnapshot } from "./snapshot.js";
 import { scanDirectory, buildFileStateMap } from "./scanner.js";
 import { createPatchRequest, resolveSnapshotId } from "./project-target.js";
@@ -25,7 +25,7 @@ export async function executePush(projectId, options, apiRequest) {
   // Scan current files
   const scan = await scanDirectory(rootDir, ignoreRules);
 
-  if (scan.truncated) {
+  if (!scan.complete) {
     throw new Error(truncatedScanMessage());
   }
 
@@ -34,12 +34,15 @@ export async function executePush(projectId, options, apiRequest) {
 
   // Load previous snapshot to detect deletions
   const previousSnapshot = await loadSnapshot(snapshotId);
+  assertSafeSnapshotDiff(scan, previousSnapshot);
 
   // Diff to find changed and deleted
   const { changed, deleted } = diffSnapshot(currentState, previousSnapshot);
+  assertDeletionSafety(currentState, previousSnapshot, deleted, options);
 
   // Prepare payload
   const filesToSend = scan.files.filter((f) => changed.includes(f.relativePath));
+  assertPatchSize(filesToSend);
   const payload = {
     files: filesToSend.map((f) => ({
       path: f.relativePath,
@@ -120,8 +123,47 @@ function printSkippedSummary(skipped) {
   }
 }
 
+function assertSafeSnapshotDiff(scan, previousSnapshot) {
+  const previousPaths = new Set(Object.keys(previousSnapshot));
+  const unsafePaths = scan.unsafePaths.filter(Boolean);
+  const uncertain = [
+    ...unsafePaths,
+    ...scan.skipped.filter((entry) => previousPaths.has(entry.relativePath)).map((entry) => entry.relativePath),
+  ].filter(Boolean);
+  for (const unsafePath of unsafePaths) {
+    uncertain.push(...[...previousPaths].filter((previousPath) => previousPath.startsWith(`${unsafePath}/`)));
+  }
+  if (uncertain.length > 0) {
+    const sample = [...new Set(uncertain)].slice(0, 5).join(", ");
+    throw new Error(
+      `Scan cannot safely determine deletions for ${uncertain.length} path(s) (${sample}). No patch was sent; fix the local scan and retry.`,
+    );
+  }
+}
+
+function assertPatchSize(files) {
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const maxTotalBytes = getMaxTotalBytes();
+  if (totalBytes > maxTotalBytes) {
+    throw new Error(
+      `Changed files total ${totalBytes} bytes, exceeding VIBEGRAPH_MAX_TOTAL_BYTES (${maxTotalBytes}). Split the push or raise matching client and server limits.`,
+    );
+  }
+}
+
+function assertDeletionSafety(currentState, previousSnapshot, deleted, options) {
+  const previousCount = Object.keys(previousSnapshot).length;
+  if (previousCount === 0 || deleted.length === 0) return;
+  if (Object.keys(currentState).length === 0 && !options.allowDeleteAll) {
+    throw new Error("Push would delete every tracked file. Verify --root, then rerun with --allow-delete-all if this is intentional.");
+  }
+  if (deleted.length >= 20 && deleted.length * 2 >= previousCount && !options.allowLargeDelete) {
+    throw new Error(`Push would delete ${deleted.length} of ${previousCount} tracked files. Verify --root, then rerun with --allow-large-delete if intentional.`);
+  }
+}
+
 function truncatedScanMessage() {
-  return "Scan stopped after VIBEGRAPH_MAX_FILES. No patch was sent because a partial scan could delete files incorrectly. Increase VIBEGRAPH_MAX_FILES or narrow --root.";
+  return "Scan was incomplete or uncertain. No patch was sent because a partial scan could delete files incorrectly. Fix unreadable files/directories, remove unsupported files from the baseline, increase VIBEGRAPH_MAX_FILES, or narrow --root.";
 }
 
 /**

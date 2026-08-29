@@ -36,6 +36,7 @@ import com.vibegraph.auth.service.AdminService;
 import com.vibegraph.auth.service.AdminStorageService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.JwtService;
+import com.vibegraph.abuse.ClientAddressResolver;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -75,6 +76,12 @@ class AdminSecurityIT {
         }
 
         @org.springframework.context.annotation.Bean
+        public com.vibegraph.abuse.RegistrationThrottleGuard registrationThrottleGuard() {
+            return new com.vibegraph.abuse.RegistrationThrottleGuard(
+                    new com.vibegraph.abuse.AbuseProperties(), java.time.Clock.systemUTC());
+        }
+
+        @org.springframework.context.annotation.Bean
         public jakarta.persistence.EntityManagerFactory entityManagerFactory() {
             return org.mockito.Mockito.mock(jakarta.persistence.EntityManagerFactory.class);
         }
@@ -92,6 +99,7 @@ class AdminSecurityIT {
     private FilterChainProxy springSecurityFilterChain;
 
     @MockitoBean private Driver neo4jDriver;
+    @MockitoBean private ClientAddressResolver clientAddressResolver;
     @MockitoBean private AdminService adminService;
     @MockitoBean private AdminPlanManagementService adminPlanManagementService;
     @MockitoBean private AdminPricingManagementService adminPricingManagementService;
@@ -101,6 +109,9 @@ class AdminSecurityIT {
     @MockitoBean private AdminSecurityRequestEventStream adminSecurityRequestEventStream;
     @MockitoBean private AuditLogEventStream auditLogEventStream;
     @MockitoBean private AdminStorageService adminStorageService;
+    @MockitoBean private com.vibegraph.infrastructure.service.InfrastructureMetricsService infrastructureMetricsService;
+    @MockitoBean private com.vibegraph.infrastructure.service.InfrastructureEventStream infrastructureEventStream;
+    @MockitoBean private com.vibegraph.infrastructure.service.OperationTelemetryRecorder operationTelemetryRecorder;
     @MockitoBean private CreditBalanceService creditBalanceService;
     @MockitoBean private JwtService jwtService;
     @MockitoBean private AccountSettingsService accountSettingsService;
@@ -120,6 +131,7 @@ class AdminSecurityIT {
     @MockitoBean private CreditPricingRuleRepository pricingRuleRepository;
     @MockitoBean private CreditLedgerRepository creditLedgerRepository;
     @MockitoBean private ApiKeyRepository apiKeyRepository;
+    @MockitoBean private ImportPricingTierRepository importPricingTierRepository;
     @MockitoBean private FeatureFlagRepository featureFlagRepository;
     @MockitoBean private ProjectUsageRepository projectUsageRepository;
     @MockitoBean private jakarta.persistence.EntityManagerFactory entityManagerFactory;
@@ -150,6 +162,27 @@ class AdminSecurityIT {
     }
 
     @Test
+    @DisplayName("CLI device start, token, and status endpoints are public but approval is protected")
+    void cliDeviceAuthorization_publicExchangeEndpoints_only() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        for (String path : java.util.List.of(
+                "/api/cli/device/start",
+                "/api/cli/device/token",
+                "/api/cli/device/status")) {
+            mockMvc.perform(post(path).contentType("application/json").content("{}"))
+                    .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+        }
+
+        mockMvc.perform(post("/api/cli/device/11111111-1111-1111-1111-111111111111/approve")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     @DisplayName("GET /api/admin/overview with USER role returns 403 Forbidden")
     void getOverview_userRole_returnsForbidden() throws Exception {
@@ -171,6 +204,102 @@ class AdminSecurityIT {
 
         mockMvc.perform(get("/api/admin/overview"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/admin/infrastructure without authenticated user returns 401")
+    void infrastructure_unauthenticated_returnsUnauthorized() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/infrastructure with USER role returns 403")
+    void infrastructure_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("GET /api/admin/infrastructure with ADMIN role reaches controller")
+    void infrastructure_adminRole_reachesController() throws Exception {
+        org.mockito.Mockito.when(infrastructureMetricsService.snapshot()).thenReturn(null);
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/admin/infrastructure/operations without authenticated user returns 401")
+    void infrastructureOperations_unauthenticated_returnsUnauthorized() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure/operations"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/infrastructure/operations with USER role returns 403")
+    void infrastructureOperations_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure/operations"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("GET /api/admin/infrastructure/operations with ADMIN role reaches controller")
+    void infrastructureOperations_adminRole_reachesController() throws Exception {
+        org.mockito.Mockito.when(operationTelemetryRecorder.recent(50, "ALL"))
+                .thenReturn(java.util.List.of());
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure/operations"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/admin/infrastructure/stream without authenticated user returns 401")
+    void infrastructureStream_unauthenticated_returnsUnauthorized() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure/stream"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("GET /api/admin/infrastructure/stream with USER role returns 403")
+    void infrastructureStream_userRole_returnsForbidden() throws Exception {
+        MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+
+        mockMvc.perform(get("/api/admin/infrastructure/stream"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

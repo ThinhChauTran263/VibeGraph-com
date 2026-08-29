@@ -89,9 +89,13 @@ public class AccountSettingsService {
             return;
         }
         AccountQuotaSnapshot snapshot = quotaSnapshot(userId);
-        if (snapshot.usedBytes() >= snapshot.limitBytes()
-                || additionalBytes > snapshot.limitBytes() - snapshot.usedBytes()) {
-            throw new QuotaExceededException(QUOTA_EXCEEDED_MESSAGE);
+        long remainingBytes = Math.max(0L, snapshot.limitBytes() - snapshot.usedBytes());
+        if (additionalBytes > remainingBytes) {
+            throw new QuotaExceededException(String.format(
+                    "Your source code occupies %s, which exceeds the account's remaining storage quota (%s). "
+                            + "Free up storage or ask an admin for a quota override.",
+                    StorageUnitConverter.humanReadable(additionalBytes),
+                    StorageUnitConverter.humanReadable(remainingBytes)));
         }
     }
 

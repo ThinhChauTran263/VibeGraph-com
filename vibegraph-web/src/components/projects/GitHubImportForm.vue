@@ -2,20 +2,44 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Project } from '@/lib/api'
+import { formatFileSize } from '@/lib/archiveUpload'
 import { useGitHubImport } from '@/composables/useGitHubImport'
+import { useImportTracker } from '@/stores/importTracker'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 
 const { t } = useI18n({ useScope: 'global' })
+const tracker = useImportTracker()
 const emit = defineEmits<{
   imported: [project: Project]
+  /** User closed the dialog; the import keeps running in the background. */
+  backgrounded: []
 }>()
 
 // Embedded inside the unified ImportProjectPanel: drop card chrome + header.
 withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 const repoUrl = ref('')
+// Branch selection defaults to main; clearing the field imports the repository's
+// default branch instead (server-side fallback).
+const DEFAULT_BRANCH = 'main'
+const branch = ref(DEFAULT_BRANCH)
+
+/** owner/repo display name for the provisional card shown while the request is in flight. */
+function pendingName(url: string): string {
+  return url
+    .trim()
+    .replace(/^https:\/\/github\.com\//i, '')
+    .replace(/\.git\/?$/i, '')
+    .replace(/\/$/, '')
+}
+
 const { status, errorMessage, importedProject, progress, isImporting, importGithub, reset } =
-  useGitHubImport()
+  useGitHubImport({
+    onAccepted: (project) => tracker.track(project),
+    onSubmitted: (url, selectedBranch) => tracker.trackPending(pendingName(url), selectedBranch),
+    onRejected: (message) => tracker.failPending(message),
+  })
 
 const canSubmit = computed(() => repoUrl.value.trim().length > 0 && !isImporting.value)
 const progressPct = computed(() => Math.round(progress.value))
@@ -24,16 +48,13 @@ const progressLabel = computed(() =>
     ? t('user.import.finalizing')
     : `${t('user.import.analyzing')} ${progressPct.value}%`,
 )
-// Button caption mirrors progress so the percentage is visible on the button too.
-const submitLabel = computed(() =>
-  progressPct.value >= 98
-    ? t('user.import.finalizing')
-    : `${t('user.import.importing')} ${progressPct.value}%`,
-)
+// The percentage lives in the progress bar below; the button only mirrors
+// that an import is running, so its width stays stable while progress moves.
+const submitLabel = computed(() => t('user.import.importing'))
 
 async function onSubmit(): Promise<void> {
   if (!canSubmit.value) return
-  const project = await importGithub(repoUrl.value)
+  const project = await importGithub(repoUrl.value, branch.value)
   if (project) {
     emit('imported', project)
   }
@@ -41,6 +62,7 @@ async function onSubmit(): Promise<void> {
 
 function clearForm(): void {
   repoUrl.value = ''
+  branch.value = DEFAULT_BRANCH
   reset()
 }
 </script>
@@ -85,6 +107,21 @@ function clearForm(): void {
         />
       </label>
 
+      <label class="github-import__field">
+        <span class="github-import__label">{{ t('user.import.githubBranch') }}</span>
+        <input
+          v-model="branch"
+          class="github-import__text-input"
+          type="text"
+          name="branch"
+          :placeholder="t('user.import.githubBranchPlaceholder')"
+          :disabled="isImporting"
+          autocomplete="off"
+          spellcheck="false"
+          @input="reset"
+        />
+      </label>
+
       <div class="github-import__actions">
         <button
           type="submit"
@@ -116,6 +153,7 @@ function clearForm(): void {
         aria-valuemax="100"
         :aria-label="progressLabel"
       >
+        <LogoSpinner class="github-import__logo-spinner" :size="96" />
         <div class="github-import__progress-head">
           <span class="github-import__progress-label">{{ progressLabel }}</span>
           <span class="github-import__progress-value">{{ progressPct }}%</span>
@@ -123,6 +161,14 @@ function clearForm(): void {
         <div class="github-import__progress-track">
           <div class="github-import__progress-fill" :style="{ width: `${progressPct}%` }"></div>
         </div>
+        <button
+          type="button"
+          class="github-import__btn github-import__btn--ghost github-import__background"
+          @click="emit('backgrounded')"
+        >
+          {{ t('user.import.background') }}
+        </button>
+        <p class="github-import__background-hint">{{ t('user.import.backgroundHint') }}</p>
       </div>
 
       <p v-if="status === 'error' && errorMessage" class="github-import__error" role="alert">
@@ -134,8 +180,14 @@ function clearForm(): void {
         class="github-import__success"
         role="status"
       >
-        Import completed for <strong>{{ importedProject.name }}</strong> (status:
-        {{ importedProject.status }}).
+        {{
+          t('user.import.success', { name: importedProject.name, status: importedProject.status })
+        }}
+        <span v-if="typeof importedProject.storedBytes === 'number'">
+          {{
+            t('user.import.successStored', { size: formatFileSize(importedProject.storedBytes) })
+          }}
+        </span>
       </p>
     </form>
   </section>
@@ -143,8 +195,8 @@ function clearForm(): void {
 
 <style scoped>
 .github-import {
-  --accent: var(--vg-violet);
-  --accent-soft: rgba(167, 139, 250, 0.16);
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -318,20 +370,23 @@ function clearForm(): void {
 
 .github-import__btn {
   font: inherit;
+  font-size: var(--vg-text-sm);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  min-height: 2.75rem;
   padding: 0.6rem 1.15rem;
   border-radius: var(--vg-radius-pill);
   border: 1px solid var(--vg-border-strong);
   background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   cursor: pointer;
+  white-space: nowrap;
   transition:
     background-color var(--vg-dur-fast) var(--vg-ease-out),
     border-color var(--vg-dur-fast) var(--vg-ease-out),
-    transform var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
@@ -341,25 +396,29 @@ function clearForm(): void {
 }
 
 .github-import__btn--primary {
-  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  background: linear-gradient(135deg, #22d3ee, #0891b2);
   border-color: transparent;
-  color: #fff;
-  box-shadow: 0 8px 24px -10px rgba(124, 58, 237, 0.7);
+  color: #04212b;
+  box-shadow: 0 8px 24px -10px rgba(34, 211, 238, 0.7);
 }
 
 .github-import__btn--primary:not(:disabled):hover {
-  transform: translateY(-2px);
   box-shadow:
-    0 0 0 1px rgba(167, 139, 250, 0.5),
-    0 18px 40px -14px rgba(124, 58, 237, 0.8);
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 18px 40px -14px rgba(34, 211, 238, 0.8);
 }
 .github-import__btn--primary:not(:disabled):active {
-  transform: translateY(0);
+  box-shadow: 0 4px 14px -8px rgba(34, 211, 238, 0.7);
 }
 
 .github-import__btn--ghost:not(:disabled):hover {
   border-color: var(--accent);
   background: rgba(148, 163, 184, 0.12);
+}
+
+.github-import__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .github-import__submit-spinner {
@@ -368,10 +427,38 @@ function clearForm(): void {
   gap: 0.5rem;
 }
 
+@media (max-width: 30rem) {
+  .github-import__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .github-import__actions .github-import__btn {
+    width: 100%;
+  }
+}
+
 .github-import__progress {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.github-import__logo-spinner {
+  align-self: center;
+  margin-bottom: 0.2rem;
+}
+
+.github-import__background {
+  align-self: center;
+  margin-top: 0.2rem;
+}
+
+.github-import__background-hint {
+  margin: 0;
+  text-align: center;
+  font-size: var(--vg-text-xs);
+  color: var(--vg-text-dim);
 }
 
 .github-import__progress-head {

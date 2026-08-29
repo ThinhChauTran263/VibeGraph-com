@@ -45,7 +45,22 @@ vi.mock('@/lib/featureAvailability', async () => {
 const ImportProjectPanelStub = {
   props: ['disabledMethods'],
   emits: ['imported'],
-  template: '<section data-test="import-panel">Import panel</section>',
+  template: `
+    <section data-test="import-panel">
+      Import panel
+      <button
+        data-test="complete-cli-import"
+        @click="$emit('imported', {
+          id: 'cli-new',
+          name: 'New CLI Repo',
+          totalFiles: 0,
+          totalNodes: 0,
+          totalEdges: 0,
+          status: 'CREATED'
+        })"
+      >Complete CLI import</button>
+    </section>
+  `,
 }
 const ConfirmDialogStub = {
   props: ['open', 'busy'],
@@ -123,7 +138,7 @@ describe('ProjectsView', () => {
     expect(dialog.get('[data-test="import-panel"]').text()).toContain('Import panel')
   })
 
-  it('uses the cached repository list when returning to the page', async () => {
+  it('reconciles the repository list with the server when returning to the page', async () => {
     const { wrapper, pinia } = await mountView()
     const projectStore = useProjectStore()
 
@@ -131,9 +146,25 @@ describe('ProjectsView', () => {
     wrapper.unmount()
     const cached = await mountView('/projects', pinia)
 
+    // Cache renders instantly, but the page always re-fetches so background
+    // imports / CLI pushes appear without a full page reload.
     expect(projectStore.projectsLoaded).toBe(true)
-    expect(apiMocks.list).not.toHaveBeenCalled()
+    expect(apiMocks.list).toHaveBeenCalledTimes(1)
     expect(cached.wrapper.text()).toContain('VibeGraph Web')
+  })
+
+  it('shows a background-imported project on the next visit without a reload', async () => {
+    const { wrapper, pinia } = await mountView()
+    wrapper.unmount()
+    apiMocks.list.mockResolvedValueOnce([
+      makeProject('project-1', 'VibeGraph Web'),
+      makeProject('project-2', 'VibeGraph CLI'),
+      { ...makeProject('project-3', 'Pushed Via CLI'), status: 'ANALYZING' },
+    ])
+
+    const cached = await mountView('/projects', pinia)
+
+    expect(cached.wrapper.text()).toContain('Pushed Via CLI')
   })
 
   it('reacts to the quick-action import query while already mounted', async () => {
@@ -158,6 +189,17 @@ describe('ProjectsView', () => {
 
     expect(router.currentRoute.value.name).toBe('graph')
     expect(router.currentRoute.value.params.projectId).toBe('project-1')
+  })
+
+  it('returns a newly created CLI repository to the repository list instead of an empty graph', async () => {
+    const { wrapper, router } = await mountView('/projects?import=new')
+
+    await wrapper.get('[data-test="complete-cli-import"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('projects')
+    expect(router.currentRoute.value.query).toEqual({})
+    expect(wrapper.text()).toContain('New CLI Repo')
   })
 
   it('shows the current empty and error states', async () => {
@@ -223,6 +265,29 @@ describe('ProjectsView', () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain('Trashed project not found')
     expect(wrapper.find('[data-test="undo-delete"]').exists()).toBe(true)
+  })
+
+  it('shows the live analyzing state instead of stats while a project analyzes', async () => {
+    apiMocks.list.mockResolvedValue([
+      { ...makeProject('project-1', 'Analyzing Repo'), status: 'ANALYZING', totalFiles: 0, totalNodes: 0 },
+      makeProject('project-2', 'Done Repo'),
+    ])
+    const { wrapper } = await mountView()
+    const cards = wrapper.findAll('.repo-card')
+    const analyzing = cards[0]!
+    const done = cards[1]!
+
+    // Analyzing card: brand loader + live progress, no stats and no status pill.
+    expect(analyzing.find('.repo-card__spinner').exists()).toBe(true)
+    expect(analyzing.find('.repo-card__live').exists()).toBe(true)
+    expect(analyzing.find('dl').exists()).toBe(false)
+    expect(analyzing.find('.status').exists()).toBe(false)
+
+    // Analyzed card: status pill + stats, no loader.
+    expect(done.find('.repo-card__spinner').exists()).toBe(false)
+    expect(done.find('.repo-card__live').exists()).toBe(false)
+    expect(done.find('dl').exists()).toBe(true)
+    expect(done.get('.status').text()).toContain('ANALYZED')
   })
 
   it('fails closed when import capabilities are unavailable', async () => {

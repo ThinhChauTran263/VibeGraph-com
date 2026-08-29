@@ -55,8 +55,8 @@ describe('UsageView', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('Pro Tier')
-    expect(wrapper.text()).toContain('250MB / 1000MB used')
-    expect(wrapper.text()).toContain('750MB remaining')
+    expect(wrapper.text()).toContain('250.0 MB / 1000.0 MB used')
+    expect(wrapper.text()).toContain('750.0 MB remaining')
     expect(wrapper.text()).toContain('380 credits')
     expect(wrapper.text()).toContain('120 / 500 credits used this cycle')
     expect(wrapper.text()).toContain('CLI push')

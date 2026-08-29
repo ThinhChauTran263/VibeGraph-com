@@ -154,7 +154,10 @@ function signOut(): void {
 }
 </script>
 <template>
-  <div class="layout" :class="{ collapsed, 'layout--graph': graphRouteActive }">
+  <div
+    class="layout"
+    :class="{ collapsed, 'layout--graph': graphRouteActive, 'layout--reports': reportsRouteActive }"
+  >
     <button
       ref="menuButton"
       class="mobile"
@@ -193,9 +196,16 @@ function signOut(): void {
         >
           <AppIcon name="close" />
         </button>
-        <RouterLink to="/dashboard" :aria-label="t('user.layout.overviewLinkLabel')"
-          ><BrandMark :size="30" :show-wordmark="!collapsed" /></RouterLink
-        ><button
+        <BrandMark
+          v-if="!collapsed"
+          :size="30"
+          :show-wordmark="true"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/dashboard"
+          :wordmark-aria-label="t('user.layout.overviewLinkLabel')"
+        />
+        <button
           class="sidebar__toggle"
           type="button"
           aria-controls="user-sidebar"
@@ -276,26 +286,44 @@ function signOut(): void {
           </button>
         </div>
       </section>
-      <section v-else-if="restricted" class="restriction-banner" role="alert">
+      <section
+        v-else-if="restricted && reportsRouteActive"
+        class="restriction-banner"
+        role="status"
+      >
+        <span class="restriction-banner__icon"><AppIcon name="shield" :size="20" /></span>
         <div>
-          <span>{{ t('user.layout.accountStatus') }}</span>
           <strong>{{ restrictionTitle }}</strong>
           <p>{{ restrictionReason }}</p>
         </div>
-        <RouterLink v-if="!reportsRouteActive" to="/reports">{{
-          t('user.layout.contactSupport')
-        }}</RouterLink>
       </section>
-      <RouterView v-if="accountStateReady && (!restricted || reportsRouteActive)" />
+      <!-- KeepAlive: sidebar navigation must feel instant — views stay mounted
+           (no refetch flash, the graph canvas survives) and each view silently
+           refreshes its data on re-activation via useSilentRefresh. -->
+      <RouterView
+        v-if="accountStateReady && (!restricted || reportsRouteActive)"
+        v-slot="{ Component }"
+      >
+        <KeepAlive :max="8">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
       <section
         v-else-if="accountStateReady && restricted"
         class="restricted-state"
         aria-labelledby="restricted-title"
+        role="alert"
       >
-        <AppIcon name="shield" :size="30" />
-        <h1 id="restricted-title">{{ t('user.layout.productUnavailable') }}</h1>
-        <p>{{ restrictionReason }}</p>
-        <RouterLink to="/reports">{{ t('user.layout.openSupportReport') }}</RouterLink>
+        <span class="restricted-state__icon"><AppIcon name="shield" :size="28" /></span>
+        <div class="restricted-state__content">
+          <span class="restricted-state__eyebrow">{{ t('user.layout.accountStatus') }}</span>
+          <h1 id="restricted-title">{{ restrictionTitle }}</h1>
+          <p>{{ restrictionReason }}</p>
+          <RouterLink to="/reports">
+            <AppIcon name="reports" :size="17" />
+            {{ t('user.layout.openSupportReport') }}
+          </RouterLink>
+        </div>
       </section>
     </main>
   </div>
@@ -380,8 +408,9 @@ function signOut(): void {
 #user-sidebar nav a:hover,
 #user-sidebar nav a.router-link-active {
   color: var(--vg-text);
-  border-color: rgba(96, 165, 250, 0.28);
-  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 .nav-disabled {
   opacity: 0.45;
@@ -397,6 +426,10 @@ function signOut(): void {
   margin-top: auto;
   border-color: var(--vg-border);
   background: var(--vg-bg-elev);
+  transition: all var(--vg-dur-fast) var(--vg-ease-out);
+}
+.account:hover {
+  background: var(--vg-surface-2);
 }
 .account > div {
   min-width: 0;
@@ -466,9 +499,6 @@ function signOut(): void {
 .collapsed #user-sidebar header {
   justify-content: center;
 }
-.collapsed #user-sidebar header a {
-  display: none;
-}
 .collapsed #user-sidebar nav a,
 .collapsed .signout,
 .collapsed .sidebar-language {
@@ -513,6 +543,16 @@ function signOut(): void {
   overflow: hidden;
   padding: 0;
 }
+.layout--reports > main {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.layout--reports > main > :deep(.reports-view) {
+  min-height: 0;
+  flex: 1 1 auto;
+}
 .account-loading {
   min-height: 12rem;
   display: grid;
@@ -553,67 +593,107 @@ function signOut(): void {
 .restriction-banner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--vg-space-4);
-  margin-bottom: var(--vg-space-4);
-  padding: var(--vg-space-4);
-  border: 1px solid color-mix(in srgb, var(--vg-danger) 45%, var(--vg-border));
-  border-left: 4px solid var(--vg-danger);
+  gap: var(--vg-space-3);
+  margin-bottom: var(--vg-space-3);
+  padding: 0.65rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 32%, var(--vg-border));
   border-radius: var(--vg-radius-sm);
-  background: color-mix(in srgb, var(--vg-danger) 9%, var(--vg-surface));
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--vg-danger) 10%, var(--vg-surface)),
+    color-mix(in srgb, var(--vg-surface) 94%, transparent)
+  );
 }
-.restriction-banner span {
-  display: block;
+.restriction-banner__icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 34%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vg-danger) 12%, transparent);
   color: var(--vg-danger);
-  font-size: var(--vg-text-xs);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .restriction-banner strong {
   display: block;
-  margin-top: 0.2rem;
   color: var(--vg-text);
-  font: 700 var(--vg-text-lg) var(--vg-font-display);
+  font: 700 var(--vg-text-sm) var(--vg-font-display);
 }
 .restriction-banner p,
 .restricted-state p {
-  margin: 0.35rem 0 0;
+  margin: 0.2rem 0 0;
   color: var(--vg-text-muted);
 }
-.restriction-banner a,
 .restricted-state a {
-  min-height: 40px;
+  min-height: 42px;
   display: inline-flex;
   align-items: center;
+  gap: var(--vg-space-2);
   flex: 0 0 auto;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.8rem;
   border: 1px solid var(--vg-blue);
   border-radius: var(--vg-radius-sm);
-  background: var(--vg-blue);
+  background: var(--vg-grad-blue);
   color: white;
   font-weight: 700;
   text-decoration: none;
 }
 .restricted-state {
-  min-height: 24rem;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: clamp(1.5rem, 5vw, 4rem);
-  border: 1px dashed var(--vg-border);
-  border-radius: var(--vg-radius);
-  background: var(--vg-surface);
+  width: min(100%, 50rem);
+  min-height: 16rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--vg-space-4);
+  margin: clamp(1rem, 5vh, 3rem) auto 0;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 30%, var(--vg-border));
+  border-radius: var(--vg-radius-lg);
+  background:
+    radial-gradient(
+      circle at 0 0,
+      color-mix(in srgb, var(--vg-danger) 13%, transparent),
+      transparent 38%
+    ),
+    var(--vg-surface);
+  box-shadow: var(--vg-shadow-sm);
+}
+.restricted-state__icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--vg-danger) 40%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--vg-danger) 12%, transparent);
   color: var(--vg-danger);
 }
+.restricted-state__content {
+  min-width: 0;
+}
+.restricted-state__eyebrow {
+  color: var(--vg-danger);
+  font-size: var(--vg-text-xs);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
 .restricted-state h1 {
-  margin: var(--vg-space-3) 0 0;
+  margin: 0.3rem 0 0;
   color: var(--vg-text);
-  font-family: var(--vg-font-display);
+  font: 700 clamp(1.35rem, 3vw, 1.8rem) var(--vg-font-display);
 }
 .restricted-state a {
   margin-top: var(--vg-space-4);
+}
+.restricted-state a:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.restricted-state a:focus-visible {
+  outline: 2px solid var(--vg-blue-bright);
+  outline-offset: 3px;
 }
 /* Drawer-only control: it closes the mobile overlay, so on desktop it would sit
    next to the collapse toggle doing nothing. The `#user-sidebar` prefix is required
@@ -665,9 +745,6 @@ function signOut(): void {
     place-items: center;
     flex: 0 0 auto;
   }
-  .collapsed #user-sidebar header a {
-    display: flex;
-  }
   .collapsed #user-sidebar nav a,
   .collapsed .nav-disabled,
   .collapsed .signout,
@@ -690,9 +767,25 @@ function signOut(): void {
     height: 100vh;
     padding: 0;
   }
+  .layout--reports > main {
+    height: 100dvh;
+    padding: var(--vg-space-3);
+  }
   .restriction-banner {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+  }
+  .restricted-state {
+    grid-template-columns: 1fr;
+    margin-top: 4.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restricted-state a {
+    transition: none;
+  }
+  .restricted-state a:hover {
+    transform: none;
   }
 }
 </style>

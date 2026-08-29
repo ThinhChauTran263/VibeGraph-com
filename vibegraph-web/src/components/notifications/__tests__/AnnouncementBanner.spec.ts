@@ -74,7 +74,7 @@ describe('AnnouncementBanner', () => {
     expect(wrapper.get('.btn-primary').text()).toBe('View')
     expect(wrapper.text()).not.toContain('common.view')
 
-    setLocale('vi-VN')
+    await setLocale('vi-VN')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.get('.btn-primary').text()).toBe('Xem')

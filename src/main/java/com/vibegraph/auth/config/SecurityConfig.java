@@ -67,6 +67,7 @@ import lombok.RequiredArgsConstructor;
 @EnableWebSecurity
 @EnableConfigurationProperties({
         JwtProperties.class,
+        ApiKeyEncryptionProperties.class,
         RealtimeSecurityProperties.class,
         AbuseProperties.class,
         OAuthRedirectProperties.class})
@@ -93,25 +94,37 @@ public class SecurityConfig {
     private final StatelessSessionCookieFilter statelessSessionCookieFilter;
 
     @Bean
-    public ClientAddressResolver clientAddressResolver() {
-        return new ClientAddressResolver(abuseProperties);
-    }
-
-    @Bean
     public IpBlockFilter ipBlockFilter(ClientAddressResolver resolver) {
         return new IpBlockFilter(resolver, ipBlockService, objectMapper);
     }
 
+    /**
+     * Edge stage: runs before the authentication filters and enforces the per-IP bucket only.
+     * See {@link RateLimitFilter.Stage} for why the identity buckets cannot live here.
+     */
     @Bean
     public RateLimitFilter rateLimitFilter(ClientAddressResolver resolver,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
-        return new RateLimitFilter(abuseProperties, resolver, requestEventService, objectMapper,
-                java.time.Clock.systemUTC(), meterRegistry);
+        return new RateLimitFilter(RateLimitFilter.Stage.EDGE, abuseProperties, resolver,
+                requestEventService, objectMapper, java.time.Clock.systemUTC(), meterRegistry);
+    }
+
+    /**
+     * Identity stage: runs after {@code ApiKeyAuthFilter} so the per-user and per-API-key buckets
+     * see a resolved principal. Placing them at the edge left both identifiers null, which silently
+     * disabled {@code requests-per-minute-per-user} and {@code requests-per-minute-per-api-key}.
+     */
+    @Bean
+    public RateLimitFilter identityRateLimitFilter(ClientAddressResolver resolver,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        return new RateLimitFilter(RateLimitFilter.Stage.IDENTITY, abuseProperties, resolver,
+                requestEventService, objectMapper, java.time.Clock.systemUTC(), meterRegistry);
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-            io.micrometer.core.instrument.MeterRegistry meterRegistry) throws Exception {
+            io.micrometer.core.instrument.MeterRegistry meterRegistry,
+            ClientAddressResolver clientAddressResolver) throws Exception {
         boolean demoPermit = realtimeProperties.isDemoPermit();
         if (demoPermit) {
             log.warn("SECURITY: vibegraph.auth.realtime.demo-permit=true — /mcp/** is "
@@ -124,24 +137,25 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers
-                        // This service answers JSON, not pages — the SPA is served separately, and
-                        // its own server still needs a CSP of its own. What this policy protects is
-                        // the HTML Spring itself can emit (error pages, OAuth redirect stops): if
-                        // one of those ever reflected input, nothing here would be allowed to load
-                        // or execute.
-                        .contentSecurityPolicy(csp -> csp.policyDirectives(String.join("; ",
-                                "default-src 'none'",
-                                "frame-ancestors 'none'",
-                                "base-uri 'none'",
-                                "form-action 'self'")))
+                        // No Content-Security-Policy here on purpose. CSP only takes effect when the
+                        // browser builds a document, and this service never returns one: /error
+                        // answers JSON even for Accept: text/html, and the OAuth redirect has no
+                        // body. A header that protects nothing is worse than none — a reviewer sees
+                        // "CSP present" and stops asking where the real one is.
+                        //
+                        // The policy that matters belongs to whatever serves the SPA:
+                        // vibegraph-web/nginx.conf.template. Add one here too if this application
+                        // ever starts returning HTML (Swagger UI, an admin console, or the SPA
+                        // packaged into the jar).
                         .referrerPolicy(referrer -> referrer.policy(
                                 ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                         // Sent only over HTTPS by Spring, so it stays inert in local HTTP dev.
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
-                                .maxAgeInSeconds(31_536_000L))
-                        .permissionsPolicyHeader(permissions -> permissions.policy(
-                                "camera=(), microphone=(), geolocation=(), interest-cohort=()")))
+                                .maxAgeInSeconds(31_536_000L)))
+                        // Permissions-Policy is absent for the same reason as CSP: it governs a
+                        // document and the features its frames may use, and this service returns
+                        // no documents. It lives on the SPA's server, where it can actually apply.
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .securityContext(sc -> sc.securityContextRepository(new NullSecurityContextRepository()))
                 .requestCache(cache -> cache.disable())
@@ -157,11 +171,18 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     auth.requestMatchers(
                             "/api/auth/**",
+                            "/api/cli/device/start",
+                            "/api/cli/device/token",
+                            "/api/cli/device/status",
                             "/actuator/health",
                             "/ws/**",
                             "/oauth2/**",
                             "/login/oauth2/**").permitAll();
                     auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
+                    // S-M3: metrics/info/prometheus leak operational data to any signed-in
+                    // USER under the plain authenticated() rule; only health stays public
+                    // (permitted above).
+                    auth.requestMatchers("/actuator/**").hasRole("ADMIN");
                     if (demoPermit) {
                         auth.requestMatchers("/mcp/**").permitAll();
                     } else {
@@ -176,11 +197,32 @@ public class SecurityConfig {
                         .successHandler(oAuth2LoginSuccessHandler)
                         .failureHandler(oAuth2LoginFailureHandler))
                 .addFilterBefore(statelessSessionCookieFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(ipBlockFilter(clientAddressResolver()), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(ipBlockFilter(clientAddressResolver), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(cookieCsrfFilter, UsernamePasswordAuthenticationFilter.class)
+                // H13: rate-limit must run BEFORE the auth filters. ApiKeyAuthFilter spends up to
+                // 5 BCrypt rounds (~100ms each) per request with a wrong key that matches an
+                // existing prefix; placing the limiter behind it let an attacker burn CPU while
+                // never touching their rate budget. Anonymous requests are bucketed by IP, which
+                // ClientAddressResolver now resolves right-most-untrusted (S-M2).
+                //
+                // FIX-DETAILS suggested anchoring on JwtAuthFilter.class, but Spring Security 7
+                // rejects custom classes as anchors ("does not have a registered order"); the JWT
+                // filter sits at UsernamePasswordAuthenticationFilter via addFilterAt below, so
+                // anchoring there puts the limiter directly in front of the auth filters.
+                .addFilterBefore(rateLimitFilter(clientAddressResolver, meterRegistry), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAt(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(rateLimitFilter(clientAddressResolver(), meterRegistry), org.springframework.security.web.access.intercept.AuthorizationFilter.class);
+                // Identity buckets must sit behind the auth filters: the user id comes from the
+                // SecurityContext jwtAuthFilter populates and the API-key ref from the request
+                // attribute apiKeyAuthFilter sets. Enforcing them at the edge read both as null,
+                // so per-user and per-API-key limits were never applied.
+                //
+                // Anchored on AuthorizationFilter rather than ApiKeyAuthFilter: Spring Security 7
+                // only accepts its own filters as ordering anchors, and AuthorizationFilter sits at
+                // the end of the chain — which is exactly where the limiter used to live, so this
+                // position is already known to assemble.
+                .addFilterBefore(identityRateLimitFilter(clientAddressResolver, meterRegistry),
+                        org.springframework.security.web.access.intercept.AuthorizationFilter.class);
 
         return http.build();
     }

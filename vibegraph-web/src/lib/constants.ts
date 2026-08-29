@@ -103,7 +103,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Class: '#F59E0B', // amber / gold
   Annotation: '#65A30D', // olive green (far from Class amber & Interface green)
   DBModel: '#CA8A04', // mustard
-  Record: '#7C2D12', // dark brown
+  Record: '#A3E635', // vivid lime
   Interface: '#22C55E', // green
   Route: '#15803D', // dark green
   Package: '#9333EA', // purple
@@ -115,42 +115,41 @@ export const NODE_COLORS: Record<NodeType, string> = {
 }
 
 // Edge colors by relationship type - matches EdgeType from graph.ts.
-// Tuned so the DEFAULT-VISIBLE structural edges (CONTAINS, DEFINES, HAS_METHOD,
-// HAS_INNER, EXTENDS, IMPLEMENTS, OVERRIDES, IMPORTS, CALLS, HANDLES_ROUTE) sit on
-// clearly different hues; the CPG-lite (hidden-by-default) ones fill the gaps.
+// Saturated, unique colors keep thin lines legible on the dark canvas without
+// washing out into white. Frequently co-visible types use different hues.
 export const EDGE_COLORS: Record<EdgeType, string> = {
   // ── Default-visible structural edges (must be unmistakable) ──
-  CALLS: '#DC2626', // red
-  IMPORTS: '#2563EB', // blue
-  DEFINES: '#16A34A', // green
-  CONTAINS: '#9333EA', // purple
-  HAS_METHOD: '#0891B2', // cyan
-  HAS_INNER: '#DB2777', // magenta
-  HAS_RELATION: '#FACC15', // bright yellow domain relation
-  EXTENDS: '#EA580C', // orange
-  IMPLEMENTS: '#CA8A04', // gold
-  OVERRIDES: '#7C3AED', // violet
-  HANDLES_ROUTE: '#65A30D', // olive
+  CALLS: '#F6515C', // coral red
+  IMPORTS: '#3D8DF5', // vivid blue
+  DEFINES: '#25D05E', // emerald green
+  CONTAINS: '#ABC431', // olive
+  HAS_METHOD: '#008C6A', // deep teal
+  HAS_INNER: '#F320A6', // hot pink
+  HAS_RELATION: '#F5BE3D', // gold
+  EXTENDS: '#C48931', // amber
+  IMPLEMENTS: '#F36E20', // orange
+  OVERRIDES: '#8163E3', // indigo
+  HANDLES_ROUTE: '#00879A', // dark cyan
   // ── CPG-lite (hidden by default) ──
-  HAS_FIELD: '#0EA5E9', // sky
-  TYPE_OF: '#14B8A6', // teal
-  RETURNS: '#84CC16', // lime
-  PARAMETER_TYPE: '#A16207', // brown
-  THROWS: '#BE123C', // crimson
-  INSTANTIATES: '#FB7185', // light rose
-  INJECTS: '#0D9488', // deep teal
-  ANNOTATED_BY: '#A3E635', // light lime
-  READS: '#38BDF8', // light blue
-  WRITES: '#FB923C', // light orange
-  CATCHES: '#A78BFA', // light violet
-  STEP_IN_FLOW: '#E879F9', // light fuchsia
-  PUBLISHES_EVENT: '#F97316', // orange event publish
-  LISTENS_EVENT: '#22D3EE', // cyan event listener
-  TRIGGERS: '#F43F5E', // rose inferred flow
-  RESOLVES_TO: '#A855F7', // purple dispatch resolution
-  CALLS_DYNAMIC: '#60A5FA', // blue dynamic call
-  DISPATCH_CANDIDATES: '#94A3B8', // slate ambiguous candidates
-  OWNS: '#6366F1', // indigo
+  HAS_FIELD: '#51B4F6', // sky blue
+  TYPE_OF: '#31A2C4', // blue teal
+  RETURNS: '#5CD6A1', // mint green
+  PARAMETER_TYPE: '#F69851', // peach orange
+  THROWS: '#E92A0C', // red orange
+  INSTANTIATES: '#DA6CA7', // rose
+  INJECTS: '#7DE363', // leaf green
+  ANNOTATED_BY: '#F6E551', // yellow
+  READS: '#20F320', // vivid green
+  WRITES: '#D04377', // berry
+  CATCHES: '#AE6CDA', // violet
+  STEP_IN_FLOW: '#51F6C4', // turquoise
+  PUBLISHES_EVENT: '#F651E5', // magenta
+  LISTENS_EVENT: '#B4F320', // lime
+  TRIGGERS: '#C45831', // burnt orange
+  RESOLVES_TO: '#C547EB', // purple
+  CALLS_DYNAMIC: '#317AC4', // strong blue
+  DISPATCH_CANDIDATES: '#C4DA6C', // yellow green
+  OWNS: '#D0A825', // mustard
 }
 
 // CPG-lite exposure policy (Phase 1).
@@ -322,6 +321,23 @@ export function resolveLocalhostAwareUrl(
   return url
 }
 
+/** Convert a WebSocket-style URL to the HTTP(S) URL required by SockJS. */
+export function resolveSockJsUrl(
+  value: string | undefined,
+  fallback: string,
+  browserHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost',
+): string {
+  const url = resolveLocalhostAwareUrl(value, fallback, browserHost)
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'ws:') parsed.protocol = 'http:'
+    if (parsed.protocol === 'wss:') parsed.protocol = 'https:'
+    return parsed.toString().replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}
+
 export const API_BASE_URL = resolveLocalhostAwareUrl(
   import.meta.env.VITE_API_URL,
   'http://localhost:8080',
@@ -329,7 +345,7 @@ export const API_BASE_URL = resolveLocalhostAwareUrl(
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = resolveLocalhostAwareUrl(
+export const WS_URL = resolveSockJsUrl(
   import.meta.env.VITE_WS_URL,
   'http://localhost:8080/ws/graph-updates',
 )

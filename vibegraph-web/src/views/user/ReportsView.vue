@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, nextTick, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
 import type { Report, ReportMessage, FeedbackCategory, ReportRealtimeEvent } from '@/types/api'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import { useReportRealtime } from '@/composables/useReportRealtime'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 
 const accountStore = useAccountStore()
 const { t } = useI18n({ useScope: 'global' })
@@ -21,6 +23,7 @@ const isSending = ref(false)
 const isClosing = ref(false)
 const closeDialogOpen = ref(false)
 const errorMsg = ref('')
+const threadRef = ref<HTMLElement | null>(null)
 const selectedReportId = computed(() => selectedReport.value?.id ?? null)
 
 const categories = computed<{ value: FeedbackCategory; label: string }[]>(() => [
@@ -39,6 +42,17 @@ onMounted(async () => {
   }
 })
 
+// Kept alive by UserLayout: report status changes reflect on re-activation
+// without a reload flash.
+useSilentRefresh(() =>
+  accountStore.fetchReports().then(
+    () => {
+      errorMsg.value = ''
+    },
+    () => undefined,
+  ),
+)
+
 const reportRealtime = useReportRealtime(selectedReportId, {
   onEvent: (event) => {
     handleRealtimeEvent(event)
@@ -47,7 +61,8 @@ const reportRealtime = useReportRealtime(selectedReportId, {
 const reportRealtimeStatus = reportRealtime.status
 const reportRealtimeActive = reportRealtime.active
 const reportRealtimeLabel = computed(() => {
-  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value) return t('user.reports.live')
+  if (reportRealtimeStatus.value === 'connected' && reportRealtimeActive.value)
+    return t('user.reports.live')
   if (reportRealtimeStatus.value === 'error') return t('user.reports.realtimeUnavailable')
   if (reportRealtimeStatus.value === 'connecting' || reportRealtimeStatus.value === 'connected') {
     return t('user.reports.syncing')
@@ -75,9 +90,15 @@ const selectReport = async (report: Report) => {
   const selectionVersion = ++reportSelectionVersion
   try {
     const full = await accountStore.fetchReportDetail(report.id)
-    if (selectionVersion === reportSelectionVersion) selectedReport.value = full
+    if (selectionVersion === reportSelectionVersion) {
+      selectedReport.value = full
+      await scrollThreadToBottom()
+    }
   } catch {
-    if (selectionVersion === reportSelectionVersion) selectedReport.value = report
+    if (selectionVersion === reportSelectionVersion) {
+      selectedReport.value = report
+      await scrollThreadToBottom()
+    }
   }
 }
 
@@ -100,6 +121,7 @@ const sendReply = async () => {
         selectedReport.value.messages.push(msg)
       }
       replyMessage.value = ''
+      await scrollThreadToBottom('smooth')
     }
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : t('user.reports.replyFallback')
@@ -135,6 +157,7 @@ const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
     currentReport.messages ||= []
     if (!currentReport.messages.some((msg) => msg.id === event.message?.id)) {
       currentReport.messages.push(normalizeMessage(event.message))
+      void scrollThreadToBottom('smooth')
     }
     return
   }
@@ -156,8 +179,20 @@ const handleRealtimeEvent = (event: ReportRealtimeEvent) => {
 const normalizeMessage = (message: ReportMessage): ReportMessage => ({
   ...message,
   isAdmin: message.senderRole === 'ADMIN',
-  senderName: message.senderRole === 'ADMIN' ? t('user.reports.supportTeam') : t('user.reports.you'),
+  senderName:
+    message.senderRole === 'ADMIN' ? t('user.reports.supportTeam') : t('user.reports.you'),
 })
+
+const scrollThreadToBottom = async (behavior: ScrollBehavior = 'auto'): Promise<void> => {
+  await nextTick()
+  const thread = threadRef.value
+  if (!thread) return
+  if (typeof thread.scrollTo === 'function') {
+    thread.scrollTo({ top: thread.scrollHeight, behavior })
+  } else {
+    thread.scrollTop = thread.scrollHeight
+  }
+}
 
 const formatDateTime = (value: string | null | undefined): string => {
   if (!value) return t('user.reports.justNow')
@@ -179,11 +214,14 @@ const formatDateTime = (value: string | null | undefined): string => {
         <form @submit.prevent="submitReport" class="form-grid">
           <div class="form-group">
             <label for="report-category">{{ t('user.reports.category') }}</label>
-            <select id="report-category" v-model="newCategory" class="form-input" required>
-              <option v-for="cat in categories" :key="cat.value" :value="cat.value">
-                {{ cat.label }}
-              </option>
-            </select>
+            <ThemedSelect
+              v-model="newCategory"
+              class="form-select"
+              input-id="report-category"
+              name="reportCategory"
+              :options="categories"
+              :aria-label="t('user.reports.category')"
+            />
           </div>
           <div class="form-group">
             <label for="report-subject">{{ t('user.reports.subject') }}</label>
@@ -220,7 +258,9 @@ const formatDateTime = (value: string | null | undefined): string => {
 
       <div class="card reports-list">
         <h3>{{ t('user.reports.previous') }}</h3>
-        <div v-if="accountStore.reports.length === 0" class="empty-state">{{ t('user.reports.empty') }}</div>
+        <div v-if="accountStore.reports.length === 0" class="empty-state">
+          {{ t('user.reports.empty') }}
+        </div>
         <div v-else class="table-responsive">
           <table class="table">
             <thead>
@@ -240,7 +280,11 @@ const formatDateTime = (value: string | null | undefined): string => {
                 <td class="text-muted">
                   {{ formatDateTime(r.closedAt ?? r.createdAt) }}
                 </td>
-                <td><button class="btn-secondary btn-sm" @click="selectReport(r)">{{ t('user.reports.view') }}</button></td>
+                <td>
+                  <button class="btn-secondary btn-sm" @click="selectReport(r)">
+                    {{ t('user.reports.view') }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -280,7 +324,7 @@ const formatDateTime = (value: string | null | undefined): string => {
         </div>
       </div>
 
-      <div class="thread">
+      <div ref="threadRef" class="thread" aria-live="polite">
         <article
           v-for="msg in selectedReport.messages"
           :key="msg.id"
@@ -293,9 +337,13 @@ const formatDateTime = (value: string | null | undefined): string => {
             <header class="message-meta">
               <div>
                 <strong>{{ msg.senderName }}</strong>
-                <span class="message-role">{{ msg.isAdmin ? t('user.reports.support') : t('user.reports.you') }}</span>
+                <span class="message-role">{{
+                  msg.isAdmin ? t('user.reports.support') : t('user.reports.you')
+                }}</span>
               </div>
-              <time :datetime="msg.createdAt || undefined">{{ formatDateTime(msg.createdAt) }}</time>
+              <time :datetime="msg.createdAt || undefined">{{
+                formatDateTime(msg.createdAt)
+              }}</time>
             </header>
             <p class="message-content">{{ msg.body }}</p>
           </div>
@@ -330,7 +378,11 @@ const formatDateTime = (value: string | null | undefined): string => {
       <div v-else class="closed-notice">
         {{ t('user.reports.closed') }}
         <small v-if="selectedReport.deletesAfter">
-          {{ t('user.reports.scheduledDeletion', { date: new Date(selectedReport.deletesAfter).toLocaleDateString() }) }}
+          {{
+            t('user.reports.scheduledDeletion', {
+              date: new Date(selectedReport.deletesAfter).toLocaleDateString(),
+            })
+          }}
         </small>
       </div>
     </div>
@@ -352,8 +404,17 @@ const formatDateTime = (value: string | null | undefined): string => {
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   color: var(--vg-text);
   font-size: var(--vg-text-sm);
+}
+.list-container {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .header {
   margin-bottom: var(--vg-space-4);
@@ -520,10 +581,11 @@ const formatDateTime = (value: string | null | undefined): string => {
 /* Detail */
 .detail-container {
   width: 100%;
-  height: calc(100vh - 24px);
+  height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 32rem;
+  min-height: 0;
+  overflow: hidden;
 }
 .detail-header {
   margin-bottom: var(--vg-space-3);
@@ -594,6 +656,8 @@ const formatDateTime = (value: string | null | undefined): string => {
   gap: var(--vg-space-3);
   margin-bottom: var(--vg-space-3);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--vg-space-3);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius-sm);
@@ -751,8 +815,8 @@ const formatDateTime = (value: string | null | undefined): string => {
 @media (max-width: 700px) {
   .detail-container {
     width: 100%;
-    height: calc(100vh - 100px);
-    min-height: 30rem;
+    height: 100%;
+    min-height: 0;
   }
   .detail-header__title {
     align-items: flex-start;

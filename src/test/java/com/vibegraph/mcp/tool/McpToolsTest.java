@@ -88,7 +88,9 @@ class McpToolsTest {
                 Mockito.mock(FeatureGateService.class),
                 Mockito.mock(AccountAccessGuard.class),
                 Mockito.mock(ApiKeyRequestContextAccessor.class),
-                new ObjectMapper());
+                new ObjectMapper(),
+                Mockito.mock(com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator.class),
+                Mockito.mock(com.vibegraph.infrastructure.service.OperationTelemetryRecorder.class));
     }
 
     @Nested
@@ -299,7 +301,7 @@ class McpToolsTest {
             ClassContextResponse result = classContextTool.getClassContext("p1", "UserService");
 
             assertThat(result.getClassInfo()).isNull();
-            assertThat(result.getWarnings()).containsExactly("Graph is too large for class context: 50001 nodes, 0 edges.");
+            assertThat(result.getWarnings()).containsExactly("Graph is too large for class context: 100001 nodes, 0 edges.");
         }
 
         @Test
@@ -350,7 +352,7 @@ class McpToolsTest {
 
         private GraphDataResponse largeGraph() {
             List<NodeDto> nodes = new ArrayList<>();
-            for (int index = 0; index < 50_001; index++) {
+            for (int index = 0; index < 100_001; index++) {
                 nodes.add(classNode("class-" + index, "UserService" + index, "com.app.UserService" + index, "SERVICE"));
             }
             return GraphDataResponse.builder()
@@ -494,7 +496,7 @@ class McpToolsTest {
             LayerPatternResponse result = layerPatternTool.getLayerPattern("p1", "SERVICE");
 
             assertThat(result.getExamples()).isEmpty();
-            assertThat(result.getWarnings()).containsExactly("Graph is too large for layer pattern: 50001 nodes, 0 edges.");
+            assertThat(result.getWarnings()).containsExactly("Graph is too large for layer pattern: 100001 nodes, 0 edges.");
         }
 
         @Test
@@ -536,7 +538,7 @@ class McpToolsTest {
 
         private GraphDataResponse largeLayerGraph() {
             List<NodeDto> nodes = new ArrayList<>();
-            for (int index = 0; index < 50_001; index++) {
+            for (int index = 0; index < 100_001; index++) {
                 nodes.add(layerNode("service-" + index, "Class", "Service" + index, "com.app.service.Service" + index, "SERVICE"));
             }
             return GraphDataResponse.builder()

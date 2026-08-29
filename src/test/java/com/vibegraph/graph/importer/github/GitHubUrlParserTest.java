@@ -3,6 +3,8 @@ package com.vibegraph.graph.importer.github;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -47,5 +49,20 @@ class GitHubUrlParserTest {
         assertThatThrownBy(() -> parser.parse("https://gitlab.com/acme/demo"))
                 .isInstanceOf(GithubImportException.class)
                 .hasMessageContaining("github.com");
+    }
+
+    @Test
+    @DisplayName("rejects '.' and '..' as owner or repo (F10: no traversal segments)")
+    void rejectsReservedDotSegments() {
+        for (String url : List.of(
+                "https://github.com/./demo",
+                "https://github.com/../demo",
+                "https://github.com/acme/.",
+                "https://github.com/acme/..")) {
+            assertThatThrownBy(() -> parser.parse(url))
+                    .as("URL must be rejected: %s", url)
+                    .isInstanceOf(GithubImportException.class)
+                    .hasMessageContaining("invalid");
+        }
     }
 }

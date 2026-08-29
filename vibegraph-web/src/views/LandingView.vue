@@ -7,9 +7,11 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import LanguageSelector from '@/components/ui/LanguageSelector.vue'
 import LogoTile from '@/components/ui/LogoTile.vue'
+import { publicSiteCopy } from '@/content/publicSite'
 
 // IDE / AI-agent logos
 import logoAntigravity from '@/assets/images/ide/LogoAntigravity.jpg'
@@ -46,7 +48,19 @@ const stack: LogoItem[] = [
 ]
 
 const scrolled = ref(false)
-const { t } = useI18n({ useScope: 'global' })
+const activeSection = ref('')
+const auth = useAuthStore()
+const { locale, t } = useI18n({ useScope: 'global' })
+const publicCopy = computed(
+  () => publicSiteCopy[locale.value as 'en-US' | 'vi-VN'] ?? publicSiteCopy['en-US'],
+)
+const primaryRoute = computed(() => {
+  if (!auth.isAuthenticated) return '/login'
+  return auth.user?.role === 'ADMIN' ? '/admin' : '/dashboard'
+})
+const primaryLabel = computed(() =>
+  auth.isAuthenticated ? publicCopy.value.actions.dashboard : publicCopy.value.actions.login,
+)
 
 function onScroll(): void {
   scrolled.value = window.scrollY > 12
@@ -54,10 +68,10 @@ function onScroll(): void {
 
 // Stats
 const stats = computed(() => [
-  { value: '4K+', label: t('landing.stats.symbols') },
-  { value: '10K+', label: t('landing.stats.relationships') },
-  { value: '300+', label: t('landing.stats.flows') },
-  { value: t('landing.stats.realtimeValue'), label: t('landing.stats.realtimeLabel') },
+  { value: 'Java', label: t('landing.stats.javaLabel') },
+  { value: 'Neo4j', label: t('landing.stats.neo4jLabel') },
+  { value: '18', label: t('landing.stats.toolsLabel') },
+  { value: 'CLI + MCP', label: t('landing.stats.integrationLabel') },
 ])
 
 // Features
@@ -164,7 +178,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'service',
-    label: 'ProjectService.java',
+    label: 'ProjectServiceImpl.java',
     type: 'service',
     x: 260,
     y: 170,
@@ -173,7 +187,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'repo',
-    label: 'ProjectRepository.java',
+    label: 'Neo4jGraphRepository.java',
     type: 'repository',
     x: 340,
     y: 250,
@@ -182,7 +196,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'db',
-    label: 'Database (MySQL)',
+    label: 'Neo4j graph',
     type: 'database',
     x: 350,
     y: 90,
@@ -191,7 +205,7 @@ const nodes: GraphNode[] = [
   },
   {
     id: 'util',
-    label: 'GraphBuilder.java',
+    label: 'AnalyzeServiceImpl.java',
     type: 'utility',
     x: 230,
     y: 310,
@@ -214,6 +228,11 @@ const selectedNode = ref<GraphNode | null>(null)
 const activeImpactNodes = ref<string[]>([])
 const hoverNode = ref<string | null>(null)
 const isPropagating = ref(false)
+// F-L1: self-rescheduling timers keep their handles so unmount can stop them;
+// writing to refs of an unmounted component would otherwise keep the chain alive.
+let isAlive = true
+let typingTimer: ReturnType<typeof setTimeout> | null = null
+let propagationTimer: ReturnType<typeof setTimeout> | null = null
 
 function getNode(id: string): GraphNode {
   return nodes.find((n) => n.id === id)!
@@ -260,7 +279,8 @@ function triggerImpact(nodeId: string) {
         }
       })
 
-      setTimeout(step, 180)
+      if (propagationTimer) clearTimeout(propagationTimer)
+      propagationTimer = setTimeout(step, 180)
     } else {
       step()
     }
@@ -289,49 +309,27 @@ const terminalTyping = ref(false)
 const commandsData = {
   impact: {
     command:
-      'get_impact_analysis({ projectId: "my-app", nodeQuery: "ProjectRepository", depth: 2 })',
+      'get_impact_analysis({ projectId: "<selected-project>", nodeQuery: "<symbol>", depth: 2 })',
     output: `{
-  "node": "com.vibegraph.graph.repository.ProjectRepository",
-  "riskLevel": "HIGH",
-  "blastRadius": 7,
-  "directImpact": [
-    "ProjectService.saveProject()",
-    "ProjectService.reloadGraph()"
-  ],
-  "transitiveImpact": [
-    "ProjectController.createProject()",
-    "ProjectApiIT"
-  ],
-  "warnings": ["Referenced by 2 execution flows"]
+  "source": "selected project graph",
+  "result": "Returned by VibeGraph at call time",
+  "note": "Affected nodes, flows and risk depend on the analyzed project"
 }`,
   },
   context: {
-    command: 'get_class_context({ projectId: "my-app", classQuery: "ProjectService" })',
+    command: 'get_class_context({ projectId: "<selected-project>", classQuery: "<class>" })',
     output: `{
-  "class": "com.vibegraph.graph.service.ProjectService",
-  "methods": ["saveProject", "reloadGraph", "deleteProject"],
-  "outgoingRelations": ["ProjectRepository", "GraphBuilder"],
-  "incomingRelations": ["ProjectController", "ProjectApiIT"],
-  "warnings": []
+  "source": "selected project graph",
+  "result": "Class context returned by VibeGraph at call time",
+  "note": "Methods and relationships depend on the selected project"
 }`,
   },
   plan: {
-    command:
-      'plan_code_change({ projectId: "my-app", changeRequest: "Rename ProjectService to WorkspaceService" })',
+    command: 'plan_code_change({ projectId: "<selected-project>", changeRequest: "<change>" })',
     output: `{
-  "changeRequest": "Rename ProjectService to WorkspaceService",
-  "candidateFiles": [
-    "ProjectService.java",
-    "ProjectController.java",
-    "ProjectApiIT.java"
-  ],
-  "blastRadius": 34,
-  "editSequence": [
-    "Rename class + update injections",
-    "Update controller references",
-    "Update tests"
-  ],
-  "confidence": "MEDIUM"
+  "source": "selected project graph",
+  "result": "Plan returned by VibeGraph at call time",
+  "note": "Candidate files and sequence depend on the requested change"
 }`,
   },
 }
@@ -347,12 +345,15 @@ function loadTerminalCommand(tabKey: 'impact' | 'context' | 'plan') {
   let i = 0
 
   function typeCmd() {
+    if (!isAlive) return
     if (i < cmdText.length) {
       terminalInput.value += cmdText[i]
       i++
-      setTimeout(typeCmd, 20)
+      if (typingTimer) clearTimeout(typingTimer)
+      typingTimer = setTimeout(typeCmd, 20)
     } else {
-      setTimeout(() => {
+      if (typingTimer) clearTimeout(typingTimer)
+      typingTimer = setTimeout(() => {
         terminalTyping.value = false
         terminalOutput.value = commandsData[tabKey].output
       }, 250)
@@ -403,6 +404,71 @@ const activeGuideTab = ref(0)
 const virtualCursor = ref({ x: 100, y: 100, clicking: false })
 const autoTourActive = ref(true)
 let tourTimeout: ReturnType<typeof setTimeout> | null = null
+let landingMotionContext: { revert: () => void } | null = null
+
+async function setupMotionEffects(): Promise<void> {
+  if (typeof window === 'undefined' || !window.matchMedia) return
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+  const [{ default: gsap }, { ScrollTrigger }] = await Promise.all([
+    import('gsap'),
+    import('gsap/ScrollTrigger'),
+  ])
+  if (!isAlive) return
+  gsap.registerPlugin(ScrollTrigger)
+
+  landingMotionContext = gsap.context(() => {
+    gsap.utils.toArray<HTMLElement>('main > .section').forEach((section) => {
+      const children = Array.from(section.children) as HTMLElement[]
+      if (children.length === 0) return
+
+      gsap.fromTo(
+        children,
+        { autoAlpha: 0, y: 18 },
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.48,
+          stagger: 0.07,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 84%',
+            once: true,
+          },
+        },
+      )
+    })
+
+    gsap.to('.hero__visual', {
+      yPercent: 4,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: '.hero',
+        start: 'top top',
+        end: 'bottom top',
+        scrub: 0.6,
+      },
+    })
+
+    const sectionIds = ['goals', 'features', 'how', 'guide']
+    sectionIds.forEach((id) => {
+      const section = document.getElementById(id)
+      if (!section) return
+      ScrollTrigger.create({
+        trigger: section,
+        start: 'top 45%',
+        end: 'bottom 45%',
+        onEnter: () => {
+          activeSection.value = id
+        },
+        onEnterBack: () => {
+          activeSection.value = id
+        },
+      })
+    })
+  })
+}
 
 async function moveVirtualCursor(targetX: number, targetY: number, duration = 1200) {
   const startX = virtualCursor.value.x
@@ -464,6 +530,7 @@ async function playTourStep() {
   }
 
   currentTourStep = (currentTourStep + 1) % tourTargets.length
+  if (tourTimeout) clearTimeout(tourTimeout)
   tourTimeout = setTimeout(playTourStep, 4500)
 }
 
@@ -474,6 +541,7 @@ function stopAutoTour() {
 }
 
 onMounted(() => {
+  void auth.refreshPublicSession()
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
 
@@ -494,11 +562,26 @@ onMounted(() => {
 
   // Start tour after a delay
   tourTimeout = setTimeout(playTourStep, 4000)
+
+  void setupMotionEffects()
 })
 
 onBeforeUnmount(() => {
+  // F-L1: stop every self-rescheduling timer; without the handles the typing
+  // and propagation chains kept writing to refs after unmount.
+  isAlive = false
+  if (typingTimer) clearTimeout(typingTimer)
+  if (propagationTimer) clearTimeout(propagationTimer)
   window.removeEventListener('scroll', onScroll)
+  // F-L2: the four tour listeners are `{ once: true }` so each self-removes after
+  // its first fire — but until that fire they outlive unmount; remove them here.
+  window.removeEventListener('scroll', stopAutoTour)
+  window.removeEventListener('mousemove', stopAutoTour)
+  window.removeEventListener('mousedown', stopAutoTour)
+  window.removeEventListener('keydown', stopAutoTour)
   if (stepInterval) clearInterval(stepInterval)
+  landingMotionContext?.revert()
+  landingMotionContext = null
   stopAutoTour()
 })
 </script>
@@ -536,17 +619,32 @@ onBeforeUnmount(() => {
     <!-- ── Nav ── -->
     <header class="lp-nav" :class="{ 'lp-nav--scrolled': scrolled }">
       <div class="lp-nav__inner">
-        <BrandMark :size="30" />
+        <BrandMark
+          :size="30"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/dashboard"
+          wordmark-aria-label="VibeGraph dashboard"
+        />
         <nav class="lp-nav__links" aria-label="Primary">
-          <a href="#goals">{{ t('landing.nav.goals') }}</a>
-          <a href="#features">{{ t('landing.nav.features') }}</a>
-          <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
-          <a href="#guide">{{ t('landing.nav.guide') }}</a>
+          <a href="#goals" :class="{ 'lp-nav__link--active': activeSection === 'goals' }">{{
+            t('landing.nav.goals')
+          }}</a>
+          <a href="#features" :class="{ 'lp-nav__link--active': activeSection === 'features' }">{{
+            t('landing.nav.features')
+          }}</a>
+          <a href="#how" :class="{ 'lp-nav__link--active': activeSection === 'how' }">{{
+            t('landing.nav.howItWorks')
+          }}</a>
+          <a href="#guide" :class="{ 'lp-nav__link--active': activeSection === 'guide' }">{{
+            t('landing.nav.guide')
+          }}</a>
+          <RouterLink to="/docs">{{ publicCopy.nav.docs }}</RouterLink>
         </nav>
         <div class="lp-nav__actions">
           <LanguageSelector />
-          <RouterLink class="btn btn--primary btn--sm" :to="{ name: 'dashboard' }">
-            {{ t('landing.actions.openDashboard') }}
+          <RouterLink class="btn btn--primary btn--sm" :to="primaryRoute">
+            {{ primaryLabel }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -567,8 +665,8 @@ onBeforeUnmount(() => {
           </h1>
           <p class="hero__lede">{{ t('landing.hero.description') }}</p>
           <div class="hero__cta">
-            <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-              {{ t('landing.actions.openDashboard') }}
+            <RouterLink class="btn btn--primary btn--lg" :to="primaryRoute">
+              {{ primaryLabel }}
               <span class="btn__arrow" aria-hidden="true">→</span>
             </RouterLink>
             <a class="btn btn--ghost btn--lg" href="#how">{{ t('landing.actions.seeHow') }}</a>
@@ -681,17 +779,25 @@ onBeforeUnmount(() => {
               <div class="telemetry-inner">
                 <div v-if="selectedNode" class="telemetry-grid">
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.targetSymbol') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.targetSymbol')
+                    }}</span>
                     <span class="telemetry-data text-accent">{{ selectedNode.label }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.symbolType') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.symbolType')
+                    }}</span>
                     <span class="telemetry-data text-capitalize">{{ selectedNode.type }}</span>
                   </div>
                   <div class="telemetry-cell">
-                    <span class="telemetry-meta">{{ t('landing.graph.telemetry.blastRadius') }}</span>
+                    <span class="telemetry-meta">{{
+                      t('landing.graph.telemetry.blastRadius')
+                    }}</span>
                     <span class="telemetry-data" :class="impactClass(activeImpactNodes.length)">
-                      {{ t('landing.graph.telemetry.affected', { count: activeImpactNodes.length }) }}
+                      {{
+                        t('landing.graph.telemetry.affected', { count: activeImpactNodes.length })
+                      }}
                     </span>
                   </div>
                   <div class="telemetry-cell">
@@ -891,7 +997,9 @@ onBeforeUnmount(() => {
                       <span class="mock-url-prefix">https://github.com/</span>
                       <span class="mock-url-text">ThinhChauTran263/VibeGraph</span>
                     </div>
-                    <button class="btn btn--primary btn--sm">{{ t('landing.how.mock.analyze') }}</button>
+                    <button class="btn btn--primary btn--sm">
+                      {{ t('landing.how.mock.analyze') }}
+                    </button>
                   </div>
                 </div>
 
@@ -983,9 +1091,9 @@ onBeforeUnmount(() => {
                         <circle cx="140" cy="60" r="8" fill="var(--vg-danger)" />
                         <circle cx="100" cy="150" r="8" fill="var(--vg-amber)" />
                       </svg>
-                      <span class="mini-canvas-tip mini-canvas-tip--danger"
-                        >{{ t('landing.how.mock.upstreamRiskHigh') }}</span
-                      >
+                      <span class="mini-canvas-tip mini-canvas-tip--danger">{{
+                        t('landing.how.mock.upstreamRiskHigh')
+                      }}</span>
                     </div>
                   </div>
                 </div>
@@ -1027,42 +1135,43 @@ onBeforeUnmount(() => {
                 <div class="code-terminal-header">
                   <span>{{ t('landing.guide.step1.terminal') }}</span>
                 </div>
-                <pre><code># 1. Start Neo4j (graph database)
-docker compose up -d neo4j
+                <pre><code># Install the CLI package when it is published
+npm install -g vibegraph-cli
 
-# 2. Run the backend — Spring Boot on :8080
-./mvnw spring-boot:run
+# Point the CLI at production and sign in in your browser
+vibegraph config set-url https://api.vibegraph.tech
+vibegraph login
 
-# 3. Run the web client — Vite on :5173
-cd vibegraph-web && npm install && npm run dev</code></pre>
+# Push or watch a project
+vibegraph push
+vibegraph watch</code></pre>
               </div>
               <p class="text-sm text-dim">
-                {{ t('landing.guide.step1.envLead') }} <code>NEO4J_URI</code>,
-                <code>NEO4J_USERNAME</code> {{ t('landing.guide.step1.envAnd') }}
-                <code>NEO4J_PASSWORD</code> {{ t('landing.guide.step1.envTail') }}
+                {{ t('landing.guide.step1.envLead') }}
+                <RouterLink to="/docs">{{ t('landing.guide.step1.docsLink') }}</RouterLink>
+                {{ t('landing.guide.step1.envTail') }}
               </p>
             </div>
 
             <div v-if="activeGuideTab === 1" class="guide-pane">
               <h4>{{ t('landing.guide.step2.title') }}</h4>
               <p>
-                {{ t('landing.guide.step2.bodyLead') }} <code>http://localhost:5173</code>
+                {{ t('landing.guide.step2.bodyLead') }} <code>https://vibegraph.tech</code>
                 {{ t('landing.guide.step2.bodyTail') }}
               </p>
               <ul class="guide-list">
                 <li>
-                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong>:
+                  📁 <strong>{{ t('landing.guide.step2.localTitle') }}</strong
+                  >:
                   {{ t('landing.guide.step2.localBody') }}
                 </li>
                 <li>
-                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong>:
-                  {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
+                  🗜️ <strong>{{ t('landing.guide.step2.archiveTitle') }}</strong
+                  >: {{ t('landing.guide.step2.archiveBodyLead') }} <code>.zip</code>,
                   <code>.tar</code> {{ t('landing.guide.step2.archiveBodyOr') }}
                   <code>.tar.gz</code> {{ t('landing.guide.step2.archiveBodyTail') }}
                 </li>
-                <li>
-                  🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}
-                </li>
+                <li>🔗 <strong>GitHub</strong>: {{ t('landing.guide.step2.githubBody') }}</li>
               </ul>
               <p class="text-sm text-dim">
                 {{ t('landing.guide.step2.note') }}
@@ -1082,7 +1191,9 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
                 <pre><code>{
   "mcpServers": {
     "vibegraph": {
-      "url": "http://localhost:8080/mcp"
+      "url": "https://api.vibegraph.tech/mcp",
+      "transport": "streamable-http",
+      "headers": { "X-API-Key": "&lt;PROJECT_API_KEY&gt;" }
     }
   }
 }</code></pre>
@@ -1110,15 +1221,18 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
           </p>
           <ul class="guide-list">
             <li>
-              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong>:
+              🔒 <strong>{{ t('landing.engine.items.private.title') }}</strong
+              >:
               {{ t('landing.engine.items.private.body') }}
             </li>
             <li>
-              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong>:
+              ⚡ <strong>{{ t('landing.engine.items.incremental.title') }}</strong
+              >:
               {{ t('landing.engine.items.incremental.body') }}
             </li>
             <li>
-              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong>:
+              🤖 <strong>{{ t('landing.engine.items.mcp.title') }}</strong
+              >:
               {{ t('landing.engine.items.mcp.body') }}
             </li>
           </ul>
@@ -1217,8 +1331,8 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
         <div class="cta__inner">
           <h2 class="cta__title">{{ t('landing.cta.title') }}</h2>
           <p class="cta__sub">{{ t('landing.cta.description') }}</p>
-          <RouterLink class="btn btn--primary btn--lg" :to="{ name: 'dashboard' }">
-            {{ t('landing.actions.openDashboard') }}
+          <RouterLink class="btn btn--primary btn--lg" :to="primaryRoute">
+            {{ primaryLabel }}
             <span class="btn__arrow" aria-hidden="true">→</span>
           </RouterLink>
         </div>
@@ -1228,7 +1342,13 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
     <footer class="lp-footer">
       <div class="footer-top">
         <div class="footer-brand">
-          <BrandMark :size="24" />
+          <BrandMark
+            :size="24"
+            glyph-to="/"
+            glyph-aria-label="VibeGraph landing page"
+            wordmark-to="/dashboard"
+            wordmark-aria-label="VibeGraph dashboard"
+          />
           <span class="lp-footer__note">{{ t('landing.footer.note') }}</span>
         </div>
         <div class="footer-links">
@@ -1237,12 +1357,13 @@ cd vibegraph-web && npm install && npm run dev</code></pre>
             <a href="#features">{{ t('landing.nav.features') }}</a>
             <a href="#how">{{ t('landing.nav.howItWorks') }}</a>
             <a href="#guide">{{ t('landing.footer.installation') }}</a>
+            <RouterLink to="/docs">{{ publicCopy.landing.documentation }}</RouterLink>
           </div>
           <div class="footer-col">
             <h4>{{ t('landing.footer.resources') }}</h4>
-            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank"
-              >{{ t('landing.footer.githubRepo') }}</a
-            >
+            <a href="https://github.com/ThinhChauTran263/VibeGraph-com" target="_blank">{{
+              t('landing.footer.githubRepo')
+            }}</a>
             <a href="#engine">{{ t('landing.footer.engine') }}</a>
           </div>
         </div>
@@ -1461,6 +1582,12 @@ main,
 .lp-nav__links a:hover {
   color: var(--vg-text);
 }
+.lp-nav__links a.lp-nav__link--active {
+  color: var(--vg-text);
+}
+.lp-nav__links a.lp-nav__link--active::after {
+  transform: scaleX(1);
+}
 .lp-nav__links a:hover::after {
   transform: scaleX(1);
 }
@@ -1613,6 +1740,7 @@ main,
 
 /* ── Hero visual (Interactive Graph Module) ── */
 .hero__visual {
+  will-change: transform;
   position: relative;
   aspect-ratio: 1;
   display: grid;

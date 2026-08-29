@@ -18,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.common.exception.GlobalExceptionHandler;
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -27,9 +28,8 @@ import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.common.ownership.ProjectOwnershipRegistrar;
 import com.vibegraph.graph.controller.ProjectController;
 import com.vibegraph.graph.dto.response.ProjectResponse;
-import com.vibegraph.graph.service.AnalyzeService;
-import com.vibegraph.graph.service.AnalyzeService.AnalysisResult;
 import com.vibegraph.graph.service.CliRepositoryService;
+import com.vibegraph.graph.service.ProjectAnalysisScheduler;
 import com.vibegraph.graph.service.ProjectService;
 
 /**
@@ -43,7 +43,7 @@ class ProjectApiIT {
 
     private MockMvc mockMvc;
     private ProjectService projectService;
-    private AnalyzeService analyzeService;
+    private ProjectAnalysisScheduler projectAnalysisScheduler;
     private ProjectOwnershipRegistrar ownershipRegistrar;
     private ProjectOwnershipGuard ownershipGuard;
     private ProjectOwnershipQuery ownershipQuery;
@@ -52,18 +52,21 @@ class ProjectApiIT {
     @BeforeEach
     void setUp() {
         projectService = Mockito.mock(ProjectService.class);
-        analyzeService = Mockito.mock(AnalyzeService.class);
+        projectAnalysisScheduler = Mockito.mock(ProjectAnalysisScheduler.class);
         ownershipRegistrar = Mockito.mock(ProjectOwnershipRegistrar.class);
         ownershipGuard = Mockito.mock(ProjectOwnershipGuard.class);
         ownershipQuery = Mockito.mock(ProjectOwnershipQuery.class);
         deletionOrchestrator = Mockito.mock(ProjectDeletionOrchestrator.class);
         ProjectController controller = new ProjectController(
-                projectService, analyzeService, ownershipRegistrar, ownershipGuard, ownershipQuery,
+                projectService, projectAnalysisScheduler, ownershipRegistrar, ownershipGuard, ownershipQuery,
                 deletionOrchestrator, Mockito.mock(com.vibegraph.common.ownership.ProjectTrashService.class),
                 Mockito.mock(CurrentUser.class), Mockito.mock(AccountSettingsService.class),
                 Mockito.mock(com.vibegraph.auth.service.FeatureGateService.class),
                 Mockito.mock(com.vibegraph.auth.service.ProjectUsageService.class),
-                Mockito.mock(CliRepositoryService.class));
+                Mockito.mock(CliRepositoryService.class),
+                 Mockito.mock(com.vibegraph.auth.service.CreditPricingService.class),
+                 Mockito.mock(com.vibegraph.auth.service.CreditBalanceService.class),
+                 Mockito.mock(ApiKeyRequestContextAccessor.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -94,11 +97,9 @@ class ProjectApiIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value("p1"));
 
-        when(analyzeService.analyzeProject("p1", "Project 1", "/src/p1"))
-                .thenReturn(new AnalysisResult("p1", 5, 20, 30, 0));
+        when(projectService.getProject("p1")).thenReturn(p1);
         mockMvc.perform(post("/api/projects/p1/analyze"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.nodesUpserted").value(20));
+                .andExpect(status().isAccepted()); // H8: queued for background analysis
 
         mockMvc.perform(delete("/api/projects/p1"))
                 .andExpect(status().isNoContent());

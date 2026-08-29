@@ -8,6 +8,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -59,6 +66,14 @@ public class ParserServiceImpl implements ParserService {
     @Value("${vibegraph.parser.deep-cpg-enabled:true}")
     private boolean deepCpgEnabled;
 
+    /**
+     * B-M3: unresolved-call stub emission, bound from Spring config so application.yaml
+     * actually takes effect (the old {@code Boolean.getBoolean} read a JVM system property
+     * and silently ignored the yaml). Default false = historical behavior.
+     */
+    @Value("${vibegraph.parser.emit-unresolved-call-stubs:false}")
+    private boolean emitUnresolvedCallStubs;
+
     @Override
     public ParseResult parseFile(Path filePath) {
         // Single-file parsing without project context - limited symbol resolution
@@ -77,7 +92,8 @@ public class ParserServiceImpl implements ParserService {
 
         // Use provided parser (project-wide) or create file-local one
         if (parser == null) {
-            parser = createParser(filePath.getParent());
+            Path parent = filePath.getParent();
+            parser = createParser(parent == null ? List.of() : List.of(parent));
         }
 
         try {
@@ -107,7 +123,7 @@ public class ParserServiceImpl implements ParserService {
             // Apply visitors
             try (ProjectSymbolRegistry.Scope ignored = ProjectSymbolRegistry.open(activeSymbols)) {
                 ClassVisitor classVisitor = new ClassVisitor();
-                MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled);
+                MethodVisitor methodVisitor = new MethodVisitor(deepCpgEnabled, emitUnresolvedCallStubs);
                 FieldVisitor fieldVisitor = new FieldVisitor();
                 SpringAnnotationVisitor springVisitor = new SpringAnnotationVisitor();
                 SpringImplicitFlowVisitor springImplicitFlowVisitor = new SpringImplicitFlowVisitor();
@@ -132,7 +148,7 @@ public class ParserServiceImpl implements ParserService {
 
                 // Aggregate nodes
                 List<NodeData> nodes = new ArrayList<>();
-                NodeData fileNode = fileNode(filePath, packageName);
+                NodeData fileNode = fileNode(filePath, packageName, endLineOf(cu));
                 nodes.add(fileNode);
                 // Package node + CONTAINS edge (Package -> File). Default-package files
                 // (no package declaration) get no Package node. Deduped across files by
@@ -188,7 +204,7 @@ public class ParserServiceImpl implements ParserService {
         }
     }
 
-    private NodeData fileNode(Path filePath, String packageName) {
+    private NodeData fileNode(Path filePath, String packageName, int endLine) {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("extension", ".java");
         properties.put("packageName", packageName == null ? "" : packageName);
@@ -198,9 +214,19 @@ public class ParserServiceImpl implements ParserService {
                 filePath.toString(),
                 filePath.toString(),
                 1,
-                lineCount(filePath),
+                endLine,
                 properties
         );
+    }
+
+    /**
+     * End line of the just-parsed AST, replacing the old Files.lines(...).count() re-read of
+     * the whole file. Range end + trailing orphan comment covers trailing comments; pure
+     * trailing blank lines may count one short — cosmetic only for a File node's endLine.
+     */
+    private static int endLineOf(CompilationUnit cu) {
+        int end = cu.getRange().map(r -> r.end.line).orElse(0);
+        return Math.max(end, cu.getComment().flatMap(c -> c.getRange()).map(r -> r.end.line).orElse(0));
     }
 
     /**
@@ -388,17 +414,14 @@ public class ParserServiceImpl implements ParserService {
         }
     }
 
-    private int lineCount(Path filePath) {
-        try (var lines = Files.lines(filePath, java.nio.charset.StandardCharsets.UTF_8)) {
-            long count = lines.count();
-            return count > Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.toIntExact(count);
-        } catch (IOException e) {
-            return 0;
-        }
+    @Override
+    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener) {
+        return parseProject(projectRoot, progressListener, Integer.MAX_VALUE, Integer.MAX_VALUE);
     }
 
     @Override
-    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener) {
+    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener,
+            int maxNodes, int maxEdges) {
         List<ParseResult> results = new ArrayList<>();
         ParseProgressListener listener = progressListener != null ? progressListener : ParseProgressListener.NOOP;
 
@@ -408,27 +431,15 @@ public class ParserServiceImpl implements ParserService {
             log.info("Found {} .java files in project: {}", totalFiles, projectRoot);
             listener.onFileParsed(0, totalFiles);
 
-            // Build a single project-wide parser whose type solver indexes all source roots.
+            // Build project-wide parsers whose type solver indexes all source roots.
             // This lets MethodCallExpr.resolve() resolve cross-package, cross-class calls
             // (CALLS edges) instead of only same-directory ones.
             ProjectSymbolRegistry projectSymbols = ProjectSymbolRegistry.fromFiles(javaFiles);
-            JavaParser parser = createProjectParser(projectRoot, javaFiles);
+            java.util.Set<Path> sourceRoots = detectSourceRoots(projectRoot, javaFiles);
+            log.info("Type solver indexed {} source root(s)", sourceRoots.size());
 
-            int parsed = 0;
-            for (Path javaFile : javaFiles) {
-                try {
-                    ParseResult result = parseFileInternal(javaFile, parser, projectSymbols);
-                    results.add(result);
-                } catch (Exception e) {
-                    log.warn("Failed to parse file: {}", javaFile, e);
-                    results.add(ParseResult.builder()
-                            .filePath(javaFile.toString())
-                            .warnings(List.of("Unexpected error: " + e.getMessage()))
-                            .build());
-                }
-                parsed++;
-                listener.onFileParsed(parsed, totalFiles);
-            }
+            results.addAll(parseFilesParallel(javaFiles, sourceRoots, projectSymbols, listener,
+                    positiveLimit(maxNodes), positiveLimit(maxEdges)));
         } catch (IOException e) {
             log.error("Failed to scan project directory: {}", projectRoot, e);
         }
@@ -436,42 +447,125 @@ public class ParserServiceImpl implements ParserService {
         return results;
     }
 
-    private JavaParser createParser(Path sourceRoot) {
-        CombinedTypeSolver typeSolver = new CombinedTypeSolver();
-        typeSolver.add(new ReflectionTypeSolver());
+    /**
+     * Parses all files on a worker pool — one dedicated {@link JavaParser} per thread, each
+     * with its own type solver. JavaParser + JavaSymbolSolver are not thread-safe to SHARE,
+     * so no parser/solver state crosses threads; {@link ProjectSymbolRegistry} is immutable
+     * and ThreadLocal-scoped, which makes it safe to share. Results land in a pre-sized
+     * array keyed by file index, so the returned order stays identical to the old sequential
+     * loop. Workers only bump an {@link AtomicInteger}; the progress listener is driven by a
+     * polling loop on the calling thread, so listeners never see concurrent or out-of-order
+     * callbacks (they broadcast over WebSocket downstream).
+     */
+    private List<ParseResult> parseFilesParallel(List<Path> javaFiles, java.util.Set<Path> sourceRoots,
+            ProjectSymbolRegistry projectSymbols, ParseProgressListener listener,
+            int maxNodes, int maxEdges) {
+        int totalFiles = javaFiles.size();
+        ParseResult[] ordered = new ParseResult[totalFiles];
+        AtomicInteger parsed = new AtomicInteger();
+        AtomicLong parsedNodes = new AtomicLong();
+        AtomicLong parsedEdges = new AtomicLong();
+        AtomicBoolean limitExceeded = new AtomicBoolean();
+        int parallelism = Math.max(1, Math.min(totalFiles, Runtime.getRuntime().availableProcessors()));
+        ExecutorService executor = Executors.newFixedThreadPool(parallelism, r -> {
+            Thread t = new Thread(r, "vg-parser-worker");
+            t.setDaemon(true);
+            return t;
+        });
+        ThreadLocal<JavaParser> threadParser = ThreadLocal.withInitial(() -> createParser(sourceRoots));
+        log.info("Parsing {} file(s) on {} worker thread(s)", totalFiles, parallelism);
 
-        // Add source root for resolving project types
-        if (sourceRoot != null && Files.isDirectory(sourceRoot)) {
+        try {
+            List<Future<?>> tasks = new ArrayList<>(totalFiles);
+            for (int i = 0; i < totalFiles; i++) {
+                final int index = i;
+                final Path javaFile = javaFiles.get(i);
+                tasks.add(executor.submit(() -> {
+                    try {
+                        if (limitExceeded.get()) return;
+                        ParseResult result = parseFileInternal(javaFile, threadParser.get(), projectSymbols);
+                        long nodes = parsedNodes.addAndGet(size(result.getNodes()));
+                        long edges = parsedEdges.addAndGet(size(result.getEdges()));
+                        ordered[index] = result;
+                        if (nodes > maxNodes || edges > maxEdges) limitExceeded.set(true);
+                    } catch (Exception e) {
+                        log.warn("Failed to parse file: {}", javaFile, e);
+                        ordered[index] = ParseResult.builder()
+                                .filePath(javaFile.toString())
+                                .warnings(List.of("Unexpected error: " + e.getMessage()))
+                                .build();
+                    } finally {
+                        parsed.incrementAndGet();
+                    }
+                }));
+            }
+
+            // Single-threaded progress reporter: poll the shared counter until every task
+            // reports done, then drain the futures.
+            while (parsed.get() < totalFiles && !limitExceeded.get()) {
+                listener.onFileParsed(parsed.get(), totalFiles);
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (limitExceeded.get()) {
+                tasks.forEach(task -> task.cancel(true));
+                throw graphLimitExceeded(parsedNodes.get(), parsedEdges.get(), maxNodes, maxEdges);
+            }
+            listener.onFileParsed(totalFiles, totalFiles);
+
+            for (Future<?> task : tasks) {
+                try {
+                    task.get();
+                } catch (Exception e) {
+                    log.warn("Parse task failed unexpectedly: {}", e.getMessage());
+                }
+            }
+        } finally {
+            executor.shutdown();
             try {
-                typeSolver.add(new JavaParserTypeSolver(sourceRoot));
-            } catch (Exception e) {
-                log.debug("Could not add source root to type solver: {}", sourceRoot);
+                if (!executor.awaitTermination(1, TimeUnit.MINUTES)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException ie) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
         }
 
-        JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
-        ParserConfiguration config = new ParserConfiguration()
-                .setSymbolResolver(symbolSolver)
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+        return List.of(ordered);
+    }
 
-        return new JavaParser(config);
+    private int positiveLimit(int value) {
+        return value < 1 ? Integer.MAX_VALUE : value;
+    }
+
+    private int size(List<?> values) {
+        return values == null ? 0 : values.size();
+    }
+
+    private IllegalStateException graphLimitExceeded(long nodes, long edges, int maxNodes, int maxEdges) {
+        return new IllegalStateException(String.format(
+                "Project is too large to analyze: at least %d nodes / %d edges exceeds the limit of %d / %d. "
+                        + "Increase VIBEGRAPH_ANALYZE_MAX_NODES / VIBEGRAPH_ANALYZE_MAX_EDGES only if the host has the heap.",
+                nodes, edges, maxNodes, maxEdges));
     }
 
     /**
-     * Builds a parser whose type solver indexes every source root in the project.
-     * This is what enables cross-class CALLS edges to resolve - without it,
-     * the type solver can only see types in the same directory as the file being parsed.
-     *
-     * Detection strategy:
-     * 1. Look for standard layouts: src/main/java, src/test/java, src/main/kotlin (multi-module too).
-     * 2. Fallback: derive source roots from each .java file's package declaration path.
+     * B-L1: the single parser builder for both code paths. The type solver indexes exactly the
+     * given source roots — one root for the file-local fallback, every detected root for a
+     * project-wide parse (cross-class CALLS edges).
      */
-    private JavaParser createProjectParser(Path projectRoot, List<Path> javaFiles) {
+    private JavaParser createParser(java.util.Collection<Path> sourceRoots) {
         CombinedTypeSolver typeSolver = new CombinedTypeSolver();
         typeSolver.add(new ReflectionTypeSolver());
-
-        java.util.Set<Path> sourceRoots = detectSourceRoots(projectRoot, javaFiles);
         for (Path root : sourceRoots) {
+            if (root == null || !Files.isDirectory(root)) {
+                continue;
+            }
             try {
                 typeSolver.add(new JavaParserTypeSolver(root));
                 log.debug("Added type-solver source root: {}", root);
@@ -479,13 +573,10 @@ public class ParserServiceImpl implements ParserService {
                 log.debug("Could not add source root {}: {}", root, e.getMessage());
             }
         }
-        log.info("Type solver indexed {} source root(s)", sourceRoots.size());
-
         JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
         ParserConfiguration config = new ParserConfiguration()
                 .setSymbolResolver(symbolSolver)
                 .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         return new JavaParser(config);
     }
 

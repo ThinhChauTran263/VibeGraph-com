@@ -78,6 +78,25 @@ beforeEach(() => {
   getImpactMock.mockReset()
 })
 
+/**
+ * The Profile/Depth controls are ThemedSelect listboxes (the native popup
+ * cannot follow the dark theme), so choosing a value means opening the
+ * trigger button and clicking the matching option.
+ */
+async function chooseOption(
+  wrapper: ReturnType<typeof mount>,
+  triggerId: string,
+  label: string,
+): Promise<void> {
+  await wrapper.get(`#${triggerId}`).trigger('click')
+  const option = wrapper
+    .get(`#${triggerId}-listbox`)
+    .findAll('[role="option"]')
+    .find((o) => o.text() === label)
+  if (!option) throw new Error(`Option "${label}" not found in #${triggerId}-listbox`)
+  await option.trigger('click')
+}
+
 afterEach(() => {
   vi.clearAllMocks()
 })
@@ -97,12 +116,14 @@ describe('ImpactAnalysisPanel', () => {
       props: { projectId: 'p1', node: fakeNode() },
     })
     expect(wrapper.text()).toContain('OrderService')
-    const select = wrapper.get('#impact-depth')
-    const options = select.findAll('option').map((o) => o.text())
-    expect(options).toEqual(['1', '2', '3', '5'])
+    const depths = wrapper
+      .get('#impact-depth-listbox')
+      .findAll('[role="option"]')
+      .map((o) => o.text())
+    expect(depths).toEqual(['1', '2', '3', '5'])
     const profiles = wrapper
-      .get('#impact-profile')
-      .findAll('option')
+      .get('#impact-profile-listbox')
+      .findAll('[role="option"]')
       .map((o) => o.text())
     expect(profiles).toEqual(['Dependency', 'Structural', 'Type/Data-flow'])
   })
@@ -129,7 +150,7 @@ describe('ImpactAnalysisPanel', () => {
       props: { projectId: 'p1', node: fakeNode() },
     })
 
-    await wrapper.get('#impact-depth').setValue('3')
+    await chooseOption(wrapper, 'impact-depth', '3')
     await wrapper.get('form').trigger('submit.prevent')
     await nextTick()
     await nextTick()
@@ -143,7 +164,7 @@ describe('ImpactAnalysisPanel', () => {
       props: { projectId: 'p1', node: fakeNode({ type: 'Package' }) },
     })
 
-    await wrapper.get('#impact-profile').setValue('structural')
+    await chooseOption(wrapper, 'impact-profile', 'Structural')
     await wrapper.get('form').trigger('submit.prevent')
     await nextTick()
     await nextTick()
@@ -197,7 +218,7 @@ describe('ImpactAnalysisPanel', () => {
 
     // Changing depth after a result must clear it so the displayed numbers never
     // disagree with the selector; the user re-runs Analyze.
-    await wrapper.get('#impact-depth').setValue('3')
+    await chooseOption(wrapper, 'impact-depth', '3')
     await nextTick()
 
     expect(wrapper.text()).not.toContain('Will break')
@@ -215,7 +236,7 @@ describe('ImpactAnalysisPanel', () => {
     await nextTick()
     expect(wrapper.text()).toContain('Will break')
 
-    await wrapper.get('#impact-profile').setValue('structural')
+    await chooseOption(wrapper, 'impact-profile', 'Structural')
     await nextTick()
 
     expect(wrapper.text()).not.toContain('Will break')
@@ -246,7 +267,7 @@ describe('ImpactAnalysisPanel', () => {
 
     // Non-target types now default to the Structural profile; explicitly switch
     // back to Dependency to exercise the dependency empty-state explanation.
-    await wrapper.get('#impact-profile').setValue('dependency')
+    await chooseOption(wrapper, 'impact-profile', 'Dependency')
     await nextTick()
 
     await wrapper.get('form').trigger('submit.prevent')
@@ -266,18 +287,14 @@ describe('ImpactAnalysisPanel', () => {
       },
     })
     await nextTick()
-    expect((fileWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe(
-      'structural',
-    )
+    expect(fileWrapper.get('#impact-profile').text()).toContain('Structural')
 
     // Dependency-target types keep the dependency blast radius as the default.
     const classWrapper = mount(ImpactAnalysisPanel, {
       props: { projectId: 'p1', node: fakeNode({ type: 'Class' }) },
     })
     await nextTick()
-    expect((classWrapper.get('#impact-profile').element as HTMLSelectElement).value).toBe(
-      'dependency',
-    )
+    expect(classWrapper.get('#impact-profile').text()).toContain('Dependency')
   })
 
   it('frames an empty result on a supported type as a likely entrypoint', async () => {

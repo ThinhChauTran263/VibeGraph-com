@@ -5,15 +5,20 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import ImportProjectPanel from '@/components/projects/ImportProjectPanel.vue'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
 import AppIcon from '@/components/ui/AppIcon.vue'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 import { projectApi, type Project } from '@/lib/api'
 import { toAccountProject, useAccountStore } from '@/stores/account'
 import { useProjectStore } from '@/stores/project'
+import { useImportTracker } from '@/stores/importTracker'
+import { isPendingProjectId, withInFlightCards } from '@/stores/importTracker'
 import { refreshFeatureAvailability, useFeatureAvailability } from '@/lib/featureAvailability'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const route = useRoute(),
   router = useRouter(),
   projectStore = useProjectStore(),
-  accountStore = useAccountStore()
+  accountStore = useAccountStore(),
+  tracker = useImportTracker()
 const { t } = useI18n({ useScope: 'global' })
 const errorMsg = ref(''),
   showImport = ref(route.query.import === 'new'),
@@ -42,21 +47,66 @@ watch(
 )
 
 async function loadProjects() {
+  // Render the cached list immediately, but ALWAYS reconcile with the server on
+  // every visit: imports accepted in the background (archive/GitHub 202), CLI
+  // pushes, or changes made in another tab would otherwise stay invisible
+  // until a full page reload.
   if (projectStore.projectsLoaded) {
     syncAccountProjects(projectStore.projects)
-    return
+    trackAnalyzing(projectStore.projects)
   }
   await refreshProjects()
 }
 async function refreshProjects() {
   try {
-    projectStore.projects = await projectApi.list()
+    const serverList = await projectApi.list()
+    // The server does not know the provisional pre-202 cards yet; keep them in
+    // front of the fresh list so a silent reconcile (KeepAlive re-activation,
+    // section switch) never blanks an import that is still starting up.
+    projectStore.projects = withInFlightCards(serverList, projectStore.projects, (id) =>
+      Boolean(tracker.get(id)),
+    )
     projectStore.projectsLoaded = true
     syncAccountProjects(projectStore.projects)
+    trackAnalyzing(projectStore.projects)
     errorMsg.value = ''
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : t('user.projects.loadFallback')
+    // Keep the cached list usable; only surface the error when there is nothing to show.
+    if (projectStore.projectsLoaded) {
+      trackAnalyzing(projectStore.projects)
+    } else {
+      errorMsg.value = e instanceof Error ? e.message : t('user.projects.loadFallback')
+    }
   }
+}
+/** Resume live tracking for imports still analyzing (e.g. after a page reload). */
+function trackAnalyzing(list: Project[]) {
+  for (const project of list) tracker.track(project)
+}
+function isAnalyzing(project: Project): boolean {
+  return project.status === 'ANALYZING' || tracker.isActive(project.id)
+}
+function liveProgress(project: Project): number {
+  const live = tracker.get(project.id)
+  return Math.min(100, Math.max(0, Math.round(live?.progress ?? project.progress ?? 0)))
+}
+function liveMessage(project: Project): string {
+  return tracker.get(project.id)?.message ?? t('user.projects.analyzingDefault')
+}
+/** Failure reason rendered on the card's live line when the import failed. */
+function liveError(project: Project): string | null {
+  if (project.status !== 'FAILED') return null
+  return tracker.get(project.id)?.message ?? t('user.projects.failedDefault')
+}
+/** Provisional pre-202 cards have no server row: dismiss them locally instead of a delete call. */
+function requestDelete(project: Project) {
+  if (isPendingProjectId(project.id)) {
+    projectStore.projects = projectStore.projects.filter((item) => item.id !== project.id)
+    syncAccountProjects(projectStore.projects)
+    tracker.forget(project.id)
+    return
+  }
+  deleteTarget.value = project
 }
 function open(project: Project) {
   projectStore.currentProjectId = project.id
@@ -71,7 +121,9 @@ function imported(project: Project) {
   ]
   projectStore.projectsLoaded = true
   syncAccountProjects(projectStore.projects)
-  open(project)
+  // A newly created CLI repository has no graph data until the first push.
+  // Return to the repository list so the user can copy commands and push source.
+  void router.replace({ name: 'projects' })
 }
 async function confirmDelete() {
   if (!deleteTarget.value) return
@@ -121,6 +173,10 @@ onMounted(() => {
   void loadProjects()
   void refreshFeatureAvailability().catch(() => undefined)
 })
+
+// Kept alive by UserLayout: background reconcile on re-activation so imports
+// finished elsewhere show up without a reload flash.
+useSilentRefresh(() => refreshProjects())
 </script>
 
 <template>
@@ -169,14 +225,54 @@ onMounted(() => {
         <div class="repo-card__top">
           <div class="repo-card__identity">
             <h2>{{ project.name }}</h2>
-            <code>{{ project.id.slice(0, 8) }}</code>
+            <div class="repo-card__meta">
+              <code v-if="!isPendingProjectId(project.id)">{{ project.id.slice(0, 8) }}</code>
+              <span
+                v-if="project.sourceBranch"
+                class="repo-card__source"
+                :title="t('user.projects.sourceBranchTitle')"
+              >
+                <AppIcon name="branch" :size="14" />
+                <span class="repo-card__source-text">{{ project.sourceBranch }}</span>
+              </span>
+              <span
+                v-if="project.sourceRef"
+                class="repo-card__source"
+                :title="t('user.projects.sourceCommitTitle')"
+              >
+                <AppIcon name="commit" :size="14" />
+                <!-- 7-char short SHA, matching GitHub's abbreviated commit display. -->
+                <code class="repo-card__source-text">{{ project.sourceRef.slice(0, 7) }}</code>
+              </span>
+            </div>
           </div>
-          <span class="status">
+          <LogoSpinner v-if="isAnalyzing(project)" class="repo-card__spinner" :size="34" />
+          <span v-else class="status">
             <i :class="`is-${(project.status ?? 'ready').toLowerCase()}`"></i>
             {{ project.status ?? t('user.projects.ready') }}
           </span>
         </div>
-        <dl>
+        <div v-if="isAnalyzing(project)" class="repo-card__live">
+          <div
+            class="repo-card__live-track"
+            role="progressbar"
+            :aria-valuenow="liveProgress(project)"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div
+              class="repo-card__live-fill"
+              :style="{ width: `${liveProgress(project)}%` }"
+            ></div>
+          </div>
+          <p class="repo-card__live-message">{{ liveMessage(project) }}</p>
+        </div>
+        <div v-else-if="liveError(project)" class="repo-card__live" role="alert">
+          <p class="repo-card__live-message repo-card__live-message--error">
+            {{ liveError(project) }}
+          </p>
+        </div>
+        <dl v-else>
           <div>
             <dt>{{ t('user.projects.files') }}</dt>
             <dd>{{ project.totalFiles }}</dd>
@@ -194,16 +290,19 @@ onMounted(() => {
           <button
             class="explore"
             type="button"
+            :disabled="isAnalyzing(project)"
             :data-test="`open-project-${project.id}`"
             @click="open(project)"
           >
-            <AppIcon name="graph" :size="17" />{{ t('user.projects.exploreGraph') }}
+            <AppIcon name="graph" :size="17" />{{
+              isAnalyzing(project) ? t('user.projects.analyzing') : t('user.projects.exploreGraph')
+            }}
           </button>
           <button
             class="icon-button danger"
             type="button"
             :aria-label="t('user.projects.deleteAria', { name: project.name })"
-            @click="deleteTarget = project"
+            @click="requestDelete(project)"
           >
             <AppIcon name="trash" :size="17" />
           </button>
@@ -244,6 +343,7 @@ onMounted(() => {
             github: github.enabled ? null : github.reason,
           }"
           @imported="imported"
+          @backgrounded="showImport = false"
         />
       </section>
     </div>
@@ -416,6 +516,31 @@ button {
   grid-template-rows: 20px 16px;
   align-items: center;
 }
+/* Second identity row: project id plus, for GitHub imports, the imported
+   branch and commit so owners recognize where the sources came from. */
+.repo-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.repo-card__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
+}
+.repo-card__source svg {
+  flex-shrink: 0;
+}
+.repo-card__source-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .status {
   display: inline-flex;
   align-items: center;
@@ -443,6 +568,64 @@ button {
 }
 .status i.is-failed {
   background: var(--vg-danger);
+}
+.repo-card__spinner {
+  align-self: start;
+}
+/* Same vertical footprint as the stats <dl> it replaces while analyzing, so
+   the Analyzing action lines up with Explore Graph on neighboring cards. */
+.repo-card__live {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-block: var(--vg-space-2);
+  border-block: 1px solid var(--vg-border);
+}
+.repo-card__live-track {
+  height: 6px;
+  border-radius: var(--vg-radius-pill);
+  background: rgba(7, 11, 22, 0.6);
+  border: 1px solid var(--vg-border);
+  overflow: hidden;
+}
+.repo-card__live-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  background-size: 200% 100%;
+  animation: live-shimmer 1.6s linear infinite;
+  transition: width 400ms ease-out;
+}
+@keyframes live-shimmer {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.repo-card__live-message {
+  margin: 0;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
+  line-height: 1rem;
+  font-family: var(--vg-font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-card__live-message--error {
+  color: #fca5a5;
+}
+.explore:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .repo-card__live-fill {
+    animation: none;
+    transition: none;
+  }
 }
 .icon-button {
   width: 36px;

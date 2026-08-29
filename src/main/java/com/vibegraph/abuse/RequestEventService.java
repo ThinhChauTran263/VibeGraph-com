@@ -355,14 +355,41 @@ public class RequestEventService {
         if (freshQueue.offer(event)) {
             return;
         }
-        // Queue full: shed the oldest event so live traffic keeps the freshest picture.
-        PendingRequestEvent evicted = freshQueue.poll();
+        // Queue full (B-L8): shed the OLDEST NON-SECURITY event first. Security events feed the
+        // admin security monitor, and their silent loss is exactly what the H17 alerting fights;
+        // regular telemetry is the cheaper casualty. Trade-off, measured by the two drop
+        // counters: under sustained pressure non-security events are dropped more often.
+        // Only when the queue holds nothing but security events do we fall back to evicting
+        // the oldest of those.
+        PendingRequestEvent evicted = null;
+        java.util.Iterator<PendingRequestEvent> iterator = freshQueue.iterator();
+        while (iterator.hasNext()) {
+            PendingRequestEvent candidate = iterator.next();
+            if (candidate.securityEvent() == null) {
+                evicted = candidate;
+                iterator.remove();
+                break;
+            }
+        }
+        if (evicted == null) {
+            evicted = freshQueue.poll();
+        }
         if (evicted != null) {
             countDrop(evicted);
         }
         if (!freshQueue.offer(event)) {
             countDrop(event);
         }
+    }
+
+    /** Test seam: whether at least one queued event carries a security event. */
+    boolean hasQueuedSecurityEvent() {
+        for (PendingRequestEvent pending : freshQueue) {
+            if (pending.securityEvent() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void countDrop(PendingRequestEvent event) {

@@ -1,6 +1,7 @@
 package com.vibegraph.graph.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,7 @@ import com.vibegraph.graph.service.GraphService;
 import com.vibegraph.graph.service.impl.GraphArchitectureProjector;
 import com.vibegraph.graph.service.impl.GraphPayloadGuard;
 import com.vibegraph.graph.service.impl.GraphResponseFilter;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,12 +36,20 @@ public class GraphController {
     private final GraphPayloadGuard payloadGuard;
     private final GraphPayloadProperties payloadProperties;
     private final ProjectOwnershipGuard ownershipGuard;
+    private OperationTelemetryRecorder telemetryRecorder;
+
+    @Autowired(required = false)
+    void setTelemetryRecorder(OperationTelemetryRecorder telemetryRecorder) {
+        this.telemetryRecorder = telemetryRecorder;
+    }
 
     /**
-     * Full project graph. By default the HTTP payload is uncapped; deployments can configure
-     * positive defaults, and callers can request positive {@code nodeLimit}/{@code edgeLimit}
-     * values clamped to the configured server maximums. A non-positive explicit limit disables
-     * that cap. The response carries {@code meta} describing any truncation.
+     * Full project graph. The HTTP payload is capped by the configured server defaults
+     * ({@code vibegraph.graph.node-limit}/{@code edge-limit}, B-M10); callers can request
+     * positive {@code nodeLimit}/{@code edgeLimit} values clamped to the configured server
+     * maximums. A non-positive explicit limit falls back to the server default instead of
+     * disabling the cap, so a {@code nodeLimit=0} request can no longer bypass it.
+     * The response carries {@code meta} describing any truncation.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<GraphDataResponse>> getFullGraph(
@@ -55,34 +65,45 @@ public class GraphController {
             @RequestParam(required = false) java.util.List<String> edgeTypes,
             @RequestParam(required = false) Integer maxDepth) {
         ownershipGuard.assertOwner(projectId);
-        int effectiveNodeLimit = clamp(nodeLimit, payloadProperties.getNodeLimit(),
-                payloadProperties.getMaxNodeLimit());
-        int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
-                payloadProperties.getMaxEdgeLimit());
-        GraphDataResponse full = graphService.getFullGraph(projectId);
-        GraphDataResponse view = selectView(full, mode, includeDeep);
-        GraphDataResponse filtered = graphResponseFilter.apply(view, GraphFilterRequest.builder()
-                .packagePath(packagePath)
-                .packageFilter(packageFilter)
-                .includeTypes(includeTypes)
-                .nodeTypes(nodeTypes)
-                .edgeTypes(edgeTypes)
-                .maxDepth(maxDepth)
-                .build());
-        GraphDataResponse capped = payloadGuard.cap(filtered, effectiveNodeLimit, effectiveEdgeLimit);
-        return ResponseEntity.ok(ApiResponse.success(capped));
+        OperationTelemetryRecorder.OperationToken token = telemetryRecorder == null ? null
+                : telemetryRecorder.begin("API", "graph", projectId, null);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            int effectiveNodeLimit = clamp(nodeLimit, payloadProperties.getNodeLimit(),
+                    payloadProperties.getMaxNodeLimit());
+            int effectiveEdgeLimit = clamp(edgeLimit, payloadProperties.getEdgeLimit(),
+                    payloadProperties.getMaxEdgeLimit());
+            GraphDataResponse full = graphService.getFullGraph(projectId);
+            GraphDataResponse view = selectView(full, mode, includeDeep);
+            GraphDataResponse filtered = graphResponseFilter.apply(view, GraphFilterRequest.builder()
+                    .packagePath(packagePath)
+                    .packageFilter(packageFilter)
+                    .includeTypes(includeTypes)
+                    .nodeTypes(nodeTypes)
+                    .edgeTypes(edgeTypes)
+                    .maxDepth(maxDepth)
+                    .build());
+            GraphDataResponse capped = payloadGuard.cap(filtered, effectiveNodeLimit, effectiveEdgeLimit);
+            if (telemetryRecorder != null) {
+                telemetryRecorder.complete(token, capped.getNodes() == null ? 0 : capped.getNodes().size(),
+                        capped.getEdges() == null ? 0 : capped.getEdges().size(), 0);
+            }
+            return ResponseEntity.ok(ApiResponse.success(capped));
+        } catch (RuntimeException | Error ex) {
+            if (telemetryRecorder != null) telemetryRecorder.fail(token, ex);
+            throw ex;
+        }
     }
 
     /**
-     * Clamp a requested positive limit to {@code [1, max]}, falling back to {@code defaultValue}
-     * when the caller did not request one. A non-positive request disables the cap.
+     * Clamp a requested positive limit to {@code [1, max]}. An absent OR non-positive request
+     * falls back to the configured default cap (B-M10): {@code nodeLimit=0} used to mean
+     * "uncapped", which let any client bypass the safety rail — the default cap now always
+     * applies on the HTTP boundary.
      */
     private int clamp(Integer requested, int defaultValue, int max) {
-        if (requested == null) {
+        if (requested == null || requested <= 0) {
             return defaultValue <= 0 ? 0 : Math.min(defaultValue, max);
-        }
-        if (requested <= 0) {
-            return 0;
         }
         return Math.min(requested, max);
     }

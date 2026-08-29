@@ -96,7 +96,10 @@ public class FileChangeBroadcaster {
             Path absolutePath = root.resolve(event.relativePath()).normalize();
             String storedPath = absolutePath.toString();
 
-            GraphDataResponse before = graphRepository.getFullGraph(projectId);
+            // B-M5: diff on this file's slice (its nodes + touching edges) instead of two
+            // full-graph snapshots per save — the change cannot affect anything outside the
+            // slice, and inbound edges from other files stay observable for removals.
+            GraphDataResponse before = graphRepository.getFileSlice(projectId, storedPath);
 
             // Replace just this file's slice: prune its previous nodes/edges, then (for add/edit)
             // re-parse the single file and upsert. No other file is touched or re-analyzed.
@@ -107,7 +110,7 @@ public class FileChangeBroadcaster {
                 graphRepository.upsertEdges(projectId, parsed.getEdges());
             }
 
-            GraphDataResponse after = graphRepository.getFullGraph(projectId);
+            GraphDataResponse after = graphRepository.getFileSlice(projectId, storedPath);
 
             GraphChangeSet added = computeUpserts(before, after, storedPath);
             GraphRemoval removed = computeRemovals(before, after);

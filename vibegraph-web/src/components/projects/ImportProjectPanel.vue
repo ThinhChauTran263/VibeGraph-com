@@ -14,6 +14,7 @@ import type { Project } from '@/lib/api'
 import AddProjectArchive from '@/components/projects/AddProjectArchive.vue'
 import AddProjectCli from '@/components/projects/AddProjectCli.vue'
 import GitHubImportForm from '@/components/projects/GitHubImportForm.vue'
+import AppIcon from '@/components/ui/AppIcon.vue'
 
 type Method = 'cli' | 'archive' | 'github'
 
@@ -27,6 +28,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   imported: [project: Project]
+  /** User dismissed the dialog; in-flight imports keep running in background. */
+  backgrounded: []
 }>()
 
 interface MethodTab {
@@ -44,8 +47,8 @@ const tabs = computed<MethodTab[]>(() => [
     label: t('user.projects.cliPush'),
     short: t('user.projects.cliShort'),
     description: t('user.projects.cliDescription'),
-    accent: 'var(--vg-blue-bright)',
-    accentSoft: 'rgba(96, 165, 250, 0.16)',
+    accent: 'var(--vg-cyan)',
+    accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
   {
     id: 'archive',
@@ -60,15 +63,17 @@ const tabs = computed<MethodTab[]>(() => [
     label: 'GitHub',
     short: 'GitHub',
     description: t('user.projects.githubDescription'),
-    accent: 'var(--vg-violet)',
-    accentSoft: 'rgba(167, 139, 250, 0.16)',
+    accent: 'var(--vg-cyan)',
+    accentSoft: 'rgba(34, 211, 238, 0.16)',
   },
 ])
 
 const enabledTabs = computed(() => tabs.value.filter((tab) => !props.disabledMethods[tab.id]))
 const hasEnabledMethod = computed(() => enabledTabs.value.length > 0)
 const active = ref<Method>(enabledTabs.value[0]?.id ?? 'cli')
-const activeTab = computed<MethodTab>(() => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!)
+const activeTab = computed<MethodTab>(
+  () => tabs.value.find((tab) => tab.id === active.value) ?? tabs.value[0]!,
+)
 
 watch(
   () => props.disabledMethods,
@@ -88,17 +93,12 @@ function selectMethod(method: Method): void {
   if (!props.disabledMethods[method]) active.value = method
 }
 
-// Each method gets a distinct icon so the segmented control reads at a glance.
-function iconPath(id: Method): string {
-  switch (id) {
-    case 'cli':
-      return 'M4 5h16v14H4z M8 9l3 3-3 3 M13 15h4'
-    case 'archive':
-      return 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10'
-    case 'github':
-    default:
-      return 'M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21'
-  }
+// F-L4: each method gets a distinct icon so the segmented control reads at a
+// glance; the SVG paths themselves live in the shared AppIcon registry.
+const ICON_NAMES: Record<Method, string> = {
+  cli: 'terminal',
+  archive: 'package',
+  github: 'github',
 }
 </script>
 
@@ -110,7 +110,9 @@ function iconPath(id: Method): string {
   >
     <header class="import-panel__head">
       <div class="import-panel__title-row">
-        <h2 id="import-panel-heading" class="import-panel__title">{{ t('user.projects.importDialogTitle') }}</h2>
+        <h2 id="import-panel-heading" class="import-panel__title">
+          {{ t('user.projects.importDialogTitle') }}
+        </h2>
         <span class="import-panel__badge">Java</span>
       </div>
       <p class="import-panel__desc">
@@ -135,20 +137,7 @@ function iconPath(id: Method): string {
         :data-test="`import-tab-${tab.id}`"
         @click="selectMethod(tab.id)"
       >
-        <svg
-          class="import-panel__tab-icon"
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path :d="iconPath(tab.id)" />
-        </svg>
+        <AppIcon class="import-panel__tab-icon" :name="ICON_NAMES[tab.id]" :size="18" />
         <span class="import-panel__tab-label">{{ tab.label }}</span>
         <span class="import-panel__tab-label-short" aria-hidden="true">{{ tab.short }}</span>
       </button>
@@ -167,8 +156,15 @@ function iconPath(id: Method): string {
           :async="true"
           embedded
           @imported="onImported"
+          @backgrounded="emit('backgrounded')"
         />
-        <GitHubImportForm v-else key="github" embedded @imported="onImported" />
+        <GitHubImportForm
+          v-else
+          key="github"
+          embedded
+          @imported="onImported"
+          @backgrounded="emit('backgrounded')"
+        />
       </Transition>
     </div>
   </section>
@@ -176,8 +172,8 @@ function iconPath(id: Method): string {
 
 <style scoped>
 .import-panel {
-  --accent: var(--vg-blue-bright);
-  --accent-soft: rgba(96, 165, 250, 0.16);
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -273,7 +269,7 @@ function iconPath(id: Method): string {
   align-items: center;
   justify-content: flex-start;
   gap: 0.5rem;
-  min-height: 38px;
+  min-height: 2.75rem;
   font: inherit;
   font-weight: 600;
   font-size: var(--vg-text-sm);
@@ -290,6 +286,11 @@ function iconPath(id: Method): string {
     color var(--vg-dur-fast) var(--vg-ease-out),
     border-color var(--vg-dur-fast) var(--vg-ease-out),
     box-shadow var(--vg-dur) var(--vg-ease-out);
+}
+
+.import-panel__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .import-panel__tab:hover:not(:disabled) {

@@ -36,7 +36,7 @@ class JwtServiceTest {
                 .role(Role.ADMIN)
                 .build();
 
-        String token = jwtService.issue(user);
+        String token = jwtService.issue(user, null);
 
         Jws<Claims> verified = Jwts.parser()
                 .verifyWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
@@ -73,7 +73,7 @@ class JwtServiceTest {
                 .email("user@test.local")
                 .role(Role.USER)
                 .build();
-        String token = jwtService.issue(user);
+        String token = jwtService.issue(user, null);
 
         assertThatThrownBy(() -> jwtService.parse(tamper(token)))
                 .isInstanceOf(JwtException.class);

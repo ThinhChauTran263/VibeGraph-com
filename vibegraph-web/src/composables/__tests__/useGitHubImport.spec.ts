@@ -145,10 +145,65 @@ describe('useGitHubImport', () => {
 
     expect(importGithubMock).toHaveBeenCalledWith(
       'https://github.com/spring-projects/spring-petclinic',
+      undefined,
     )
     expect(result).toEqual(project)
     expect(composable.status.value).toBe('success')
     expect(composable.importedProject.value).toEqual(project)
+  })
+
+  it('forwards the selected branch to the API', async () => {
+    const project = fakeProject({ id: 'gh-2b', status: 'ANALYZED' })
+    importGithubMock.mockResolvedValueOnce(project)
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo', ' develop ')
+
+    expect(importGithubMock).toHaveBeenCalledWith('https://github.com/owner/repo', 'develop')
+    expect(result).toEqual(project)
+  })
+
+  it('rejects an invalid branch name without calling the API', async () => {
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo', 'feature..x')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toMatch(/branch/i)
+    expect(importGithubMock).not.toHaveBeenCalled()
+  })
+
+  it('fires onSubmitted when the request goes out and onAccepted on a 202', async () => {
+    const analyzingProject = fakeProject({ id: 'gh-hook', status: 'ANALYZING' })
+    const analyzedProject = fakeProject({ id: 'gh-hook', status: 'ANALYZED' })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockResolvedValueOnce(analyzedProject)
+    const onSubmitted = vi.fn()
+    const onAccepted = vi.fn()
+    const onRejected = vi.fn()
+    const { ws } = makeFakeWs({ connectRejects: true })
+    const composable = useGitHubImport({ ws, onSubmitted, onAccepted, onRejected })
+
+    await composable.importGithub('https://github.com/owner/repo', 'main')
+
+    expect(onSubmitted).toHaveBeenCalledWith('https://github.com/owner/repo', 'main')
+    expect(onAccepted).toHaveBeenCalledTimes(1)
+    expect(onRejected).not.toHaveBeenCalled()
+  })
+
+  it('fires onRejected with the user-facing message when the request fails', async () => {
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', 'Private GitHub repositories are not supported'),
+    )
+    const onSubmitted = vi.fn()
+    const onRejected = vi.fn()
+    const composable = useGitHubImport({ onSubmitted, onRejected })
+
+    await composable.importGithub('https://github.com/owner/private')
+
+    expect(onSubmitted).toHaveBeenCalled()
+    expect(onRejected).toHaveBeenCalledWith('Private GitHub repositories are not supported')
   })
 
   it('waits for an async import to finish before exposing success', async () => {
@@ -296,6 +351,88 @@ describe('useGitHubImport', () => {
     expect(result).toBeNull()
     expect(composable.status.value).toBe('error')
     expect(composable.errorMessage.value).toBe('Repository is private.')
+  })
+
+  it('shows the bounded retry failure returned by the backend', async () => {
+    const retryMessage =
+      'Failed to download GitHub tarball after 3 attempts: HTTP connect timed out'
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', retryMessage),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/large-repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(retryMessage)
+  })
+
+  it('names the real reason when a non-Java repository has no .java files', async () => {
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(400, 'Bad Request', 'Archive contains no .java files', 'ARCHIVE_EMPTY_ARCHIVE'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/js-project')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(
+      'This repository contains no .java files. VibeGraph currently analyzes Java projects only.',
+    )
+  })
+
+  it('surfaces curated 422 reasons verbatim instead of the generic fallback', async () => {
+    const quotaMessage =
+      "GitHub repository is larger than the server's maximum import size (100MB)"
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(422, 'Unprocessable Entity', quotaMessage, 'GITHUB_IMPORT_ERROR'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/huge-repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(quotaMessage)
+  })
+
+  it('surfaces the curated SERVICE_BUSY reason instead of the generic fallback', async () => {
+    const busyMessage = 'Server is busy analyzing other projects. Please retry shortly.'
+    importGithubMock.mockRejectedValueOnce(
+      new ApiError(503, 'Service Unavailable', busyMessage, 'SERVICE_BUSY'),
+    )
+    const composable = useGitHubImport()
+
+    const result = await composable.importGithub('https://github.com/owner/repo')
+
+    expect(result).toBeNull()
+    expect(composable.status.value).toBe('error')
+    expect(composable.errorMessage.value).toBe(busyMessage)
+  })
+
+  it('reports an accurate message when background analysis fails', async () => {
+    vi.useFakeTimers()
+    const analyzingProject = fakeProject({ id: 'gh-fail', status: 'ANALYZING' })
+    const failedProject = fakeProject({ id: 'gh-fail', status: 'FAILED' })
+    importGithubMock.mockResolvedValueOnce(analyzingProject)
+    getProjectMock.mockResolvedValueOnce(failedProject)
+    const { ws } = makeFakeWs({ connectRejects: true })
+    const composable = useGitHubImport({ ws })
+
+    try {
+      const resultPromise = composable.importGithub('https://github.com/owner/broken')
+      await vi.advanceTimersByTimeAsync(1_000)
+      const result = await resultPromise
+
+      expect(result).toBeNull()
+      expect(composable.status.value).toBe('error')
+      expect(composable.errorMessage.value).toMatch(/analysis failed/i)
+      expect(composable.errorMessage.value).not.toMatch(/verify the repository is public/i)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses a generic message for unexpected API errors', async () => {

@@ -15,6 +15,7 @@ import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.TarballImportService;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 import jakarta.validation.Valid;
 
@@ -31,11 +32,17 @@ public class ImportController {
 
     private final TarballImportService tarballImportService;
     private final ArchiveImportService archiveImportService;
+    private OperationTelemetryRecorder telemetryRecorder;
 
     public ImportController(TarballImportService tarballImportService,
                             ArchiveImportService archiveImportService) {
         this.tarballImportService = tarballImportService;
         this.archiveImportService = archiveImportService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTelemetryRecorder(OperationTelemetryRecorder telemetryRecorder) {
+        this.telemetryRecorder = telemetryRecorder;
     }
 
     /**
@@ -55,24 +62,54 @@ public class ImportController {
             @RequestParam("name") String name,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "async", defaultValue = "false") boolean async) {
-        if (async) {
-            // Archive is extracted + project registered synchronously (archive errors still 400);
-            // only analysis is backgrounded. Record ownership before the 202 so the accepted
-            // project always has an owner row.
-            ProjectResponse accepted = archiveImportService.importArchiveAsync(name, file);
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(accepted));
+        OperationTelemetryRecorder.OperationToken token = begin("archive-import", name);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            if (async) {
+                // Archive is extracted + project registered synchronously (archive errors still 400);
+                // only analysis is backgrounded. Record ownership before the 202 so the accepted
+                // project always has an owner row.
+                ProjectResponse accepted = archiveImportService.importArchiveAsync(name, file, token);
+                return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(accepted));
+            }
+            ProjectResponse response = archiveImportService.importArchive(name, file);
+            complete(token, response);
+            return ResponseEntity.ok(ApiResponse.success(response));
+        } catch (RuntimeException | Error ex) {
+            fail(token, ex);
+            throw ex;
         }
-        ProjectResponse response = archiveImportService.importArchive(name, file);
-        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PostMapping("/import-github")
     public ResponseEntity<ApiResponse<ProjectResponse>> importGithub(
             @Valid @RequestBody GithubImportRequest request) {
-        ProjectResponse response = tarballImportService.importFromGithub(request);
-        // Record ownership synchronously before the 202 so no imported project lacks an owner row.
-        return ResponseEntity
-                .status(HttpStatus.ACCEPTED)
-                .body(ApiResponse.success(response));
+        OperationTelemetryRecorder.OperationToken token = begin("github-import", null);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            ProjectResponse response = tarballImportService.importFromGithub(request, token);
+            // Record ownership synchronously before the 202 so no imported project lacks an owner row.
+            return ResponseEntity
+                    .status(HttpStatus.ACCEPTED)
+                    .body(ApiResponse.success(response));
+        } catch (RuntimeException | Error ex) {
+            fail(token, ex);
+            throw ex;
+        }
+    }
+
+    private OperationTelemetryRecorder.OperationToken begin(String operation, String projectName) {
+        return telemetryRecorder == null ? null : telemetryRecorder.begin("IMPORT", operation, null, projectName);
+    }
+
+    private void complete(OperationTelemetryRecorder.OperationToken token, ProjectResponse response) {
+        if (telemetryRecorder != null && response != null) {
+            telemetryRecorder.complete(token, response.getTotalNodes(), response.getTotalEdges(),
+                    response.getStoredBytes() == null ? 0 : response.getStoredBytes());
+        }
+    }
+
+    private void fail(OperationTelemetryRecorder.OperationToken token, Throwable error) {
+        if (telemetryRecorder != null) telemetryRecorder.fail(token, error);
     }
 }

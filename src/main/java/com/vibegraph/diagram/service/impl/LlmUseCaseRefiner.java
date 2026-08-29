@@ -3,14 +3,16 @@ package com.vibegraph.diagram.service.impl;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.vibegraph.ai.ResilientChatClient;
 import com.vibegraph.diagram.dto.response.UmlUseCaseResponse.UseCaseElement;
 
@@ -68,7 +70,11 @@ public class LlmUseCaseRefiner implements UseCaseSemanticRefiner {
     private final ObjectMapper objectMapper;
     // Cache the LLM decision (raw response) keyed by a hash of the fact input, so an unchanged graph
     // never pays the LLM latency twice (R5.3). Only successful responses are cached; failures retry.
-    private final Map<String, String> responseCache = new ConcurrentHashMap<>();
+    // B-M6: bounded + TTL (was an unbounded ConcurrentHashMap growing heap without limit).
+    private final Cache<String, String> responseCache = Caffeine.newBuilder()
+            .maximumSize(1_000)
+            .expireAfterWrite(Duration.ofMinutes(30))
+            .build();
 
     public LlmUseCaseRefiner(ResilientChatClient chatClient, ObjectMapper objectMapper) {
         this.chatClient = chatClient;
@@ -89,7 +95,7 @@ public class LlmUseCaseRefiner implements UseCaseSemanticRefiner {
         }
         // Cache by input hash: an unchanged set of goals reuses the prior LLM decision (no second call).
         String cacheKey = sha256(facts);
-        String cached = responseCache.get(cacheKey);
+        String cached = responseCache.getIfPresent(cacheKey);
         if (cached != null) {
             log.debug("LLM use-case refiner cache HIT; reusing prior relabels.");
             return applyRelabels(useCases, cached);

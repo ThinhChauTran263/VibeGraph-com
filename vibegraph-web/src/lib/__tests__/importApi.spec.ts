@@ -82,6 +82,17 @@ describe('importApi.importGithub', () => {
     expect(init.body).toBe(JSON.stringify({ url: 'https://github.com/owner/repo' }))
   })
 
+  it('includes the selected branch in the JSON payload when provided', async () => {
+    fetchMock.mockResolvedValueOnce(okJson({ id: 'gh-1', status: 'ANALYZING' }))
+
+    await importApi.importGithub('https://github.com/owner/repo', 'develop')
+
+    const init = fetchMock.mock.calls[0]![1]!
+    expect(init.body).toBe(
+      JSON.stringify({ url: 'https://github.com/owner/repo', branch: 'develop' }),
+    )
+  })
+
   it('throws ApiError with the safe backend GitHub import message', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
@@ -109,7 +120,7 @@ describe('importApi.createCliRepository', () => {
     fetchMock.mockResolvedValueOnce(okJson({
       project: { id: 'cli-1', name: 'CLI Repo', status: 'CREATED' },
       apiKey: { id: 'key-1', secretKey: 'vbg_secret' },
-      commands: ['vibegraph login vbg_secret', 'vibegraph push', 'vibegraph watch'],
+      commands: ['vibegraph login', 'vibegraph push', 'vibegraph watch'],
     }))
 
     await importApi.createCliRepository('  CLI Repo  ')

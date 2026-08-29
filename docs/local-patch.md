@@ -54,19 +54,20 @@ vibegraph help
 
 ```bash
 vibegraph config set-url http://localhost:8080
-vibegraph auth set-key vbg_...
+vibegraph login
+vibegraph key status
 ```
 
-Create the key in the VibeGraph web app:
+The browser flow verifies your account and lets you choose an active project key:
 
 1. Open the repository/project in your user console.
-2. Create an API key for that repository.
-3. Copy the key once and store it with `vibegraph auth set-key`.
+2. Sign in when the browser opens.
+3. Select the project key to use for this local folder.
 
 Verify the local configuration without revealing the full key:
 
 ```bash
-vibegraph auth status
+vibegraph key status
 vibegraph config show
 vibegraph doctor
 ```
@@ -131,15 +132,15 @@ Output:
 }
 ```
 
-The web-created API key is already bound to this project, so root-only push/watch commands do not
-need the project ID. Keep the ID only for legacy project-management commands.
+The web-created API key is already bound to this project, so run push/watch from the local project
+folder without a project ID or `--root`. Keep the ID only for legacy project-management commands.
 
 ## 6. Push a patch
 
 Edit the file on your host (in your IDE or editor), then push:
 
 ```bash
-vibegraph push --root ./projects/demo
+vibegraph push
 ```
 
 Output:
@@ -151,13 +152,7 @@ Pushed patch: 1 changed, 0 deleted
 Preview without sending:
 
 ```bash
-vibegraph push --root ./projects/demo --dry-run
-```
-
-Legacy compatibility form:
-
-```bash
-vibegraph projects push <projectId> --root ./projects/demo
+vibegraph push --dry-run
 ```
 
 ## 7. Re-analyze
@@ -185,7 +180,7 @@ Output:
 Auto-push on every file save:
 
 ```bash
-vibegraph watch --root ./projects/demo
+vibegraph watch
 ```
 
 The watcher detects changes, pushes patches, and prints timestamps:
@@ -229,7 +224,7 @@ These rules apply at **any depth** — `secrets/prod.pem` and `config/.env.local
 Create a `.vibegraphignore` in your project root:
 
 ```bash
-vibegraph ignore init --root ./projects/demo
+vibegraph ignore init
 ```
 
 Edit `.vibegraphignore` to add project-specific patterns (same syntax as `.gitignore` basics).
@@ -258,10 +253,9 @@ The backend independently enforces:
 |---------|------|
 | Host (your machine) | `./projects/demo/src/main/java/...` |
 | Backend container | `/projects/demo/src/main/java/...` |
-| CLI `--root` flag | `./projects/demo` (host-relative) |
 | CLI `import-local --path` | `/projects/demo` (container-visible) |
 
-The `--root` flag always uses the **host** path (where your files are). The `--path` for `import-local` uses the **container** path (how the backend sees it).
+Run `vibegraph push`, `vibegraph watch`, and `vibegraph ignore init` from the project folder on the host. The `--path` for `import-local` uses the **container** path (how the backend sees it).
 
 ## Full command reference
 
@@ -269,9 +263,11 @@ The `--root` flag always uses the **host** path (where your files are). The `--p
 vibegraph help
 vibegraph config show
 vibegraph config set-url <url>
-vibegraph auth set-key <apiKey>
-vibegraph auth status
-vibegraph auth clear
+vibegraph login
+vibegraph key list
+vibegraph key change
+vibegraph key status
+vibegraph key clear
 vibegraph register --email <e> --password <p> --name <n>
 vibegraph login --email <e> --password <p>
 vibegraph logout
@@ -279,12 +275,11 @@ vibegraph me
 vibegraph doctor
 vibegraph projects list
 vibegraph projects import-local --path <containerPath> --name <name>
-vibegraph push --root <hostPath> [--dry-run]
-vibegraph projects push <projectId> --root <hostPath> [--dry-run]
+vibegraph push
+vibegraph push --dry-run
 vibegraph projects analyze <projectId>
 vibegraph projects status <projectId>
 vibegraph projects delete <projectId>
-vibegraph watch --root <hostPath>
-vibegraph watch <projectId> --root <hostPath>
-vibegraph ignore init [--root <path>]
+vibegraph watch
+vibegraph ignore init
 ```

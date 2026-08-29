@@ -183,15 +183,16 @@ describe('DiagramPanel', () => {
     const wrapper = mount(DiagramPanel, { props: { projectId: 'p1' } })
     await flushAsync()
 
-    const select = wrapper.get('[data-test="diagram-view-select"]')
+    const select = wrapper.get('#diagram-view-select')
     // Full diagram + the two projections, no extra network call for views.
-    expect(select.findAll('option')).toHaveLength(3)
+    expect(wrapper.get('#diagram-view-select-listbox').findAll('[role="option"]')).toHaveLength(3)
     expect(umlUseCaseMock).toHaveBeenCalledTimes(1)
     // Default is the full diagram.
     expect(wrapper.html()).toContain('Manage products')
 
     // Switching to the Order domain view redraws only that projection's goal — client-side, no refetch.
-    await select.setValue('1')
+    await select.trigger('click')
+    await wrapper.get('#diagram-view-select-listbox [role="option"]:nth-child(3)').trigger('click')
     await flushAsync()
     expect(wrapper.html()).toContain('TrackShipments')
     expect(umlUseCaseMock).toHaveBeenCalledTimes(1)
@@ -269,6 +270,7 @@ describe('DiagramPanel', () => {
 
     await nextTick()
     expect(wrapper.get('[role="status"]').text()).toContain('Loading diagram')
+    expect(wrapper.findComponent({ name: 'LogoSpinner' }).exists()).toBe(true)
 
     slow.resolve(umlUseCaseResponse({ mermaidSyntax: '' }))
     await flushAsync()

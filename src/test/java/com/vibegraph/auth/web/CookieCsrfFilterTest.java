@@ -41,4 +41,18 @@ class CookieCsrfFilterTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chain.getRequest()).isSameAs(request);
     }
+
+    @Test
+    void sockJsTransportPost_withSessionCookie_doesNotRequireRestClientHeader() throws Exception {
+        CookieCsrfFilter filter = new CookieCsrfFilter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/ws/graph-updates/1/xhr_send");
+        request.setCookies(new Cookie("vg_session", "access"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chain.getRequest()).isSameAs(request);
+    }
 }

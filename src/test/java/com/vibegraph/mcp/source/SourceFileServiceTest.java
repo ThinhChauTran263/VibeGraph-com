@@ -151,6 +151,106 @@ class SourceFileServiceTest {
     }
 
     @Test
+    @DisplayName("refuses to read a file above the scan ceiling instead of loading it into RAM (H14)")
+    void refusesOversizedFile() throws IOException {
+        StringBuilder huge = new StringBuilder();
+        String line = "x".repeat(100);
+        for (int i = 0; i < 25_000; i++) {
+            huge.append(line).append('\n');
+        }
+        write("Huge.txt", huge.toString());
+
+        SourceContent content = service.readRange(PROJECT_ID, "Huge.txt", null, null);
+
+        assertThat(content.found()).isFalse();
+        assertThat(content.content()).isNullOrEmpty();
+        assertThat(content.warnings()).anyMatch(w -> w.contains("too large"));
+    }
+
+    @Test
+    @DisplayName("redacts a private key block including its base64 body (H15)")
+    void redactsPrivateKeyBlock() throws IOException {
+        write("deploy-key.txt", """
+                # deployment notes
+                -----BEGIN RSA PRIVATE KEY-----
+                MIIEpAIBAAKCAQEAkeybodyone
+                MIIEpAIBAAKCAQEAkeybodytwo
+                -----END RSA PRIVATE KEY-----
+                trailing config
+                """);
+
+        SourceContent content = service.readRange(PROJECT_ID, "deploy-key.txt", null, null);
+
+        assertThat(content.content()).contains("[REDACTED]");
+        assertThat(content.content()).doesNotContain("keybodyone").doesNotContain("keybodytwo");
+        assertThat(content.content()).contains("deployment notes").contains("trailing config");
+    }
+
+    @Test
+    @DisplayName("redaction keeps the line count, so endLine still describes the range served")
+    void redactedPrivateKeyBlock_doesNotShortenReportedEndLine() throws IOException {
+        // 6 lines: 1 comment, a 4-line PEM block, 1 trailing line.
+        write("key-range.txt", """
+                # deployment notes
+                -----BEGIN RSA PRIVATE KEY-----
+                MIIEpAIBAAKCAQEAkeybodyone
+                MIIEpAIBAAKCAQEAkeybodytwo
+                -----END RSA PRIVATE KEY-----
+                trailing config
+                """);
+
+        SourceContent content = service.readRange(PROJECT_ID, "key-range.txt", 1, 6);
+
+        // Collapsing the 4-line block into a single [REDACTED] token used to leave endLine at 3:
+        // the loop advances it once per emitted line, so a shorter output under-reported the range.
+        // MCP clients paginate on endLine, so the next page would re-read lines 4-6.
+        assertThat(content.endLine()).isEqualTo(6);
+        assertThat(content.startLine()).isEqualTo(1);
+        assertThat(content.content().split("\n", -1)).hasSizeGreaterThanOrEqualTo(6);
+        assertThat(content.content()).doesNotContain("keybodyone").doesNotContain("keybodytwo");
+    }
+
+    @Test
+    @DisplayName("redacts every private key block without swallowing content between them (H15)")
+    void redactsMultiplePrivateKeyBlocks() throws IOException {
+        write("multi-key.txt", """
+                -----BEGIN PRIVATE KEY-----
+                FIRSTKEYBODY
+                -----END PRIVATE KEY-----
+                between keys
+                -----BEGIN EC PRIVATE KEY-----
+                SECONDKEYBODY
+                -----END EC PRIVATE KEY-----
+                """);
+
+        SourceContent content = service.readRange(PROJECT_ID, "multi-key.txt", null, null);
+
+        assertThat(content.content()).doesNotContain("FIRSTKEYBODY").doesNotContain("SECONDKEYBODY");
+        assertThat(content.content()).contains("between keys");
+    }
+
+    @Test
+    @DisplayName("redacts a private key body when the requested range cuts the block (H15)")
+    void redactsPrivateKeyBodyWhenRangeCutsTheBlock() throws IOException {
+        write("split-key.txt", """
+                line1
+                -----BEGIN PRIVATE KEY-----
+                BODYLINEONE
+                BODYLINETWO
+                -----END PRIVATE KEY-----
+                line6
+                """);
+
+        // Range starts inside the block: no BEGIN header in range, body must still be redacted.
+        SourceContent tail = service.readRange(PROJECT_ID, "split-key.txt", 3, 6);
+        assertThat(tail.content()).doesNotContain("BODYLINEONE").doesNotContain("BODYLINETWO");
+
+        // Range ends inside the block: no END footer in range, body must still be redacted.
+        SourceContent head = service.readRange(PROJECT_ID, "split-key.txt", 1, 4);
+        assertThat(head.content()).doesNotContain("BODYLINEONE").doesNotContain("BODYLINETWO");
+    }
+
+    @Test
     @DisplayName("redacts secret-looking lines in served content")
     void redactsSecrets() {
         SourceContent content = service.readRange(PROJECT_ID, "src/main/java/demo/Hello.java", null, null);

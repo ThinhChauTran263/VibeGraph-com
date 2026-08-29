@@ -38,4 +38,38 @@ describe('AdminLayout', () => {
     expect(wrapper.text()).not.toContain('Spec Designer')
     expect(wrapper.html()).toContain('Admin Home')
   })
+
+  it('keeps one mobile menu control and restores the wordmark after reopening', async () => {
+    localStorage.setItem('vg_admin_sidebar_collapsed', 'true')
+    setLocale('en-US')
+    const wrapper = mount(AdminLayout, {
+      global: {
+        plugins: [router, createPinia(), i18n],
+      },
+    })
+
+    await wrapper.get('.mobile-menu').trigger('click')
+
+    expect(wrapper.get('.brand__word').text()).toBe('VibeGraph')
+    expect(wrapper.findAll('.mobile-menu')).toHaveLength(0)
+    expect(wrapper.get('.admin-sidebar').classes()).not.toContain('is-collapsed')
+
+    await wrapper.get('.sidebar-toggle').trigger('click')
+
+    expect(wrapper.findAll('.mobile-menu')).toHaveLength(1)
+    expect(wrapper.get('.admin-sidebar').classes()).not.toContain('is-mobile-open')
+
+    await wrapper.get('.mobile-menu').trigger('click')
+
+    expect(wrapper.get('.brand__word').text()).toBe('VibeGraph')
+    expect(wrapper.findAll('.mobile-menu')).toHaveLength(0)
+    expect(wrapper.get('.admin-sidebar').classes()).not.toContain('is-collapsed')
+
+    await wrapper.get('.sidebar-toggle').trigger('click')
+
+    expect(wrapper.find('.brand__word').exists()).toBe(false)
+    expect(wrapper.get('.admin-sidebar').classes()).toContain('is-collapsed')
+
+    localStorage.removeItem('vg_admin_sidebar_collapsed')
+  })
 })

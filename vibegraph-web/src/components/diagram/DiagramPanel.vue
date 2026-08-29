@@ -3,6 +3,8 @@ import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useDiagrams } from '@/composables/useDiagrams'
 import type { UmlUseCaseResponse, UmlUseCaseView } from '@/lib/api'
 import { renderUmlUseCaseSvg, type UmlUseCaseModel } from '@/lib/umlUseCaseSvg'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 
 const props = defineProps<{
   projectId: string
@@ -66,6 +68,13 @@ const umlViews = computed<UmlUseCaseView[]>(() => {
   const views = umlResponse.value?.views
   return Array.isArray(views) ? views : []
 })
+const viewOptions = computed(() => [
+  { value: -1, label: 'Full diagram' },
+  ...umlViews.value.map((view, index) => ({
+    value: index,
+    label: `${view.viewType === 'actor' ? 'Actor' : 'Domain'}: ${view.title}`,
+  })),
+])
 
 // The model actually drawn: the full diagram (index -1) or the selected projection. Switching views
 // is pure client-side filtering of data already in the response — never a re-fetch or re-inference.
@@ -358,18 +367,17 @@ onActivated(() => {
           data-test="diagram-view-select-wrap"
         >
           <label class="diagram-panel__views-label" for="diagram-view-select">View</label>
-          <select
-            id="diagram-view-select"
-            v-model.number="selectedViewIndex"
+          <ThemedSelect
+            v-model="selectedViewIndex"
             class="diagram-panel__views-select"
+            input-id="diagram-view-select"
+            name="diagramView"
             data-test="diagram-view-select"
+            :options="viewOptions"
+            aria-label="Diagram view"
+            size="sm"
             :disabled="isLoading"
-          >
-            <option :value="-1">Full diagram</option>
-            <option v-for="(view, index) in umlViews" :key="index" :value="index">
-              {{ view.viewType === 'actor' ? 'Actor' : 'Domain' }}: {{ view.title }}
-            </option>
-          </select>
+          />
         </div>
         <button
           class="diagram-panel__refresh"
@@ -417,7 +425,7 @@ onActivated(() => {
     </details>
 
     <div v-if="isLoading" class="diagram-panel__loading" role="status">
-      <div class="diagram-panel__spinner" aria-hidden="true"></div>
+      <LogoSpinner :size="96" />
       <p>Loading diagram…</p>
     </div>
 
@@ -683,27 +691,6 @@ onActivated(() => {
   margin: 0;
 }
 
-.diagram-panel__spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(148, 163, 184, 0.25);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: diagram-spin 0.8s linear infinite;
-}
-
-@keyframes diagram-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .diagram-panel__spinner {
-    animation-duration: 2.4s;
-  }
-}
-
 .diagram-panel__error {
   padding: 0.75rem;
   border: 1px solid rgba(239, 68, 68, 0.5);
@@ -797,33 +784,19 @@ onActivated(() => {
 
 .diagram-panel__views-select {
   flex: 0 1 auto;
+  width: min(18rem, 48vw);
   max-width: 18rem;
-  padding: 0.45rem 0.6rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  border-radius: 0.5rem;
-  background: rgba(7, 11, 22, 0.6);
-  color: #e8edf6;
-  cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
 }
 
-.diagram-panel__views-select:hover {
-  border-color: rgba(96, 165, 250, 0.6);
-}
-
-.diagram-panel__views-select:focus-visible {
-  outline: none;
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
-}
-
-.diagram-panel__views-select option {
+.diagram-panel__views-select :deep(.vg-select__trigger),
+.diagram-panel__views-select :deep(.vg-select__menu) {
   background: #0f172a;
   color: #e8edf6;
+}
+
+.diagram-panel__views-select :deep(.vg-select__trigger) {
+  border-color: rgba(148, 163, 184, 0.32);
+  font-size: 0.8125rem;
 }
 
 .diagram-panel__caption {

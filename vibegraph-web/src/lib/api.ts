@@ -4,11 +4,14 @@
  */
 
 import { API_BASE_URL } from './constants'
-import http from './http'
 import { clearStoredSession, fetchWithSessionRefresh, redirectToLogin } from './authRefresh'
 import type { AuthResponse, LoginRequest, RegisterRequest, User } from '@/types/auth'
 import type { GraphData } from '@/types/graph'
 import type { ApiErrorCode, ApiErrorPayload } from '@/types/api'
+import type {
+  InfrastructureOperationSnapshot,
+  InfrastructureSnapshot,
+} from '@/types/infrastructure'
 
 /**
  * A node as returned inside an impact-analysis result. Mirrors the backend
@@ -133,6 +136,12 @@ export interface Project {
   status: string
   /** Analysis progress 0-100. Present on async import (202) and status events. */
   progress?: number
+  /** Bytes of stored .java source counted against the owner's storage quota. */
+  storedBytes?: number
+  /** Commit SHA of the imported source (GitHub imports only). */
+  sourceRef?: string
+  /** Branch/ref the GitHub import was taken from. */
+  sourceBranch?: string
 }
 
 /** Terminal + in-flight statuses pushed over the project-status WebSocket topic. */
@@ -426,52 +435,18 @@ export const importApi = {
     return api.postMultipart<Project>('/api/projects/import-archive?async=true', form)
   },
 
-  importGithub(url: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-github', { url })
+  importGithub(url: string, branch?: string): Promise<Project> {
+    const trimmedBranch = branch?.trim()
+    return api.post<Project>('/api/projects/import-github', {
+      url,
+      ...(trimmedBranch ? { branch: trimmedBranch } : {}),
+    })
   },
 
   createCliRepository(name?: string): Promise<CliRepositorySetup> {
     return api.post<CliRepositorySetup>('/api/projects/cli-setup', {
       name: name?.trim() || undefined,
     })
-  },
-
-  /**
-   * Import an existing directory on the backend host in place (no upload). The backend
-   * analyzes it and starts a file watcher so later edits stream realtime graph updates.
-   */
-  importLocal(path: string, name?: string): Promise<Project> {
-    return api.post<Project>('/api/projects/import-local', {
-      path,
-      name: name?.trim() || undefined,
-    })
-  },
-}
-
-/** A sub-directory entry returned by the server-side directory browser. */
-export interface DirectoryEntry {
-  name: string
-  path: string
-  /** Best-effort hint that the directory holds `.java` sources. */
-  containsJava: boolean
-}
-
-/** Result of browsing a directory on the backend host. */
-export interface DirectoryListing {
-  path: string
-  /** Parent directory path, or `null` at the allowed base (cannot navigate above it). */
-  parent: string | null
-  entries: DirectoryEntry[]
-}
-
-/**
- * Server-side directory picker. Browsing is confined to a base directory on the backend
- * (the configured allowed-root, else the host user's home), so it never exposes the whole disk.
- */
-export const browseApi = {
-  browse(path?: string): Promise<DirectoryListing> {
-    const query = path ? `?${new URLSearchParams({ path })}` : ''
-    return api.get<DirectoryListing>(`/api/projects/browse${query}`)
   },
 }
 
@@ -602,8 +577,9 @@ export const diagramApi = {
 // ─── Auth API ──────────────────────────────────────────────────────────────────
 
 /**
- * Auth endpoints. login/register use the base `api` object (no Bearer token needed,
- * no 401 redirect for invalid credentials). `me()` uses the authenticated `http` instance.
+ * Auth endpoints. All of them go through the base fetch wrapper — its
+ * `fetchWithSessionRefresh` handles the 401 → refresh → retry cycle the old
+ * axios interceptor used to provide (F-M3: axios removed).
  */
 export const authApi = {
   register(data: RegisterRequest): Promise<AuthResponse> {
@@ -618,10 +594,17 @@ export const authApi = {
     return api.post<void>('/api/auth/logout')
   },
 
-  async me(): Promise<User> {
-    const res = await http.get<{ success: boolean; data: User }>('/api/auth/me')
-    // Tùy thuộc vào cấu trúc trả về của backend, có thể là res.data hoặc res.data.data
-    return res.data.data
+  me(): Promise<User> {
+    return api.get<User>('/api/auth/me')
+  },
+
+  async meOptional(): Promise<User | null> {
+    const response = await fetchWithSessionRefresh(`${API_BASE_URL}/api/auth/me`, {
+      credentials: 'include',
+      headers: { 'X-VibeGraph-Client': 'web' },
+    })
+    if (response.status === 401) return null
+    return unwrap<User>(response)
   },
 }
 
@@ -645,6 +628,8 @@ import type {
   AdminPlanRequest,
   AdminPricingRule,
   AdminPricingRuleRequest,
+  AdminImportPricing,
+  AdminImportPricingTier,
   AdminUserResponse,
   AdminReport,
   AdminFeatureFlag,
@@ -704,6 +689,11 @@ export const accountApi = {
   deleteApiKey(id: string): Promise<void> {
     return api.delete(`/api/account/api-keys/${encodeURIComponent(id)}`)
   },
+  revealApiKey(id: string): Promise<{ id: string; secretKey: string }> {
+    return api.post<{ id: string; secretKey: string }>(
+      `/api/account/api-keys/${encodeURIComponent(id)}/reveal`,
+    )
+  },
   listReports(): Promise<Report[]> {
     return api.get<Report[]>('/api/account/reports')
   },
@@ -762,6 +752,20 @@ export const adminApi = {
   getOverview(): Promise<AdminOverview> {
     return api.get<AdminOverview>('/api/admin/overview')
   },
+  getInfrastructureSnapshot(): Promise<InfrastructureSnapshot> {
+    return api.get<InfrastructureSnapshot>('/api/admin/infrastructure')
+  },
+  listInfrastructureOperations(
+    params: { limit?: number; type?: string } = {},
+  ): Promise<InfrastructureOperationSnapshot[]> {
+    const query = new URLSearchParams({
+      limit: String(params.limit ?? 50),
+      type: params.type ?? 'ALL',
+    })
+    return api.get<InfrastructureOperationSnapshot[]>(
+      `/api/admin/infrastructure/operations?${query}`,
+    )
+  },
   listPlans(): Promise<AdminPlan[]> {
     return api.get<AdminPlan[]>('/api/admin/plans')
   },
@@ -791,6 +795,18 @@ export const adminApi = {
   },
   deletePricingRule(operationCode: string): Promise<void> {
     return api.delete(`/api/admin/pricing-rules/${encodeURIComponent(operationCode)}`)
+  },
+  listImportPricing(): Promise<AdminImportPricing[]> {
+    return api.get<AdminImportPricing[]>('/api/admin/import-pricing')
+  },
+  updateImportPricing(
+    operationCode: string,
+    tiers: AdminImportPricingTier[],
+  ): Promise<AdminImportPricing> {
+    return api.put<AdminImportPricing>(
+      `/api/admin/import-pricing/${encodeURIComponent(operationCode)}`,
+      { tiers },
+    )
   },
   listUsers(
     params: { search?: string; status?: string; plan?: string; page?: number; size?: number } = {},

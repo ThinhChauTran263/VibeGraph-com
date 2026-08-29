@@ -1,0 +1,64 @@
+# Rendered at container start by the nginx image's envsubst entrypoint, which only
+# substitutes variables that exist in the environment — nginx's own $uri and friends
+# are left alone.
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA fallback
+    location / {
+        # --- security headers (see the note in /assets/ about why these repeat) ---
+        # script-src has no 'unsafe-inline' and no 'unsafe-eval': a Vite production
+        # build with the Vue runtime needs neither, so injected script cannot run.
+        #
+        # style-src does allow 'unsafe-inline'. Vue and the graph libraries inject
+        # <style> blocks at runtime, and blocking those breaks rendering outright.
+        # It is the weaker half of the policy and is a deliberate trade.
+        #
+        # connect-src carries ${CSP_CONNECT_SRC} because the API and the WebSocket may
+        # live on another origin. Leave it empty and the app may only talk to itself.
+        #
+        # form-action and worker-src match nothing the app does today: every form here
+        # is @submit.prevent with no action attribute, and there is no Web Worker. They
+        # stay because they are deny rules, not descriptions. This is a real document,
+        # so if script were ever injected into it, a <form action="https://evil"> or a
+        # worker loaded from elsewhere is exactly what these two refuse — which is the
+        # case CSP exists for. That is the opposite of the inert header removed from the
+        # backend, where no document existed for any directive to apply to.
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; worker-src 'self' blob:; connect-src 'self' ${CSP_CONNECT_SRC}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), unload=(self)" always;
+
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Static assets caching
+    location /assets/ {
+        # nginx does not merge add_header across levels: a block with any add_header
+        # inherits none from its parent. Without repeating them here, every asset
+        # response would ship with no security headers at all.
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; worker-src 'self' blob:; connect-src 'self' ${CSP_CONNECT_SRC}" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), unload=(self)" always;
+
+        # One header, not two. `expires 1y` emits its own Cache-Control, so pairing it
+        # with an add_header sent the response with two conflicting Cache-Control lines
+        # and left it to the client which one won.
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # HSTS is deliberately absent: this container listens on plain HTTP behind a
+    # TLS-terminating proxy, and that proxy is the correct place to send it.
+
+    # Gzip
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}

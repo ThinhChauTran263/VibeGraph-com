@@ -2,13 +2,14 @@ package com.vibegraph.graph.service;
 
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 /**
  * Streams a GitHub tarball directly to the parser without persisting files to disk.
  *
  * Pipeline:
  *   1. Pre-flight: GET https://api.github.com/repos/{owner}/{repo}
- *      → validate public, size within the account's remaining storage quota
+ *      → validate public, size within the server hard limit
  *   2. Stream tarball via commons-compress
  *      (GzipCompressorInputStream + TarArchiveInputStream)
  *   3. Iterate entries, filter *.java, parse in-memory
@@ -25,4 +26,13 @@ public interface TarballImportService {
      * @return ProjectResponse with status=ANALYZING (parsing runs async)
      */
     ProjectResponse importFromGithub(GithubImportRequest request);
+
+    /**
+     * GitHub import variant that completes the supplied telemetry token when background analysis
+     * reaches a terminal state.
+     */
+    default ProjectResponse importFromGithub(GithubImportRequest request,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
+        return importFromGithub(request);
+    }
 }

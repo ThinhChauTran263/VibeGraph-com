@@ -51,8 +51,11 @@ public interface ProjectOwnershipRepository extends JpaRepository<ProjectOwnersh
     Optional<ProjectOwnership> findByProjectIdAndOwnerIdAndDeletedAtIsNotNull(
             String projectId, UUID ownerId);
 
-    /** Rows whose retention window has expired; the scheduled sweep purges these. */
-    List<ProjectOwnership> findByDeletedAtLessThan(Instant cutoff);
+    /**
+     * One batch of rows whose retention window has expired; the scheduled sweep pages through
+     * these (B-M14) instead of pulling the whole trash into a single query/transaction.
+     */
+    Page<ProjectOwnership> findByDeletedAtLessThan(Instant cutoff, Pageable pageable);
 
     /**
      * Trashed GitHub imports of the same repository for this owner. Re-importing a GitHub repo
@@ -60,5 +63,14 @@ public interface ProjectOwnershipRepository extends JpaRepository<ProjectOwnersh
      * is only safe for GitHub, where the name is the globally unique {@code owner/repo}.
      */
     List<ProjectOwnership> findByOwnerIdAndSourceTypeAndNameAndDeletedAtIsNotNull(
+            UUID ownerId, ProjectSourceType sourceType, String name);
+
+    /**
+     * Live (non-trashed) imports of the same repository for this owner. Re-importing a GitHub
+     * repo with a changed HEAD refreshes these in place; an unchanged HEAD is blocked as
+     * up-to-date. Matching by name is only safe for GitHub, where the name is the globally
+     * unique {@code owner/repo}.
+     */
+    List<ProjectOwnership> findByOwnerIdAndSourceTypeAndNameAndDeletedAtIsNull(
             UUID ownerId, ProjectSourceType sourceType, String name);
 }

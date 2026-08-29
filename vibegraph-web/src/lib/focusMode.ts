@@ -62,12 +62,8 @@ export interface FocusPartition {
 // Ghost-canvas (background layer) styling. Nodes stay at PROPORTIONAL size — the
 // user explicitly rejected shrinking them to tiny dots. The layer separation
 // (not the size) is what stops obstruction.
-const GHOST_NODE_SIZE_MULTIPLIER = 0.8
 const GHOST_NODE_MIN_SIZE = 2
-const GHOST_NODE_MAX_SIZE = 20
 const GHOST_NODE_MIX = 0.72 // 72% background + 28% original hue — softer, clearly "behind"
-const GHOST_EDGE_SIZE_MULTIPLIER = 0.3
-const GHOST_EDGE_MIN_SIZE = 0.4
 const GHOST_EDGE_MIX = 0.85 // 85% background + 15% original hue — faint but visible
 
 // Related edges keep their edge-type color (set by graphAdapter). For a sparse
@@ -115,14 +111,14 @@ const Z_NEIGHBOR = 2
 const Z_RELATED_EDGE = 2
 
 /**
- * Background-layer node radius for the ghost canvas. Proportional to the original
- * size (≈85%) and clamped to a readable band so large hubs don't dominate and
- * small nodes stay visible — never shrunk to a dot.
+ * Background-layer node radius for the ghost canvas. Sizes are graph-units;
+ * ghost nodes keep their FULL proportional size (dimming is done by COLOR, not
+ * size — the user explicitly rejected shrinking dimmed nodes to tiny dots) and
+ * scale with zoom exactly like the foreground, since ghostLayer renders them
+ * through sigma.scaleSize.
  */
 export function ghostNodeSize(size: unknown): number {
-  const base = typeof size === 'number' ? size : GHOST_NODE_MIN_SIZE
-  const scaled = base * GHOST_NODE_SIZE_MULTIPLIER
-  return Math.min(Math.max(scaled, GHOST_NODE_MIN_SIZE), GHOST_NODE_MAX_SIZE)
+  return typeof size === 'number' ? size : GHOST_NODE_MIN_SIZE
 }
 
 /** Background-layer node color: original hue blended toward the dark background. */
@@ -130,11 +126,12 @@ export function ghostNodeColor(color: unknown): string {
   return dimColor(color, GHOST_NODE_MIX)
 }
 
-/** Background-layer edge width for the ghost canvas: thin but visible. */
-export function ghostEdgeSize(size: unknown): number {
-  const base = typeof size === 'number' ? size : GHOST_EDGE_MIN_SIZE
-  return Math.max(base * GHOST_EDGE_SIZE_MULTIPLIER, GHOST_EDGE_MIN_SIZE)
-}
+/**
+ * Background-layer edge width: the edge `size` attribute is in graph-units
+ * (~0.02) and would render sub-pixel through scaleSize, so the ghost canvas
+ * draws a constant screen-px hairline instead.
+ */
+export const GHOST_EDGE_PX = 0.8
 
 /** Background-layer edge color: original hue blended toward the dark background. */
 export function ghostEdgeColor(color: unknown): string {

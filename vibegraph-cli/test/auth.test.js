@@ -28,33 +28,21 @@ function runCli(args, env) {
   });
 }
 
-test("auth set-key persists the key while config and status only show a masked value", async () => {
+test("manual key set-key is rejected so ownership is established by browser login", async () => {
   const configDir = await mkdtemp(path.join(tmpdir(), "vg-auth-config-"));
   const apiKey = "vbg_abcd1234secretwxyz";
   const env = { VIBEGRAPH_CONFIG_DIR: configDir };
   try {
-    const setResult = await runCli(["auth", "set-key", apiKey], env);
-    assert.equal(setResult.code, 0);
-    assert.doesNotMatch(setResult.stdout, new RegExp(apiKey));
-
-    const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));
-    assert.equal(saved.apiKey, apiKey);
-
-    const showResult = await runCli(["config", "show"], env);
-    assert.equal(showResult.code, 0);
-    assert.match(showResult.stdout, /vbg_abcd\.\.\.wxyz/);
-    assert.doesNotMatch(showResult.stdout, new RegExp(apiKey));
-
-    const statusResult = await runCli(["auth", "status"], env);
-    assert.equal(statusResult.code, 0);
-    assert.match(statusResult.stdout, /vbg_abcd\.\.\.wxyz/);
-    assert.doesNotMatch(statusResult.stdout, new RegExp(apiKey));
+    const setResult = await runCli(["key", "set-key", apiKey], env);
+    assert.equal(setResult.code, 2);
+    assert.match(setResult.stderr, /cannot verify account ownership/i);
+    assert.doesNotMatch(setResult.stderr, new RegExp(apiKey));
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }
 });
 
-test("auth clear removes only the stored API key", async () => {
+test("key clear removes the selected project credential", async () => {
   const configDir = await mkdtemp(path.join(tmpdir(), "vg-auth-config-"));
   const env = { VIBEGRAPH_CONFIG_DIR: configDir };
   try {
@@ -63,13 +51,19 @@ test("auth clear removes only the stored API key", async () => {
       `${JSON.stringify({ token: "legacy-jwt", user: { email: "user@example.test" } })}\n`,
       "utf8",
     );
-    await runCli(["auth", "set-key", "vbg_abcd1234secretwxyz"], env);
-    const clearResult = await runCli(["auth", "clear"], env);
+    await writeFile(
+      path.join(configDir, "config.json"),
+      `${JSON.stringify({ token: "legacy-jwt", apiKey: "vbg_abcd1234secretwxyz", apiKeyId: "key-1", project: { id: "project-1" } })}\n`,
+      "utf8",
+    );
+    const clearResult = await runCli(["key", "clear"], env);
 
     assert.equal(clearResult.code, 0);
     const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));
     assert.equal("apiKey" in saved, false);
     assert.equal(saved.token, "legacy-jwt");
+    assert.equal("apiKeyId" in saved, false);
+    assert.equal("project" in saved, false);
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }
@@ -89,6 +83,33 @@ test("environment API key and API URL override stored config without exposing th
     assert.match(result.stdout, /https:\/\/api\.example\.test/);
     assert.match(result.stdout, /vbg_envk\.\.\.wxyz/);
     assert.doesNotMatch(result.stdout, new RegExp(apiKey));
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
+test("logout clears the selected project credential and cached key metadata", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-logout-config-"));
+  try {
+    await writeFile(
+      path.join(configDir, "config.json"),
+      `${JSON.stringify({
+        token: "legacy-jwt",
+        refreshToken: "refresh-token",
+        user: { email: "user@example.test" },
+        apiKey: "vbg_abcd1234secretwxyz",
+        apiKeyId: "key-1",
+        project: { id: "project-1", name: "Demo" },
+        apiKeys: [{ id: "key-1", keyPrefix: "vbg_abcd", project: { name: "Demo" } }],
+      })}\n`,
+      "utf8",
+    );
+    const result = await runCli(["logout"], { VIBEGRAPH_CONFIG_DIR: configDir });
+    assert.equal(result.code, 0);
+    const saved = JSON.parse(await readFile(path.join(configDir, "config.json"), "utf8"));
+    for (const field of ["token", "refreshToken", "user", "apiKey", "apiKeyId", "project", "apiKeys"]) {
+      assert.equal(field in saved, false, field);
+    }
   } finally {
     await rm(configDir, { recursive: true, force: true });
   }

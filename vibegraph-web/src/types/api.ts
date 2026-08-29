@@ -188,6 +188,8 @@ export interface ApiKey {
   locked?: boolean
   deletedAt?: string | null
   canDelete?: boolean
+  /** True when the backend stores a revealable encrypted copy of the secret. */
+  revealable?: boolean
   /** Convenience getter derived by the frontend store. */
   disabled: boolean
 }
@@ -229,6 +231,13 @@ export interface AdminSeriesPoint {
   label: string
   value: number
   period?: 'month' | 'quarter' | 'year' | string
+}
+
+/** Live online-users snapshot pushed over /topic/admin/online-users (OnlineUsersEvent). */
+export interface AdminOnlineUsersEvent {
+  onlineUsers: number
+  capturedAt: string
+  samples: AdminSeriesPoint[]
 }
 
 export interface AdminDistributionPoint {
@@ -478,6 +487,24 @@ export interface AdminPricingRule {
 }
 
 export type AdminPricingRuleRequest = AdminPricingRule
+
+// ─── Import pricing tiers ──────────────────────────────────────────────────
+
+/**
+ * One size tier of the tiered import billing model.
+ * `maxFiles === null` marks the unlimited top tier (e.g. "xlarge").
+ */
+export interface AdminImportPricingTier {
+  tierCode: string
+  maxFiles: number | null
+  credits: number
+}
+
+/** One import method's complete tier configuration. */
+export interface AdminImportPricing {
+  operationCode: string
+  tiers: AdminImportPricingTier[]
+}
 
 // ─── Reports / Feedback ────────────────────────────────────────────────────────
 

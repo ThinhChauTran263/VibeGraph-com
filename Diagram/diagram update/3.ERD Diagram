@@ -1,0 +1,237 @@
+<mxfile host="app.diagrams.net" modified="2026-08-14T10:50:04.4515166+07:00" agent="VibeGraph evidence generator" version="24.7.17">
+  <diagram id="erd-pg" name="ERD PostgreSQL">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="4000" pageHeight="2850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="PostgreSQL Control-plane ERD - 21 Tables / 23 Foreign Keys" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="3300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="users" value="users&#xA;PK id UUID&#xA;email VARCHAR&#xA;password_hash VARCHAR?&#xA;display_name/avatar_url VARCHAR?&#xA;email_verified BOOLEAN&#xA;role VARCHAR&#xA;quota_bytes/used_bytes BIGINT&#xA;deactivated + reasons&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="110" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="user_identities" value="user_identities&#xA;PK id UUID&#xA;FK user_id&#xA;provider + provider_user_id&#xA;email?&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="110" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="projects" value="projects&#xA;PK project_id&#xA;FK owner_id&#xA;name/source_type&#xA;size_bytes/status&#xA;deleted_at?&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="2030" y="110" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="api_keys" value="api_keys&#xA;PK id UUID&#xA;FK user_id&#xA;FK project_id?&#xA;key_hash UNIQUE&#xA;key_prefix/name&#xA;last_used/expires/disabled/deleted&#xA;disabled_by/reason/locked_by&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="3010" y="110" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="plans" value="plans&#xA;PK id UUID&#xA;code UNIQUE/name&#xA;storage/api-key/credit limits&#xA;contact_sales/is_active/sort_order&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="520" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="user_account_settings" value="user_account_settings&#xA;PK/FK user_id&#xA;FK plan_id&#xA;quota overrides&#xA;api_key_creation_disabled&#xA;blocked_at/reasons&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="520" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="project_usage" value="project_usage&#xA;PK/FK project_id&#xA;FK owner_id&#xA;storage_bytes&#xA;updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="2030" y="520" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="user_credit_balances" value="user_credit_balances&#xA;PK id UUID&#xA;FK user_id&#xA;period_start/end&#xA;limit snapshot/used/adjustment&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="3010" y="520" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="credit_pricing_rules" value="credit_pricing_rules&#xA;PK id UUID&#xA;operation_code UNIQUE&#xA;display_name&#xA;credit factors/minimum&#xA;is_active&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="930" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="credit_ledger" value="credit_ledger&#xA;PK id UUID&#xA;FK user_id&#xA;FK project_id?&#xA;FK balance_id?&#xA;source/operation_code&#xA;credits_delta/metadata&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="930" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="feature_flags" value="feature_flags&#xA;PK id UUID&#xA;flag_key UNIQUE&#xA;scope/display_name&#xA;description?&#xA;enabled&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="2030" y="930" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="announcements" value="announcements&#xA;PK id UUID&#xA;type/severity/target&#xA;title/body&#xA;starts_at/ends_at&#xA;dismissible/active&#xA;FK created_by_user_id?&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="3010" y="930" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="user_notifications" value="user_notifications&#xA;PK id UUID&#xA;FK user_id&#xA;FK announcement_id&#xA;read_at/dismissed_at&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1340" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="feedback_reports" value="feedback_reports&#xA;PK id UUID&#xA;FK user_id?&#xA;status/category/title&#xA;delete_after?&#xA;created_at/closed_at?" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="1340" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="feedback_messages" value="feedback_messages&#xA;PK id UUID&#xA;FK report_id&#xA;FK sender_user_id?&#xA;sender_role/body&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="2030" y="1340" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="security_events" value="security_events&#xA;PK id UUID&#xA;event_type/severity&#xA;FK subject_user_id?&#xA;api_key_ref/source/description&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="3010" y="1340" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="request_events" value="request_events&#xA;PK id UUID&#xA;FK user_id?&#xA;api_key_ref/ip_address&#xA;route/http_method/status&#xA;event_type/occurred_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1750" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="ip_blocks" value="ip_blocks&#xA;PK id UUID&#xA;ip_address UNIQUE&#xA;safe_reason/expires_at?&#xA;FK created_by?&#xA;active&#xA;created_at/updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="1750" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="audit_logs" value="audit_logs&#xA;PK id UUID&#xA;actor/target UUID logical refs&#xA;target_type/target_id&#xA;action/outcome/ip_address/details&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="2030" y="1750" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="audit_retention_settings" value="audit_retention_settings&#xA;PK id SMALLINT&#xA;retention_days&#xA;FK updated_by?&#xA;updated_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="3010" y="1750" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="refresh_sessions" value="refresh_sessions&#xA;PK id UUID&#xA;FK user_id&#xA;family_id/token_hash UNIQUE&#xA;expires/last_used/revoked&#xA;revoke_reason/replaced_by_id&#xA;created_at" style="swimlane;startSize=34;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;fontSize=12;align=left;verticalAlign=top;spacing=7;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="70" y="2160" width="760" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-0" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="user_identities">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-1" value="owner_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="projects">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-2" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="api_keys">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-3" value="project_id nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="projects" target="api_keys">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-4" value="user_id 0..1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="user_account_settings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-5" value="plan_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="plans" target="user_account_settings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-6" value="project_id 0..1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="projects" target="project_usage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-7" value="owner_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="project_usage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-8" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="user_credit_balances">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-9" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="credit_ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-10" value="project_id nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="projects" target="credit_ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-11" value="balance_id nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="user_credit_balances" target="credit_ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-12" value="created_by nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="announcements">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-13" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="user_notifications">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-14" value="announcement_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="announcements" target="user_notifications">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-15" value="user_id nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="feedback_reports">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-16" value="report_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="feedback_reports" target="feedback_messages">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-17" value="sender nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="feedback_messages">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-18" value="subject nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="security_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-19" value="user_id nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="request_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-20" value="created_by nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="ip_blocks">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-21" value="updated_by nullable" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="audit_retention_settings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fk-22" value="user_id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=ERmany;startArrow=ERone;" edge="1" parent="1" source="users" target="refresh_sessions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="schema-note" value="Runtime schema audit 2026-08-14T10:12:42+07:00: 21 domain tables, 23 FKs, 66 domain-table indexes (68 public including two Flyway indexes), 19 successful migrations. Unique indexes include uq_users_email_lower, uq_identity_provider_uid, uq_credit_balance_user_period, uq_user_notifications_user_announcement and partial uq_api_keys_live_user_project." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="2570" width="3680" height="150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="erd-neo" name="ERD Neo4j">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3400" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Neo4j Current Emission, Migration Schema and Observed Runtime" style="text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="3000" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="project" value=":Project&#xD;&#xA;id/projectId/fullName/name/path&#xD;&#xA;createdAt?/lastAnalyzedAt?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="70" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="package" value=":Package&#xD;&#xA;projectId/fullName/name" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="480" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="file" value=":File&#xD;&#xA;projectId/filePath/name" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="890" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="type" value=":Class / Interface / Enum / Record / DBModel&#xD;&#xA;projectId/fullName/name/springLayer?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="method" value=":Method / Constructor&#xD;&#xA;projectId/fullName/name/paramTypes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="1710" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="member" value=":Field / LocalVariable&#xD;&#xA;projectId/fullName/name" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="2120" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="annotation" value=":Annotation&#xD;&#xA;projectId/fullName/name" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="2530" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="endpoint" value=":APIEndpoint&#xD;&#xA;projectId/httpMethod/routePath&#xD;&#xA;runtime count 620" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="2940" y="130" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="route" value=":Route (schema-only current runtime)&#xD;&#xA;V1 route_unique + route_path&#xD;&#xA;runtime count 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="2940" y="430" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="external" value=":External&#xD;&#xA;projectId/fullName/name" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#16a34a;fontSize=14;spacing=7;" vertex="1" parent="1">
+          <mxGeometry x="2530" y="430" width="350" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-0" value="CONTAINS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="project" target="package">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-1" value="CONTAINS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="package" target="file">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-2" value="DEFINES current emitter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="file" target="type">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-3" value="HAS_METHOD" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="method">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-4" value="HAS_FIELD" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="member">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-5" value="HAS_INNER / EXTENDS / IMPLEMENTS / HAS_RELATION / INJECTS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="type">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-6" value="CALLS / RESOLVES_TO / OVERRIDES / STEP_IN_FLOW" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="method" target="method">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-7" value="RETURNS / THROWS / PARAMETER_TYPE / INSTANTIATES / CATCHES" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="method" target="type">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-8" value="READS / WRITES" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="method" target="member">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-9" value="IMPORTS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="type">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-10" value="IMPORTS / INJECTS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="external">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-11" value="IMPORTS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="type" target="package">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-12" value="TYPE_OF" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="member" target="type">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-13" value="HANDLES_ROUTE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="method" target="endpoint">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel-14" value="ANNOTATED_BY legacy persisted" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;endArrow=open;" edge="1" parent="1" source="type" target="annotation">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="neo-note" value="Runtime 2026-08-14T10:12:42+07:00: 56,724 nodes / 116,987 relationships. ANNOTATED_BY=1,712 is legacy persisted data. Current DEFINES emits File -&gt; Class/Interface/Enum/Record/DBModel; runtime contains older endpoints. V1 exact constraints/indexes and V2 Symbol indexes are listed in canonical PlantUML." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffbea;strokeColor=#ca8a04;fontSize=12;align=left;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="270" y="930" width="2780" height="150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

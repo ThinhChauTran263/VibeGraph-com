@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -16,14 +17,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.HandlerMapping;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vibegraph.auth.domain.Role;
+import com.vibegraph.auth.service.AuthenticatedUser;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -151,7 +157,10 @@ class RateLimitFilterTest {
         AbuseProperties properties = new AbuseProperties();
         properties.setRequestsPerMinutePerIp(1_000);
         properties.setRequestsPerMinutePerApiKey(1);
-        RateLimitFilter filter = filter(properties, mock(RequestEventService.class), Clock.systemUTC());
+        // The API-key ref is only on the request once ApiKeyAuthFilter has run, so this bucket
+        // belongs to the identity stage. Distinct IPs prove the rejection is not the IP bucket.
+        RateLimitFilter filter = filter(RateLimitFilter.Stage.IDENTITY, properties,
+                mock(RequestEventService.class), Clock.systemUTC());
 
         MockHttpServletRequest first = request("203.0.113.20");
         first.setAttribute(com.vibegraph.auth.web.ApiKeyAuthFilter.API_KEY_REF_ATTRIBUTE, "key-1");
@@ -163,6 +172,91 @@ class RateLimitFilterTest {
         filter.doFilter(second, response, new MockFilterChain());
 
         assertThat(response.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    @DisplayName("edge stage cannot see identity, so it must not be the one holding those buckets")
+    void edgeStage_authenticatedUserOverLimit_isNotRejectedThere() throws Exception {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setRequestsPerMinutePerIp(1_000);
+        properties.setRequestsPerMinutePerUser(1);
+        RateLimitFilter edge = filter(properties, mock(RequestEventService.class), Clock.systemUTC());
+
+        // Regression guard for the H13 fallout: the edge stage runs BEFORE JwtAuthFilter, so the
+        // SecurityContext is empty here no matter who the caller is. If someone ever moves the
+        // per-user bucket back to this stage it silently stops enforcing anything, and this test
+        // is what says so out loud.
+        for (int index = 0; index < 5; index++) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            edge.doFilter(request(distinctIp(9, index)), response, new MockFilterChain());
+            assertThat(response.getStatus()).isEqualTo(200);
+        }
+    }
+
+    @Test
+    @DisplayName("identity stage enforces the per-user bucket across different IPs")
+    void identityStage_perUserLimit_enforcedAcrossIps() throws Exception {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setRequestsPerMinutePerIp(1_000);
+        properties.setRequestsPerMinutePerUser(2);
+        RateLimitFilter identity = filter(RateLimitFilter.Stage.IDENTITY, properties,
+                mock(RequestEventService.class), Clock.systemUTC());
+        UUID userId = UUID.randomUUID();
+
+        try {
+            // Every request comes from a different IP, so only the per-user bucket can reject.
+            for (int index = 0; index < 2; index++) {
+                MockHttpServletResponse allowed = new MockHttpServletResponse();
+                identity.doFilter(authenticated(distinctIp(8, index), userId), allowed,
+                        new MockFilterChain());
+                assertThat(allowed.getStatus()).isEqualTo(200);
+            }
+
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            identity.doFilter(authenticated(distinctIp(8, 99), userId), response, new MockFilterChain());
+
+            assertThat(response.getStatus()).isEqualTo(429);
+            assertThat(response.getContentAsString()).contains("TOO_MANY_REQUESTS");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("telemetry keeps the user id: it is resolved after the chain, not on the way in")
+    void edgeStage_recordsResolvedPrincipal_notNull() throws Exception {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setRequestsPerMinutePerIp(1_000);
+        RequestEventService eventService = mock(RequestEventService.class);
+        RateLimitFilter edge = filter(properties, eventService, Clock.systemUTC());
+        UUID userId = UUID.randomUUID();
+
+        try {
+            // The chain stands in for JwtAuthFilter/ApiKeyAuthFilter: identity only appears while
+            // the inner chain runs. Reading it at filter entry recorded null for every request.
+            FilterChain authenticating = (req, res) -> {
+                authenticate(userId);
+                ((HttpServletRequest) req).setAttribute(
+                        com.vibegraph.auth.web.ApiKeyAuthFilter.API_KEY_REF_ATTRIBUTE, "key-9");
+            };
+            edge.doFilter(request("203.0.113.44"), new MockHttpServletResponse(), authenticating);
+
+            verify(eventService).record(eq(userId), eq("key-9"), anyString(), anyString(),
+                    anyString(), anyInt(), any(), eq("REQUEST"));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    private MockHttpServletRequest authenticated(String remoteAddress, UUID userId) {
+        authenticate(userId);
+        return request(remoteAddress);
+    }
+
+    private void authenticate(UUID userId) {
+        AuthenticatedUser user = new AuthenticatedUser(userId, "u@example.com", Role.USER);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, List.of()));
     }
 
     @Test
@@ -287,8 +381,13 @@ class RateLimitFilterTest {
 
     private RateLimitFilter filter(AbuseProperties properties, RequestEventService eventService,
             Clock clock) {
-        return new RateLimitFilter(properties, new ClientAddressResolver(properties), eventService,
-                new ObjectMapper(), clock, meterRegistry);
+        return filter(RateLimitFilter.Stage.EDGE, properties, eventService, clock);
+    }
+
+    private RateLimitFilter filter(RateLimitFilter.Stage stage, AbuseProperties properties,
+            RequestEventService eventService, Clock clock) {
+        return new RateLimitFilter(stage, properties, new ClientAddressResolver(properties),
+                eventService, new ObjectMapper(), clock, meterRegistry);
     }
 
     private static String distinctIp(int group, int index) {

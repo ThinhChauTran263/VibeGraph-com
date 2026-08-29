@@ -17,6 +17,8 @@ import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.MeteredToolCallback;
+import com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 import com.vibegraph.mcp.tool.ArchitectureTool;
 import com.vibegraph.mcp.tool.ClassContextTool;
 import com.vibegraph.mcp.tool.ExplainCompileErrorTool;
@@ -72,7 +74,9 @@ public class McpServerConfig {
             FeatureGateService featureGateService,
             AccountAccessGuard accountAccessGuard,
             ApiKeyRequestContextAccessor apiKeyContextAccessor,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            McpTaskExecutionCoordinator taskCoordinator,
+            OperationTelemetryRecorder telemetryRecorder) {
         ToolCallbackProvider baseProvider = MethodToolCallbackProvider.builder()
                 .toolObjects(
                         architectureTool,
@@ -104,7 +108,9 @@ public class McpServerConfig {
                         featureGateService,
                         accountAccessGuard,
                         apiKeyContextAccessor,
-                        objectMapper))
+                        objectMapper,
+                        taskCoordinator,
+                        telemetryRecorder))
                 .toList());
     }
 }

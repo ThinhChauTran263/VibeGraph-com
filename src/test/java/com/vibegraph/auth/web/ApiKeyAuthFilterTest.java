@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.springframework.mock.web.MockFilterChain;
@@ -66,6 +67,68 @@ class ApiKeyAuthFilterTest {
                 .isEqualTo(new ApiKeyRequestContext(keyId + ":vbg_12345678", "project-1"));
         verify(accountSettings).assertNotBlocked(userId);
         verify(keyRepository).save(key);
+    }
+
+    @Test
+    void doFilter_currentProjectRoutes_authenticateWithBoundKey() throws Exception {
+        ApiKeyRepository keyRepository = mock(ApiKeyRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        AccountSettingsService accountSettings = mock(AccountSettingsService.class);
+        var projectRepository = mock(com.vibegraph.auth.repository.ProjectOwnershipRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+        UUID userId = UUID.randomUUID();
+        ApiKey key = ApiKey.builder().id(UUID.randomUUID()).userId(userId).projectId("project-1")
+                .keyPrefix("vbg_12345678").keyHash("hash").build();
+        when(keyRepository.findTop6ByKeyPrefixAndDeletedAtIsNullAndDisabledAtIsNullOrderByIdAsc(
+                "vbg_12345678")).thenReturn(List.of(key));
+        when(encoder.matches("vbg_123456789012345", "hash")).thenReturn(true);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder()
+                .id(userId).email("cli@example.test").role(Role.USER).build()));
+        when(projectRepository.findOwnerId("project-1")).thenReturn(Optional.of(userId));
+        ApiKeyAuthFilter filter = new ApiKeyAuthFilter(
+                keyRepository, userRepository, projectRepository, accountSettings, encoder);
+
+        for (String method : List.of("GET", "POST")) {
+            clearContext();
+            String route = method.equals("GET") ? "/api/projects/current" : "/api/projects/current/analyze";
+            MockHttpServletRequest request = new MockHttpServletRequest(method, route);
+            request.addHeader(ApiKeyAuthFilter.API_KEY_HEADER, "vbg_123456789012345");
+            filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+        }
+    }
+
+    @Test
+    void doFilter_repeatedRequests_throttleLastUsedWrite() throws Exception {
+        ApiKeyRepository keyRepository = mock(ApiKeyRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        AccountSettingsService accountSettings = mock(AccountSettingsService.class);
+        var projectRepository = mock(com.vibegraph.auth.repository.ProjectOwnershipRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+        UUID userId = UUID.randomUUID();
+        UUID keyId = UUID.randomUUID();
+        ApiKey key = ApiKey.builder().id(keyId).userId(userId).projectId("project-1")
+                .keyPrefix("vbg_12345678").keyHash("hash").build();
+        when(keyRepository.findTop6ByKeyPrefixAndDeletedAtIsNullAndDisabledAtIsNullOrderByIdAsc(
+                "vbg_12345678")).thenReturn(List.of(key));
+        when(encoder.matches("vbg_123456789012345", "hash")).thenReturn(true);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(User.builder()
+                .id(userId).email("cli@example.test").role(Role.USER).build()));
+        when(projectRepository.findOwnerId("project-1")).thenReturn(Optional.of(userId));
+        ApiKeyAuthFilter filter = new ApiKeyAuthFilter(
+                keyRepository, userRepository, projectRepository, accountSettings, encoder);
+
+        for (int i = 0; i < 3; i++) {
+            SecurityContextHolder.clearContext();
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+            request.addHeader(ApiKeyAuthFilter.API_KEY_HEADER, "vbg_123456789012345");
+            filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+        }
+
+        // F6: all three requests authenticate, but lastUsedAt is persisted only once
+        // inside the throttle window instead of once per request.
+        verify(keyRepository, times(1)).save(key);
     }
 
     @Test

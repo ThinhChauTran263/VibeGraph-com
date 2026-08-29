@@ -3,7 +3,6 @@ package com.vibegraph.abuse;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Optional;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,18 +20,39 @@ public class ClientAddressResolver {
         if (!properties.isTrustProxy() || !isTrustedProxy(remote)) {
             return remote;
         }
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded == null || forwarded.isBlank()) {
-            return remote;
+        String[] forwardedHeaders = {"X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"};
+        for (String headerName : forwardedHeaders) {
+            Optional<String> forwardedAddress =
+                    resolveForwardedHeader(request.getHeader(headerName));
+            if (forwardedAddress.isPresent()) {
+                return forwardedAddress.get();
+            }
         }
-        return Arrays.stream(forwarded.split(","))
-                .map(String::trim)
-                .filter(token -> !token.isBlank())
-                .map(ClientAddressResolver::tryCanonicalize)
-                .flatMap(Optional::stream)
-                .filter(ClientAddressResolver::isPublicClientAddress)
-                .findFirst()
-                .orElse(remote);
+        return remote;
+    }
+
+    private Optional<String> resolveForwardedHeader(String forwarded) {
+        if (forwarded == null || forwarded.isBlank()) {
+            return Optional.empty();
+        }
+        // S-M2: walk the chain right-to-left and take the right-most token outside the
+        // trusted proxy range. Each trusted hop appends the address it received on the
+        // right, so the right-most untrusted entry is the closest one a trusted hop still
+        // vouches for — the left-most entries are freely spoofable by the client and must
+        // never drive rate-limit or IP-block decisions.
+        String[] tokens = forwarded.split(",");
+        for (int index = tokens.length - 1; index >= 0; index--) {
+            Optional<String> candidate = tryCanonicalize(tokens[index].trim());
+            if (candidate.isEmpty()) {
+                continue;
+            }
+            String address = candidate.get();
+            if (isTrustedProxy(address) || !isPublicClientAddress(address)) {
+                continue;
+            }
+            return Optional.of(address);
+        }
+        return Optional.empty();
     }
 
     private boolean isTrustedProxy(String remote) {

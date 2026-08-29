@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import SearchBar from '../SearchBar.vue'
+import searchBarSource from '../SearchBar.vue?raw'
 import type { GraphNode } from '@/types/graph'
 
 function node(overrides: Partial<GraphNode>): GraphNode {
@@ -24,22 +25,121 @@ const nodes: GraphNode[] = [
     name: 'placeOrder',
     fullName: 'com.example.OrderService.placeOrder',
   }),
+  node({
+    id: 'file-1',
+    type: 'File',
+    name: 'User.java',
+    fullName: 'src.main.java.com.example.User',
+    filePath: 'src/main/java/com/example/User.java',
+  }),
 ]
 
 describe('SearchBar', () => {
+  // F-L3: results render from the DEBOUNCED query, so every test that asserts on
+  // results must let the debounce settle first.
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function typeAndSettle(wrapper: VueWrapper, text: string): Promise<void> {
+    await wrapper.get('input[type="search"]').setValue(text)
+    vi.advanceTimersByTime(200)
+    await wrapper.vm.$nextTick()
+  }
+
   it('filters nodes by name or fullName', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('place')
+    await typeAndSettle(wrapper, 'place')
 
     expect(wrapper.text()).toContain('placeOrder')
     expect(wrapper.text()).not.toContain('OrderService · com.example.OrderService')
   })
 
+  it('matches lowercase input case-insensitively and ranks name prefixes first', async () => {
+    const distractingNodes = Array.from({ length: 12 }, (_, index) =>
+      node({
+        id: `contains-u-${index}`,
+        name: `Service${index}`,
+        fullName: `com.userland.Service${index}`,
+      }),
+    )
+    const wrapper = mount(SearchBar, { props: { nodes: [...distractingNodes, ...nodes] } })
+
+    await typeAndSettle(wrapper, 'u')
+
+    const resultNames = wrapper.findAll('.search-bar__result-name').map((item) => item.text())
+    expect(resultNames[0]).toBe('User.java')
+  })
+
+  it('matches a case-insensitive file path fragment', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await typeAndSettle(wrapper, 'EXAMPLE/USER')
+
+    expect(wrapper.text()).toContain('User.java')
+  })
+
+  it('ignores nodes with missing optional search metadata instead of breaking all results', async () => {
+    const incompleteNode = node({
+      id: 'incomplete',
+      name: 'NoMetadata',
+      fullName: undefined as unknown as string,
+      filePath: undefined as unknown as string,
+    })
+    const wrapper = mount(SearchBar, { props: { nodes: [incompleteNode, ...nodes] } })
+
+    await typeAndSettle(wrapper, 'user')
+
+    expect(wrapper.text()).toContain('User.java')
+    expect(wrapper.text()).not.toContain('No matching nodes.')
+  })
+
+  it('matches a Java filename query against a symbol name when file metadata is missing', async () => {
+    const auditAspect = node({
+      id: 'audit-aspect',
+      name: 'AuditAspect',
+      fullName: 'com.example.audit.AuditAspect',
+      filePath: '',
+    })
+    const wrapper = mount(SearchBar, { props: { nodes: [auditAspect] } })
+
+    await typeAndSettle(wrapper, 'AuditAspect.java')
+
+    expect(wrapper.text()).toContain('AuditAspect')
+    expect(wrapper.text()).not.toContain('No matching nodes.')
+  })
+
+  it('stops mouse interactions from bubbling into the graph gesture layer', async () => {
+    const onMouseDown = vi.fn()
+    document.addEventListener('mousedown', onMouseDown)
+    const wrapper = mount(SearchBar, { props: { nodes }, attachTo: document.body })
+
+    await wrapper.get('input[type="search"]').trigger('mousedown')
+
+    expect(onMouseDown).not.toHaveBeenCalled()
+    wrapper.unmount()
+    document.removeEventListener('mousedown', onMouseDown)
+  })
+
+  it('focuses on the first pointer tap without requesting a viewport scroll', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+    const input = wrapper.get('input[type="search"]')
+    const focusSpy = vi.spyOn(input.element as HTMLInputElement, 'focus')
+
+    await input.trigger('pointerdown')
+
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+  })
+
   it('emits select with the clicked node', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('order')
+    await typeAndSettle(wrapper, 'order')
     await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
 
     expect(wrapper.emitted('select')?.[0]?.[0]).toEqual(nodes[0])
@@ -48,7 +148,7 @@ describe('SearchBar', () => {
   it('collapses the results dropdown after selecting a node but keeps the query', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('order')
+    await typeAndSettle(wrapper, 'order')
     await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
 
     expect(wrapper.find('.search-bar__results').exists()).toBe(false)
@@ -61,7 +161,7 @@ describe('SearchBar', () => {
   it('reopens the dropdown when the input is focused again', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('order')
+    await typeAndSettle(wrapper, 'order')
     await wrapper.findAll('.search-bar__result')[0]!.trigger('click')
     expect(wrapper.find('.search-bar__results').exists()).toBe(false)
 
@@ -73,18 +173,59 @@ describe('SearchBar', () => {
   it('shows an empty state when no nodes match', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('missing')
+    await typeAndSettle(wrapper, 'missing')
 
     expect(wrapper.text()).toContain('No matching nodes.')
+  })
+
+  it('keeps results out of the toolbar layout flow', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await typeAndSettle(wrapper, 'order')
+
+    expect(wrapper.find('.search-bar__results').exists()).toBe(true)
+    expect(searchBarSource).toMatch(
+      /\.search-bar__results\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(100% \+ 0\.5rem\);/,
+    )
   })
 
   it('clears the query and emits clear', async () => {
     const wrapper = mount(SearchBar, { props: { nodes } })
 
-    await wrapper.get('input[type="search"]').setValue('order')
+    await typeAndSettle(wrapper, 'order')
     await wrapper.get('button[aria-label="Clear search"]').trigger('click')
 
     expect((wrapper.get('input[type="search"]').element as HTMLInputElement).value).toBe('')
     expect(wrapper.emitted('clear')).toHaveLength(1)
+  })
+
+  it('F-L3: burst typing collapses the O(nodes) filter to at most 2 runs, same final result', async () => {
+    const bigNodes = Array.from({ length: 40 }, (_, i) =>
+      node({ id: `n${i}`, name: `Node${i}`, fullName: `com.example.Node${i}` }),
+    )
+    const filterSpy = vi.spyOn(bigNodes, 'filter')
+    const wrapper = mount(SearchBar, { props: { nodes: bigNodes } })
+
+    // 10 keystrokes inside the debounce window (10ms apart < 150ms debounce).
+    const input = wrapper.get('input[type="search"]')
+    for (let i = 1; i <= 10; i++) {
+      await input.setValue(`node${i % 4}`)
+      vi.advanceTimersByTime(10)
+    }
+    const runsDuringBurst = filterSpy.mock.calls.length
+
+    // Rest the input on a final term, let the debounce fire once.
+    await input.setValue('node3')
+    vi.advanceTimersByTime(200)
+    await wrapper.vm.$nextTick()
+
+    expect(runsDuringBurst).toBeLessThanOrEqual(2)
+    expect(filterSpy.mock.calls.length).toBeLessThanOrEqual(2)
+    // Final result identical to what eager filtering would have produced:
+    // 'node3' substring-matches Node3 and Node33 only (not Node13).
+    expect(wrapper.text()).toContain('Node3')
+    expect(wrapper.text()).toContain('Node33')
+    expect(wrapper.text()).not.toContain('Node13')
+    filterSpy.mockRestore()
   })
 })

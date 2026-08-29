@@ -19,7 +19,7 @@ class ClientAddressResolverTest {
     }
 
     @Test
-    void resolve_trustedProxyConfiguration_usesFirstForwardedAddress() {
+    void resolve_trustedProxyConfiguration_usesRightmostUntrustedAddress() {
         AbuseProperties properties = new AbuseProperties();
         properties.setTrustProxy(true);
         properties.setTrustedProxies(java.util.List.of("10.0.0.4"));
@@ -27,6 +27,22 @@ class ClientAddressResolverTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("10.0.0.4");
         request.addHeader("X-Forwarded-For", "198.51.100.77, 10.0.0.4");
+
+        assertThat(resolver.resolve(request)).isEqualTo("198.51.100.77");
+    }
+
+    @Test
+    void resolve_trustedProxyConfiguration_ignoresSpoofedLeftmostAddress() {
+        // S-M2: the attacker controls every entry left of what the trusted hop appended.
+        // Resolution must take the right-most token outside the trusted range, so rotating
+        // a spoofed left-most address cannot mint a fresh rate-limit bucket per request.
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("10.0.0.4"));
+        ClientAddressResolver resolver = new ClientAddressResolver(properties);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("10.0.0.4");
+        request.addHeader("X-Forwarded-For", "203.0.113.99, 198.51.100.77");
 
         assertThat(resolver.resolve(request)).isEqualTo("198.51.100.77");
     }
@@ -45,7 +61,7 @@ class ClientAddressResolverTest {
     }
 
     @Test
-    void resolve_trustedDockerCidr_usesForwardedClientAddress() {
+    void resolve_trustedDockerCidr_usesRightmostUntrustedClientAddress() {
         AbuseProperties properties = new AbuseProperties();
         properties.setTrustProxy(true);
         properties.setTrustedProxies(java.util.List.of("172.18.0.0/16"));
@@ -55,6 +71,33 @@ class ClientAddressResolverTest {
         request.addHeader("X-Forwarded-For", "198.51.100.77, 172.18.0.6");
 
         assertThat(resolver.resolve(request)).isEqualTo("198.51.100.77");
+    }
+
+    @Test
+    void resolve_trustedProxy_usesCloudflareConnectingIpWhenTunnelOmitsPublicXff() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("172.18.0.0/16"));
+        ClientAddressResolver resolver = new ClientAddressResolver(properties);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.6");
+        request.addHeader("X-Forwarded-For", "172.18.0.6");
+        request.addHeader("CF-Connecting-IP", "198.51.100.77");
+
+        assertThat(resolver.resolve(request)).isEqualTo("198.51.100.77");
+    }
+
+    @Test
+    void resolve_untrustedRemoteProxy_ignoresCloudflareConnectingIp() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("10.0.0.4"));
+        ClientAddressResolver resolver = new ClientAddressResolver(properties);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.6");
+        request.addHeader("CF-Connecting-IP", "198.51.100.77");
+
+        assertThat(resolver.resolve(request)).isEqualTo("172.18.0.6");
     }
 
     @Test

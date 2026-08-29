@@ -19,15 +19,15 @@ Import GitHub public repo,3,3,3,3,12,0.5,6,30,5
 Pre-flight kiểm tra repo,2,3,2,1,8,0.5,4,30,3.333
 Resolve CALLS bằng SymbolSolver,3,2,3,1,9,0.5,4.5,30,3.75
 Lọc theo loại node/edge,2,2,3,1,8,0.5,4,30,3.333
-Focus mode N-hop,3,2,3,1,9,0.5,4.5,30,3.75
+Focus mode N-hop (historical; removed),3,2,3,1,9,0.5,4.5,30,3.75
 Node Detail API + panel,2,2,3,2,9,0.5,4.5,30,3.75
 Impact analysis (blast radius),3,3,3,2,11,0.5,5.5,30,4.583
 WebSocket realtime update,3,3,2,2,10,0.5,5,30,4.167
 File Watcher incremental,3,3,2,3,11,0.5,5.5,30,4.583
-Use Case Diagram (Mermaid),2,3,3,1,9,0.5,4.5,30,3.75
-Class Diagram (Mermaid),2,3,3,1,9,0.5,4.5,30,3.75
-MCP tools (15 tools),3,3,3,2,11,0.5,5.5,30,4.583
-Docker compose BE/FE/Neo4j,2,2,2,2,8,0.5,4,30,3.333
+Use Case Diagram (Mermaid; historical/superseded),2,3,3,1,9,0.5,4.5,30,3.75
+Class Diagram (Mermaid; historical/removed),2,3,3,1,9,0.5,4.5,30,3.75
+MCP tools (18 tools),3,3,3,2,11,0.5,5.5,30,4.583
+Docker Compose local stack (Postgres/Neo4j/BE/FE),2,2,2,2,8,0.5,4,30,3.333
 GitHub Actions CI BE/FE,2,2,1,1,6,0.5,3,30,2.5
 Sprint 3,,,,,,,,,
 MCP tools implementation,3,3,3,2,11,0.5,5.5,30,4.583
@@ -48,11 +48,11 @@ Complete documentation suite,2,3,2,1,8,0.5,4,30,3.333
 Bug fixes & final polish,2,2,2,2,8,0.5,4,30,3.333
 Sprint 3 (Giai đoạn 2 bổ sung),,,,,,,,,
 Auth email + JWT cookie HttpOnly,3,3,3,3,12,0.5,6,30,5
-Đăng nhập Google OAuth (linking),2,3,2,1,8,0.5,4,30,3.333
+Google OAuth linking (historical scope; current also GitHub),2,3,2,1,8,0.5,4,30,3.333
 Ownership guard + sandbox/quota,3,3,3,3,12,0.5,6,30,5
 CLI vibegraph (push/watch local patch),3,2,2,3,10,0.5,5,30,4.167
 Senior MCP tools + source viewer,3,3,3,2,11,0.5,5.5,30,4.583
-Deep CPG opt-in (LocalVariable/READS/WRITES),2,2,3,2,9,0.5,4.5,30,3.75
+Deep CPG runtime default (LocalVariable/READS/WRITES),2,2,3,2,9,0.5,4.5,30,3.75
 Use Case SVG UML 2.5 + inference,2,3,3,1,9,0.5,4.5,30,3.75
 Sprint 4 (Giai đoạn 2 bổ sung),,,,,,,,,
 User workspace (BE + FE),3,3,3,3,12,0.5,6,30,5

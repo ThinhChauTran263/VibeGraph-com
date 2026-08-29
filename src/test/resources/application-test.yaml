@@ -76,7 +76,6 @@ spring:
 # VibeGraph custom config — dùng default an toàn cho test.
 vibegraph:
   projects:
-    allow-unconfined-browse: true
     allow-unconfined-import: true
 
   abuse:
@@ -101,6 +100,11 @@ vibegraph:
   # (random ≥ 64 ký tự) để không có secret hardcoded trong repo.
   # Prefix phải khớp JwtProperties (@ConfigurationProperties "vibegraph.auth.jwt").
   auth:
+    api-key-encryption:
+      # Public, deterministic test-only material: Base64 of exactly 32 bytes.
+      current-key: dmliZWdyYXBoLWxvY2FsLWFwaS1rZXktMzItYnl0ZSE=
+      previous-key:
+      legacy-secret: overridden-per-run-by-DynamicPropertySource-64-byte-placeholder-for-tests
     jwt:
       secret: overridden-per-run-by-DynamicPropertySource-64-byte-placeholder-for-tests
       expiration-ms: 3600000

@@ -56,8 +56,12 @@ export function envBool(key: string, fallback: boolean): boolean {
 }
 
 // ── Graph rendering ──────────────────────────────────────────────────────────
-/** Max nodes handed to the renderer before Safe Mode caps the view; 0 disables the cap. */
-export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 0, { min: 0 })
+/**
+ * Max nodes handed to the renderer before Safe Mode caps the view; 0 disables the cap.
+ * B-M10: the default is POSITIVE so a huge graph can no longer freeze the browser — set
+ * 0 explicitly only to disable Safe Mode deliberately.
+ */
+export const GRAPH_SAFE_NODE_LIMIT = envInt('VITE_GRAPH_SAFE_NODE_LIMIT', 3000, { min: 0 })
 /** Max neighbors merged when expanding a single node. */
 export const EXPAND_MAX_NEIGHBORS = envInt('VITE_EXPAND_MAX_NEIGHBORS', 500, { min: 1 })
 /** Default / min / max rendered node radius (Sigma units). */
@@ -94,14 +98,6 @@ export const IMPORT_STALL_TIMEOUT_MS = envInt('VITE_IMPORT_STALL_TIMEOUT_MS', 30
 export const IMPORT_ABSOLUTE_TIMEOUT_MS = envInt('VITE_IMPORT_ABSOLUTE_TIMEOUT_MS', 3_600_000, {
   min: 1000,
 })
-
-// ── Project list ─────────────────────────────────────────────────────────────
-/** Background refresh cadence for the "Your projects" list on the home page. */
-export const PROJECTS_AUTO_REFRESH_INTERVAL_MS = envInt(
-  'VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS',
-  5000,
-  { min: 1000 },
-)
 
 // ── WebSocket (STOMP/SockJS) ─────────────────────────────────────────────────
 /** Reconnect delay after a dropped socket. */
@@ -157,17 +153,21 @@ export const SIGMA_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_LABEL_GROW_ZOOM', 1.5,
 /**
  * Zoom-in factor past which EDGE type labels start growing. Kept high so edge labels
  * appear and stay a FIXED size across the normal zoom range, and only begin scaling
- * up once you zoom deep past this factor (e.g. 10 = labels hold their size until 10×
+ * up once you zoom deep past this factor (e.g. 8 = labels hold their size until 8×
  * the fit view, then enlarge with further zoom). Zooming back out below it returns
  * them to the fixed size. This is separate from the node grow factor so node labels
  * can grow early for readability while edge labels stay calm until deep zoom.
  */
-export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, {
+export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 8, {
   min: 1,
 })
 
-/** Rendered edge thickness (screen px, constant across zoom). Lower = thinner lines. */
-export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.25, { min: 0.05 })
+/**
+ * Edge size attribute fed to Sigma's edge programs. Sigma shares the item-size
+ * zoom curve between nodes and edges, but the minimum edge thickness remains the
+ * effective line width while the scaled edge size stays below that floor.
+ */
+export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.02, { min: 0.005 })
 
 /**
  * Minimum rendered edge thickness (screen px). Sigma floors every edge at this, and
@@ -175,7 +175,7 @@ export const SIGMA_EDGE_SIZE = envFloat('VITE_SIGMA_EDGE_SIZE', 0.25, { min: 0.0
  * thin width no matter how far you zoom in (they never balloon with zoom like the
  * default size/√ratio scaling would). This is the effective edge line thickness.
  */
-export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 2.8, { min: 0.5 })
+export const SIGMA_MIN_EDGE_THICKNESS = envFloat('VITE_SIGMA_MIN_EDGE_THICKNESS', 1.8, { min: 0.5 })
 
 /**
  * Camera-ratio thresholds that stage label reveal (Sigma ratio: LOWER = zoomed IN).
@@ -202,120 +202,23 @@ export const SIGMA_MAX_EDGE_LABELS_PER_FRAME = envInt('VITE_SIGMA_MAX_EDGE_LABEL
   min: 1,
 })
 
-// ── ForceAtlas2 layout ───────────────────────────────────────────────────────
-export const FA2_GRAVITY = envFloat('VITE_FA2_GRAVITY', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO = envFloat('VITE_FA2_SCALING_RATIO', 1500, { min: 0 })
-/** Enable Barnes-Hut optimization once node count exceeds this. */
-export const FA2_BARNES_HUT_MIN_NODES = envInt('VITE_FA2_BARNES_HUT_MIN_NODES', 500, { min: 0 })
-export const FA2_SLOW_DOWN = envFloat('VITE_FA2_SLOW_DOWN', 5, { min: 0 })
-/** Synchronous ForceAtlas2 iterations run once before first paint (no live animation). */
-export const FA2_ITERATIONS = envInt('VITE_FA2_ITERATIONS', 700, { min: 1 })
-
-// ── ForceAtlas2 cluster separation (anti-hairball) ───────────────────────────
-// The reference "grapuco" look is standard ForceAtlas2 (NOT LinLog) with strong
-// repulsion + dissuade-hubs: connected nodes stay close (short, local edges) while
-// unrelated nodes push far apart, so the graph spreads into organic branches
-// instead of one dense hairball. LinLog is intentionally OFF — it lengthens edges
-// and pulls the body toward the center (measured edgeToRadius 0.48 vs 0.29).
-//
-// Do NOT enable adjustSizes + Noverlap together — those pack the graph into a
-// uniform square and destroy the branch structure. They default OFF.
-export const FA2_LINLOG_MODE = envBool('VITE_FA2_LINLOG_MODE', false)
-export const FA2_OUTBOUND_ATTRACTION = envBool('VITE_FA2_OUTBOUND_ATTRACTION', true)
-/** Account for node radius while laying out. OFF: it packs nodes into a solid square. */
-export const FA2_ADJUST_SIZES = envBool('VITE_FA2_ADJUST_SIZES', false)
+// ── Layout engine (update/graph/qwen/02-ARCHITECTURE.md) ────────────────────
+// grapuco recipe: worker macro (d3|ngraph) + d3 forceCollide in-sim, 300
+// ticks, pinned; graph-unit sizes via 'positions'.
+/** Macro slot for the d3 engine: pure 'd3' (default — matches grapuco spread,
+ *  see update/graph/qwen/04-RESULTS.md) or 'ngraph' hybrid (A/B fallback). */
+export const LAYOUT_MACRO: 'd3' | 'ngraph' =
+  (ENV['VITE_LAYOUT_MACRO'] ?? 'd3').trim().toLowerCase() === 'ngraph' ? 'ngraph' : 'd3'
 /**
- * Strong gravity pulls a node toward the center by a force PROPORTIONAL to its
- * distance. It keeps outliers close but COMPRESSES the whole body into a dense
- * disc (crammed look), so it defaults OFF. Framing is handled instead by clamping
- * outliers (below), which keeps the body airy while still bounding the view.
+ * Node draw radius in graph units = max(DRAW_SCALE·val, DRAW_MIN); collide
+ * radius = draw + COLLIDE_PAD (grapuco: draw 24–60, pad 100). Raise DRAW_SCALE
+ * for bigger visible nodes; keep COLLIDE_PAD ≥ ~2× draw for the 0-overlap
+ * guarantee (update/graph/qwen/01-EVIDENCE.md §3).
  */
-export const FA2_STRONG_GRAVITY_MODE = envBool('VITE_FA2_STRONG_GRAVITY_MODE', false)
+export const LAYOUT_DRAW_SCALE = envFloat('VITE_LAYOUT_DRAW_SCALE', 3, { min: 0.5 })
+export const LAYOUT_DRAW_MIN = envFloat('VITE_LAYOUT_DRAW_MIN', 10, { min: 1 })
+export const LAYOUT_COLLIDE_PAD = envFloat('VITE_LAYOUT_COLLIDE_PAD', 100, { min: 0 })
 
-/**
- * After layout, pull the farthest nodes (disconnected singletons / tiny orphan
- * components) inward to this radius percentile of the main body. Without this a
- * few edge-less nodes drift far out, forcing zoom-to-fit to shrink the whole graph
- * to a crammed dot. Clamping them to a bounding ring lets the airy body fill the
- * view. Range 0–1; set 0 (or ≥1) to disable.
- */
-export const FA2_OUTLIER_CLAMP_PERCENTILE = envFloat('VITE_FA2_OUTLIER_CLAMP_PERCENTILE', 0.9, {
-  min: 0,
-  max: 1,
-})
-
-// Adaptive settings: small graphs already spread well with the base values, so we
-// only switch to the heavier, more separated large-graph profile past this size.
-export const FA2_LARGE_GRAPH_THRESHOLD = envInt('VITE_FA2_LARGE_GRAPH_THRESHOLD', 300, { min: 1 })
-/**
- * Large-graph overrides. Strong repulsion (high scalingRatio) spreads the graph
- * wide; gravity ~1 combined with strongGravityMode keeps disconnected nodes near
- * the body so the camera frames the main cluster instead of a distant outlier.
- */
-export const FA2_GRAVITY_LARGE = envFloat('VITE_FA2_GRAVITY_LARGE', 0.001, { min: 0 })
-export const FA2_SCALING_RATIO_LARGE = envFloat('VITE_FA2_SCALING_RATIO_LARGE', 2000, { min: 0 })
-/** Iterations for the large-graph profile (more passes = better separated). */
-export const FA2_ITERATIONS_LARGE = envInt('VITE_FA2_ITERATIONS_LARGE', 1000, { min: 1 })
-
-/**
- * Rescale the settled layout so its bounding box spans this many layout units.
- * Node sizes are rendered in the SAME layout-coordinate space (see Sigma
- * `itemSizesReference: 'positions'`), so a fixed span makes a node of `size` s
- * render at a predictable pixel radius (≈ s · viewport / span) on EVERY project,
- * regardless of how large the raw force-layout coordinates came out. It also makes
- * the Noverlap `margin` translate to a consistent on-screen gap. Set 0 to disable.
- */
-export const LAYOUT_NORMALIZE_SPAN = envInt('VITE_LAYOUT_NORMALIZE_SPAN', 9000, { min: 0 })
-// Shape-preserving post-layout spread. ForceAtlas2 decides the organic silhouette;
-// this pass scales each connected component around its own centroid and shifts
-// smaller islands away from the main component without rerunning physics.
-export const LAYOUT_BRANCH_ENABLED = envBool('VITE_LAYOUT_BRANCH_ENABLED', true)
-export const LAYOUT_BRANCH_MIN_NODES = envInt('VITE_LAYOUT_BRANCH_MIN_NODES', 80, { min: 1 })
-export const LAYOUT_BRANCH_STRENGTH = envFloat('VITE_LAYOUT_BRANCH_STRENGTH', 1.9, {
-  min: 0,
-  max: 2,
-})
-export const LAYOUT_BRANCH_LEVEL_GAP = envFloat('VITE_LAYOUT_BRANCH_LEVEL_GAP', 2200, {
-  min: 0,
-})
-export const LAYOUT_BRANCH_JITTER = envFloat('VITE_LAYOUT_BRANCH_JITTER', 260, { min: 0 })
-export const LAYOUT_BRANCH_COMPONENT_GAP = envFloat('VITE_LAYOUT_BRANCH_COMPONENT_GAP', 4200, {
-  min: 0,
-})
-
-// ── Overlap removal (post-pass) ──────────────────────────────────────────────
-// After ForceAtlas2 + normalization, a custom symmetric de-overlap pass separates
-// every pair of nodes closer than (radius_a + radius_b + margin). It runs in the
-// same layout-coordinate space Sigma renders node sizes in, so it GUARANTEES no
-// nodes overlap on screen. `margin` is the minimum clear gap (layout units) kept
-// between node boundaries; at the normalized span it maps to a consistent pixel gap.
-export const NOVERLAP_ENABLED = envBool('VITE_NOVERLAP_ENABLED', true)
-export const NOVERLAP_MARGIN = envFloat('VITE_NOVERLAP_MARGIN', 40, { min: 0 })
-export const NOVERLAP_RATIO = envFloat('VITE_NOVERLAP_RATIO', 2.7, { min: 0 })
-export const NOVERLAP_MAX_ITERATIONS = envInt('VITE_NOVERLAP_MAX_ITERATIONS', 500, { min: 1 })
-export const NOVERLAP_AUTO_STOP_MS = envInt('VITE_NOVERLAP_AUTO_STOP_MS', 22000, { min: 0 })
-
-// Final visual cleanup for Sigma's screen-sized nodes. Graphology noverlap works
-// in graph units, while `itemSizesReference: 'screen'` renders node radii in px;
-// this bounded pass converts px radii to graph units and only pushes still-touching
-// visible nodes apart after the worker stops.
-export const LAYOUT_SCREEN_OVERLAP_ENABLED = envBool('VITE_LAYOUT_SCREEN_OVERLAP_ENABLED', true)
-export const LAYOUT_SCREEN_OVERLAP_GAP_PX = envFloat('VITE_LAYOUT_SCREEN_OVERLAP_GAP_PX', 3, {
-  min: 0,
-})
-export const LAYOUT_SCREEN_OVERLAP_ITERATIONS = envInt(
-  'VITE_LAYOUT_SCREEN_OVERLAP_ITERATIONS',
-  10,
-  { min: 1 },
-)
-export const LAYOUT_SCREEN_OVERLAP_STRENGTH = envFloat(
-  'VITE_LAYOUT_SCREEN_OVERLAP_STRENGTH',
-  0.7,
-  { min: 0, max: 1 },
-)
-
-/** Auto-stop the layout worker after this long. */
-export const LAYOUT_AUTO_STOP_MS = envInt('VITE_LAYOUT_AUTO_STOP_MS', 8000, { min: 0 })
 /** Zoom-to-fit camera animation duration. */
 export const ZOOM_FIT_DURATION_MS = envInt('VITE_ZOOM_FIT_DURATION_MS', 300, { min: 0 })
 

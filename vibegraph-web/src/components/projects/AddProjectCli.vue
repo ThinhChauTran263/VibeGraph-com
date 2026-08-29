@@ -20,8 +20,9 @@ const loading = ref(false)
 const error = ref('')
 const copied = ref<string | null>(null)
 
+const SAFE_CLI_COMMANDS = ['vibegraph login', 'vibegraph push', 'vibegraph watch']
 const canSubmit = computed(() => !loading.value && !setup.value)
-const commandBlock = computed(() => setup.value?.commands.join('\n') ?? '')
+const commandBlock = SAFE_CLI_COMMANDS.join('\n')
 
 async function createRepository(): Promise<void> {
   if (!canSubmit.value) return
@@ -60,9 +61,15 @@ function reset(): void {
 </script>
 
 <template>
-  <section class="cli-import" :class="{ 'cli-import--embedded': embedded }" aria-labelledby="cli-import-heading">
+  <section
+    class="cli-import"
+    :class="{ 'cli-import--embedded': embedded }"
+    aria-labelledby="cli-import-heading"
+  >
     <header v-if="!embedded" class="cli-import__header">
-      <span class="cli-import__icon" aria-hidden="true"><AppIcon name="repository" :size="20" /></span>
+      <span class="cli-import__icon" aria-hidden="true"
+        ><AppIcon name="repository" :size="20"
+      /></span>
       <div>
         <h2 id="cli-import-heading">{{ t('user.import.cli.title') }}</h2>
         <p>{{ t('user.import.cli.hint') }}</p>
@@ -83,12 +90,21 @@ function reset(): void {
       </label>
 
       <div class="cli-import__actions">
-        <button type="submit" class="cli-import__btn cli-import__btn--primary" :disabled="!canSubmit">
+        <button
+          type="submit"
+          class="cli-import__btn cli-import__btn--primary"
+          :disabled="!canSubmit"
+        >
           <Spinner v-if="loading" size="sm" aria-hidden="true" />
           <AppIcon v-else name="plus" :size="17" />
           <span>{{ loading ? t('user.import.cli.creating') : t('user.import.cli.create') }}</span>
         </button>
-        <button type="button" class="cli-import__btn" :disabled="loading" @click="reset">
+        <button
+          type="button"
+          class="cli-import__btn cli-import__btn--ghost"
+          :disabled="loading"
+          @click="reset"
+        >
           {{ t('user.import.reset') }}
         </button>
       </div>
@@ -96,7 +112,9 @@ function reset(): void {
 
     <section v-else class="cli-import__result" aria-live="polite">
       <div class="cli-import__success">
-        <span class="cli-import__success-icon" aria-hidden="true"><AppIcon name="key" :size="18" /></span>
+        <span class="cli-import__success-icon" aria-hidden="true"
+          ><AppIcon name="key" :size="18"
+        /></span>
         <div>
           <h3>{{ t('user.import.cli.readyTitle', { name: setup.project.name }) }}</h3>
           <p>{{ t('user.import.cli.secretNotice') }}</p>
@@ -106,7 +124,11 @@ function reset(): void {
       <div class="cli-import__secret">
         <span>{{ t('user.import.cli.apiKey') }}</span>
         <code>{{ setup.apiKey.secretKey }}</code>
-        <button type="button" class="cli-import__icon-btn" @click="copyText(setup.apiKey.secretKey, 'secret')">
+        <button
+          type="button"
+          class="cli-import__icon-btn"
+          @click="copyText(setup.apiKey.secretKey, 'secret')"
+        >
           {{ copied === 'secret' ? t('user.import.cli.copied') : t('user.import.cli.copy') }}
         </button>
       </div>
@@ -114,7 +136,11 @@ function reset(): void {
       <div class="cli-import__commands">
         <div class="cli-import__commands-head">
           <span>{{ t('user.import.cli.commands') }}</span>
-          <button type="button" class="cli-import__icon-btn" @click="copyText(commandBlock, 'commands')">
+          <button
+            type="button"
+            class="cli-import__icon-btn"
+            @click="copyText(commandBlock, 'commands')"
+          >
             {{ copied === 'commands' ? t('user.import.cli.copied') : t('user.import.cli.copyAll') }}
           </button>
         </div>
@@ -122,11 +148,15 @@ function reset(): void {
       </div>
 
       <div class="cli-import__actions">
-        <button type="button" class="cli-import__btn cli-import__btn--primary" @click="emit('imported', setup.project)">
-          <AppIcon name="graph" :size="17" />
-          <span>{{ t('user.import.cli.openRepository') }}</span>
+        <button
+          type="button"
+          class="cli-import__btn cli-import__btn--primary"
+          @click="emit('imported', setup.project)"
+        >
+          <AppIcon name="repository" :size="17" />
+          <span>{{ t('user.import.cli.goToRepositories') }}</span>
         </button>
-        <button type="button" class="cli-import__btn" @click="reset">
+        <button type="button" class="cli-import__btn cli-import__btn--ghost" @click="reset">
           {{ t('user.import.cli.createAnother') }}
         </button>
       </div>
@@ -138,8 +168,8 @@ function reset(): void {
 
 <style scoped>
 .cli-import {
-  --accent: var(--vg-blue-bright);
-  --accent-soft: rgba(96, 165, 250, 0.16);
+  --accent: var(--vg-cyan);
+  --accent-soft: rgba(34, 211, 238, 0.16);
   display: flex;
   flex-direction: column;
   gap: var(--vg-space-4);
@@ -251,7 +281,7 @@ input:focus {
 .cli-import__commands-head {
   display: flex;
   align-items: center;
-  gap: var(--vg-space-2);
+  gap: 0.6rem;
   flex-wrap: wrap;
 }
 
@@ -261,19 +291,24 @@ input:focus {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  min-height: 38px;
+  min-height: 2.75rem;
   border: 1px solid var(--vg-border-strong);
-  border-radius: 6px;
-  background: rgba(148, 163, 184, 0.08);
+  border-radius: var(--vg-radius-pill);
+  background: rgba(148, 163, 184, 0.06);
   color: var(--vg-text);
   font: inherit;
   font-size: var(--vg-text-sm);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--vg-dur-fast) var(--vg-ease-out),
+    border-color var(--vg-dur-fast) var(--vg-ease-out),
+    box-shadow var(--vg-dur) var(--vg-ease-out);
 }
 
 .cli-import__btn {
-  padding: 0.5rem 0.75rem;
+  padding: 0.6rem 1.15rem;
 }
 
 .cli-import__icon-btn {
@@ -282,13 +317,35 @@ input:focus {
 }
 
 .cli-import__btn--primary {
-  border-color: var(--vg-blue);
-  background: var(--vg-blue);
-  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #22d3ee, #0891b2);
+  color: #04212b;
+  box-shadow: 0 8px 24px -10px rgba(34, 211, 238, 0.7);
+}
+
+.cli-import__btn--primary:not(:disabled):hover {
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 18px 40px -14px rgba(34, 211, 238, 0.8);
+}
+
+.cli-import__btn--primary:not(:disabled):active {
+  box-shadow: 0 4px 14px -8px rgba(34, 211, 238, 0.7);
+}
+
+.cli-import__btn--ghost:not(:disabled):hover {
+  border-color: var(--accent);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.cli-import__btn:focus-visible,
+.cli-import__icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .cli-import__btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -338,6 +395,13 @@ pre code {
   color: #fca5a5;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .cli-import__btn,
+  .cli-import__icon-btn {
+    transition: none;
+  }
+}
+
 @media (max-width: 42rem) {
   .cli-import__secret {
     grid-template-columns: 1fr;
@@ -345,6 +409,17 @@ pre code {
 
   .cli-import__icon-btn {
     justify-self: start;
+  }
+}
+
+@media (max-width: 30rem) {
+  .cli-import__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .cli-import__actions .cli-import__btn {
+    width: 100%;
   }
 }
 </style>

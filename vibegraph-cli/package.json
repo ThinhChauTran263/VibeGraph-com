@@ -1,11 +1,11 @@
 {
-  "name": "@vibegraph/cli",
-  "version": "0.1.0",
-  "description": "Command-line client for VibeGraph local development workflows.",
+  "name": "vibegraph-cli",
+  "version": "0.1.14",
+  "description": "Production CLI for VibeGraph project push, watch, authentication, and MCP workflows.",
   "type": "module",
   "bin": {
-    "vibegraph": "./bin/vibegraph.js",
-    "vibegraph-cli": "./bin/vibegraph.js"
+    "vibegraph": "bin/vibegraph.js",
+    "vibegraph-cli": "bin/vibegraph.js"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -13,12 +13,15 @@
   "files": [
     "bin",
     "lib",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "smoke": "node ./bin/vibegraph.js help && node ./bin/vibegraph.js config show",
+    "smoke": "node ./test/smoke.js",
     "test": "node --test \"test/*.test.js\""
   },
-  "license": "UNLICENSED",
-  "private": true
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

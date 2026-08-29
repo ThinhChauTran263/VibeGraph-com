@@ -4,17 +4,21 @@
  * Renders force-directed graph with WebGL.
  *
  * Features:
- * - ForceAtlas2 layout (in Web Worker)
+ * - d3-force layout (in Web Worker)
  * - Click node, emit selected
  * - Loading + error states
  */
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useGraphData } from '@/composables/useGraphData'
 import { useGraphExpand } from '@/composables/useGraphExpand'
 import { useFilters } from '@/composables/useFilters'
 import { useSigma } from '@/composables/useSigma'
 import { debounce } from '@/lib/debounce'
 import { getEdgeAttributes, getNodeColor, getNodeSize } from '@/lib/graphAdapter'
+import { projectApi } from '@/lib/api'
+import { useImportTracker } from '@/stores/importTracker'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 import SearchBar from '@/components/graph/SearchBar.vue'
 import FilterPanel from '@/components/panels/FilterPanel.vue'
 import ExplorerPanel from '@/components/panels/ExplorerPanel.vue'
@@ -46,6 +50,38 @@ const props = defineProps<{
   projectId: string
 }>()
 
+const { t } = useI18n({ useScope: 'global' })
+const tracker = useImportTracker()
+
+// While the backend is still analyzing the project, the canvas shows a live
+// progress screen (brand spinner + progress bar + status message) instead of
+// the generic loading spinner. Cleared once analysis reaches a terminal state.
+const analyzingProjectId = ref<string | null>(null)
+const analysisFailed = ref(false)
+const analyzingEntry = computed(() =>
+  analyzingProjectId.value ? tracker.get(analyzingProjectId.value) : undefined,
+)
+const analyzingProgress = computed(() =>
+  Math.min(100, Math.max(0, Math.round(analyzingEntry.value?.progress ?? 0))),
+)
+const analyzingMessage = computed(
+  () => analyzingEntry.value?.message ?? t('user.projects.analyzingDefault'),
+)
+
+function waitForAnalysisEnd(seq: number, projectId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = watch(
+      () => tracker.version,
+      () => {
+        if (seq === loadSeq && tracker.isActive(projectId)) return
+        stop()
+        resolve()
+      },
+      { immediate: true },
+    )
+  })
+}
+
 const emit = defineEmits<{
   (e: 'nodeSelected', nodeId: string | null): void
 }>()
@@ -67,16 +103,17 @@ const activeFlow = ref<{
 // The selected flow shown in the right-hand DataFlowDetailPanel.
 const activeFlowDetail = ref<FlowListItem | null>(null)
 
-// User-resizable left sidebar width (px). Bound to a CSS custom property so the
-// responsive media query can still collapse the layout on narrow screens.
+// User-resizable left sidebar width (px). Owned by GraphView (v-model) so the
+// top tab bar can share the same column edge; bound to a CSS custom property
+// so the responsive media query can still collapse the layout on narrow screens.
 const wrapperRef = ref<HTMLElement | null>(null)
-const sidebarWidth = ref(288)
+const sidebarWidth = defineModel<number>('sidebarWidth', { default: 288 })
 let resizing = false
 
 // Collapsed state for the left sidebar. When collapsed the panel column shrinks
 // to zero and a floating chevron lets the user reopen it, freeing the full width
 // for the graph canvas.
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed = defineModel<boolean>('sidebarCollapsed', { default: false })
 
 function toggleSidebar(): void {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -123,6 +160,51 @@ const hoveredRelation = ref<HoveredRelation | null>(null)
 const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
+// At the fit view the full graph is already loaded/layouted, but its dense edge
+// layer stays hidden until the user zooms in. Very large graphs keep the legacy
+// always-visible edge mode because hiding thousands of edges is not useful.
+const graphEdgesVisible = ref(false)
+const EDGE_VISIBLE_RATIO = 0.45
+const LARGE_GRAPH_EDGE_THRESHOLD = 5000
+const MAX_FIT_NODE_SIZE_MULTIPLIER = 1.5
+const fitNodeSizeMultiplier = ref(MAX_FIT_NODE_SIZE_MULTIPLIER)
+const lastCameraRatio = ref(1)
+
+function isLargeGraph(): boolean {
+  return (graphInstance.value?.order ?? 0) > LARGE_GRAPH_EDGE_THRESHOLD
+}
+
+/**
+ * Ease the fit-only node enlargement away while zooming toward the edge reveal
+ * threshold. Quantizing to 0.05 keeps reducer refreshes bounded while still
+ * making the visual change gradual instead of snapping from 1.5 to 1.
+ */
+function resolveFitNodeSizeMultiplier(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio >= 1) return MAX_FIT_NODE_SIZE_MULTIPLIER
+  if (ratio <= EDGE_VISIBLE_RATIO) return 1
+
+  const progress = (1 - ratio) / (1 - EDGE_VISIBLE_RATIO)
+  const raw = MAX_FIT_NODE_SIZE_MULTIPLIER - progress * (MAX_FIT_NODE_SIZE_MULTIPLIER - 1)
+  return Math.round(raw * 20) / 20
+}
+
+function syncGraphDisplayState(ratio: number): boolean {
+  const largeGraph = isLargeGraph()
+  const nextEdgesVisible =
+    largeGraph || (Number.isFinite(ratio) && ratio <= EDGE_VISIBLE_RATIO)
+  const edgeVisibilityChanged = nextEdgesVisible !== graphEdgesVisible.value
+  graphEdgesVisible.value = nextEdgesVisible
+
+  const nextNodeSizeMultiplier = largeGraph ? 1 : resolveFitNodeSizeMultiplier(ratio)
+  const nodeSizeMultiplierChanged = nextNodeSizeMultiplier !== fitNodeSizeMultiplier.value
+  if (nodeSizeMultiplierChanged) fitNodeSizeMultiplier.value = nextNodeSizeMultiplier
+
+  const nextDensity = resolveFocusLabelDensity(ratio)
+  const densityChanged = nextDensity !== labelDensity.value
+  if (densityChanged) labelDensity.value = nextDensity
+
+  return edgeVisibilityChanged || nodeSizeMultiplierChanged || densityChanged
+}
 
 // Node types present in the currently highlighted cluster (selected/hovered node +
 // its bright neighbours, or the active flow's nodes). Drives the yellow ring around
@@ -258,9 +340,8 @@ const {
     applyFocusReducers()
   },
   onCameraRatioChange: (ratio: number) => {
-    const nextDensity = resolveFocusLabelDensity(ratio)
-    if (nextDensity === labelDensity.value) return
-    labelDensity.value = nextDensity
+    lastCameraRatio.value = ratio
+    if (!syncGraphDisplayState(ratio)) return
     // Apply the label-density reducer swap immediately so edge labels appear the
     // moment you cross the zoom threshold and then stay drawn every frame (the
     // per-frame budget + viewport culling keep that cheap) — no vanish/reload.
@@ -302,6 +383,7 @@ function withFilterVisibility(reducers: FocusReducers): FocusReducers {
 
 function applyFocusReducers(): void {
   if (!graphInstance.value) return
+  syncGraphDisplayState(lastCameraRatio.value)
   const graph = graphInstance.value
   // Filtering is a cheap Graphology attribute mutation. Apply it before focus
   // logic so a focused reducer can never reveal a filtered endpoint.
@@ -338,8 +420,20 @@ function applyFocusReducers(): void {
   // fully fit their edge.
   const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
   setReducers(withFilterVisibility({
-    nodeReducer: (_node, attributes) => attributes,
+    nodeReducer: (_node, attributes) => {
+      if (
+        isLargeGraph() ||
+        graphEdgesVisible.value ||
+        typeof attributes.size !== 'number'
+      ) {
+        return attributes
+      }
+      return { ...attributes, size: attributes.size * fitNodeSizeMultiplier.value }
+    },
     edgeReducer: (_edge, attributes) => {
+      if (!isLargeGraph() && !graphEdgesVisible.value) {
+        return { ...attributes, hidden: true }
+      }
       return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
     },
   }), showEdgeLabels)
@@ -412,6 +506,29 @@ async function load(projectId: string) {
   // Stale-load guard: if the project changes (or another load starts) while this
   // fetch is in flight, a late-resolving response must NOT init an outdated graph.
   const seq = ++loadSeq
+  analyzingProjectId.value = null
+  analysisFailed.value = false
+
+  // If analysis is still in flight, show the live progress screen and wait for
+  // the terminal state before fetching the graph (background imports included).
+  try {
+    const project = await projectApi.get(projectId)
+    if (seq !== loadSeq) return
+    if (project.status === 'ANALYZING') {
+      tracker.track(project)
+      analyzingProjectId.value = projectId
+      await waitForAnalysisEnd(seq, projectId)
+      if (seq !== loadSeq) return
+      analyzingProjectId.value = null
+      if (tracker.get(projectId)?.status === 'FAILED') {
+        analysisFailed.value = true
+        return
+      }
+    }
+  } catch {
+    // Status preflight failed (e.g. backend down): let loadGraph surface the real error.
+  }
+
   const graph = await loadGraph(projectId)
   if (seq !== loadSeq) return
   if (graph && canvasRef.value) {
@@ -434,6 +551,8 @@ function beginLayoutReveal(seq: number = loadSeq): void {
     clearTimeout(revealTimer.value)
     revealTimer.value = null
   }
+  fitNodeSizeMultiplier.value = MAX_FIT_NODE_SIZE_MULTIPLIER
+  graphEdgesVisible.value = false
   pendingRevealSeq = seq
   pendingInitialReveal.value = true
   graphReady.value = false
@@ -505,6 +624,7 @@ function onRelationSelect(payload: RelationHoverPayload): void {
 
 onMounted(() => {
   if (props.projectId) {
+    filters.setProject?.(props.projectId)
     load(props.projectId)
   }
 })
@@ -519,6 +639,7 @@ onActivated(() => {
 watch(
   () => props.projectId,
   (newId) => {
+    filters.setProject?.(newId)
     resetExpand()
     if (newId) load(newId)
   },
@@ -750,9 +871,8 @@ onUnmounted(() => {
     :class="{
       'graph-canvas-wrapper--detail-open': graphReady && !loading && !error && (selectedNode || activeFlowDetail),
       'graph-canvas-wrapper--collapsed': graphReady && !loading && !error && sidebarCollapsed,
-      'graph-canvas-wrapper--loading': loading || error || !graphReady,
+      'graph-canvas-wrapper--loading': loading || error || !graphReady || analyzingProjectId,
     }"
-    :style="{ '--sidebar-width': (sidebarCollapsed ? 0 : sidebarWidth) + 'px' }"
   >
     <aside v-show="graphReady && !loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
       <div class="graph-canvas__sidebar-topbar">
@@ -885,15 +1005,44 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="(loading || !graphReady) && !error" class="graph-overlay graph-overlay--loading">
-        <div class="spinner" aria-label="Loading graph" />
-        <p>{{ loading ? 'Loading graph...' : 'Finalizing graph layout...' }}</p>
+      <div
+        v-if="analyzingProjectId"
+        class="graph-overlay graph-overlay--loading graph-overlay--analyzing"
+      >
+        <LogoSpinner :size="180" />
+        <p class="graph-overlay__title">{{ t('graphView.analyzingTitle') }}</p>
+        <div
+          class="graph-overlay__progress"
+          role="progressbar"
+          :aria-valuenow="analyzingProgress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="graph-overlay__track">
+            <div class="graph-overlay__fill" :style="{ width: `${analyzingProgress}%` }"></div>
+          </div>
+          <span class="graph-overlay__value">{{ analyzingProgress }}%</span>
+        </div>
+        <p class="graph-overlay__message">{{ analyzingMessage }}</p>
+        <p class="graph-overlay__hint">{{ t('graphView.analyzingHint') }}</p>
       </div>
 
-      <div v-else-if="error" class="graph-overlay graph-overlay--error" role="alert">
-        <p class="error-title">Failed to load graph</p>
-        <p class="error-message">{{ error }}</p>
-        <button class="retry-button" type="button" @click="load(props.projectId)">Retry</button>
+      <div
+        v-else-if="(loading || !graphReady) && !error && !analysisFailed"
+        class="graph-overlay graph-overlay--loading"
+      >
+        <LogoSpinner :size="140" />
+        <p>{{ loading ? t('graphView.loading') : t('graphView.finalizing') }}</p>
+      </div>
+
+      <div v-else-if="error || analysisFailed" class="graph-overlay graph-overlay--error" role="alert">
+        <p class="error-title">{{ t('graphView.failed') }}</p>
+        <p class="error-message">{{
+          analysisFailed && !error ? t('graphView.analyzingFailed') : error
+        }}</p>
+        <button class="retry-button" type="button" @click="load(props.projectId)">
+          {{ t('graphView.retry') }}
+        </button>
       </div>
 
       <aside v-if="graphReady && !loading && !error && activeFlowDetail" class="graph-canvas__detail">
@@ -1119,14 +1268,13 @@ onUnmounted(() => {
 
 .graph-canvas__stage {
   /* Single source of truth for the floating detail column width. The toolbar
-     reserves the same value, so the two can never drift apart. */
-  --detail-width: 23rem;
-  /* Narrower than this and the toolbar cannot keep a usable search box beside the
-     panel. The number is the sum, not a guess:
-       1rem left + 12rem search floor + 0.75rem gap + 23rem panel + 1rem right
-       = 37.75rem, rounded up to 40rem for slack.
-     The toggles may wrap onto their own line, so the search floor is what binds. */
-  --detail-side-by-side-min: 40rem;
+     reserves the same value, so the two can never drift apart. 21rem keeps the
+     cards compact — wider made the two-panel column read as mostly padding. */
+  --detail-width: 21rem;
+  /* The side-by-side threshold is written literally in the @container rules below,
+     not held in a custom property: container and media queries cannot read var().
+     A variable here would look like it drove the breakpoint while changing it did
+     nothing. The derivation lives in a comment beside the literal instead. */
   /* Queried instead of the viewport because the stage is what actually has to fit
      both. The left sidebar is user-resizable, so viewport width says nothing about
      how much room is left here — that mismatch is what let the panel cover the
@@ -1156,35 +1304,35 @@ onUnmounted(() => {
    padding read as dead space around every panel. */
 .graph-canvas__detail {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
-  bottom: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
   z-index: 7;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  width: min(var(--detail-width), calc(100% - 2rem));
-  /* The whole column scrolls as one. Panels size to their content so the Impact
-     Analysis results are never crushed to a zero-height (previously the panel was
-     capped at 38vh and its header/controls ate all of it, hiding the results). */
+  width: min(var(--detail-width), calc(100% - 1.5rem));
+  /* Fixed frame: the column itself never scrolls. Node Detail and Impact
+     Analysis each keep their own internal scroll (see the :deep rules below),
+     so both panels are always visible and reaching the Analyze form never
+     requires scrolling past Node Detail first. */
   min-height: 0;
-  overflow-y: auto;
-  /* The cards carry their own shadow; a scrollbar gutter keeps them from being
-     clipped against the stage edge when the column overflows. */
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
-/* Node Detail caps its height and scrolls internally so a node with many
-   relations cannot push Impact Analysis far down the column. */
+/* Node Detail caps at half the column and scrolls internally so a node with
+   many relations cannot push Impact Analysis out of view. */
 .graph-canvas__detail :deep(.node-detail-panel) {
-  flex: 0 0 auto;
-  max-height: 55vh;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
   overflow-y: auto;
 }
 
-/* Impact Analysis sizes to its content so its result list is always visible. */
+/* Impact Analysis owns the remaining half; its body already scrolls internally. */
 .graph-canvas__detail :deep(.impact-panel) {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* Data Flow detail fills the right column and scrolls internally. */
@@ -1270,13 +1418,68 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #2a2a2a;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.graph-overlay--analyzing {
+  gap: 14px;
+}
+.graph-overlay__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #e5e5e5;
+}
+.graph-overlay__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, 80%);
+}
+.graph-overlay__track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(7, 11, 22, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+.graph-overlay__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  background-size: 200% 100%;
+  animation: overlay-shimmer 1.6s linear infinite;
+  transition: width 0.4s ease-out;
+}
+.graph-overlay__value {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.graph-overlay__message {
+  margin: 0;
+  max-width: 480px;
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  font-family: var(--vg-font-mono, monospace);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.graph-overlay__hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+@keyframes overlay-shimmer {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-overlay__fill {
+    animation: none;
+    transition: none;
+  }
 }
 
 .retry-button {
@@ -1391,9 +1594,13 @@ onUnmounted(() => {
    it on a narrow stage left the toolbar ~90px wide, and the search box — floored at
    min-width: 12rem — then overflowed its own container straight under the panel.
    Wrapping cannot rescue that: wrapping never shrinks an item below its min-width. */
+/* 40rem is the sum, not a guess: 1rem left + 12rem search floor + 0.75rem gap
+   + 21rem panel + 0.75rem right = 35.5rem, rounded up for slack. The toggles may
+   wrap onto their own line, so the search floor is what binds. Keep this literal
+   and the one below in step — a query cannot read a custom property. */
 @container (min-width: 40rem) {
   .graph-canvas__stage--detail-open .graph-top-controls {
-    right: calc(1rem + var(--detail-width) + 0.75rem);
+    right: calc(0.75rem + var(--detail-width) + 0.75rem);
   }
 }
 
@@ -1453,11 +1660,5 @@ onUnmounted(() => {
 
 .graph-edge-kind-toggle {
   min-width: 8rem;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

@@ -50,6 +50,12 @@ export interface UseArchiveImportOptions {
    * tests can drive poll results without mocking the module.
    */
   poll?: (projectId: string) => Promise<Project>
+  /**
+   * Called the moment the backend accepts the async import (202 + ANALYZING).
+   * Lets the host hand the project to the global import tracker so tracking
+   * survives the form unmounting (background import).
+   */
+  onAccepted?: (project: Project) => void
 }
 
 export function useArchiveImport(options: UseArchiveImportOptions = {}) {
@@ -185,6 +191,7 @@ export function useArchiveImport(options: UseArchiveImportOptions = {}) {
     importedProject.value = accepted
     progress.value = accepted.progress ?? 0
     status.value = 'analyzing'
+    options.onAccepted?.(accepted)
 
     return trackAnalysis(accepted)
   }
@@ -307,8 +314,18 @@ export function useArchiveImport(options: UseArchiveImportOptions = {}) {
 
 function toUserMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 413) {
-      return 'The archive exceeds the account storage quota or the server safety limit.'
+    if (err.status === 402 || err.code === 'CREDIT_EXHAUSTED') {
+      const amounts = err.details ? ` ${err.details}.` : ''
+      return `Not enough credits to import this project.${amounts} Upgrade your plan or wait for the next monthly reset.`
+    }
+    // A non-Java project uploads zero .java files. Name the real reason
+    // instead of echoing the backend's archive-centric wording.
+    if (err.code === 'ARCHIVE_EMPTY_ARCHIVE' || /no \.java files/i.test(err.message)) {
+      return 'This archive contains no .java files. VibeGraph currently analyzes Java projects only.'
+    }
+    if (err.status === 413 || err.code === 'QUOTA_EXCEEDED' || err.code === 'PAYLOAD_TOO_LARGE') {
+      // The backend message carries the exact figures (source size vs remaining quota).
+      return err.message || 'The archive exceeds the account storage quota or the server safety limit.'
     }
     if (err.status === 0 || err.status >= 500) {
       return err.message || 'The server is unavailable. Please try again.'

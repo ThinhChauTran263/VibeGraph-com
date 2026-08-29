@@ -177,6 +177,55 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
+    @DisplayName("an admin-blocked owner keeps receiving support replies after session revocation")
+    void preSend_blockedOwnerWithRevokedSession_allowsReportUpdate() {
+        UUID authSessionId = UUID.randomUUID();
+        RealtimeAccountAccessInterceptor sessionAwareInterceptor =
+                new RealtimeAccountAccessInterceptor(
+                        jwtService,
+                        accountAccessGuard,
+                        ownershipGuard,
+                        feedbackReportRepository,
+                        refreshSessionService);
+        when(jwtService.parse("jwt-token"))
+                .thenReturn(new AuthenticatedUser(
+                        userId, "blocked@test.local", Role.USER, authSessionId));
+        when(refreshSessionService.isAccessSessionActive(authSessionId, userId)).thenReturn(false);
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(false);
+        when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+
+        sessionAwareInterceptor.preSend(connectMessage(), channel);
+        sessionAwareInterceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
+
+        Message<byte[]> outbound = outboundReportMessage(REPORT_ID);
+        assertThat(sessionAwareInterceptor.preSend(outbound, channel)).isSameAs(outbound);
+    }
+
+    @Test
+    @DisplayName("a normal revoked session cannot reconnect to support topics")
+    void preSend_activeOwnerWithRevokedSession_rejectsConnect() {
+        UUID authSessionId = UUID.randomUUID();
+        RealtimeAccountAccessInterceptor sessionAwareInterceptor =
+                new RealtimeAccountAccessInterceptor(
+                        jwtService,
+                        accountAccessGuard,
+                        ownershipGuard,
+                        feedbackReportRepository,
+                        refreshSessionService);
+        when(jwtService.parse("jwt-token"))
+                .thenReturn(new AuthenticatedUser(
+                        userId, "active@test.local", Role.USER, authSessionId));
+        when(refreshSessionService.isAccessSessionActive(authSessionId, userId)).thenReturn(false);
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(true);
+
+        assertThatThrownBy(() -> sessionAwareInterceptor.preSend(connectMessage(), channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
     @DisplayName("admins can subscribe to any report topic")
     void preSend_admin_allowsReportTopic() {
         UUID reportId = UUID.randomUUID();
@@ -249,6 +298,34 @@ class RealtimeAccountAccessInterceptorTest {
     }
 
     @Test
+    @DisplayName("admins can subscribe and receive online-user snapshots")
+    void preSend_admin_allowsAdminTopic() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        connectAs(Role.ADMIN);
+        interceptor.preSend(subscribeAdminMessage(), channel);
+
+        Message<byte[]> outbound = outboundAdminMessage();
+
+        assertThat(interceptor.preSend(outbound, channel)).isSameAs(outbound);
+    }
+
+    @Test
+    @DisplayName("non-admin users cannot subscribe to admin topics")
+    void preSend_nonAdmin_rejectsAdminTopicSubscription() {
+        when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
+        connectAs(Role.USER);
+
+        assertThatThrownBy(() -> interceptor.preSend(subscribeAdminMessage(), channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("admin topic deliveries fail closed without an authorized session")
+    void preSend_unknownSession_suppressesAdminTopicUpdate() {
+        assertThat(interceptor.preSend(outboundAdminMessage(), channel)).isNull();
+    }
+
+    @Test
     @DisplayName("disconnect removes the stored session authorization")
     void preSend_disconnect_removesSessionAuthorization() {
         connectActiveUser();
@@ -292,6 +369,21 @@ class RealtimeAccountAccessInterceptorTest {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId(SESSION_ID);
         accessor.setDestination("/topic/reports/" + reportId);
+        return message(accessor);
+    }
+
+    private Message<byte[]> subscribeAdminMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/admin/online-users");
+        return message(accessor);
+    }
+
+    private Message<byte[]> outboundAdminMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+        accessor.setSessionId(SESSION_ID);
+        accessor.setDestination("/topic/admin/online-users");
+        accessor.setMessageTypeIfNotSet(SimpMessageType.MESSAGE);
         return message(accessor);
     }
 

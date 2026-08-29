@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipQuery;
 import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.repository.ProjectMetadata;
@@ -28,10 +29,11 @@ public class ProjectDirectoryServiceImpl implements ProjectDirectoryService {
 
     private final ProjectOwnershipQuery ownershipQuery;
     private final GraphRepository graphRepository;
+    private final ApiKeyRequestContextAccessor apiKeyContextAccessor;
 
     @Override
     public ProjectListResponse listProjects() {
-        Set<String> ownedIds = new LinkedHashSet<>(ownershipQuery.ownedProjectIds());
+        Set<String> ownedIds = scopedProjectIds();
         if (ownedIds.isEmpty()) {
             return ProjectListResponse.builder()
                     .projects(List.of())
@@ -62,6 +64,12 @@ public class ProjectDirectoryServiceImpl implements ProjectDirectoryService {
                 .warnings(List.of())
                 .notes(List.of("Only projects owned by the caller are listed. Use a project's id as projectId in other tools."))
                 .build();
+    }
+
+    private Set<String> scopedProjectIds() {
+        Set<String> ownedIds = new LinkedHashSet<>(ownershipQuery.ownedProjectIds());
+        apiKeyContextAccessor.current().ifPresent(context -> ownedIds.retainAll(Set.of(context.projectId())));
+        return ownedIds;
     }
 
     private ProjectInfo toProjectInfo(ProjectMetadata metadata) {

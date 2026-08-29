@@ -57,7 +57,8 @@ public class CreditBalanceService {
         if (remaining < required) {
             throw new InsufficientCreditsException(
                     "Insufficient credits to perform this operation. Required: " + required
-                            + ", Available: " + remaining);
+                            + ", Available: " + remaining,
+                    required, remaining);
         }
     }
 

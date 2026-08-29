@@ -19,6 +19,7 @@ import com.vibegraph.auth.service.AuthService;
 import com.vibegraph.auth.service.AuditService;
 import com.vibegraph.abuse.ClientAddressResolver;
 import com.vibegraph.abuse.LoginThrottleGuard;
+import com.vibegraph.abuse.RegistrationThrottleGuard;
 import com.vibegraph.common.dto.response.ApiResponse;
 import com.vibegraph.common.dto.response.ErrorResponse;
 import com.vibegraph.common.exception.InvalidCredentialsException;
@@ -53,6 +54,7 @@ public class AuthController {
     private final AuthCookieService authCookieService;
     private final AuditService auditService;
     private final LoginThrottleGuard loginThrottleGuard;
+    private final RegistrationThrottleGuard registrationThrottleGuard;
     private final ClientAddressResolver clientAddressResolver;
 
     @PostMapping("/register")
@@ -60,6 +62,9 @@ public class AuthController {
             @Valid @RequestBody RegisterRequest request,
             @RequestHeader(value = WEB_CLIENT_HEADER, required = false) String client,
             HttpServletRequest servletRequest) {
+        // Counted before the account exists, so a script cannot spend the request and only then be
+        // told it is over budget.
+        registrationThrottleGuard.assertAllowed(clientAddressResolver.resolve(servletRequest));
         return authResponse(authService.registerSession(request), client, servletRequest);
     }
 

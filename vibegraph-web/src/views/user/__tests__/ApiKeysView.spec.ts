@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import ApiKeysView from '../ApiKeysView.vue'
 import { useAccountStore } from '@/stores/account'
 import i18n from '@/language'
+import { accountApi } from '@/lib/api'
 
 const featureMocks = vi.hoisted(() => ({
   enabled: true,
@@ -28,7 +29,7 @@ const dialogStub = {
   props: ['open', 'title'],
   emits: ['confirm', 'cancel'],
   template:
-    '<button v-if="open" :data-test="title === \'Delete API key\' ? \'confirm-delete\' : \'confirm-disable\'" @click="$emit(\'confirm\')">Confirm {{ title }}</button>',
+    "<button v-if=\"open\" :data-test=\"title === 'Delete API key' ? 'confirm-delete' : 'confirm-disable'\" @click=\"$emit('confirm')\">Confirm {{ title }}</button>",
 }
 
 function mountView(projectsError?: Error, loaded = false) {
@@ -58,6 +59,7 @@ function mountView(projectsError?: Error, loaded = false) {
             expiresAt: null,
             disabledAt: null,
             disabled: false,
+            revealable: true,
           },
           {
             id: 'key-2',
@@ -87,10 +89,13 @@ function mountView(projectsError?: Error, loaded = false) {
 
 describe('ApiKeysView', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllMocks()
     featureMocks.enabled = true
     featureMocks.reason = null
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('renders repository bindings without exposing a list secret', async () => {
     const { wrapper } = mountView()
@@ -98,7 +103,8 @@ describe('ApiKeysView', () => {
 
     expect(wrapper.text()).toContain('Production CLI')
     expect(wrapper.text()).toContain('vbg_live_12')
-    expect(wrapper.text()).toContain('Repository: VibeGraph Web')
+    expect(wrapper.text()).toContain('Repository')
+    expect(wrapper.text()).toContain('VibeGraph Web')
     expect(wrapper.text()).toContain('No repository binding')
     expect(wrapper.text()).not.toContain('secretKey')
   })
@@ -111,7 +117,7 @@ describe('ApiKeysView', () => {
     expect(store.fetchApiKeys).toHaveBeenCalledWith({ force: true })
     expect(store.fetchProjects).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Production CLI')
-    expect(wrapper.text()).toContain('Repository: VibeGraph Web')
+    expect(wrapper.text()).toContain('VibeGraph Web')
   })
 
   it('selects a repository before creating a project-bound key', async () => {
@@ -136,12 +142,94 @@ describe('ApiKeysView', () => {
     await wrapper.get('button[data-test="create-api-key"]').trigger('click')
     await wrapper.get('#key-name').setValue('  CI key  ')
     expect(wrapper.get('form button[type="submit"]').attributes()).toHaveProperty('disabled')
-    await wrapper.get('#key-project').setValue('project-2')
+    expect(wrapper.find('select').exists()).toBe(false)
+    await wrapper.get('[data-test="repository-select-trigger"]').trigger('click')
+    await wrapper.get('[data-test="repository-option-project-2"]').trigger('click')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
     expect(store.createApiKey).toHaveBeenCalledWith('CI key', 'project-2')
     expect(wrapper.text()).toContain('vbg-secret')
+  })
+
+  it('cancels the create form and clears its draft values', async () => {
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper.get('button[data-test="create-api-key"]').trigger('click')
+    await wrapper.get('#key-name').setValue('Temporary key')
+    await wrapper.get('#key-project').trigger('click')
+    await wrapper.get('[data-test="repository-option-project-2"]').trigger('click')
+    await wrapper.get('.modal__cancel').trigger('click')
+
+    expect(wrapper.find('.modal form').exists()).toBe(false)
+    await wrapper.get('button[data-test="create-api-key"]').trigger('click')
+    expect((wrapper.get('#key-name').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.get('#key-project').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('#key-project').text()).toContain('Select a repository')
+  })
+
+  it('reveals an existing key with the eye action and closes immediately after copying', async () => {
+    const clipboardWrite = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWrite },
+    })
+    vi.spyOn(accountApi, 'revealApiKey').mockResolvedValueOnce({
+      id: 'key-1',
+      secretKey: 'vbg_revealed_secret',
+    })
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper.get('button[data-test="reveal-key-key-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.secret-card').text()).toContain('vbg_revealed_secret')
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('10')
+    await wrapper.get('.copy-btn').trigger('click')
+    await flushPromises()
+
+    expect(clipboardWrite).toHaveBeenCalledWith('vbg_revealed_secret')
+    expect(wrapper.find('.secret-card').exists()).toBe(false)
+  })
+
+  it('shows reveal failures beside the action that failed', async () => {
+    vi.spyOn(accountApi, 'revealApiKey').mockRejectedValueOnce(new Error('Reveal unavailable'))
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper.get('button[data-test="reveal-key-key-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.key-action-error').text()).toContain('Reveal unavailable')
+  })
+
+  it('does not render the Unix epoch when the created date is missing', async () => {
+    const { wrapper, pinia } = mountView()
+    const store = useAccountStore(pinia)
+    store.apiKeys[0] = { ...store.apiKeys[0]!, createdAt: '' }
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Not available')
+    expect(wrapper.text()).not.toContain('1/1/1970')
+  })
+
+  it('automatically closes an un-copied secret after ten seconds', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(accountApi, 'revealApiKey').mockResolvedValueOnce({
+      id: 'key-1',
+      secretKey: 'vbg_expiring_secret',
+    })
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    await wrapper.get('button[data-test="reveal-key-key-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.secret-card').exists()).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(10_100)
+    expect(wrapper.find('.secret-card').exists()).toBe(false)
   })
 
   it('fails closed when repository availability cannot be refreshed', async () => {
@@ -190,7 +278,8 @@ describe('ApiKeysView', () => {
 
     await wrapper.get('button[data-test="create-api-key"]').trigger('click')
     await wrapper.get('#key-name').setValue('Replacement')
-    await wrapper.get('#key-project').setValue('project-1')
+    await wrapper.get('#key-project').trigger('click')
+    await wrapper.get('[data-test="repository-option-project-1"]').trigger('click')
 
     expect(wrapper.get('[data-test="duplicate-project-reason"]').text()).toContain(
       'Delete the existing key',
@@ -241,7 +330,8 @@ describe('ApiKeysView', () => {
     expect(wrapper.find('button[data-test="enable-key-key-1"]').exists()).toBe(false)
     await wrapper.get('button[data-test="create-api-key"]').trigger('click')
     await wrapper.get('#key-name').setValue('Replacement')
-    await wrapper.get('#key-project').setValue('project-1')
+    await wrapper.get('#key-project').trigger('click')
+    await wrapper.get('[data-test="repository-option-project-1"]').trigger('click')
     expect(wrapper.get('[data-test="duplicate-project-reason"]').text()).toContain(
       'admin-locked key',
     )

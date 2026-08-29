@@ -1,10 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import GraphView from '@/views/GraphView.vue'
-import HomeView from '@/views/HomeView.vue'
-import LandingView from '@/views/LandingView.vue'
-import LoginView from '@/views/LoginView.vue'
-import RegisterView from '@/views/RegisterView.vue'
 import { useAuthStore } from '@/stores/auth'
+
+// H12: every route view is lazy so the landing/login pages never download the graph
+// stack (Sigma/Graphology/d3-force — the heaviest part of the app). Route-level
+// code splitting keeps first paint to just the shell + the visited view.
+const LandingView = () => import('@/views/LandingView.vue')
+const DocsView = () => import('@/views/DocsView.vue')
+const LoginView = () => import('@/views/LoginView.vue')
+const CliAuthorizeView = () => import('@/views/CliAuthorizeView.vue')
+const RegisterView = () => import('@/views/RegisterView.vue')
+const HomeView = () => import('@/views/HomeView.vue')
+const GraphView = () => import('@/views/GraphView.vue')
 
 /**
  * Route meta:
@@ -31,6 +37,11 @@ const router = createRouter({
       component: LandingView,
     },
     {
+      path: '/docs',
+      name: 'docs',
+      component: DocsView,
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView,
@@ -41,6 +52,11 @@ const router = createRouter({
       name: 'register',
       component: RegisterView,
       meta: { guestOnly: true },
+    },
+    {
+      path: '/cli/authorize',
+      name: 'cli-authorize',
+      component: CliAuthorizeView,
     },
     {
       path: '/',
@@ -120,6 +136,11 @@ const router = createRouter({
           component: () => import('../views/admin/DashboardView.vue'),
         },
         {
+          path: 'vps-monitor',
+          name: 'admin-vps-monitor',
+          component: () => import('../views/admin/VpsMonitorView.vue'),
+        },
+        {
           path: 'users',
           name: 'admin-users',
           component: () => import('../views/admin/UsersTableView.vue'),
@@ -176,6 +197,11 @@ router.beforeEach(async (to) => {
   }
   const role = auth.user?.role?.toUpperCase() ?? ''
   const isAuthenticated = !!auth.user
+  const pendingCliRoute = sessionStorage.getItem('vibegraph.cli.pendingRoute')
+
+  if (isAuthenticated && pendingCliRoute && to.name !== 'cli-authorize') {
+    return pendingCliRoute
+  }
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }

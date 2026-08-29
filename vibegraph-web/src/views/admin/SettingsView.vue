@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 const { t } = useI18n({ useScope: 'global' })
 const account = useAccountStore(),
   displayName = ref(''),
@@ -17,6 +18,15 @@ onMounted(async () => {
   } catch (e) {
     message.value =
       e instanceof Error ? e.message : t('admin.settings.messages.profileLoadFailed')
+  }
+})
+
+useSilentRefresh(async () => {
+  try {
+    await account.fetchProfile()
+    displayName.value = account.profile?.displayName ?? ''
+  } catch {
+    // Silent failure
   }
 })
 async function saveProfile() {

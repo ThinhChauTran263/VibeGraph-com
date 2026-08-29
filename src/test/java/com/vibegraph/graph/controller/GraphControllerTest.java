@@ -375,25 +375,41 @@ class GraphControllerTest {
     }
 
     @Test
-    @DisplayName("GET graph treats zero limits as uncapped")
-    void shouldDisablePayloadCapWithZeroLimits() throws Exception {
+    @DisplayName("GET graph applies the default cap to zero limits instead of uncapping (B-M10)")
+    void shouldFallBackToDefaultCapWithZeroLimits() throws Exception {
         List<NodeDto> nodes = new java.util.ArrayList<>();
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 6; i++) {
             nodes.add(NodeDto.builder().id("c" + i).type("Class").name("C" + i).fullName("C" + i).build());
         }
         when(graphService.getFullGraph("big")).thenReturn(GraphDataResponse.builder()
-                .nodes(nodes).edges(List.of()).nodeStats(Map.of("Class", 10)).edgeStats(Map.of()).build());
+                .nodes(nodes).edges(List.of()).nodeStats(Map.of("Class", 6)).edgeStats(Map.of()).build());
 
-        mockMvc.perform(get("/api/projects/big/graph")
+        // B-M10: small defaults so the fallback is observable with a tiny fixture;
+        // production defaults live in application.yaml (5000/15000).
+        GraphPayloadProperties smallDefaults = new GraphPayloadProperties();
+        smallDefaults.setNodeLimit(3);
+        smallDefaults.setEdgeLimit(9);
+        MockMvc cappedMvc = MockMvcBuilders.standaloneSetup(new GraphController(
+                        graphService, new GraphArchitectureProjector(), new GraphResponseFilter(),
+                        new GraphPayloadGuard(), smallDefaults, ownershipGuard))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        // Explicit nodeLimit=0/edgeLimit=0 used to bypass the cap entirely; it must now fall
+        // back to the configured server default cap (T7 acceptance for B-M10).
+        cappedMvc.perform(get("/api/projects/big/graph")
                         .param("mode", "deep")
                         .param("nodeLimit", "0")
                         .param("edgeLimit", "0"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.nodes.length()").value(10))
-                .andExpect(jsonPath("$.data.meta.truncated").value(false))
-                .andExpect(jsonPath("$.data.meta.nodeLimit").value(0))
-                .andExpect(jsonPath("$.data.meta.edgeLimit").value(0));
+                .andExpect(jsonPath("$.data.nodes.length()").value(3))
+                .andExpect(jsonPath("$.data.meta.truncated").value(true))
+                .andExpect(jsonPath("$.data.meta.totalNodes").value(6))
+                .andExpect(jsonPath("$.data.meta.returnedNodes").value(3))
+                .andExpect(jsonPath("$.data.meta.nodeLimit").value(3))
+                .andExpect(jsonPath("$.data.meta.edgeLimit").value(9))
+                .andExpect(jsonPath("$.data.meta.reason").value("GRAPH_TOO_LARGE"));
     }
 
     @Test

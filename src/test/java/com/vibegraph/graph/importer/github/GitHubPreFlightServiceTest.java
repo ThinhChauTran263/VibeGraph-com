@@ -1,6 +1,7 @@
 package com.vibegraph.graph.importer.github;
 
 import java.lang.reflect.Constructor;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.util.Arrays;
@@ -83,6 +84,7 @@ class GitHubPreFlightServiceTest {
         @DisplayName("resolves the default branch for a public repository")
         void resolvesDefaultBranch() throws Exception {
             when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/spring-projects/spring-petclinic"));
             when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
             doReturn(response).when(httpClient).send(any(), any());
 
@@ -97,6 +99,7 @@ class GitHubPreFlightServiceTest {
         @DisplayName("rejects a private repository")
         void rejectsPrivateRepository() throws Exception {
             when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/secret"));
             when(response.body()).thenReturn("{\"private\":true,\"size\":1024,\"default_branch\":\"main\"}");
             doReturn(response).when(httpClient).send(any(), any());
 
@@ -110,12 +113,128 @@ class GitHubPreFlightServiceTest {
         @DisplayName("rejects a repository that returns 404")
         void rejectsMissingRepository() throws Exception {
             when(response.statusCode()).thenReturn(404);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/missing"));
             doReturn(response).when(httpClient).send(any(), any());
 
             assertThatThrownBy(() -> service.validatePublicRepository(
                     new GitHubRepositoryRef("acme", "missing", null)))
                     .isInstanceOf(GithubImportException.class)
                     .hasMessageContaining("not found");
+        }
+
+        @Test
+        @DisplayName("rejects a response that arrived from a foreign redirect host")
+        void rejectsForeignRedirectHost() throws Exception {
+            when(response.uri()).thenReturn(URI.create("https://evil.example.com/metadata"));
+            doReturn(response).when(httpClient).send(any(), any());
+
+            assertThatThrownBy(() -> service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null)))
+                    .isInstanceOf(GithubImportException.class)
+                    .hasMessageContaining("unexpected host");
+        }
+
+        @Test
+        @DisplayName("resolves the HEAD commit SHA alongside the default branch")
+        void resolvesHeadCommitSha() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> shaResponse = org.mockito.Mockito.mock(HttpResponse.class);
+            when(shaResponse.statusCode()).thenReturn(200);
+            when(shaResponse.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/main"));
+            when(shaResponse.body()).thenReturn("{\"sha\":\"abc123\"}");
+            doReturn(response, shaResponse).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null));
+
+            assertThat(resolved.ref()).isEqualTo("main");
+            assertThat(resolved.commitSha()).isEqualTo("abc123");
+        }
+
+        @Test
+        @DisplayName("a failing HEAD SHA lookup degrades to null without breaking the import")
+        void headShaFailureDegradesToNull() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            doReturn(response).doThrow(new java.io.IOException("boom")).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", null));
+
+            assertThat(resolved.ref()).isEqualTo("main");
+            assertThat(resolved.commitSha()).isNull();
+        }
+
+        @Test
+        @DisplayName("keeps a caller-selected branch instead of the repository default branch")
+        void keepsRequestedBranch() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> shaResponse = org.mockito.Mockito.mock(HttpResponse.class);
+            when(shaResponse.statusCode()).thenReturn(200);
+            when(shaResponse.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/develop"));
+            when(shaResponse.body()).thenReturn("{\"sha\":\"def456\"}");
+            doReturn(response, shaResponse).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", "develop"));
+
+            assertThat(resolved.ref()).isEqualTo("develop");
+            assertThat(resolved.commitSha()).isEqualTo("def456");
+        }
+
+        @Test
+        @DisplayName("rejects a caller-selected branch that does not exist")
+        void rejectsMissingBranch() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"main\"}");
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> shaResponse = org.mockito.Mockito.mock(HttpResponse.class);
+            when(shaResponse.statusCode()).thenReturn(404);
+            when(shaResponse.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/nope"));
+            doReturn(response, shaResponse).when(httpClient).send(any(), any());
+
+            assertThatThrownBy(() -> service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", "nope")))
+                    .isInstanceOf(GithubImportException.class)
+                    .hasMessageContaining("nope");
+        }
+
+        /**
+         * Regression guard for fatc-Grocery-Store: the repository's default branch is
+         * "Main" (capital M) while the import form prefills "main". GitHub answers 422
+         * (not 404) for the unknown ref, and the import must fall back to the default
+         * branch instead of dying later with a tarball 404.
+         */
+        @Test
+        @DisplayName("falls back to the default branch when the prefilled 'main' only differs by case")
+        void fallsBackToDefaultBranchForCaseVariant() throws Exception {
+            when(response.statusCode()).thenReturn(200);
+            when(response.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo"));
+            when(response.body()).thenReturn("{\"private\":false,\"size\":1024,\"default_branch\":\"Main\"}");
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> missingMain = org.mockito.Mockito.mock(HttpResponse.class);
+            when(missingMain.statusCode()).thenReturn(422);
+            when(missingMain.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/main"));
+            @SuppressWarnings("unchecked")
+            HttpResponse<String> defaultHead = org.mockito.Mockito.mock(HttpResponse.class);
+            when(defaultHead.statusCode()).thenReturn(200);
+            when(defaultHead.uri()).thenReturn(URI.create("https://api.github.com/repos/acme/demo/commits/Main"));
+            when(defaultHead.body()).thenReturn("{\"sha\":\"abc123\"}");
+            doReturn(response, missingMain, defaultHead).when(httpClient).send(any(), any());
+
+            GitHubRepositoryRef resolved = service.validatePublicRepository(
+                    new GitHubRepositoryRef("acme", "demo", "main"));
+
+            assertThat(resolved.ref()).isEqualTo("Main");
+            assertThat(resolved.commitSha()).isEqualTo("abc123");
         }
     }
 }

@@ -227,6 +227,29 @@ class RequestEventRepositoryIT {
     }
 
     @Test
+    @DisplayName("suspicious networks exclude internal and anonymous normal traffic")
+    void suspiciousNetworks_filtersTelemetryNoise() {
+        UUID userId = UUID.randomUUID();
+        seedRequests(userId, null, "203.0.113.18", 2);
+        seedRequests(null, null, "203.0.113.19", 20);
+        seedRequests(null, null, "172.18.0.6", 20);
+        seedRequests(userId, null, "172.18.0.1", 20);
+        seedRequests(null, null, "0:0:0:0:0:0:0:1", 20);
+        seedHealthchecks("198.51.100.77", 20);
+        seedRateLimit(null, null, "198.51.100.99", 3);
+
+        var networks = repository.suspiciousNetworks(Instant.now().minusSeconds(300), PageRequest.of(0, 20));
+
+        assertThat(networks).extracting(NetworkAggregateProjection::getIpAddress)
+                .containsExactlyInAnyOrder("203.0.113.19", "203.0.113.18", "198.51.100.99");
+
+        var breakdown = repository.networkBreakdowns(Instant.now().minusSeconds(300),
+                java.util.List.of("198.51.100.77", "203.0.113.19"));
+        assertThat(breakdown).extracting(NetworkBreakdownProjection::getIpAddress)
+                .containsExactly("203.0.113.19");
+    }
+
+    @Test
     @DisplayName("runtime status keeps one latest row per project")
     void runtimeStatus_upsertsLatestValue() {
         Instant first = Instant.parse("2026-08-08T10:00:00Z");
@@ -251,6 +274,26 @@ class RequestEventRepositoryIT {
                         (user_id, api_key_ref, ip_address, route, http_method, status, event_type, occurred_at)
                     VALUES (?, ?, ?, '/api/projects', 'GET', 200, 'REQUEST', now())
                     """, userId, apiKeyRef, ipAddress);
+        }
+    }
+
+    private void seedRateLimit(UUID userId, String apiKeyRef, String ipAddress, int count) {
+        for (int index = 0; index < count; index++) {
+            jdbcTemplate.getJdbcTemplate().update("""
+                    INSERT INTO request_events
+                        (user_id, api_key_ref, ip_address, route, http_method, status, event_type, occurred_at)
+                    VALUES (?, ?, ?, '/api/login', 'POST', 429, 'RATE_LIMIT', now())
+                    """, userId, apiKeyRef, ipAddress);
+        }
+    }
+
+    private void seedHealthchecks(String ipAddress, int count) {
+        for (int index = 0; index < count; index++) {
+            jdbcTemplate.getJdbcTemplate().update("""
+                    INSERT INTO request_events
+                        (ip_address, route, http_method, status, event_type, occurred_at)
+                    VALUES (?, '/actuator/health', 'GET', 200, 'REQUEST', now())
+                    """, ipAddress);
         }
     }
 }

@@ -52,6 +52,7 @@ public class ApiKeyService {
     private final PasswordEncoder passwordEncoder;
     private final FeatureGateService featureGateService;
     private final AuditService auditService;
+    private final ApiKeySecretProtector secretProtector;
     @Transactional
     public ApiKeyCreateResponse createForCurrentUser(ApiKeyCreateRequest request) {
         featureGateService.assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
@@ -74,10 +75,73 @@ public class ApiKeyService {
         return responses(apiKeyRepository.findByUserIdAndDeletedAtIsNull(currentUserEntity().getId()));
     }
 
+    /** Returns the existing live project credential or creates one for a browser-approved CLI. */
+    @Transactional
+    public ApiKeyCreateResponse getOrCreateCliCredential(String projectId, String name) {
+        UUID userId = currentUserEntityForUpdate().getId();
+        accountSettingsService.assertNotBlocked(userId);
+        ProjectOwnership project = requireOwnedProject(projectId, userId);
+        return apiKeyRepository.findByUserIdAndProjectIdAndDeletedAtIsNull(userId, projectId)
+                .map(key -> existingCredential(key, project))
+                .orElseGet(() -> {
+                    featureGateService.assertEnabled(FeatureGateService.API_KEYS_CREATE_GLOBAL);
+                    assertApiKeyCreationEnabled(userId);
+                    assertPlanLimitNotReached(userId);
+                    return createApiKey(userId, name, project);
+                });
+    }
+
+    /** Returns one active project key after verifying it belongs to the current browser user. */
+    @Transactional(readOnly = true)
+    public ApiKeyCreateResponse getCliCredentialForCurrentUser(UUID keyId) {
+        UUID userId = currentUserEntity().getId();
+        ApiKey apiKey = apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)
+                .orElseThrow(() -> new ForbiddenException("This API key does not belong to your account"));
+        ProjectOwnership project = requireOwnedProject(apiKey.getProjectId(), userId);
+        return existingCredential(apiKey, project);
+    }
+
+    /** Lists non-secret key metadata for a user after browser device authorization. */
+    @Transactional(readOnly = true)
+    public List<ApiKeyResponse> listForCliUser(UUID userId) {
+        return responses(apiKeyRepository.findByUserIdAndDeletedAtIsNull(userId));
+    }
+
+    /** Reveals only the key/user/project tuple previously approved by a device authorization. */
+    @Transactional(readOnly = true)
+    public String revealForCliAuthorization(UUID keyId, UUID userId, String projectId) {
+        ApiKey apiKey = apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)
+                .filter(key -> projectId.equals(key.getProjectId()))
+                .filter(key -> key.getDisabledAt() == null)
+                .filter(key -> key.getExpiresAt() == null || key.getExpiresAt().isAfter(Instant.now()))
+                .orElseThrow(() -> new ForbiddenException("Access denied"));
+        if (apiKey.getSecretCipher() == null || apiKey.getSecretCipher().isBlank()) {
+            throw new ForbiddenException("This project credential cannot be used for browser login");
+        }
+        return secretProtector.decrypt(apiKey.getSecretCipher());
+    }
+
     @Transactional(readOnly = true)
     public List<ApiKeyResponse> listForUser(UUID userId) {
         assertCurrentUserIsAdmin();
         return responses(apiKeyRepository.findByUserIdAndDeletedAtIsNull(userId));
+    }
+
+    /**
+     * Returns the plaintext secret for the owner's own key. Only keys created after the
+     * reveal feature (encrypted copy stored) can be revealed; older keys stay one-time.
+     */
+    @Transactional
+    public String revealForCurrentUser(UUID keyId) {
+        UUID userId = currentUserEntity().getId();
+        ApiKey apiKey = apiKeyRepository.findByIdAndUserIdAndDeletedAtIsNull(keyId, userId)
+                .orElseThrow(() -> new ForbiddenException("Access denied"));
+        if (apiKey.getSecretCipher() == null || apiKey.getSecretCipher().isBlank()) {
+            throw new ForbiddenException("This key was created before reveal support");
+        }
+        auditService.recordCurrentUser("API_KEY_REVEAL", userId, "API_KEY", keyId.toString(),
+                Map.of("keyPrefix", apiKey.getKeyPrefix()));
+        return secretProtector.decrypt(apiKey.getSecretCipher());
     }
 
     @Transactional
@@ -172,6 +236,7 @@ public class ApiKeyService {
                 .projectId(project.getProjectId())
                 .keyHash(passwordEncoder.encode(secretKey))
                 .keyPrefix(secretKey.substring(0, Math.min(12, secretKey.length())))
+                .secretCipher(secretProtector.encrypt(secretKey))
                 .name(name)
                 .build();
         try {
@@ -182,6 +247,22 @@ public class ApiKeyService {
         } catch (DataIntegrityViolationException ex) {
             throw new ApiKeyProjectConflictException("An API key already exists for this project");
         }
+    }
+
+    private ApiKeyCreateResponse existingCredential(ApiKey apiKey, ProjectOwnership project) {
+        if (apiKey.getDisabledAt() != null) {
+            throw new ForbiddenException("The project API key is disabled");
+        }
+        if (apiKey.getExpiresAt() != null && !apiKey.getExpiresAt().isAfter(Instant.now())) {
+            throw new ForbiddenException("The project API key has expired");
+        }
+        if (apiKey.getSecretCipher() == null || apiKey.getSecretCipher().isBlank()) {
+            throw new ForbiddenException("Replace the legacy project API key before using browser login");
+        }
+        return new ApiKeyCreateResponse(
+                apiKey.getId(), apiKey.getKeyPrefix(), apiKey.getName(),
+                secretProtector.decrypt(apiKey.getSecretCipher()), ProjectBindingResponse.from(project),
+                apiKey.getCreatedAt(), apiKey.getExpiresAt());
     }
 
     private void assertProjectHasNoLiveKey(UUID userId, String projectId) {

@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAccountStore } from '@/stores/account'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import { displayPlanName } from '@/lib/planDisplay'
 
@@ -37,6 +38,10 @@ onMounted(() => {
   if (!account.usage) tasks.push(account.fetchUsage())
   void Promise.allSettled(tasks)
 })
+
+// Kept alive by UserLayout: project/credit counters reconcile in the
+// background on re-activation (profile/usage are already polled by the layout).
+useSilentRefresh(() => account.fetchProjects({ force: true }).catch(() => undefined))
 </script>
 
 <template>
@@ -137,8 +142,16 @@ onMounted(() => {
   padding: var(--vg-space-3);
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
-  background: var(--vg-grad-surface);
-  box-shadow: var(--vg-shadow-sm);
+  background: var(--vg-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--vg-shadow-sm);
+  transition: transform var(--vg-dur-fast) var(--vg-ease-out),
+              box-shadow var(--vg-dur-fast) var(--vg-ease-out),
+              border-color var(--vg-dur-fast) var(--vg-ease-out);
+}
+.summary article:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--vg-glow-subtle);
 }
 .summary article:first-child {
   border-color: rgba(96, 165, 250, 0.35);
@@ -155,7 +168,7 @@ onMounted(() => {
   grid-column: 2;
 }
 .summary strong {
-  font: 700 var(--vg-text-xl) var(--vg-font-display);
+  font: 600 var(--vg-text-xl) var(--vg-font-display);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
@@ -192,10 +205,12 @@ onMounted(() => {
   border: 1px solid var(--vg-border);
   border-radius: var(--vg-radius);
   background: var(--vg-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   color: var(--vg-text);
-  font: 700 var(--vg-text-base) var(--vg-font-body);
+  font: 500 var(--vg-text-base) var(--vg-font-body);
   text-align: left;
   cursor: pointer;
+  transition: all var(--vg-dur-fast) var(--vg-ease-out);
 }
 .quick__icon {
   width: 36px;
@@ -212,8 +227,10 @@ onMounted(() => {
   align-self: center;
 }
 .quick button:hover {
-  border-color: var(--vg-blue-bright);
-  background: var(--vg-surface-3);
+  transform: scale(1.02);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: var(--vg-surface-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--vg-glow-subtle);
 }
 @media (max-width: 760px) {
   .summary {

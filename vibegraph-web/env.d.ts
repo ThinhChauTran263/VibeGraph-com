@@ -19,9 +19,6 @@ interface ImportMetaEnv {
   readonly VITE_IMPORT_STALL_TIMEOUT_MS?: string
   readonly VITE_IMPORT_ABSOLUTE_TIMEOUT_MS?: string
 
-  // Project list
-  readonly VITE_PROJECTS_AUTO_REFRESH_INTERVAL_MS?: string
-
   // Archive upload
 
   // WebSocket (STOMP/SockJS)
@@ -30,6 +27,8 @@ interface ImportMetaEnv {
   readonly VITE_WS_HEARTBEAT_OUTGOING_MS?: string
 
   // Sigma labels
+  readonly VITE_SIGMA_NODE_GROW_ZOOM?: string
+  readonly VITE_SIGMA_NODE_ZOOM_SIZE_POWER?: string
   readonly VITE_SIGMA_BASE_NODE_LABEL_SIZE?: string
   readonly VITE_SIGMA_BASE_EDGE_LABEL_SIZE?: string
   readonly VITE_SIGMA_MIN_LABEL_ZOOM_SCALE?: string

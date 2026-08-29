@@ -100,7 +100,7 @@ describe('Account Store', () => {
       accountStatus: 'BLOCKED',
       safeReason: 'Access is temporarily restricted.',
       features: {
-        'import.local': { enabled: false, reason: 'Access is temporarily restricted.' },
+        'import.archive': { enabled: false, reason: 'Access is temporarily restricted.' },
       },
     }
     mockAccountApi.getSessionState.mockResolvedValueOnce(state)
@@ -111,7 +111,7 @@ describe('Account Store', () => {
     expect(store.accountRestricted).toBe(true)
     expect(store.restrictionReason).toBe(state.safeReason)
     expect(store.sessionState).toEqual(state)
-    expect(store.getFeatureCapability('import.local')).toEqual(state.features['import.local'])
+    expect(store.getFeatureCapability('import.archive')).toEqual(state.features['import.archive'])
     expect(store.getFeatureCapability('import.github').enabled).toBe(false)
   })
 
@@ -255,6 +255,9 @@ describe('Account Store', () => {
       usedMb: 10,
       limitMb: 100,
       remainingMb: 90,
+      usedBytes: 10 * 1024 * 1024,
+      limitBytes: 100 * 1024 * 1024,
+      remainingBytes: 90 * 1024 * 1024,
       sourceStorageUsed: 10,
       sourceStorageLimit: 100,
       creditsUsed: 25,

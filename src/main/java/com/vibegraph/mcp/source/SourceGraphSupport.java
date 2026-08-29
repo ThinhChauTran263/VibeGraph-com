@@ -1,32 +1,46 @@
 package com.vibegraph.mcp.source;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.graph.service.GraphService;
-
-import lombok.RequiredArgsConstructor;
+import com.vibegraph.mcp.config.McpLimitProperties;
 
 /**
  * Loads a bounded {@link GraphView} for the source-reading MCP tools and exposes shared
  * helpers for reading line ranges from graph nodes.
  */
 @Component
-@RequiredArgsConstructor
 public class SourceGraphSupport {
 
-    public static final int MAX_NODES_TO_PROCESS = 50_000;
-    public static final int MAX_EDGES_TO_PROCESS = 200_000;
-
     private final GraphService graphService;
+    private final McpLimitProperties limits;
+
+    /** Compatibility constructor for isolated unit tests and direct callers. */
+    public SourceGraphSupport(GraphService graphService) {
+        this(graphService, new McpLimitProperties());
+    }
+
+    @Autowired
+    public SourceGraphSupport(GraphService graphService, McpLimitProperties limits) {
+        this.graphService = graphService;
+        this.limits = limits;
+    }
 
     /** Load the full graph as a {@link GraphView}; returns {@code null} when it is too large. */
     public GraphView load(String projectId) {
+        ProjectMetadata metadata = graphService.getProjectMetadata(projectId);
+        if (metadata != null && (metadata.totalNodes() > limits.getMaxNodes()
+                || metadata.totalEdges() > limits.getMaxEdges())) {
+            return null;
+        }
         GraphDataResponse graph = graphService.getFullGraph(projectId);
         int nodeCount = graph == null || graph.getNodes() == null ? 0 : graph.getNodes().size();
         int edgeCount = graph == null || graph.getEdges() == null ? 0 : graph.getEdges().size();
-        if (nodeCount > MAX_NODES_TO_PROCESS || edgeCount > MAX_EDGES_TO_PROCESS) {
+        if (nodeCount > limits.getMaxNodes() || edgeCount > limits.getMaxEdges()) {
             return null;
         }
         return new GraphView(

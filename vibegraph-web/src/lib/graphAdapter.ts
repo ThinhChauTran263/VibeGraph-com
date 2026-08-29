@@ -73,7 +73,7 @@ function nodePairKey(source: string, target: string): string {
  * Deterministic 32-bit FNV-1a hash → float in [0, 1). Used to seed a node's
  * initial position from its stable id so the layout is REPRODUCIBLE: the same
  * project always converges to the same picture instead of a different random
- * hairball on every load (ForceAtlas2 is sensitive to its starting positions).
+ * hairball on every load (force layouts are sensitive to their starting positions).
  */
 function seededUnit(str: string): number {
   let h = 2166136261
@@ -86,7 +86,7 @@ function seededUnit(str: string): number {
 
 /**
  * Deterministic initial position on a disc, derived from the node id. Replaces
- * random seeding so ForceAtlas2 starts from the same layout every time.
+ * random seeding so the layout starts from the same positions every time.
  */
 function seededPosition(id: string): { x: number; y: number } {
   const angle = seededUnit(id) * 2 * Math.PI
@@ -96,8 +96,8 @@ function seededPosition(id: string): { x: number; y: number } {
 
 /**
  * Convert backend GraphData to a Graphology Graph instance.
- * Assigns deterministic initial positions (seeded from node id) so ForceAtlas2
- * converges to the same layout on every load.
+ * Assigns deterministic initial positions (seeded from node id) so the layout
+ * converges to the same result on every load.
  */
 export function apiToGraphology(data: GraphData): Graph {
   const graph = new Graph({ multi: false, type: 'directed' })

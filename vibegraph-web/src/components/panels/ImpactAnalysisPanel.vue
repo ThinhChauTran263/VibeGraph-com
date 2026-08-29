@@ -11,6 +11,7 @@ import { useImpactAnalysis } from '@/composables/useImpactAnalysis'
 import type { GraphNode, NodeType } from '@/types/graph'
 import type { ImpactNode, ImpactProfile } from '@/lib/api'
 import FilePath from '@/components/ui/FilePath.vue'
+import ThemedSelect from '@/components/ui/ThemedSelect.vue'
 import CodeViewerModal from '@/components/panels/CodeViewerModal.vue'
 
 const props = defineProps<{
@@ -108,6 +109,14 @@ const profileHelp: Record<ImpactProfile, string> = {
 
 const activeProfileHelp = computed(() => profileHelp[selectedProfile.value])
 
+const profileOptions = computed(() =>
+  allowedProfiles.map((profile) => ({ value: profile, label: profileLabels[profile] })),
+)
+
+const depthOptions = computed(() =>
+  allowedDepths.map((depth) => ({ value: depth, label: String(depth) })),
+)
+
 const depthGroupLabels = computed(() => {
   if (selectedProfile.value === 'dependency') {
     return {
@@ -204,29 +213,24 @@ watch(status, (next) => {
       <form class="impact-panel__controls" @submit.prevent="analyze">
         <label class="impact-panel__field" for="impact-profile">
           <span>Profile</span>
-          <select
-            id="impact-profile"
+          <ThemedSelect
+            input-id="impact-profile"
             v-model="selectedProfile"
-            class="impact-panel__select"
+            :options="profileOptions"
             :disabled="isLoading"
-          >
-            <option v-for="profile in allowedProfiles" :key="profile" :value="profile">
-              {{ profileLabels[profile] }}
-            </option>
-          </select>
+          />
         </label>
         <label class="impact-panel__field" for="impact-depth">
           <span>Depth</span>
-          <select
-            id="impact-depth"
-            v-model.number="selectedDepth"
-            class="impact-panel__select"
+          <ThemedSelect
+            input-id="impact-depth"
+            v-model="selectedDepth"
+            :options="depthOptions"
             :disabled="isLoading"
-          >
-            <option v-for="depth in allowedDepths" :key="depth" :value="depth">{{ depth }}</option>
-          </select>
+          />
         </label>
         <button class="impact-panel__analyze" type="submit" :disabled="isLoading">
+          <span v-if="isLoading" class="impact-panel__spinner" aria-hidden="true"></span>
           {{ isLoading ? 'Analyzing…' : 'Analyze' }}
         </button>
       </form>
@@ -338,21 +342,28 @@ watch(status, (next) => {
   flex-direction: column;
   min-height: 0;
   width: 100%;
+  /* The whole card scrolls. A short inner results window forced users to
+     scroll a sliver; scrolling the full card gives results the entire
+     frame once the controls move out of view. */
+  overflow-y: auto;
   border: 1px solid rgba(248, 113, 113, 0.28);
-  border-radius: 1rem;
-  padding: 1rem;
-  background: rgba(17, 24, 39, 0.94);
-  color: #e5e7eb;
+  border-radius: var(--vg-radius-lg);
+  padding: 0.875rem;
+  background: var(--vg-grad-surface);
+  color: var(--vg-text);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(12px);
 }
 
-/* Header, target and controls stay pinned (flex: 0 0 auto by default); only this
-   body scrolls when the result list is long, so Analyze is always reachable. */
+/* Body sizes to its content; the panel root owns the scrollbar (see above). */
 .impact-panel__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  margin-top: 0.875rem;
+  border-top: 1px solid var(--vg-border);
+  padding-top: 0.25rem;
+}
+
+.impact-panel__body > :first-child {
+  margin-top: 0.5rem;
 }
 
 .impact-panel__header h2,
@@ -372,21 +383,40 @@ watch(status, (next) => {
   font-size: 1.125rem;
 }
 
+/* Selected node rendered as a compact card: mono name + type pill, so the
+   target reads as "the thing being analyzed" instead of two loose lines. */
 .impact-panel__target {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
   margin: 0.75rem 0 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
+  background: var(--vg-surface-2);
   overflow-wrap: anywhere;
 }
 
 .impact-panel__target-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--vg-text);
+  font-family: var(--vg-font-display);
+  font-size: var(--vg-text-sm);
   font-weight: 600;
 }
 
 .impact-panel__target-type {
-  color: #9ca3af;
-  font-size: 0.8125rem;
+  flex: 0 0 auto;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--vg-radius-pill);
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* Grid, not flex-wrap. The panel is only ~21rem wide, so Profile + Depth + Analyze
@@ -406,21 +436,11 @@ watch(status, (next) => {
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
-  color: #9ca3af;
-  font-size: 0.75rem;
+  color: var(--vg-text-muted);
+  font-size: var(--vg-text-xs);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-
-.impact-panel__select {
-  height: 2.25rem;
-  width: 100%;
-  border: 1px solid #374151;
-  border-radius: 0.5rem;
-  background: rgba(31, 41, 55, 0.9);
-  color: #e5e7eb;
-  padding: 0 0.5rem;
-  cursor: pointer;
 }
 
 /* The grid column now sets the width; a fixed min-width would push the row wider
@@ -428,37 +448,67 @@ watch(status, (next) => {
 
 .impact-panel__profile-help {
   margin: 0.5rem 0 0;
-  color: #9ca3af;
-  font-size: 0.75rem;
-  line-height: 1.4;
+  color: var(--vg-text-dim);
+  font-size: var(--vg-text-xs);
+  line-height: 1.5;
 }
 
 .impact-panel__analyze {
-  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.5rem;
   grid-column: 1 / -1;
   border: none;
-  border-radius: 0.5rem;
-  background: #dc2626;
+  border-radius: var(--vg-radius-sm);
+  background: linear-gradient(135deg, #ef4444, #dc2626 55%, #b91c1c);
+  box-shadow: 0 10px 24px -12px rgba(239, 68, 68, 0.65);
   color: #fff;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 200ms ease;
+  transition:
+    filter var(--vg-dur-fast) ease,
+    transform var(--vg-dur-fast) ease,
+    box-shadow var(--vg-dur-fast) ease;
 }
 
 .impact-panel__analyze:hover:not(:disabled) {
-  background: #b91c1c;
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px -12px rgba(239, 68, 68, 0.75);
+}
+
+.impact-panel__analyze:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.96);
 }
 
 .impact-panel__analyze:disabled {
-  opacity: 0.6;
+  opacity: 0.75;
   cursor: progress;
+}
+
+.impact-panel__spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: impact-spin 700ms linear infinite;
+}
+
+@keyframes impact-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .impact-panel__status,
 .impact-panel__hint,
 .impact-panel__empty,
 .impact-panel__empty-list {
-  color: #9ca3af;
+  color: var(--vg-text-muted);
   font-size: 0.8125rem;
   margin-top: 1rem;
 }
@@ -525,7 +575,7 @@ watch(status, (next) => {
 }
 
 .impact-panel__counts dt {
-  color: #9ca3af;
+  color: var(--vg-text-muted);
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -562,10 +612,18 @@ watch(status, (next) => {
   display: flex;
   flex-direction: column;
   gap: 0.1875rem;
-  border: 1px solid rgba(55, 65, 81, 0.85);
-  border-radius: 0.625rem;
+  border: 1px solid var(--vg-border);
+  border-radius: var(--vg-radius-sm);
   padding: 0.5rem 0.625rem;
-  background: rgba(31, 41, 55, 0.72);
+  background: var(--vg-surface-2);
+  transition:
+    border-color var(--vg-dur-fast) ease,
+    background-color var(--vg-dur-fast) ease;
+}
+
+.impact-panel__nodes li:hover {
+  border-color: var(--vg-border-strong);
+  background: var(--vg-surface-3);
 }
 
 .impact-panel__node-head {
@@ -582,10 +640,10 @@ watch(status, (next) => {
   justify-content: center;
   width: 2rem;
   height: 1.7rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid var(--vg-border-strong);
   border-radius: 0.4rem;
-  background: rgba(15, 23, 42, 0.6);
-  color: #93c5fd;
+  background: var(--vg-bg-elev);
+  color: var(--vg-blue-bright);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.75rem;
   font-weight: 700;
@@ -618,7 +676,7 @@ watch(status, (next) => {
   padding: 0;
   border: none;
   background: none;
-  color: #e5e7eb;
+  color: var(--vg-text);
   font: inherit;
   font-weight: 600;
   text-align: left;
@@ -628,14 +686,14 @@ watch(status, (next) => {
 
 .impact-panel__node-name:hover,
 .impact-panel__node-name:focus-visible {
-  color: #bfdbfe;
+  color: var(--vg-blue-bright);
   text-decoration: underline;
   text-underline-offset: 2px;
   outline: none;
 }
 
 .impact-panel__node-path {
-  color: #9ca3af;
+  color: var(--vg-text-muted);
   font-size: 0.75rem;
   overflow-wrap: anywhere;
 }

@@ -9,6 +9,11 @@ import org.springframework.context.annotation.Configuration;
 public class AbuseConfiguration {
 
     @Bean
+    public ClientAddressResolver clientAddressResolver(AbuseProperties abuseProperties) {
+        return new ClientAddressResolver(abuseProperties);
+    }
+
+    @Bean
     public Clock abuseClock() {
         return Clock.systemUTC();
     }

@@ -9,8 +9,10 @@ import java.util.Map;
 
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
+import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Value;
+import org.neo4j.driver.exceptions.ClientException;
 import org.neo4j.driver.types.Node;
 import org.neo4j.driver.types.Relationship;
 import org.springframework.stereotype.Repository;
@@ -40,6 +42,16 @@ public class Neo4jGraphRepository implements GraphRepository {
     private static final int MAX_IMPACT_NODES_PER_DEPTH = 50;
 
     /**
+     * Minimal run-shape shared by {@link Session} and transaction contexts — lets the upsert
+     * helpers serve both the autocommit single-file path and the transactional analysis path
+     * (B-M11) without depending on the driver's exact type hierarchy.
+     */
+    @FunctionalInterface
+    private interface CypherRunner {
+        Result run(String query, Map<String, Object> params);
+    }
+
+    /**
      * Shared label added to every node by {@code V2__symbol_label.cypher} so the hot queries can
      * use an index. It is infrastructure, never a node's domain type.
      */
@@ -50,15 +62,7 @@ public class Neo4jGraphRepository implements GraphRepository {
     @Override
     public void upsertProject(String projectId, String name, String path) {
         try (Session session = neo4jDriver.session()) {
-            // fullName is the stable graph-wide identity used by getFullGraph/DTOs.
-            // The Project node gets fullName = projectId so it participates in the
-            // same stable-id scheme as every other node.
-            session.run(
-                    "MERGE (p:Project {id: $projectId}) " +
-                    "SET p:Symbol, p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
-                    "p.createdAt = coalesce(p.createdAt, datetime()), p.lastAnalyzedAt = datetime()",
-                    Map.of("projectId", projectId, "name", name, "path", path)
-            );
+            runProjectUpsert(session::run, projectId, name, path);
         }
     }
 
@@ -109,23 +113,30 @@ public class Neo4jGraphRepository implements GraphRepository {
                 record.get("id").isNull() ? null : record.get("id").asString(),
                 record.get("name").isNull() ? null : record.get("name").asString(),
                 record.get("path").isNull() ? null : record.get("path").asString(),
-                instantOrNull(record.get("createdAt")),
-                instantOrNull(record.get("lastAnalyzedAt")),
+                instantOrNull(record.get("createdAt"), "createdAt"),
+                instantOrNull(record.get("lastAnalyzedAt"), "lastAnalyzedAt"),
                 record.get("totalFiles").isNull() ? 0 : record.get("totalFiles").asInt(),
                 record.get("totalNodes").isNull() ? 0 : record.get("totalNodes").asInt(),
                 record.get("totalEdges").isNull() ? 0 : record.get("totalEdges").asInt());
     }
 
-    private Instant instantOrNull(Value value) {
+    /**
+     * Parse a temporal value tolerantly (ZonedDateTime first, ISO string fallback). Unparseable
+     * values still degrade to {@code null} — but now loudly (B-M1), so corrupt Neo4j data is
+     * diagnosable instead of silently swallowed.
+     */
+    private Instant instantOrNull(Value value, String field) {
         if (value == null || value.isNull()) {
             return null;
         }
         try {
             return value.asZonedDateTime().toInstant();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException primaryFailure) {
             try {
                 return Instant.parse(value.asString());
-            } catch (RuntimeException ignoredAgain) {
+            } catch (RuntimeException fallbackFailure) {
+                log.warn("Failed to parse instant for project metadata field '{}' (value: {}): {}",
+                        field, value, fallbackFailure.getMessage());
                 return null;
             }
         }
@@ -135,12 +146,104 @@ public class Neo4jGraphRepository implements GraphRepository {
     public void upsertNodes(String projectId, List<NodeData> nodes) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        // Identity is {projectId, fullName} - label-agnostic - so upserting a
-        // real parsed node can enrich any pre-existing placeholder node with
-        // the same fullName instead of creating a duplicate. Neo4j cannot
-        // parameterize labels, so we group by label and run one UNWIND batch
-        // per label; the validated label is interpolated into SET n:%s.
-        // Dynamic properties are bulk-applied with `SET n += item.props`.
+        try (Session session = neo4jDriver.session()) {
+            for (Map.Entry<String, List<Map<String, Object>>> group : groupNodesByLabel(nodes).entrySet()) {
+                runNodeGroupUpsert(session::run, projectId, group);
+            }
+        }
+    }
+
+    @Override
+    public int upsertEdges(String projectId, List<EdgeData> edges) {
+        if (edges == null || edges.isEmpty()) return 0;
+
+        int persisted = 0;
+        try (Session session = neo4jDriver.session()) {
+            for (Map.Entry<String, List<Map<String, Object>>> group : groupEdgesByType(edges).entrySet()) {
+                persisted += runEdgeGroupUpsert(session::run, projectId, group);
+            }
+        }
+        return persisted;
+    }
+
+    /**
+     * B-M11: the full graph write of one analysis in ONE write transaction. Any step that
+     * fails rolls the whole upsert back, so Neo4j can never hold a half-written project
+     * graph (project without its nodes, or nodes without their edges).
+     */
+    @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges) {
+        return upsertAnalysis(projectId, name, path, nodes, edges, WriteProgress.NOOP);
+    }
+
+    /**
+     * B-M11 single-transaction write with per-batch sub-progress. The driver runs the UNWIND
+     * batches sequentially inside the transaction, so reporting after each batch is truthful
+     * and does not weaken atomicity. On transaction retry the callbacks replay from step 0 —
+     * callers are expected to clamp monotonically.
+     */
+    @Override
+    public int upsertAnalysis(String projectId, String name, String path,
+            List<NodeData> nodes, List<EdgeData> edges, WriteProgress progress) {
+        WriteProgress listener = progress != null ? progress : WriteProgress.NOOP;
+        Map<String, List<Map<String, Object>>> nodesByLabel =
+                nodes == null ? Map.of() : groupNodesByLabel(nodes);
+        Map<String, List<Map<String, Object>>> edgesByType =
+                edges == null ? Map.of() : groupEdgesByType(edges);
+        int totalSteps = 1 + nodesByLabel.size() + edgesByType.size();
+        int[] stepsDone = {0};
+        try (Session session = neo4jDriver.session()) {
+            return session.executeWrite(tx -> {
+                // A full analysis is a replacement snapshot, not an additive merge. Clear the
+                // previous derived graph inside the same transaction so deleted source files
+                // cannot leave stale symbols behind, while a failed write still rolls back.
+                runProjectGraphClear(tx::run, projectId);
+                runProjectUpsert(tx::run, projectId, name, path);
+                listener.onStep(++stepsDone[0], totalSteps);
+                for (Map.Entry<String, List<Map<String, Object>>> group : nodesByLabel.entrySet()) {
+                    runNodeGroupUpsert(tx::run, projectId, group);
+                    listener.onStep(++stepsDone[0], totalSteps);
+                }
+                int persisted = 0;
+                for (Map.Entry<String, List<Map<String, Object>>> group : edgesByType.entrySet()) {
+                    persisted += runEdgeGroupUpsert(tx::run, projectId, group);
+                    listener.onStep(++stepsDone[0], totalSteps);
+                }
+                return persisted;
+            });
+        }
+    }
+
+    private void runProjectGraphClear(CypherRunner runner, String projectId) {
+        runner.run(
+                "MATCH (n {projectId: $projectId}) "
+                        + "WHERE NOT n:Project "
+                        + "DETACH DELETE n",
+                Map.of("projectId", projectId));
+    }
+
+    private void runProjectUpsert(CypherRunner runner, String projectId, String name, String path) {
+        // fullName is the stable graph-wide identity used by getFullGraph/DTOs.
+        // The Project node gets fullName = projectId so it participates in the
+        // same stable-id scheme as every other node.
+        runner.run(
+                "MERGE (p:Project {id: $projectId}) " +
+                "SET p:Symbol, p.name = $name, p.path = $path, p.projectId = $projectId, p.fullName = $projectId, " +
+                "p.createdAt = coalesce(p.createdAt, datetime()), p.lastAnalyzedAt = datetime()",
+                Map.of("projectId", projectId, "name", name, "path", path)
+        );
+    }
+
+    /**
+     * Group node payloads by label — Neo4j cannot parameterize labels, so one UNWIND batch
+     * runs per label; the validated label is interpolated into {@code SET n:%s}.
+     *
+     * <p>Identity is {projectId, fullName} — label-agnostic — so upserting a real parsed node
+     * can enrich any pre-existing placeholder node with the same fullName instead of creating
+     * a duplicate. Dynamic properties are bulk-applied with {@code SET n += item.props}.
+     */
+    private Map<String, List<Map<String, Object>>> groupNodesByLabel(List<NodeData> nodes) {
         Map<String, List<Map<String, Object>>> byLabel = new LinkedHashMap<>();
         for (NodeData node : nodes) {
             String label = GraphSchema.nodeLabel(node.type());
@@ -162,35 +265,34 @@ public class Neo4jGraphRepository implements GraphRepository {
 
             byLabel.computeIfAbsent(label, k -> new ArrayList<>()).add(item);
         }
-
-        try (Session session = neo4jDriver.session()) {
-            for (Map.Entry<String, List<Map<String, Object>>> group : byLabel.entrySet()) {
-                // MERGE is :Symbol-scoped so it hits the (projectId, fullName) composite
-                // index instead of an all-nodes scan; V2's backfill guarantees every
-                // pre-existing node (including :External placeholders) carries :Symbol.
-                String cypher = String.format(
-                        "UNWIND $batch AS item " +
-                        "MERGE (n:Symbol {projectId: $projectId, fullName: item.fullName}) " +
-                        "SET n:%s " +
-                        "%s" +
-                        "SET n.name = item.name, n.filePath = item.filePath, " +
-                        "n.lineNumber = item.lineNumber, n.endLine = item.endLine " +
-                        "SET n += item.props",
-                        group.getKey(),
-                        GraphSchema.EXTERNAL_LABEL.equals(group.getKey()) ? "" : "REMOVE n:External "
-                );
-                session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
-            }
-        }
+        return byLabel;
     }
 
-    @Override
-    public int upsertEdges(String projectId, List<EdgeData> edges) {
-        if (edges == null || edges.isEmpty()) return 0;
+    private void runNodeGroupUpsert(CypherRunner runner, String projectId,
+            Map.Entry<String, List<Map<String, Object>>> group) {
+        // MERGE is :Symbol-scoped so it hits the (projectId, fullName) composite
+        // index instead of an all-nodes scan; V2's backfill guarantees every
+        // pre-existing node (including :External placeholders) carries :Symbol.
+        String cypher = String.format(
+                "UNWIND $batch AS item " +
+                "MERGE (n:Symbol {projectId: $projectId, fullName: item.fullName}) " +
+                "SET n:%s " +
+                "%s" +
+                "SET n.name = item.name, n.filePath = item.filePath, " +
+                "n.lineNumber = item.lineNumber, n.endLine = item.endLine " +
+                "SET n += item.props",
+                group.getKey(),
+                GraphSchema.EXTERNAL_LABEL.equals(group.getKey()) ? "" : "REMOVE n:External "
+        );
+        runner.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()));
+    }
 
-        // Group by relationship type — Neo4j cannot parameterize rel types, so
-        // we run one UNWIND batch per type. Missing endpoints are skipped in
-        // baseline mode instead of creating placeholder nodes.
+    /**
+     * Group edge payloads by relationship type — Neo4j cannot parameterize rel types, so one
+     * UNWIND batch runs per type. Missing endpoints are skipped in baseline mode instead of
+     * creating placeholder nodes.
+     */
+    private Map<String, List<Map<String, Object>>> groupEdgesByType(List<EdgeData> edges) {
         Map<String, List<Map<String, Object>>> byRelType = new LinkedHashMap<>();
         for (EdgeData edge : edges) {
             String relType = GraphSchema.relationshipType(edge.type());
@@ -209,26 +311,24 @@ public class Neo4jGraphRepository implements GraphRepository {
 
             byRelType.computeIfAbsent(relType, k -> new ArrayList<>()).add(item);
         }
+        return byRelType;
+    }
 
-        int persisted = 0;
-        try (Session session = neo4jDriver.session()) {
-            for (Map.Entry<String, List<Map<String, Object>>> group : byRelType.entrySet()) {
-                String cypher = String.format(
-                        "UNWIND $batch AS item " +
-                        "MATCH (a:Symbol {projectId: $projectId, fullName: item.sourceFullName}) " +
-                        "MATCH (b:Symbol {projectId: $projectId, fullName: item.targetFullName}) " +
-                        "MERGE (a)-[r:%s]->(b) " +
-                        "SET r += item.props " +
-                        "RETURN count(r) AS persisted",
-                        group.getKey()
-                );
-                persisted += session.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()))
-                        .single()
-                        .get("persisted")
-                        .asInt();
-            }
-        }
-        return persisted;
+    private int runEdgeGroupUpsert(CypherRunner runner, String projectId,
+            Map.Entry<String, List<Map<String, Object>>> group) {
+        String cypher = String.format(
+                "UNWIND $batch AS item " +
+                "MATCH (a:Symbol {projectId: $projectId, fullName: item.sourceFullName}) " +
+                "MATCH (b:Symbol {projectId: $projectId, fullName: item.targetFullName}) " +
+                "MERGE (a)-[r:%s]->(b) " +
+                "SET r += item.props " +
+                "RETURN count(r) AS persisted",
+                group.getKey()
+        );
+        return runner.run(cypher, Map.of("projectId", projectId, "batch", group.getValue()))
+                .single()
+                .get("persisted")
+                .asInt();
     }
 
     @Override
@@ -258,43 +358,42 @@ public class Neo4jGraphRepository implements GraphRepository {
     }
 
     @Override
-    public GraphDataResponse getFullGraph(String projectId) {
+    public GraphDataResponse getFileSlice(String projectId, String filePath) {
         try (Session session = neo4jDriver.session()) {
-            // :Symbol-scoped so the (projectId) index applies — the label-less form
-            // degraded to an all-nodes scan across every tenant.
+            // One file's slice: its own nodes plus edges touching them in either direction.
+            // Inbound edges from other files are part of the slice so the per-file diff (B-M5)
+            // still reports their removal — at a fraction of a full-graph round-trip.
             var result = session.run(
-                    "MATCH (n:Symbol {projectId: $projectId}) " +
-                    "OPTIONAL MATCH (n)-[r]->(m:Symbol {projectId: $projectId}) " +
-                    "RETURN n, r, m",
-                    Map.of("projectId", projectId)
+                    "MATCH (f:Symbol {projectId: $projectId, filePath: $filePath}) " +
+                    "OPTIONAL MATCH (a:Symbol {projectId: $projectId})-[r]->(b:Symbol {projectId: $projectId}) " +
+                    "WHERE a = f OR b = f " +
+                    "RETURN f, a, r, b",
+                    Map.of("projectId", projectId, "filePath", filePath)
             );
 
             Map<String, NodeDto> nodeMap = new LinkedHashMap<>();
             List<EdgeDto> edges = new ArrayList<>();
-            Map<String, Integer> nodeStats = new HashMap<>();
-            Map<String, Integer> edgeStats = new HashMap<>();
+            Map<String, Integer> statsSink = new HashMap<>(); // addNodeToMap needs a stats target
 
             while (result.hasNext()) {
                 Record record = result.next();
-
-                Node n = record.get("n").asNode();
-                addNodeToMap(nodeMap, n, nodeStats);
+                addNodeToMap(nodeMap, record.get("f").asNode(), statsSink);
 
                 Value rVal = record.get("r");
-                Value mVal = record.get("m");
-
-                if (!rVal.isNull() && !mVal.isNull()) {
-                    Node m = mVal.asNode();
-                    addNodeToMap(nodeMap, m, nodeStats);
+                Value aVal = record.get("a");
+                Value bVal = record.get("b");
+                if (!rVal.isNull() && !aVal.isNull() && !bVal.isNull()) {
+                    Node a = aVal.asNode();
+                    Node b = bVal.asNode();
+                    addNodeToMap(nodeMap, a, statsSink);
+                    addNodeToMap(nodeMap, b, statsSink);
 
                     Relationship r = rVal.asRelationship();
                     String edgeType = r.type();
-                    String sourceId = stableNodeId(n);
-                    String targetId = stableNodeId(m);
-                    String edgeId = stableEdgeId(sourceId, edgeType, targetId);
-
-                    EdgeDto edgeDto = EdgeDto.builder()
-                            .id(edgeId)
+                    String sourceId = stableNodeId(a);
+                    String targetId = stableNodeId(b);
+                    edges.add(EdgeDto.builder()
+                            .id(stableEdgeId(sourceId, edgeType, targetId))
                             .source(sourceId)
                             .target(targetId)
                             .type(edgeType)
@@ -303,18 +402,83 @@ public class Neo4jGraphRepository implements GraphRepository {
                             .weight(r.get("weight").isNull() ? 1 : r.get("weight").asInt())
                             .occurrences(readOccurrences(r))
                             .properties(edgeProperties(r))
-                            .build();
-                    edges.add(edgeDto);
-                    edgeStats.merge(edgeType, 1, Integer::sum);
+                            .build());
                 }
             }
 
             return GraphDataResponse.builder()
                     .nodes(new ArrayList<>(nodeMap.values()))
                     .edges(edges)
-                    .nodeStats(nodeStats)
-                    .edgeStats(edgeStats)
                     .build();
+        }
+    }
+
+    @Override
+    public GraphDataResponse getFullGraph(String projectId) {
+        try (Session session = neo4jDriver.session()) {
+            // Đ7-4: two point queries instead of one OPTIONAL MATCH. The old form
+            // returned one row per OUTGOING EDGE (node duplication collapsed only
+            // client-side), so the driver transferred O(edges) rows; measured k ≈ 3.4
+            // on the largest project. Nodes-only + edges-only transfers O(nodes + edges).
+            // Both run inside ONE read transaction = one consistent snapshot, so an edge
+            // can never reference a node outside the node set; the dangling-endpoint
+            // filter below is defence-in-depth, never silent.
+            return session.executeRead(tx -> {
+                Map<String, NodeDto> nodeMap = new LinkedHashMap<>();
+                Map<String, Integer> nodeStats = new HashMap<>();
+                var nodeResult = tx.run(
+                        "MATCH (n:Symbol {projectId: $projectId}) RETURN n",
+                        Map.of("projectId", projectId)
+                );
+                while (nodeResult.hasNext()) {
+                    // One row per node: isolated nodes (no edges at all) are kept,
+                    // which is exactly why the old query used OPTIONAL MATCH.
+                    addNodeToMap(nodeMap, nodeResult.next().get("n").asNode(), nodeStats);
+                }
+
+                List<EdgeDto> edges = new ArrayList<>();
+                Map<String, Integer> edgeStats = new HashMap<>();
+                var edgeResult = tx.run(
+                        "MATCH (a:Symbol {projectId: $projectId})-[r]->(b:Symbol {projectId: $projectId}) " +
+                        "RETURN a, r, b",
+                        Map.of("projectId", projectId)
+                );
+                while (edgeResult.hasNext()) {
+                    Record record = edgeResult.next();
+                    Node a = record.get("a").asNode();
+                    Node b = record.get("b").asNode();
+                    String sourceId = stableNodeId(a);
+                    String targetId = stableNodeId(b);
+                    if (!nodeMap.containsKey(sourceId) || !nodeMap.containsKey(targetId)) {
+                        log.warn("getFullGraph(projectId={}): dropping edge {} -> {} of type {}: " +
+                                        "endpoint missing from node set",
+                                projectId, sourceId, targetId, record.get("r").asRelationship().type());
+                        continue;
+                    }
+
+                    Relationship r = record.get("r").asRelationship();
+                    String edgeType = r.type();
+                    edges.add(EdgeDto.builder()
+                            .id(stableEdgeId(sourceId, edgeType, targetId))
+                            .source(sourceId)
+                            .target(targetId)
+                            .type(edgeType)
+                            .confidence(r.get("confidence").isNull() ? null : r.get("confidence").asDouble())
+                            .lineNumber(r.get("lineNumber").isNull() ? null : r.get("lineNumber").asInt())
+                            .weight(r.get("weight").isNull() ? 1 : r.get("weight").asInt())
+                            .occurrences(readOccurrences(r))
+                            .properties(edgeProperties(r))
+                            .build());
+                    edgeStats.merge(edgeType, 1, Integer::sum);
+                }
+
+                return GraphDataResponse.builder()
+                        .nodes(new ArrayList<>(nodeMap.values()))
+                        .edges(edges)
+                        .nodeStats(nodeStats)
+                        .edgeStats(edgeStats)
+                        .build();
+            });
         }
     }
 
@@ -345,7 +509,7 @@ public class Neo4jGraphRepository implements GraphRepository {
                     "CALL db.index.fulltext.queryNodes('node_search', $query) YIELD node, score " +
                     "WHERE node.projectId = $projectId " +
                     "RETURN node ORDER BY score DESC LIMIT 50",
-                    Map.of("projectId", projectId, "query", query)
+                    Map.of("projectId", projectId, "query", escapeLucene(query))
             );
 
             List<NodeDto> nodes = new ArrayList<>();
@@ -355,7 +519,30 @@ public class Neo4jGraphRepository implements GraphRepository {
                 nodes.add(mapNodeToDto(node));
             }
             return nodes;
+        } catch (ClientException ex) {
+            // S-M4: a malformed Lucene expression surfaces as QueryParseException (a
+            // ClientException). Escape above makes this near-unreachable; keep the catch as
+            // defense-in-depth and map to 400 instead of an opaque 500.
+            log.warn("Fulltext node search rejected for project {}: {}", projectId, ex.getMessage());
+            throw new IllegalArgumentException("Invalid search query");
         }
+    }
+
+    /**
+     * S-M4: Lucene query syntax characters in raw user input would otherwise be parsed as
+     * operators; escaping turns every character literal. Wildcard search is intentionally
+     * not exposed through this endpoint.
+     */
+    static String escapeLucene(String raw) {
+        StringBuilder escaped = new StringBuilder(raw.length() + 8);
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if ("+-!(){}[]^\"~*?:/\\&|".indexOf(c) >= 0) {
+                escaped.append('\\');
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
     }
 
     @Override

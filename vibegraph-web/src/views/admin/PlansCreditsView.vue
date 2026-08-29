@@ -9,6 +9,8 @@ import type {
   AdminPricingRuleRequest,
 } from '@/types/api'
 import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog.vue'
+import ImportPricingPanel from '@/views/admin/ImportPricingPanel.vue'
+import { useSilentRefresh } from '@/composables/useSilentRefresh'
 
 const { locale, t } = useI18n({ useScope: 'global' })
 const adminStore = useAdminStore()
@@ -63,6 +65,14 @@ const planStorageMb = computed({
 })
 
 onMounted(loadCatalogs)
+
+useSilentRefresh(async () => {
+  try {
+    await Promise.all([adminStore.fetchPlans(), adminStore.fetchPricingRules()])
+  } catch {
+    // Silent failure
+  }
+})
 
 async function loadCatalogs(): Promise<void> {
   try {
@@ -535,6 +545,10 @@ function formatStorageMb(plan: AdminPlan): string {
       </article>
     </section>
 
+    <section class="panel" :aria-label="t('admin.importPricing.title')">
+      <ImportPricingPanel />
+    </section>
+
     <AdminConfirmDialog
       :open="Boolean(pendingConfirm)"
       :title="pendingConfirm?.title ?? ''"
@@ -553,7 +567,6 @@ function formatStorageMb(plan: AdminPlan): string {
   --plans-control-height: 2.75rem;
   --plans-create-width: 10.75rem;
   --plans-reset-width: 10.75rem;
-  --plans-sales-width: 14rem;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -623,8 +636,8 @@ h3 {
 }
 .plan-editor {
   grid-template-columns:
-    minmax(7rem, 0.72fr) minmax(12rem, 1.25fr) repeat(3, minmax(8rem, 0.82fr))
-    var(--plans-sales-width) var(--plans-create-width);
+    minmax(5.5rem, 0.7fr) minmax(8.5rem, 1.3fr) repeat(3, minmax(5rem, 0.8fr))
+    minmax(8.5rem, 1.1fr) auto;
 }
 .rule-editor {
   grid-template-columns: repeat(16, minmax(0, 1fr));

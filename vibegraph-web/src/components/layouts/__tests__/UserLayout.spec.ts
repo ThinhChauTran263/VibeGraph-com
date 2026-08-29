@@ -60,8 +60,10 @@ async function mountLayout(options: MountLayoutOptions = {}) {
     },
   })
   const account = useAccountStore(pinia)
-  if (options.sessionState !== undefined) account.sessionState = options.sessionState as typeof account.sessionState
-  if (options.sessionStateError) vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
+  if (options.sessionState !== undefined)
+    account.sessionState = options.sessionState as typeof account.sessionState
+  if (options.sessionStateError)
+    vi.mocked(account.fetchSessionState).mockRejectedValueOnce(options.sessionStateError)
   const wrapper = mount(UserLayout, {
     attachTo: document.body,
     global: { plugins: [router, pinia, i18n] },
@@ -110,6 +112,18 @@ describe('UserLayout', () => {
     expect(navigation.text()).toContain('880 credits')
   })
 
+  it('links the brand glyph to the dashboard without linking the wordmark', async () => {
+    const { wrapper } = await mountLayout()
+
+    const glyphLink = wrapper.get('header a.brand__glyph-link')
+    expect(glyphLink.attributes('href')).toBe('/')
+    expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
+    expect(glyphLink.find('.brand__word').exists()).toBe(false)
+    const wordmarkLink = wrapper.get('header a.brand__word-link')
+    expect(wordmarkLink.attributes('href')).toBe('/dashboard')
+    expect(wordmarkLink.get('.brand__word').text()).toBe('VibeGraph')
+  })
+
   it('collapses to accessible icon-only navigation and expands with the hamburger', async () => {
     const { wrapper } = await mountLayout()
 
@@ -118,6 +132,7 @@ describe('UserLayout', () => {
     await collapseButton.trigger('click')
 
     expect(wrapper.classes()).toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(false)
     const repositoriesLink = wrapper.get('a[aria-label="Repositories"]')
     expect(repositoriesLink.attributes('title')).toBe('Repositories')
     const expandButton = wrapper.get('button[aria-label="Expand sidebar"]')
@@ -126,6 +141,7 @@ describe('UserLayout', () => {
 
     await expandButton.trigger('click')
     expect(wrapper.classes()).not.toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(true)
   })
 
   it('shows the drawer close button only while the mobile drawer is open', async () => {
@@ -153,8 +169,12 @@ describe('UserLayout', () => {
 
     const sidebar = wrapper.get('aside[aria-label="User navigation"]')
     expect(sidebar.classes()).toContain('open')
-    expect(wrapper.get('button[aria-label="Open navigation"]').attributes('aria-expanded')).toBe('true')
-    expect(document.activeElement).toBe(sidebar.get('button[aria-label="Close navigation"]').element)
+    expect(wrapper.get('button[aria-label="Open navigation"]').attributes('aria-expanded')).toBe(
+      'true',
+    )
+    expect(document.activeElement).toBe(
+      sidebar.get('button[aria-label="Close navigation"]').element,
+    )
 
     await sidebar.trigger('keydown', { key: 'Escape' })
     await nextTick()
@@ -202,9 +222,14 @@ describe('UserLayout', () => {
     expect(disabledRepositories.attributes('aria-disabled')).toBe('true')
     expect(disabledRepositories.attributes('title')).toBe('Contact support to restore access.')
     expect(wrapper.text()).toContain('Contact support')
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1)
+    expect(wrapper.get('.restricted-state').text()).toContain('Account access restricted')
+    expect(wrapper.text()).not.toContain('Product controls are unavailable')
 
     await router.push('/reports')
     await flushPromises()
     expect(wrapper.text()).toContain('Reports page')
+    expect(wrapper.find('.restricted-state').exists()).toBe(false)
+    expect(wrapper.get('.restriction-banner').text()).toContain('Account access restricted')
   })
 })
