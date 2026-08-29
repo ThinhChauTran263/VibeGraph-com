@@ -25,6 +25,7 @@ import {
   drawEdgeTypeLabel,
   setLabelZoom,
   resetEdgeLabelBudget,
+  setShowEdgeType,
   setShowEdgeKind,
 } from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
@@ -471,7 +472,7 @@ export function useSigma(options: UseSigmaOptions) {
             x: p.x,
             y: p.y,
             layoutVal: val,
- size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN) * 1.3,
+            size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN) * 1.3,
           })
         })
         cacheLayoutPositions(graph)
@@ -564,6 +565,12 @@ export function useSigma(options: UseSigmaOptions) {
     sigmaInstance.value?.refresh({ skipIndexation: true })
   }
 
+  /** Toggle edge type text while preserving the shared Sigma label pass. */
+  function setEdgeTypeVisible(visible: boolean): void {
+    setShowEdgeType(visible)
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+  }
+
   /**
    * Zoom to fit the entire graph in view.
    */
@@ -597,7 +604,14 @@ export function useSigma(options: UseSigmaOptions) {
       const y = Number(display.y)
       // Normalized positions sit in [0,1]; allow a small margin. Raw coords are
       // orders of magnitude outside this window and must never reach the camera.
-      if (!Number.isFinite(x) || !Number.isFinite(y) || x < -0.5 || x > 1.5 || y < -0.5 || y > 1.5) {
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        x < -0.5 ||
+        x > 1.5 ||
+        y < -0.5 ||
+        y > 1.5
+      ) {
         if (attemptsLeft > 0) focusNode(nodeId, attemptsLeft - 1)
         return
       }
@@ -641,6 +655,7 @@ export function useSigma(options: UseSigmaOptions) {
     },
     stopLayout,
     setReducers,
+    setEdgeTypeVisible,
     setEdgeKindVisible,
     setGhostPartition,
   }

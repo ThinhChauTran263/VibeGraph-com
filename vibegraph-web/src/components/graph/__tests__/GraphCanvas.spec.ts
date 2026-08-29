@@ -61,6 +61,8 @@ vi.mock('@/composables/useGraphExpand', () => ({
 // non-null graphInstance is required because focus reducers early-return when
 // there is no graph.
 const setReducers = vi.fn<(reducers: unknown, edgeLabelsVisible?: boolean) => void>()
+const setEdgeTypeVisible = vi.fn<(visible: boolean) => void>()
+const setEdgeKindVisible = vi.fn<(visible: boolean) => void>()
 const graphInstanceRef = ref<Graph | null>(new Graph({ type: 'directed', multi: true }))
 let capturedCameraRatioChange: ((ratio: number) => void) | undefined
 
@@ -71,6 +73,8 @@ vi.mock('@/composables/useSigma', () => ({
       init: vi.fn<() => void>(),
       graphInstance: graphInstanceRef,
       setReducers,
+      setEdgeTypeVisible,
+      setEdgeKindVisible,
       setGhostPartition: vi.fn<() => void>(),
       refresh: vi.fn<() => void>(),
       resetLayout: vi.fn<() => void>(),
@@ -83,7 +87,10 @@ vi.mock('@/composables/useSigma', () => ({
 // T60: GraphCanvas now wires the realtime consumer. Stub it so this test stays
 // focused on canvas/search behavior and avoids pulling in Pinia + a socket.
 vi.mock('@/composables/useGraphRealtime', () => ({
-  useGraphRealtime: (_projectId: () => string, options?: { onPatched?: (event: unknown) => void }) => {
+  useGraphRealtime: (
+    _projectId: () => string,
+    options?: { onPatched?: (event: unknown) => void },
+  ) => {
     capturedRealtimePatched = options?.onPatched
     return {
       status: ref('disconnected'),
@@ -114,16 +121,18 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
     ...actual,
-    projectApi: { get: vi.fn<() => Promise<never>>(() => Promise.reject(new Error('test: no backend'))) },
+    projectApi: {
+      get: vi.fn<() => Promise<never>>(() => Promise.reject(new Error('test: no backend'))),
+    },
   }
 })
 
 describe('GraphCanvas', () => {
   it('emits null when search selection is cleared', async () => {
     const wrapper = mount(GraphCanvas, {
-          props: { projectId: 'project-1' },
-          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
-        })
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
 
     await wrapper.findComponent({ name: 'SearchBar' }).vm.$emit('clear')
 
@@ -146,9 +155,9 @@ describe('GraphCanvas', () => {
     selectNode.mockClear()
 
     const wrapper = mount(GraphCanvas, {
-          props: { projectId: 'project-1' },
-          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
-        })
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
 
     await wrapper.findComponent({ name: 'NodeDetailPanel' }).vm.$emit('relationSelect', {
       edgeId: 'counterpart|CALLS|selected',
@@ -182,9 +191,9 @@ describe('GraphCanvas', () => {
     clearSelection.mockClear()
 
     const wrapper = mount(GraphCanvas, {
-          props: { projectId: 'project-1' },
-          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
-        })
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
     const panel = wrapper.findComponent({ name: 'NodeDetailPanel' })
 
     await panel.vm.$emit('relationSelect', {
@@ -232,9 +241,9 @@ describe('GraphCanvas', () => {
     graphInstanceRef.value = graph
 
     const wrapper = mount(GraphCanvas, {
-          props: { projectId: 'project-1' },
-          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
-        })
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
     await flushPromises()
 
     capturedRealtimePatched?.({
@@ -356,9 +365,9 @@ describe('GraphCanvas edge label toggle', () => {
     wrapper.unmount()
   })
 
-  it('forces edge labels off when toggled, and only shows them at edges density', async () => {
+  it('keeps node kinds visible when edge labels are toggled off', async () => {
     // No selection -> applyFocusReducers takes the default path and pushes
-    // (edgeLabelsEnabled && labelDensity === 'edges') straight to Sigma.
+    // the combined edge-annotation state and zoom density straight to Sigma.
     selectedNode.value = null
     nodes.value = []
     loading.value = false
@@ -367,11 +376,13 @@ describe('GraphCanvas edge label toggle', () => {
     // The zoom-driven density change applies its reducer swap synchronously, so the
     // captured onCameraRatioChange handler drives the batched setting immediately.
     const wrapper = mount(GraphCanvas, {
-          props: { projectId: 'project-1' },
-          global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
-        })
+      props: { projectId: 'project-1' },
+      global: { plugins: [createTestingPinia({ createSpy: vi.fn }), i18n] },
+    })
     await flushPromises()
     setReducers.mockClear()
+    setEdgeTypeVisible.mockClear()
+    setEdgeKindVisible.mockClear()
 
     expect(capturedCameraRatioChange).toBeTypeOf('function')
 
@@ -380,20 +391,32 @@ describe('GraphCanvas edge label toggle', () => {
     capturedCameraRatioChange?.(0.3)
     expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), true)
 
-    // Toggle OFF -> edge labels disappear while the camera remains zoomed in.
-    const toggle = wrapper.get('.graph-edge-label-toggle')
-    await toggle.trigger('click')
-    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
-    expect(toggle.attributes('aria-pressed')).toBe('false')
-    expect(toggle.text()).toBe('Edge labels: Off')
-
-    // Toggle back ON -> visible again at edges density.
-    await toggle.trigger('click')
+    // Turning edge types off keeps the shared label layer alive because node kinds
+    // are still enabled and rendered independently by the custom edge renderer.
+    const edgeToggle = wrapper.get('.graph-edge-label-toggle:not(.graph-edge-kind-toggle)')
+    const kindToggle = wrapper.get('.graph-edge-kind-toggle')
+    await edgeToggle.trigger('click')
+    expect(setEdgeTypeVisible).toHaveBeenLastCalledWith(false)
     expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), true)
+    expect(edgeToggle.attributes('aria-pressed')).toBe('false')
+    expect(edgeToggle.text()).toBe('Edge labels: Off')
+    expect(kindToggle.attributes('aria-pressed')).toBe('true')
+    expect(kindToggle.text()).toBe('Node kind: On')
 
-    // AND-gate: zoom back out to 'nodes' density. Even with the toggle OFF, edge
-    // labels stay off because the density half of the gate is false.
+    // The label layer switches off only when both independent content toggles are off.
+    await kindToggle.trigger('click')
+    expect(setEdgeKindVisible).toHaveBeenLastCalledWith(false)
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
+
+    // Re-enabling edge types brings the layer back without changing node-kind state.
+    await edgeToggle.trigger('click')
+    expect(setEdgeTypeVisible).toHaveBeenLastCalledWith(true)
+    expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), true)
+    expect(kindToggle.attributes('aria-pressed')).toBe('false')
+
+    // Zoom density remains the final gate for both kinds of edge annotation.
     capturedCameraRatioChange?.(0.9)
     expect(setReducers).toHaveBeenLastCalledWith(expect.any(Object), false)
+    wrapper.unmount()
   })
 })

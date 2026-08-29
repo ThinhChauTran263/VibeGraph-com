@@ -29,10 +29,7 @@ watch(sidebarWidth, (width) => {
 </script>
 
 <template>
-  <main
-    class="graph-view"
-    :style="{ '--sidebar-width': sidebarCollapsed ? '100%' : sidebarWidth + 'px' }"
-  >
+  <main class="graph-view" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
     <nav class="graph-view__tabs" aria-label="Project visualization">
       <span class="graph-view__tabs-left">
         <span class="graph-view__home">
@@ -94,10 +91,8 @@ watch(sidebarWidth, (width) => {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.75rem 0.25rem;
-  /* The bar's content box ends exactly at the sidebar column's right edge, so
-     Graph/Diagrams sit flush with the sidebar's collapse arrow on one row
-     instead of poking past the divider below. Collapsed sidebar publishes
-     100%, which reduces this back to a plain 0.25rem gutter. */
+  /* Keep Graph/Diagrams anchored to the sidebar column even while the panel is
+     collapsed, so toggling the panel never moves the navigation horizontally. */
   padding-right: calc(100% - var(--sidebar-width, 18rem) + 0.25rem);
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }

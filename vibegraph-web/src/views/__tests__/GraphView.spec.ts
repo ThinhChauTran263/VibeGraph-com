@@ -10,8 +10,12 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/components/graph/GraphCanvas.vue', () => ({
   default: {
-    props: ['projectId'],
-    template: '<div data-testid="graph-canvas">{{ projectId }}</div>',
+    props: ['projectId', 'sidebarWidth', 'sidebarCollapsed'],
+    emits: ['update:sidebarCollapsed'],
+    template: `<div data-testid="graph-canvas">
+      {{ projectId }}
+      <button data-testid="collapse-sidebar" @click="$emit('update:sidebarCollapsed', true)">Collapse</button>
+    </div>`,
   },
 }))
 
@@ -52,6 +56,18 @@ describe('GraphView', () => {
 
     const wrapper = mountView()
 
-    expect(wrapper.get('[data-testid="graph-canvas"]').text()).toBe('project-1')
+    expect(wrapper.get('[data-testid="graph-canvas"]').text()).toContain('project-1')
+  })
+
+  it('keeps visualization tabs anchored when the graph sidebar collapses', async () => {
+    routeParams.projectId = 'project-1'
+    localStorage.setItem('vibegraph.sidebarWidth', '420')
+    const wrapper = mountView()
+
+    expect(wrapper.get('.graph-view').attributes('style')).toContain('--sidebar-width: 420px')
+
+    await wrapper.get('[data-testid="collapse-sidebar"]').trigger('click')
+
+    expect(wrapper.get('.graph-view').attributes('style')).toContain('--sidebar-width: 420px')
   })
 })

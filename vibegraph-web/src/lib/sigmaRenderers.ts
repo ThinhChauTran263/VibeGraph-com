@@ -48,6 +48,13 @@ export function setShowEdgeKind(show: boolean): void {
   showEdgeKind = show
 }
 
+// Edge type text and node-kind text share Sigma's edge-label pass, but remain
+// independent content toggles so hiding one never hides the other.
+let showEdgeType = true
+export function setShowEdgeType(show: boolean): void {
+  showEdgeType = show
+}
+
 /**
  * Piecewise label scale vs. zoom (relative to fit = 1), with a per-label-type grow
  * threshold:
@@ -213,8 +220,7 @@ export function drawEdgeTypeLabel(
   targetData: EndpointData,
   settings: Settings,
 ): void {
-  const label = edgeData.label
-  if (!label) return
+  const edgeType = edgeData.label ?? ''
 
   const size =
     settings.edgeLabelSize *
@@ -278,12 +284,14 @@ export function drawEdgeTypeLabel(
   // word sits next to the node it matches.
   const kindRaw = (targetData as EndpointData & { nodeType?: unknown }).nodeType
   const kind = showEdgeKind && typeof kindRaw === 'string' && kindRaw ? kindRaw : ''
-  const sep = kind ? ' / ' : ''
+  const typeLabel = showEdgeType ? edgeType : ''
+  if (!typeLabel && !kind) return
+  const sep = typeLabel && kind ? ' / ' : ''
   const kindColor = (targetData.color as string | undefined) ?? '#cbd5e1'
 
   // Measure the full label at the zoom-driven size, then shrink it to the edge span
   // when needed. Keep a small floor so compact edges still retain readable text.
-  const typeWidth = measureEdgeLabelWidth(context, label, weight, font, size)
+  const typeWidth = typeLabel ? measureEdgeLabelWidth(context, typeLabel, weight, font, size) : 0
   const sepWidth = sep ? measureEdgeLabelWidth(context, sep, weight, font, size) : 0
   const kindWidth = kind ? measureEdgeLabelWidth(context, kind, weight, font, size) : 0
   const textLength = typeWidth + sepWidth + kindWidth
@@ -317,13 +325,16 @@ export function drawEdgeTypeLabel(
   const baseline = (edgeData.size ?? 1) / 2 + drawSize
   const startX = -drawTextLength / 2
 
-  if (!kind) {
+  if (typeLabel && !kind) {
     context.fillStyle = color ?? '#000'
-    context.fillText(label, startX, baseline)
+    context.fillText(typeLabel, startX, baseline)
+  } else if (!typeLabel && kind) {
+    context.fillStyle = kindColor
+    context.fillText(kind, startX, baseline)
   } else if (Math.cos(angle) * dx + Math.sin(angle) * dy >= 0) {
     // Text's +x (right) points toward the target node → kind word on the right.
     context.fillStyle = color ?? '#000'
-    context.fillText(label, startX, baseline)
+    context.fillText(typeLabel, startX, baseline)
     context.fillText(sep, startX + drawTypeWidth, baseline)
     context.fillStyle = kindColor
     context.fillText(kind, startX + drawTypeWidth + drawSepWidth, baseline)
@@ -334,7 +345,7 @@ export function drawEdgeTypeLabel(
     context.fillText(kind, startX, baseline)
     context.fillStyle = color ?? '#000'
     context.fillText(sep, startX + drawKindWidth, baseline)
-    context.fillText(label, startX + drawKindWidth + drawSepWidth, baseline)
+    context.fillText(typeLabel, startX + drawKindWidth + drawSepWidth, baseline)
   }
   context.restore()
 }

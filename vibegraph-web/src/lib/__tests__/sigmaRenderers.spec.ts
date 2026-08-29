@@ -4,6 +4,7 @@ import {
   drawEdgeTypeLabel,
   resetEdgeLabelBudget,
   setLabelZoom,
+  setShowEdgeType,
   setShowEdgeKind,
 } from '../sigmaRenderers'
 
@@ -32,12 +33,17 @@ const settings = {
   edgeLabelColor: { color: '#22c55e' },
 } as Settings
 
-function drawAtLength(context: CanvasRenderingContext2D, label: string, targetX: number): void {
+function drawAtLength(
+  context: CanvasRenderingContext2D,
+  label: string,
+  targetX: number,
+  targetAttributes: Record<string, unknown> = {},
+): void {
   drawEdgeTypeLabel(
     context,
     { label, color: '#22c55e', size: 1 } as Parameters<typeof drawEdgeTypeLabel>[1],
     { x: 0, y: 50, size: 5 } as Parameters<typeof drawEdgeTypeLabel>[2],
-    { x: targetX, y: 50, size: 5 } as Parameters<typeof drawEdgeTypeLabel>[3],
+    { x: targetX, y: 50, size: 5, ...targetAttributes } as Parameters<typeof drawEdgeTypeLabel>[3],
     settings,
   )
 }
@@ -45,6 +51,7 @@ function drawAtLength(context: CanvasRenderingContext2D, label: string, targetX:
 describe('drawEdgeTypeLabel', () => {
   beforeEach(() => {
     setLabelZoom(1)
+    setShowEdgeType(true)
     setShowEdgeKind(false)
     resetEdgeLabelBudget(10)
   })
@@ -65,5 +72,16 @@ describe('drawEdgeTypeLabel', () => {
 
     expect(fillText).toHaveBeenCalledWith('LONG_EDGE', expect.any(Number), expect.any(Number))
     expect(context.font).toBe('600 8px sans-serif')
+  })
+
+  it('renders node kind independently when edge type labels are hidden', () => {
+    const { context, fillText } = rendererContext()
+    setShowEdgeType(false)
+    setShowEdgeKind(true)
+
+    drawAtLength(context, 'CALLS', 200, { nodeType: 'Class', color: '#60a5fa' })
+
+    expect(fillText).toHaveBeenCalledWith('Class', expect.any(Number), expect.any(Number))
+    expect(fillText).not.toHaveBeenCalledWith('CALLS', expect.any(Number), expect.any(Number))
   })
 })
