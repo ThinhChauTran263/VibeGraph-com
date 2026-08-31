@@ -125,7 +125,7 @@ public class AdminService {
 
     private List<AdminSeriesPoint> buildUserGrowth() {
         return mergeSeriesRows(
-                List.of(),
+                userRepository.countGrowthByDay(),
                 userRepository.countGrowthByMonth(),
                 userRepository.countGrowthByQuarter(),
                 userRepository.countGrowthByYear());

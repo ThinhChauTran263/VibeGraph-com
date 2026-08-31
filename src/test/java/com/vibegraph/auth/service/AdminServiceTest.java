@@ -43,6 +43,7 @@ import com.vibegraph.auth.repository.UserAccountSettingsRepository;
 import com.vibegraph.auth.repository.UserCreditBalanceRepository;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.repository.SecurityEventRepository;
+import com.vibegraph.auth.repository.projection.AdminSeriesRow;
 import com.vibegraph.common.exception.EmailAlreadyExistsException;
 import com.vibegraph.common.exception.QuotaBelowCurrentUsageException;
 import com.vibegraph.auth.dto.StorageUnknownResponse;
@@ -108,6 +109,11 @@ class AdminServiceTest {
         when(feedbackReportRepository.count()).thenReturn(30L);
         when(feedbackReportRepository.countByStatus(FeedbackReportStatus.OPEN)).thenReturn(15L);
         when(settingsRepository.countByBlockedAtIsNotNull()).thenReturn(2L);
+        AdminSeriesRow dailyUserGrowth = mock(AdminSeriesRow.class);
+        when(dailyUserGrowth.getLabel()).thenReturn("2026-08-31");
+        when(dailyUserGrowth.getValue()).thenReturn(2L);
+        when(dailyUserGrowth.getPeriod()).thenReturn("day");
+        when(userRepository.countGrowthByDay()).thenReturn(java.util.List.of(dailyUserGrowth));
         when(userRepository.countGrowthByMonth()).thenReturn(java.util.List.of());
         when(userRepository.countGrowthByQuarter()).thenReturn(java.util.List.of());
         when(userRepository.countGrowthByYear()).thenReturn(java.util.List.of());
@@ -136,9 +142,12 @@ class AdminServiceTest {
         assertEquals(15L, overview.openReports());
         assertEquals(2L, overview.blockedUsers());
         assertEquals(1, overview.onlineUserHistory().size());
+        assertTrue(overview.userGrowth().stream().anyMatch(point ->
+                point.label().equals("2026-08-31") && point.value() == 2L && point.period().equals("day")));
         assertEquals("projects", overview.storage().sourceLabel());
         assertEquals(1, overview.securityAlerts().size());
         verify(userRepository, never()).findAll();
+        verify(userRepository).countGrowthByDay();
         verify(settingsRepository, never()).findAll();
         verify(creditLedgerRepository, never()).findAll();
         verify(projectUsageRepository, never()).findAll();
