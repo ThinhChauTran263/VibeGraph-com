@@ -6,7 +6,10 @@ import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
 
 const route = useRoute()
-const projectId = computed(() => (route.params.projectId as string) || 'default')
+const projectId = computed(() => {
+  const value = route.params.projectId
+  return typeof value === 'string' && value.trim() ? value : null
+})
 const activeView = ref<'graph' | 'diagrams'>('graph')
 
 // Sidebar state lives in GraphCanvas (its resizer owns it) but the tab bar above
@@ -26,20 +29,20 @@ watch(sidebarWidth, (width) => {
 </script>
 
 <template>
-  <main
-    class="graph-view"
-    :style="{ '--sidebar-width': sidebarCollapsed ? '100%' : sidebarWidth + 'px' }"
-  >
+  <main class="graph-view" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
     <nav class="graph-view__tabs" aria-label="Project visualization">
       <span class="graph-view__tabs-left">
-        <RouterLink
-          class="graph-view__home"
-          :to="{ name: 'dashboard' }"
-          aria-label="Back to dashboard"
-        >
-          <BrandMark :size="24" :show-wordmark="false" />
-          <span class="graph-view__home-label">Dashboard</span>
-        </RouterLink>
+        <span class="graph-view__home">
+          <BrandMark
+            :size="24"
+            :show-wordmark="false"
+            glyph-to="/"
+            glyph-aria-label="VibeGraph landing page"
+          />
+          <RouterLink :to="{ name: 'dashboard' }" aria-label="Back to dashboard">
+            <span class="graph-view__home-label">Dashboard</span>
+          </RouterLink>
+        </span>
         <span class="graph-view__divider" aria-hidden="true"></span>
       </span>
       <span class="graph-view__tabs-right">
@@ -62,7 +65,7 @@ watch(sidebarWidth, (width) => {
       </span>
     </nav>
 
-    <KeepAlive>
+    <KeepAlive v-if="projectId">
       <GraphCanvas
         v-if="activeView === 'graph'"
         v-model:sidebar-width="sidebarWidth"
@@ -86,13 +89,11 @@ watch(sidebarWidth, (width) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.375rem;
-  padding: 0.75rem 1rem;
-  /* The bar's content box ends exactly at the sidebar column's right edge, so
-     Graph/Diagrams sit flush with the sidebar's collapse arrow on one row
-     instead of poking past the divider below. Collapsed sidebar publishes
-     100%, which reduces this back to a plain 1rem gutter. */
-  padding-right: calc(100% - var(--sidebar-width, 18rem) + 1rem);
+  gap: 0.75rem;
+  padding: 0.75rem 0.25rem;
+  /* Keep Graph/Diagrams anchored to the sidebar column even while the panel is
+     collapsed, so toggling the panel never moves the navigation horizontally. */
+  padding-right: calc(100% - var(--sidebar-width, 18rem) + 0.25rem);
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
@@ -102,6 +103,14 @@ watch(sidebarWidth, (width) => {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.graph-view__tabs-left {
+  flex-shrink: 0;
+}
+
+.graph-view__tabs-right {
+  flex-shrink: 0;
 }
 
 .graph-view__home {
@@ -119,6 +128,11 @@ watch(sidebarWidth, (width) => {
 .graph-view__home:hover {
   background: rgba(148, 163, 184, 0.1);
   color: #fff;
+}
+
+.graph-view__home a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .graph-view__home-label {
@@ -154,7 +168,7 @@ watch(sidebarWidth, (width) => {
    the tab bar must not keep tracking its (now meaningless) column edge. */
 @media (max-width: 64rem) {
   .graph-view__tabs {
-    padding-right: 1rem;
+    padding-right: 0.25rem;
   }
 }
 </style>

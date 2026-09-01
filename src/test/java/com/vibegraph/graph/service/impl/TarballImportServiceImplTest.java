@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
@@ -55,6 +56,7 @@ import com.vibegraph.graph.service.ImportCreditBilling;
 import com.vibegraph.graph.service.ProjectService;
 import com.vibegraph.graph.websocket.FileChangeBroadcaster;
 import com.vibegraph.graph.websocket.GraphUpdateController;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TarballImportServiceImpl")
@@ -87,6 +89,7 @@ class TarballImportServiceImplTest {
     @Mock com.vibegraph.graph.repository.GraphRepository graphRepository;
     @Mock ImportCreditBilling importCreditBilling;
     @Mock com.vibegraph.auth.repository.ProjectOwnershipRepository ownershipRepository;
+    @Mock OperationTelemetryRecorder telemetryRecorder;
 
     private final List<Runnable> backgroundTasks = new ArrayList<>();
     private Path workspaceRoot;
@@ -112,6 +115,7 @@ class TarballImportServiceImplTest {
                 currentUser, ownershipRegistrar, featureGateService,
                 new ConcurrentImportGuard(new AbuseProperties()), trashService, graphRepository, importCreditBilling,
                 ownershipRepository);
+        service.setTelemetryRecorder(telemetryRecorder);
         lenient().when(trashService.purgeTrashedGitHubDuplicates(eq(userId), org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(List.of());
     }
@@ -133,7 +137,9 @@ class TarballImportServiceImplTest {
         when(projectService.createProjectFromWorkspace("acme/demo", extractedRoot)).thenReturn(created);
         when(projectService.getProject("p1")).thenReturn(analyzing);
 
-        ProjectResponse result = service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
+        var token = new OperationTelemetryRecorder.OperationToken("evt-github");
+        ProjectResponse result = service.importFromGithub(
+                new GithubImportRequest("https://github.com/acme/demo"), token);
 
         assertThat(result.getStatus()).isEqualTo("ANALYZING");
         // Preflight and download are bounded by the server hard limit (200MB default),
@@ -144,16 +150,19 @@ class TarballImportServiceImplTest {
         verify(importCreditBilling).chargeUpfront(userId, ImportCreditBilling.OPERATION_IMPORT_GITHUB, 1, "p1");
         verify(projectService).markAnalyzing("p1");
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZING), eq(0), any(String.class));
-        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
+        verify(analyzeService, never()).analyzeProjectWithinOperation(any(), any(), any(), any());
+        verify(telemetryRecorder).attach(token, "p1", "acme/demo");
+        verify(telemetryRecorder, never()).complete(eq(token), anyInt(), anyInt(), anyLong());
         assertThat(backgroundTasks).hasSize(1);
 
-        when(analyzeService.analyzeProject(eq("p1"), eq("acme/demo"), eq("rp"), any()))
+        when(analyzeService.analyzeProjectWithinOperation(eq("p1"), eq("acme/demo"), eq("rp"), any()))
                 .thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
         backgroundTasks.get(0).run();
 
         verify(projectService).markAnalyzed("p1", 1, 5, 4);
         verify(graphUpdateController).broadcastStatus(eq("p1"), eq(ProjectStatus.ANALYZED), eq(100), any(String.class));
         verify(fileChangeBroadcaster).watchProject("p1", "rp");
+        verify(telemetryRecorder).complete(eq(token), eq(5), eq(4), anyLong());
     }
 
     @Test
@@ -224,7 +233,7 @@ class TarballImportServiceImplTest {
         verify(archiveExtractor, never()).extract(any(), any(), any());
         verify(projectService, never()).createProjectFromWorkspace(any(), any());
         verify(graphUpdateController, never()).broadcastStatus(any(), any(ProjectStatus.class), any(Integer.class), any());
-        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
+        verify(analyzeService, never()).analyzeProjectWithinOperation(any(), any(), any(), any());
         verify(fileChangeBroadcaster, never()).watchProject(any(), any());
         assertThat(backgroundTasks).isEmpty();
     }
@@ -277,13 +286,13 @@ class TarballImportServiceImplTest {
 
         verify(projectService).deleteProject("p1");
         verify(projectService, never()).markAnalyzing("p1");
-        verify(analyzeService, never()).analyzeProject(any(), any(), any(), any());
+        verify(analyzeService, never()).analyzeProjectWithinOperation(any(), any(), any(), any());
         assertThat(backgroundTasks).isEmpty();
     }
 
-    private com.vibegraph.auth.domain.ProjectOwnership activeGithubRow(String sourceRef,
+    private com.vibegraph.auth.domain.entity.ProjectOwnership activeGithubRow(String sourceRef,
             com.vibegraph.auth.domain.ProjectOwnershipStatus status) {
-        return com.vibegraph.auth.domain.ProjectOwnership.builder()
+        return com.vibegraph.auth.domain.entity.ProjectOwnership.builder()
                 .projectId("p1").ownerId(userId).name("acme/demo")
                 .sourceType(com.vibegraph.auth.domain.ProjectSourceType.GITHUB)
                 .sourceRef(sourceRef).status(status)
@@ -362,7 +371,8 @@ class TarballImportServiceImplTest {
         verify(projectService).markAnalyzing("p1");
         assertThat(backgroundTasks).hasSize(1);
 
-        when(analyzeService.analyzeProject(eq("p1"), eq("acme/demo"), eq(existingRoot.toString()), any()))
+        when(analyzeService.analyzeProjectWithinOperation(
+                eq("p1"), eq("acme/demo"), eq(existingRoot.toString()), any()))
                 .thenReturn(new AnalysisResult("p1", 1, 5, 4, 0));
         backgroundTasks.get(0).run();
 
@@ -394,13 +404,16 @@ class TarballImportServiceImplTest {
         when(projectService.getProject("p1")).thenReturn(ProjectResponse.builder().id("p1").name("acme/demo")
                 .rootPath(existingRoot.toString()).status("ANALYZING").build());
 
-        service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
-        when(analyzeService.analyzeProject(eq("p1"), any(), any(), any()))
-                .thenThrow(new IllegalStateException("parse exploded"));
+        var token = new OperationTelemetryRecorder.OperationToken("evt-github-failed");
+        service.importFromGithub(new GithubImportRequest("https://github.com/acme/demo"), token);
+        var failure = new IllegalStateException("parse exploded");
+        when(analyzeService.analyzeProjectWithinOperation(eq("p1"), any(), any(), any()))
+                .thenThrow(failure);
         backgroundTasks.get(0).run();
 
         verify(projectService).markFailed(eq("p1"), any());
         verify(ownershipRegistrar, never()).updateSourceRef(any(), any(), any());
+        verify(telemetryRecorder).fail(token, failure);
         // The pre-existing project survives a failed refresh.
         verify(projectService, never()).deleteProject("p1");
     }

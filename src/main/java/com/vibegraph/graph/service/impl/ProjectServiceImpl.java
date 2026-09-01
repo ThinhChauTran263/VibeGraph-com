@@ -14,7 +14,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectOwnershipStatus;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.common.exception.ProjectNotFoundException;

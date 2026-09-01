@@ -5,10 +5,12 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
 import {
   buildLiveSuggestionClearSequence,
+  askPassword,
   completeShellLine,
   getNextSuggestionIndex,
   getSuggestionWindow,
@@ -24,8 +26,31 @@ import {
   parseWatchCommandArgs,
   renderInteractiveHeader,
   renderShellSuggestionPanel,
+  selectProjectForDeletion,
   truncateTerminalText,
 } from "../bin/vibegraph.js";
+
+test("password input resumes stdin after the email readline prompt paused it", async () => {
+  const input = new EventEmitter();
+  input.isTTY = true;
+  input.isRaw = false;
+  input.resumeCalls = 0;
+  input.resume = () => { input.resumeCalls += 1; };
+  input.setRawMode = (enabled) => { input.isRaw = enabled; };
+  const writes = [];
+  const output = { write: (value) => { writes.push(value); } };
+
+  const passwordPromise = askPassword("Password: ", input, output);
+  input.emit("keypress", "s", { name: "s" });
+  input.emit("keypress", "3", { name: "3" });
+  input.emit("keypress", "c", { name: "c" });
+  input.emit("keypress", "r", { name: "return" });
+
+  assert.equal(await passwordPromise, "s3c");
+  assert.equal(input.resumeCalls, 1);
+  assert.equal(input.isRaw, false);
+  assert.deepEqual(writes, ["Password: ", "\n"]);
+});
 
 const cliPath = fileURLToPath(new URL("../bin/vibegraph.js", import.meta.url));
 const SHELL_SUGGESTION_COMMANDS = [
@@ -41,8 +66,6 @@ const SHELL_SUGGESTION_COMMANDS = [
   "key list",
   "key change",
   "key clear",
-  "auth status",
-  "auth clear",
   "me",
   "logout",
   "config show",
@@ -52,16 +75,16 @@ const SHELL_SUGGESTION_COMMANDS = [
   "projects list",
   "projects create --path ",
   "projects import-local --path ",
-  "projects analyze ",
-  "projects delete ",
-  "projects push ",
+  "projects analyze",
+  "projects delete",
   "push",
   "push --dry-run",
-  "projects status ",
+  "projects status",
   "watch",
   "watch --root ",
   "ignore init",
   "ignore init --root ",
+  "update",
 ];
 
 function runCli(args = [], options = {}) {
@@ -273,7 +296,7 @@ test("interactive header is compact and omits long usage", () => {
   const output = renderInteractiveHeader({ apiUrl: "http://api.example.test" }, "D:\\Projects\\demo");
   const plainOutput = output.replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, "");
 
-  assert.match(plainOutput, /VibeGraph CLI v0\.1\.1/);
+  assert.match(plainOutput, /VibeGraph CLI v\d+\.\d+\.\d+/);
   assert.match(plainOutput, /D:\\Projects\\demo/);
   assert.match(plainOutput, /http:\/\/api\.example\.test/);
   assert.match(plainOutput, /Up\/Down select; Tab completes; Enter runs\./);
@@ -324,8 +347,6 @@ test("shell completer suggests slash commands and command templates", () => {
     "/key list",
     "/key change",
     "/key clear",
-    "/auth status",
-    "/auth clear",
     "/me",
     "/logout",
     "/config show",
@@ -335,41 +356,39 @@ test("shell completer suggests slash commands and command templates", () => {
     "/projects list",
     "/projects create --path ",
     "/projects import-local --path ",
-    "/projects analyze ",
-    "/projects delete ",
-    "/projects push ",
+    "/projects analyze",
+    "/projects delete",
     "/push",
     "/push --dry-run",
-    "/projects status ",
+    "/projects status",
     "/watch",
     "/watch --root ",
     "/ignore init",
     "/ignore init --root ",
+    "/update",
   ]);
   assert.deepEqual(completeShellLine("projects "), [[
     "projects list",
     "projects create --path ",
     "projects import-local --path ",
-    "projects analyze ",
-    "projects delete ",
-    "projects push ",
-    "projects status ",
+    "projects analyze",
+    "projects delete",
+    "projects status",
   ], "projects "]);
   assert.deepEqual(completeShellLine("  config s"), [[
     "  config show",
     "  config set-url ",
   ], "  config s"]);
-  assert.deepEqual(completeShellLine("auth "), [[
-    "auth status",
-    "auth clear",
-  ], "auth "]);
   assert.deepEqual(completeShellLine("key "), [[
     "key status",
     "key list",
     "key change",
     "key clear",
   ], "key "]);
-  assert.deepEqual(completeShellLine("push"), [["push", "push --dry-run"], "push"]);
+  assert.deepEqual(completeShellLine("push"), [[
+    "push",
+    "push --dry-run",
+  ], "push"]);
   assert.deepEqual(completeShellLine("watch --"), [["watch --root "], "watch --"]);
 });
 
@@ -379,14 +398,47 @@ test("live shell suggestions filter as the user types", () => {
     ["help"],
   );
   assert.deepEqual(
+    getShellSuggestions("/st").map(({ command }) => command),
+    ["key status", "projects status"],
+  );
+  assert.deepEqual(
     getShellSuggestions("/").map(({ command }) => command),
     SHELL_SUGGESTION_COMMANDS,
   );
   assert.deepEqual(
     getShellSuggestions("projects p").map(({ command }) => command),
-    ["projects push "],
+    [],
+  );
+  assert.deepEqual(
+    getShellSuggestions("status").map(({ command }) => command),
+    ["key status", "projects status"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("analyze").map(({ command }) => command),
+    ["projects analyze"],
+  );
+  assert.deepEqual(
+    getShellSuggestions("mcp").map(({ command }) => command),
+    ["mcp config", "mcp doctor", "mcp install "],
+  );
+  assert.deepEqual(
+    getShellSuggestions("jects stat").map(({ command }) => command),
+    ["projects status"],
   );
   assert.deepEqual(getShellSuggestions("").map(({ command }) => command), []);
+});
+
+test("removed command aliases are rejected", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-shell-config-"));
+  try {
+    for (const args of [["auth", "status"], ["auth", "clear"], ["projects", "push"]]) {
+      const result = await runCli(args, { env: { VIBEGRAPH_CONFIG_DIR: configDir } });
+      assert.equal(result.code, 2);
+      assert.match(result.stderr, /Unknown command|Unknown projects command/);
+    }
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
 });
 
 test("live shell suggestion panel includes descriptions", () => {
@@ -439,7 +491,7 @@ test("arrow selection keeps the typed buffer until the user accepts it", () => {
   const suggestions = getShellSuggestions("/", Number.POSITIVE_INFINITY);
 
   assert.equal(getSelectedSuggestionLine("/", suggestions, 0), "/help");
-  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), "projects push ");
+  assert.equal(getSelectedSuggestionLine("projects p", getShellSuggestions("projects p"), 0), null);
   assert.equal(getSelectedSuggestionLine("/", suggestions, -1), null);
   assert.equal(getSelectedSuggestionLine("/", suggestions, suggestions.length), null);
 });
@@ -504,8 +556,7 @@ test("parseShellArgs preserves UNC paths and trailing path backslashes", () => {
     "set-url",
     "\\\\server\\share",
   ]);
-  assert.deepEqual(parseShellArgs('projects push demo --root "D:\\Projects\\demo\\"'), [
-    "projects",
+  assert.deepEqual(parseShellArgs('push demo --root "D:\\Projects\\demo\\"'), [
     "push",
     "demo",
     "--root",
@@ -567,4 +618,19 @@ test("push and watch parsers accept project-bound root-only commands and legacy 
 test("push and watch parsers reject missing roots and unknown options", () => {
   assert.throws(() => parsePushCommandArgs(["--root"]), /Missing --root/);
   assert.throws(() => parseWatchCommandArgs(["--unknown", "value"]), /Unknown option/);
+});
+
+test("project deletion selects by number and requires explicit confirmation", async () => {
+  const projects = [
+    { id: "p1", name: "Alpha", status: "READY" },
+    { id: "p2", name: "Beta", status: "CREATED" },
+  ];
+  const answers = ["2", "yes"];
+  const selected = await selectProjectForDeletion(projects, async () => answers.shift());
+  assert.equal(selected.id, "p2");
+
+  const cancelled = await selectProjectForDeletion(projects, async (prompt) =>
+    prompt.startsWith("Choose") ? "1" : "",
+  );
+  assert.equal(cancelled, null);
 });

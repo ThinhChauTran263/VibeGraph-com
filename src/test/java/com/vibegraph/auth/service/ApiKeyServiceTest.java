@@ -25,11 +25,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ApiKey;
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.ApiKey;
+import com.vibegraph.auth.domain.entity.Plan;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
 import com.vibegraph.auth.dto.ApiKeyCreateRequest;
 import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;
@@ -116,7 +116,7 @@ class ApiKeyServiceTest {
                 .apiKeyCreationDisabled(false)
                 .build();
         lenient().when(projectOwnershipRepository.findByProjectIdAndOwnerIdAndDeletedAtIsNull("project-1", userId))
-                .thenReturn(java.util.Optional.of(com.vibegraph.auth.domain.ProjectOwnership.builder()
+                .thenReturn(java.util.Optional.of(com.vibegraph.auth.domain.entity.ProjectOwnership.builder()
                         .projectId("project-1")
                         .ownerId(userId)
                         .name("Project One")

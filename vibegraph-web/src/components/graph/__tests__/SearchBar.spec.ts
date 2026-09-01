@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import SearchBar from '../SearchBar.vue'
+import searchBarSource from '../SearchBar.vue?raw'
 import type { GraphNode } from '@/types/graph'
 
 function node(overrides: Partial<GraphNode>): GraphNode {
@@ -23,6 +24,13 @@ const nodes: GraphNode[] = [
     type: 'Method',
     name: 'placeOrder',
     fullName: 'com.example.OrderService.placeOrder',
+  }),
+  node({
+    id: 'file-1',
+    type: 'File',
+    name: 'User.java',
+    fullName: 'src.main.java.com.example.User',
+    filePath: 'src/main/java/com/example/User.java',
   }),
 ]
 
@@ -50,6 +58,82 @@ describe('SearchBar', () => {
 
     expect(wrapper.text()).toContain('placeOrder')
     expect(wrapper.text()).not.toContain('OrderService · com.example.OrderService')
+  })
+
+  it('matches lowercase input case-insensitively and ranks name prefixes first', async () => {
+    const distractingNodes = Array.from({ length: 12 }, (_, index) =>
+      node({
+        id: `contains-u-${index}`,
+        name: `Service${index}`,
+        fullName: `com.userland.Service${index}`,
+      }),
+    )
+    const wrapper = mount(SearchBar, { props: { nodes: [...distractingNodes, ...nodes] } })
+
+    await typeAndSettle(wrapper, 'u')
+
+    const resultNames = wrapper.findAll('.search-bar__result-name').map((item) => item.text())
+    expect(resultNames[0]).toBe('User.java')
+  })
+
+  it('matches a case-insensitive file path fragment', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await typeAndSettle(wrapper, 'EXAMPLE/USER')
+
+    expect(wrapper.text()).toContain('User.java')
+  })
+
+  it('ignores nodes with missing optional search metadata instead of breaking all results', async () => {
+    const incompleteNode = node({
+      id: 'incomplete',
+      name: 'NoMetadata',
+      fullName: undefined as unknown as string,
+      filePath: undefined as unknown as string,
+    })
+    const wrapper = mount(SearchBar, { props: { nodes: [incompleteNode, ...nodes] } })
+
+    await typeAndSettle(wrapper, 'user')
+
+    expect(wrapper.text()).toContain('User.java')
+    expect(wrapper.text()).not.toContain('No matching nodes.')
+  })
+
+  it('matches a Java filename query against a symbol name when file metadata is missing', async () => {
+    const auditAspect = node({
+      id: 'audit-aspect',
+      name: 'AuditAspect',
+      fullName: 'com.example.audit.AuditAspect',
+      filePath: '',
+    })
+    const wrapper = mount(SearchBar, { props: { nodes: [auditAspect] } })
+
+    await typeAndSettle(wrapper, 'AuditAspect.java')
+
+    expect(wrapper.text()).toContain('AuditAspect')
+    expect(wrapper.text()).not.toContain('No matching nodes.')
+  })
+
+  it('stops mouse interactions from bubbling into the graph gesture layer', async () => {
+    const onMouseDown = vi.fn()
+    document.addEventListener('mousedown', onMouseDown)
+    const wrapper = mount(SearchBar, { props: { nodes }, attachTo: document.body })
+
+    await wrapper.get('input[type="search"]').trigger('mousedown')
+
+    expect(onMouseDown).not.toHaveBeenCalled()
+    wrapper.unmount()
+    document.removeEventListener('mousedown', onMouseDown)
+  })
+
+  it('focuses on the first pointer tap without requesting a viewport scroll', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+    const input = wrapper.get('input[type="search"]')
+    const focusSpy = vi.spyOn(input.element as HTMLInputElement, 'focus')
+
+    await input.trigger('pointerdown')
+
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
   })
 
   it('emits select with the clicked node', async () => {
@@ -92,6 +176,17 @@ describe('SearchBar', () => {
     await typeAndSettle(wrapper, 'missing')
 
     expect(wrapper.text()).toContain('No matching nodes.')
+  })
+
+  it('keeps results out of the toolbar layout flow', async () => {
+    const wrapper = mount(SearchBar, { props: { nodes } })
+
+    await typeAndSettle(wrapper, 'order')
+
+    expect(wrapper.find('.search-bar__results').exists()).toBe(true)
+    expect(searchBarSource).toMatch(
+      /\.search-bar__results\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*calc\(100% \+ 0\.5rem\);/,
+    )
   })
 
   it('clears the query and emits clear', async () => {

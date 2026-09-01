@@ -153,12 +153,12 @@ export const SIGMA_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_LABEL_GROW_ZOOM', 1.5,
 /**
  * Zoom-in factor past which EDGE type labels start growing. Kept high so edge labels
  * appear and stay a FIXED size across the normal zoom range, and only begin scaling
- * up once you zoom deep past this factor (e.g. 10 = labels hold their size until 10×
+ * up once you zoom deep past this factor (e.g. 8 = labels hold their size until 8×
  * the fit view, then enlarge with further zoom). Zooming back out below it returns
  * them to the fixed size. This is separate from the node grow factor so node labels
  * can grow early for readability while edge labels stay calm until deep zoom.
  */
-export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 12, {
+export const SIGMA_EDGE_LABEL_GROW_ZOOM = envFloat('VITE_SIGMA_EDGE_LABEL_GROW_ZOOM', 8, {
   min: 1,
 })
 

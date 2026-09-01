@@ -63,6 +63,7 @@ class AdminOverviewAggregateTest {
         when(feedbackReportRepository.count()).thenReturn(3L);
         when(feedbackReportRepository.countByStatus(FeedbackReportStatus.OPEN)).thenReturn(1L);
         when(settingsRepository.countByBlockedAtIsNotNull()).thenReturn(0L);
+        when(userRepository.countGrowthByDay()).thenReturn(List.of());
         when(userRepository.countGrowthByMonth()).thenReturn(List.of());
         when(userRepository.countGrowthByQuarter()).thenReturn(List.of());
         when(userRepository.countGrowthByYear()).thenReturn(List.of());

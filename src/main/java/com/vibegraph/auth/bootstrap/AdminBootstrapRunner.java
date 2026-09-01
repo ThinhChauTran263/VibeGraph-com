@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.vibegraph.auth.config.BootstrapProperties;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)

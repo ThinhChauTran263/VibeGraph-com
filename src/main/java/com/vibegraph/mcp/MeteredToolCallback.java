@@ -5,12 +5,16 @@ import java.util.UUID;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.lang.Nullable;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.vibegraph.auth.web.ApiKeyRequestContext;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.service.AccountAccessGuard;
 import com.vibegraph.auth.service.CreditBalanceService;
@@ -19,6 +23,7 @@ import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
 import com.vibegraph.mcp.orchestration.McpTaskExecutionCoordinator;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 public final class MeteredToolCallback implements ToolCallback {
 
@@ -36,6 +41,7 @@ public final class MeteredToolCallback implements ToolCallback {
     private final McpTaskExecutionCoordinator taskCoordinator;
     /** Whether the delegate's input schema declares projectId — immutable per tool, computed once. */
     private final boolean declaresProjectId;
+    private final OperationTelemetryRecorder telemetryRecorder;
 
     public MeteredToolCallback(
             ToolCallback delegate,
@@ -62,6 +68,23 @@ public final class MeteredToolCallback implements ToolCallback {
             ApiKeyRequestContextAccessor apiKeyContextAccessor,
             ObjectMapper objectMapper,
             McpTaskExecutionCoordinator taskCoordinator) {
+        this(delegate, currentUser, creditPricingService, creditBalanceService, ownershipGuard,
+                featureGateService, accountAccessGuard, apiKeyContextAccessor, objectMapper,
+                taskCoordinator, null);
+    }
+
+    public MeteredToolCallback(
+            ToolCallback delegate,
+            CurrentUser currentUser,
+            CreditPricingService creditPricingService,
+            CreditBalanceService creditBalanceService,
+            ProjectOwnershipGuard ownershipGuard,
+            FeatureGateService featureGateService,
+            AccountAccessGuard accountAccessGuard,
+            ApiKeyRequestContextAccessor apiKeyContextAccessor,
+            ObjectMapper objectMapper,
+            McpTaskExecutionCoordinator taskCoordinator,
+            OperationTelemetryRecorder telemetryRecorder) {
         this.delegate = delegate;
         this.currentUser = currentUser;
         this.creditPricingService = creditPricingService;
@@ -72,12 +95,36 @@ public final class MeteredToolCallback implements ToolCallback {
         this.apiKeyContextAccessor = apiKeyContextAccessor;
         this.objectMapper = objectMapper;
         this.taskCoordinator = taskCoordinator;
+        this.telemetryRecorder = telemetryRecorder;
         this.declaresProjectId = computeDeclaresProjectId();
     }
 
     @Override
     public ToolDefinition getToolDefinition() {
-        return delegate.getToolDefinition();
+        if (!declaresProjectId) {
+            return delegate.getToolDefinition();
+        }
+        JsonNode schema = readJson(delegate.getToolDefinition().inputSchema(),
+                "MCP tool input schema must be valid JSON");
+        if (!(schema instanceof ObjectNode objectSchema)) {
+            return delegate.getToolDefinition();
+        }
+        JsonNode required = objectSchema.get("required");
+        if (!(required instanceof ArrayNode requiredFields) || !requiredFields.toString().contains("projectId")) {
+            return delegate.getToolDefinition();
+        }
+        ObjectNode copy = objectSchema.deepCopy();
+        ArrayNode optionalRequired = copy.putArray("required");
+        requiredFields.forEach(field -> {
+            if (!"projectId".equals(field.asText())) {
+                optionalRequired.add(field);
+            }
+        });
+        return DefaultToolDefinition.builder()
+                .name(delegate.getToolDefinition().name())
+                .description(delegate.getToolDefinition().description())
+                .inputSchema(copy.toString())
+                .build();
     }
 
     @Override
@@ -87,31 +134,45 @@ public final class MeteredToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput) {
-        return meter(toolInput, () -> delegate.call(toolInput));
+        return meter(toolInput, effectiveInput -> delegate.call(effectiveInput));
     }
 
     @Override
     public String call(String toolInput, @Nullable ToolContext toolContext) {
-        return meter(toolInput, () -> delegate.call(toolInput, toolContext));
+        return meter(toolInput, effectiveInput -> delegate.call(effectiveInput, toolContext));
     }
 
     private String meter(String toolInput, ToolInvocation invocation) {
         UUID userId = currentUser.id();
         accountAccessGuard.assertProductAccess(userId);
         featureGateService.assertMcpToolEnabled(delegate.getToolDefinition().name());
-        String projectId = extractProjectId(toolInput);
+        String effectiveInput = enrichProjectInput(toolInput);
+        String projectId = extractProjectId(effectiveInput);
         if (projectId != null) {
             apiKeyContextAccessor.assertProjectMatches(projectId);
             ownershipGuard.assertOwner(projectId, userId);
         }
 
-        long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
-        creditBalanceService.deductCredits(
-                userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
-        if (taskCoordinator == null) {
-            return invocation.call();
+        OperationTelemetryRecorder.OperationToken token = telemetryRecorder == null ? null
+                : telemetryRecorder.begin("MCP", delegate.getToolDefinition().name(), projectId, null);
+        try {
+            OperationTelemetryRecorder.requireAccepted(token);
+            long requiredCredits = creditPricingService.calculateCredits(OPERATION_CODE, 0, 0);
+            creditBalanceService.deductCredits(
+                    userId, requiredCredits, "MCP", OPERATION_CODE, projectId);
+            String result = taskCoordinator == null
+                    ? invocation.call(effectiveInput)
+                    : taskCoordinator.execute(delegate.getToolDefinition().name(), projectId,
+                            () -> invocation.call(effectiveInput));
+            if (telemetryRecorder != null) {
+                GraphCounts counts = graphCounts(result);
+                telemetryRecorder.complete(token, counts.nodes(), counts.edges(), 0);
+            }
+            return result;
+        } catch (RuntimeException | Error ex) {
+            if (telemetryRecorder != null) telemetryRecorder.fail(token, ex);
+            throw ex;
         }
-        return taskCoordinator.execute(delegate.getToolDefinition().name(), projectId, invocation::call);
     }
 
     private String extractProjectId(String toolInput) {
@@ -121,10 +182,78 @@ public final class MeteredToolCallback implements ToolCallback {
 
         JsonNode input = readJson(toolInput, "MCP tool input must be valid JSON");
         JsonNode projectId = input.get("projectId");
-        if (projectId == null || !projectId.isTextual() || projectId.textValue().isBlank()) {
+        if (projectId == null) {
+            return apiKeyContextAccessor.current()
+                    .map(ApiKeyRequestContext::projectId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "projectId is required when no project-bound API key is present"));
+        }
+        if (!projectId.isTextual() || projectId.textValue().isBlank()) {
             throw new IllegalArgumentException("projectId must be a non-blank string");
         }
         return projectId.textValue();
+    }
+
+    /** Extracts graph payload sizes without making assumptions about non-graph MCP responses. */
+    static GraphCounts graphCounts(String result) {
+        if (result == null || result.isBlank()) return GraphCounts.EMPTY;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(result);
+            if (root != null && root.isTextual()) {
+                root = mapper.readTree(root.textValue());
+            }
+            if (root == null) return GraphCounts.EMPTY;
+            int[] counts = {0, 0};
+            collectGraphCounts(root, counts);
+            return new GraphCounts(counts[0], counts[1]);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            return GraphCounts.EMPTY;
+        }
+    }
+
+    private static void collectGraphCounts(JsonNode node, int[] counts) {
+        if (node == null) return;
+        if (node.isObject()) {
+            counts[0] = Math.max(counts[0], countField(node, "nodes", "nodeCount"));
+            counts[1] = Math.max(counts[1], countField(node, "edges", "edgeCount"));
+            node.properties().forEach(entry -> collectGraphCounts(entry.getValue(), counts));
+        } else if (node.isArray()) {
+            node.forEach(child -> collectGraphCounts(child, counts));
+        }
+    }
+
+    private static int countField(JsonNode object, String arrayName, String countName) {
+        JsonNode array = object.get(arrayName);
+        if (array != null && array.isArray()) return array.size();
+        JsonNode count = object.get(countName);
+        if (count != null && count.canConvertToInt() && count.asInt() >= 0) return count.asInt();
+        return 0;
+    }
+
+    record GraphCounts(int nodes, int edges) {
+        private static final GraphCounts EMPTY = new GraphCounts(0, 0);
+    }
+
+    private String enrichProjectInput(String toolInput) {
+        if (!declaresProjectId) {
+            return toolInput;
+        }
+        JsonNode input = readJson(toolInput, "MCP tool input must be valid JSON");
+        if (input.has("projectId")) {
+            return toolInput;
+        }
+        String projectId = extractProjectId(toolInput);
+        if (!(input instanceof ObjectNode objectInput)) {
+            throw new IllegalArgumentException("MCP tool input must be a JSON object");
+        }
+        objectInput.put("projectId", projectId);
+        try {
+            return objectMapper.writeValueAsString(objectInput);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("MCP tool input could not be normalized", ex);
+        }
     }
 
     private boolean computeDeclaresProjectId() {
@@ -144,6 +273,6 @@ public final class MeteredToolCallback implements ToolCallback {
 
     @FunctionalInterface
     private interface ToolInvocation {
-        String call();
+        String call(String effectiveInput);
     }
 }

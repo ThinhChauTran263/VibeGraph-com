@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import com.vibegraph.common.exception.ServiceBusyException;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.dto.response.ProjectStatus;
+import com.vibegraph.graph.repository.GraphRepository;
 import com.vibegraph.graph.websocket.GraphUpdateController;
 
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class ProjectAnalysisScheduler {
 
     private final ProjectService projectService;
     private final AnalyzeService analyzeService;
+    private final GraphRepository graphRepository;
     private final GraphUpdateController graphUpdateController;
     private final Executor analysisExecutor;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
@@ -38,10 +40,12 @@ public class ProjectAnalysisScheduler {
     public ProjectAnalysisScheduler(
             ProjectService projectService,
             AnalyzeService analyzeService,
+            GraphRepository graphRepository,
             GraphUpdateController graphUpdateController,
             @Qualifier("analysisExecutor") Executor analysisExecutor) {
         this.projectService = projectService;
         this.analyzeService = analyzeService;
+        this.graphRepository = graphRepository;
         this.graphUpdateController = graphUpdateController;
         this.analysisExecutor = analysisExecutor;
     }
@@ -96,6 +100,7 @@ public class ProjectAnalysisScheduler {
                     projectId, project.getName(), project.getRootPath(), listener);
             projectService.markAnalyzed(
                     projectId, result.filesParsed(), result.nodesUpserted(), result.edgesUpserted());
+            graphUpdateController.broadcastFullUpdate(projectId, graphRepository.getFullGraph(projectId));
             graphUpdateController.broadcastStatus(projectId, ProjectStatus.ANALYZED, 100);
             log.info("Analyzed project {} in background ({} files)", projectId, result.filesParsed());
         } catch (RuntimeException ex) {

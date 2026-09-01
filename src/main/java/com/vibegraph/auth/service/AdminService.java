@@ -17,18 +17,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.domain.AccountStatus;
-import com.vibegraph.auth.domain.CreditLedger;
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditLedger;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 import com.vibegraph.auth.domain.FeedbackCategory;
-import com.vibegraph.auth.domain.FeedbackMessage;
-import com.vibegraph.auth.domain.FeedbackReport;
+import com.vibegraph.auth.domain.entity.FeedbackMessage;
+import com.vibegraph.auth.domain.entity.FeedbackReport;
 import com.vibegraph.auth.domain.FeedbackReportStatus;
 import com.vibegraph.auth.domain.FeedbackSenderRole;
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.Plan;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
-import com.vibegraph.auth.domain.UserCreditBalance;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.UserCreditBalance;
 import com.vibegraph.auth.dto.AdminCreateUserRequest;
 import com.vibegraph.auth.dto.AdminCreditAdjustmentRequest;
 import com.vibegraph.auth.dto.AdminCreditOverviewResponse;
@@ -125,7 +125,7 @@ public class AdminService {
 
     private List<AdminSeriesPoint> buildUserGrowth() {
         return mergeSeriesRows(
-                List.of(),
+                userRepository.countGrowthByDay(),
                 userRepository.countGrowthByMonth(),
                 userRepository.countGrowthByQuarter(),
                 userRepository.countGrowthByYear());

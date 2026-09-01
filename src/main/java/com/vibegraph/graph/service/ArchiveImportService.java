@@ -3,6 +3,7 @@ package com.vibegraph.graph.service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 /**
  * Archive-upload onboarding: import a Java project from an uploaded
@@ -30,4 +31,13 @@ public interface ArchiveImportService {
      * @return the registered project, status {@code ANALYZING}, progress 0
      */
     ProjectResponse importArchiveAsync(String name, MultipartFile file);
+
+    /**
+     * Asynchronous import variant that completes the supplied telemetry token when background
+     * analysis reaches a terminal state.
+     */
+    default ProjectResponse importArchiveAsync(String name, MultipartFile file,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
+        return importArchiveAsync(name, file);
+    }
 }

@@ -1,5 +1,7 @@
 package com.vibegraph.mcp.orchestration;
 
+import com.vibegraph.mcp.orchestration.entity.AgentTask;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.Connection;

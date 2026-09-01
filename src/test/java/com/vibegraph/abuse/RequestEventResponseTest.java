@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import java.time.Instant;
 import java.util.UUID;
 

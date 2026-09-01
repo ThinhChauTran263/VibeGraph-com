@@ -2,7 +2,7 @@ package com.vibegraph.graph.dto;
 
 import java.time.Instant;
 
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 
 /**
  * A project sitting in the owner's trash.

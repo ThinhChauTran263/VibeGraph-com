@@ -4,7 +4,9 @@ import { createTestingPinia } from '@pinia/testing'
 import DashboardView from '../DashboardView.vue'
 import { buildPeriodSeries } from '../dashboard-chart-utils'
 import type { AdminOverview } from '@/types/api'
+import type { InfrastructureSnapshot } from '@/types/infrastructure'
 import { useAdminStore } from '@/stores/admin'
+import { adminApi } from '@/lib/api'
 import i18n, { setLocale } from '@/language'
 
 // render function instead of an inline template: async-component mounting in this
@@ -64,6 +66,60 @@ describe('Admin DashboardView', () => {
     setVisibility('visible')
     wsController.status.value = 'disconnected'
     wsController.captured = null
+    vi.spyOn(adminApi, 'getInfrastructureSnapshot').mockResolvedValue(createInfrastructureSnapshot({
+      capturedAt: '2026-07-17T13:05:30Z',
+      status: 'HEALTHY',
+      host: {
+        cpuPercent: 27.9,
+        vcpuCount: 4,
+        currentGHz: 2.4,
+        avgCpuPercent: 25,
+        peakCpuPercent: 32,
+        status: 'MEASURED',
+      },
+      memory: {
+        usedBytes: 2_899_102_924,
+        totalBytes: 8_375_377_920,
+        availableBytes: 5_476_274_996,
+        usedPercent: 34.6,
+        breakdown: [],
+        status: 'MEASURED',
+      },
+      disk: {
+        usedBytes: 25_018_754_867,
+        totalBytes: 50_895_503_360,
+        freeBytes: 25_876_748_493,
+        usedPercent: 49.2,
+        breakdown: [],
+        status: 'MEASURED',
+      },
+      network: {
+        inBytesPerSecond: 7_707_853,
+        outBytesPerSecond: 2_516_582,
+        droppedPackets: 0,
+        status: 'MEASURED',
+      },
+      containers: [
+        {
+          name: 'backend',
+          status: 'running',
+          healthy: true,
+          memoryUsedBytes: 704_643_072,
+          cpuPercent: 0.4,
+          restartCount: 0,
+          source: 'test',
+        },
+        {
+          name: 'neo4j',
+          status: 'running',
+          healthy: true,
+          memoryUsedBytes: 1_703_624_704,
+          cpuPercent: 1.35,
+          restartCount: 0,
+          source: 'test',
+        },
+      ],
+    }))
   })
 
   afterEach(() => {
@@ -93,12 +149,100 @@ describe('Admin DashboardView', () => {
     expect(wrapper.text()).toContain('Platform Analytics')
     expect(wrapper.text()).toContain('Total Users')
     expect(wrapper.text()).toContain('Online Users')
+    expect(wrapper.text()).toContain('Infrastructure')
+    expect(wrapper.text()).not.toContain('Server Disk')
+    const infrastructureCard = wrapper.get('[data-test="infrastructure-card"]')
+    expect(infrastructureCard.text()).toContain('Live')
+    expect(infrastructureCard.text()).toContain('OK')
+    expect(infrastructureCard.text()).toContain('VPS is healthy')
+    expect(infrastructureCard.text()).toContain('4 vCPU')
+    expect(infrastructureCard.text()).toContain('7.8 GB RAM')
+    expect(infrastructureCard.text()).toContain('CPU')
+    expect(infrastructureCard.text()).toContain('27.9%')
+    expect(infrastructureCard.text()).toContain('RAM')
+    expect(infrastructureCard.text()).toContain('34.6%')
+    expect(infrastructureCard.text()).toContain('SSD')
+    expect(infrastructureCard.text()).toContain('49.2%')
+    expect(infrastructureCard.text()).toContain('NET')
+    expect(infrastructureCard.text()).toContain('2.4 MB/s')
+    expect(infrastructureCard.text()).toContain('34.6% used')
+    expect(infrastructureCard.text()).toContain('5.1 GB available')
+    expect(infrastructureCard.text()).toContain('23.3 GB used')
+    expect(infrastructureCard.text()).toContain('24.1 GB free')
+    expect(infrastructureCard.text()).toContain('in 7.4 MB/s')
+    expect(infrastructureCard.text()).toContain('0 drops')
+    expect(infrastructureCard.findAll('.infrastructure-mini')).toHaveLength(4)
+    expect(infrastructureCard.findAll('.infrastructure-mini-sparkline')).toHaveLength(3)
+    expect(infrastructureCard.findAll('.infrastructure-disk-bar')).toHaveLength(1)
+    expect(infrastructureCard.find('.infrastructure-health-ring').exists()).toBe(true)
+    expect(infrastructureCard.text()).not.toContain('services healthy')
+    expect(wrapper.find('[data-test="infrastructure-card-link"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Top Storage Projects')
     expect(wrapper.text()).toContain('Plan Distribution')
     expect(wrapper.text()).toContain('Security / Abuse Alerts')
-    expect(wrapper.findAll('[data-test="echart"]')).toHaveLength(6)
+    expect(wrapper.findAll('[data-test="echart"]')).toHaveLength(5)
     expect(wrapper.find('[data-test="plan-distribution-panel"]').classes()).toContain('panel--wide')
     expect(wrapper.find('[data-test="security-alerts-panel"]').classes()).toContain('panel--wide')
+    wrapper.unmount()
+  })
+
+  it('keeps storage rankings compact while preserving overflow items for scrolling', async () => {
+    const projects = Array.from({ length: 7 }, (_, index) => ({
+      id: `project-${index + 1}`,
+      name: `project-${index + 1}`,
+      ownerEmail: `owner-${index + 1}@example.com`,
+      usedBytes: (index + 1) * 1024,
+    }))
+    const users = Array.from({ length: 6 }, (_, index) => ({
+      id: `user-${index + 1}`,
+      name: `User ${index + 1}`,
+      ownerEmail: `user-${index + 1}@example.com`,
+      usedBytes: (index + 1) * 1024,
+    }))
+    const wrapper = mountDashboard(createOverview({ topStorageProjects: projects, topStorageUsers: users }))
+
+    await settleCharts()
+
+    const projectChart = wrapper
+      .findAllComponents({ name: 'VChart' })
+      .find((chart) => chart.classes().includes('storage-project-chart'))
+    if (!projectChart) throw new Error('Storage project chart was not rendered')
+    const projectOption = projectChart.props('option') as { yAxis: { data: string[] } }
+
+    expect(projectOption.yAxis.data).toHaveLength(5)
+    expect(wrapper.get('.storage-users-list').classes()).toContain('storage-users-list')
+    expect(wrapper.findAll('.storage-users-list .compact-row')).toHaveLength(6)
+    expect(wrapper.get('.storage-projects-panel .panel-header').text()).toContain('Count · 5')
+    wrapper.unmount()
+  })
+
+  it('keeps the infrastructure card usable when the live snapshot is unavailable', async () => {
+    vi.mocked(adminApi.getInfrastructureSnapshot).mockRejectedValueOnce(
+      new Error('Infrastructure unavailable'),
+    )
+    const wrapper = mountDashboard(createOverview())
+
+    await settleCharts()
+
+    const card = wrapper.get('[data-test="infrastructure-card"]')
+    expect(card.text()).toContain('Infrastructure')
+    expect(card.text()).toContain('Live metrics unavailable')
+    expect(wrapper.find('[data-test="infrastructure-card-link"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not present zeroes as live infrastructure measurements', async () => {
+    vi.mocked(adminApi.getInfrastructureSnapshot).mockResolvedValueOnce(
+      createInfrastructureSnapshot(),
+    )
+    const wrapper = mountDashboard(createOverview())
+
+    await settleCharts()
+
+    const card = wrapper.get('[data-test="infrastructure-card"]')
+    expect(card.text()).toContain('—')
+    expect(card.text()).not.toContain('0.0%')
+    expect(card.text()).not.toContain('0 B')
     wrapper.unmount()
   })
 
@@ -314,6 +458,56 @@ function createOverview(overrides: Partial<AdminOverview> = {}): AdminOverview {
       { label: '2026-07-17T13:04:00Z', value: 3, period: 'minute' },
       { label: '2026-07-17T13:05:00Z', value: 42, period: 'minute' },
     ],
+    ...overrides,
+  }
+}
+
+function createInfrastructureSnapshot(
+  overrides: Partial<InfrastructureSnapshot> = {},
+): InfrastructureSnapshot {
+  return {
+    capturedAt: '2026-07-17T13:05:30Z',
+    status: 'HEALTHY',
+    host: {
+      cpuPercent: 0,
+      vcpuCount: 4,
+      currentGHz: null,
+      avgCpuPercent: 0,
+      peakCpuPercent: 0,
+      status: 'UNKNOWN',
+    },
+      memory: {
+      usedBytes: 0,
+      totalBytes: 8_375_377_920,
+      availableBytes: 8_375_377_920,
+      usedPercent: 0,
+      breakdown: [],
+      status: 'UNKNOWN',
+    },
+    disk: {
+      usedBytes: 0,
+      totalBytes: 50_895_503_360,
+      freeBytes: 50_895_503_360,
+      usedPercent: 0,
+      breakdown: [],
+      status: 'UNKNOWN',
+    },
+    network: { inBytesPerSecond: 0, outBytesPerSecond: 0, droppedPackets: 0, status: 'UNKNOWN' },
+    diskIo: { readBytesPerSecond: 0, writeBytesPerSecond: 0, utilizationPercent: 0, status: 'UNKNOWN' },
+    containers: [],
+    latestOperation: null,
+    capacity: {
+      status: 'LEARNING',
+      evidenceSamples: 0,
+      confidence: 'UNKNOWN',
+      safeHeadroomPercent: 0,
+      mcpSafe: null,
+      graphApi: null,
+      analyzeObservedSafe: null,
+      heavyConcurrency: null,
+    },
+    history: [],
+    incidents: [],
     ...overrides,
   }
 }

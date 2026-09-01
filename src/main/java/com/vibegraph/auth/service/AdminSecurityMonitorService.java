@@ -13,12 +13,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.abuse.RequestAggregateResponse;
-import com.vibegraph.abuse.RequestEvent;
+import com.vibegraph.abuse.entity.RequestEvent;
 import com.vibegraph.abuse.RequestEventRepository;
 import com.vibegraph.abuse.RequestEventResponse;
 import com.vibegraph.abuse.SuspiciousNetworkBreakdownResponse;
 import com.vibegraph.abuse.SuspiciousNetworkResponse;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.dto.SecurityEventResponse;
 import com.vibegraph.auth.repository.SecurityEventRepository;
 import com.vibegraph.auth.repository.UserRepository;

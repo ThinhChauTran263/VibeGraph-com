@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.vibegraph.auth.config.JwtProperties;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;

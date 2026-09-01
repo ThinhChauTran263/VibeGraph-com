@@ -6,7 +6,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.vibegraph.auth.domain.AuthProvider;
-import com.vibegraph.auth.domain.UserIdentity;
+import com.vibegraph.auth.domain.entity.UserIdentity;
 
 /**
  * External identity lookups. Created for Phase 1 schema-freeze; the OAuth login flow that

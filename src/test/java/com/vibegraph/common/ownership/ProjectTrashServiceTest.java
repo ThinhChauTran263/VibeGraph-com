@@ -25,7 +25,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectSourceType;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.common.exception.ProjectNotFoundException;

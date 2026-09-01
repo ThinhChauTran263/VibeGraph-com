@@ -12,12 +12,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ApiKey;
+import com.vibegraph.auth.domain.entity.ApiKey;
 import com.vibegraph.auth.domain.ApiKeyDisabledBy;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
 import com.vibegraph.auth.dto.ApiKeyCreateRequest;
 import com.vibegraph.auth.dto.ApiKeyCreateResponse;
 import com.vibegraph.auth.dto.ApiKeyResponse;

@@ -160,6 +160,50 @@ const hoveredRelation = ref<HoveredRelation | null>(null)
 const pinnedRelation = ref<HoveredRelation | null>(null)
 const hoveredGraphNode = ref<string | null>(null)
 const labelDensity = ref<FocusLabelDensity>('nodes')
+// At the fit view the full graph is already loaded/layouted, but its dense edge
+// layer stays hidden until the user zooms in. Very large graphs keep the legacy
+// always-visible edge mode because hiding thousands of edges is not useful.
+const graphEdgesVisible = ref(false)
+const EDGE_VISIBLE_RATIO = 0.45
+const LARGE_GRAPH_EDGE_THRESHOLD = 5000
+const MAX_FIT_NODE_SIZE_MULTIPLIER = 1.5
+const fitNodeSizeMultiplier = ref(MAX_FIT_NODE_SIZE_MULTIPLIER)
+const lastCameraRatio = ref(1)
+
+function isLargeGraph(): boolean {
+  return (graphInstance.value?.order ?? 0) > LARGE_GRAPH_EDGE_THRESHOLD
+}
+
+/**
+ * Ease the fit-only node enlargement away while zooming toward the edge reveal
+ * threshold. Quantizing to 0.05 keeps reducer refreshes bounded while still
+ * making the visual change gradual instead of snapping from 1.5 to 1.
+ */
+function resolveFitNodeSizeMultiplier(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio >= 1) return MAX_FIT_NODE_SIZE_MULTIPLIER
+  if (ratio <= EDGE_VISIBLE_RATIO) return 1
+
+  const progress = (1 - ratio) / (1 - EDGE_VISIBLE_RATIO)
+  const raw = MAX_FIT_NODE_SIZE_MULTIPLIER - progress * (MAX_FIT_NODE_SIZE_MULTIPLIER - 1)
+  return Math.round(raw * 20) / 20
+}
+
+function syncGraphDisplayState(ratio: number): boolean {
+  const largeGraph = isLargeGraph()
+  const nextEdgesVisible = largeGraph || (Number.isFinite(ratio) && ratio <= EDGE_VISIBLE_RATIO)
+  const edgeVisibilityChanged = nextEdgesVisible !== graphEdgesVisible.value
+  graphEdgesVisible.value = nextEdgesVisible
+
+  const nextNodeSizeMultiplier = largeGraph ? 1 : resolveFitNodeSizeMultiplier(ratio)
+  const nodeSizeMultiplierChanged = nextNodeSizeMultiplier !== fitNodeSizeMultiplier.value
+  if (nodeSizeMultiplierChanged) fitNodeSizeMultiplier.value = nextNodeSizeMultiplier
+
+  const nextDensity = resolveFocusLabelDensity(ratio)
+  const densityChanged = nextDensity !== labelDensity.value
+  if (densityChanged) labelDensity.value = nextDensity
+
+  return edgeVisibilityChanged || nodeSizeMultiplierChanged || densityChanged
+}
 
 // Node types present in the currently highlighted cluster (selected/hovered node +
 // its bright neighbours, or the active flow's nodes). Drives the yellow ring around
@@ -183,12 +227,13 @@ function updateHighlightedTypes(nodeIds: Set<string> | null): void {
   highlightedNodeTypes.value = types
 }
 
-// User toggle for showing edge type labels at all. When off, edge labels never
-// render regardless of zoom/selection. Driven by the "Edge labels" button.
+// User toggle for showing edge type text. Node-kind text has its own independent
+// toggle below and can remain visible when this one is off.
 const edgeLabelsEnabled = ref(true)
 
 function toggleEdgeLabels(): void {
   edgeLabelsEnabled.value = !edgeLabelsEnabled.value
+  setEdgeTypeVisible?.(edgeLabelsEnabled.value)
   applyFocusReducers()
 }
 
@@ -199,6 +244,7 @@ const edgeKindEnabled = ref(true)
 function toggleEdgeKind(): void {
   edgeKindEnabled.value = !edgeKindEnabled.value
   setEdgeKindVisible?.(edgeKindEnabled.value)
+  applyFocusReducers()
 }
 
 function resetRelationFocus(): void {
@@ -228,8 +274,11 @@ const {
 // The right-hand detail column floats over the stage, so the top toolbar has to
 // reserve its width instead of running underneath it and hiding the search box.
 const detailOpen = computed(
-  () => graphReady.value && !loading.value && !error.value
-    && Boolean(activeFlowDetail.value || selectedNode.value),
+  () =>
+    graphReady.value &&
+    !loading.value &&
+    !error.value &&
+    Boolean(activeFlowDetail.value || selectedNode.value),
 )
 
 const { expandNode, reset: resetExpand } = useGraphExpand()
@@ -238,6 +287,7 @@ const {
   init: initSigma,
   graphInstance,
   setReducers,
+  setEdgeTypeVisible,
   setEdgeKindVisible,
   setGhostPartition,
   refresh: refreshSigma,
@@ -295,9 +345,8 @@ const {
     applyFocusReducers()
   },
   onCameraRatioChange: (ratio: number) => {
-    const nextDensity = resolveFocusLabelDensity(ratio)
-    if (nextDensity === labelDensity.value) return
-    labelDensity.value = nextDensity
+    lastCameraRatio.value = ratio
+    if (!syncGraphDisplayState(ratio)) return
     // Apply the label-density reducer swap immediately so edge labels appear the
     // moment you cross the zoom threshold and then stay drawn every frame (the
     // per-frame budget + viewport culling keep that cheap) — no vanish/reload.
@@ -339,6 +388,7 @@ function withFilterVisibility(reducers: FocusReducers): FocusReducers {
 
 function applyFocusReducers(): void {
   if (!graphInstance.value) return
+  syncGraphDisplayState(lastCameraRatio.value)
   const graph = graphInstance.value
   // Filtering is a cheap Graphology attribute mutation. Apply it before focus
   // logic so a focused reducer can never reveal a filtered endpoint.
@@ -373,13 +423,25 @@ function applyFocusReducers(): void {
   // graph (Sigma otherwise only labels edges between already-labelled nodes, so
   // they'd flicker/vanish without a selection). The renderer hides any that don't
   // fully fit their edge.
-  const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
-  setReducers(withFilterVisibility({
-    nodeReducer: (_node, attributes) => attributes,
-    edgeReducer: (_edge, attributes) => {
-      return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
-    },
-  }), showEdgeLabels)
+  const showEdgeLabels =
+    (edgeLabelsEnabled.value || edgeKindEnabled.value) && labelDensity.value === 'edges'
+  setReducers(
+    withFilterVisibility({
+      nodeReducer: (_node, attributes) => {
+        if (isLargeGraph() || graphEdgesVisible.value || typeof attributes.size !== 'number') {
+          return attributes
+        }
+        return { ...attributes, size: attributes.size * fitNodeSizeMultiplier.value }
+      },
+      edgeReducer: (_edge, attributes) => {
+        if (!isLargeGraph() && !graphEdgesVisible.value) {
+          return { ...attributes, hidden: true }
+        }
+        return showEdgeLabels ? { ...attributes, forceLabel: true } : attributes
+      },
+    }),
+    showEdgeLabels,
+  )
   setGhostPartition?.(null)
   updateHighlightedTypes(null)
 }
@@ -387,7 +449,8 @@ function applyFocusReducers(): void {
 /** Focus the graph on a node (and optional single relation), revealing edge labels. */
 function focusOn(nodeId: string, relation: HoveredRelation | null): void {
   if (!graphInstance.value) return
-  const showEdgeLabels = edgeLabelsEnabled.value && labelDensity.value === 'edges'
+  const showEdgeLabels =
+    (edgeLabelsEnabled.value || edgeKindEnabled.value) && labelDensity.value === 'edges'
   setReducers(
     withFilterVisibility(
       createSelectionFocusReducers(nodeId, graphInstance.value, relation, labelDensity.value),
@@ -407,7 +470,7 @@ function applyFlowFocus(): void {
     withFilterVisibility(
       createFlowFocusReducers(nodeIds, edgeIds, graphInstance.value, primaryNodeId),
     ),
-    true,
+    (edgeLabelsEnabled.value || edgeKindEnabled.value) && labelDensity.value === 'edges',
   )
   setGhostPartition?.(partitionFlowGraph(nodeIds, edgeIds, graphInstance.value))
   updateHighlightedTypes(nodeIds)
@@ -484,6 +547,7 @@ async function load(projectId: string) {
     // already initialized, so discard that duplicate watcher rebuild.
     skipNextRebuild = true
     initSigma(graph)
+    setEdgeTypeVisible?.(edgeLabelsEnabled.value)
     setEdgeKindVisible?.(edgeKindEnabled.value)
     applyFilterVisibility()
   }
@@ -494,6 +558,8 @@ function beginLayoutReveal(seq: number = loadSeq): void {
     clearTimeout(revealTimer.value)
     revealTimer.value = null
   }
+  fitNodeSizeMultiplier.value = MAX_FIT_NODE_SIZE_MULTIPLIER
+  graphEdgesVisible.value = false
   pendingRevealSeq = seq
   pendingInitialReveal.value = true
   graphReady.value = false
@@ -565,6 +631,7 @@ function onRelationSelect(payload: RelationHoverPayload): void {
 
 onMounted(() => {
   if (props.projectId) {
+    filters.setProject?.(props.projectId)
     load(props.projectId)
   }
 })
@@ -579,6 +646,7 @@ onActivated(() => {
 watch(
   () => props.projectId,
   (newId) => {
+    filters.setProject?.(newId)
     resetExpand()
     if (newId) load(newId)
   },
@@ -709,7 +777,10 @@ function applyFilterVisibility(): void {
  * Filter toggles should reuse the live Graphology graph whenever possible.
  * A rebuild is only needed when a newly enabled type has not been rendered yet.
  */
-function graphContainsData(graph: NonNullable<typeof graphInstance.value>, data: GraphData): boolean {
+function graphContainsData(
+  graph: NonNullable<typeof graphInstance.value>,
+  data: GraphData,
+): boolean {
   for (const node of data.nodes) {
     if (!graph.hasNode(node.id)) return false
   }
@@ -760,6 +831,7 @@ const rebuildGraph = debounce((data: typeof graphData.value) => {
   if (!canvasRef.value || loading.value || error.value) return
   beginLayoutReveal()
   initSigma(buildGraph(data))
+  setEdgeTypeVisible?.(edgeLabelsEnabled.value)
   setEdgeKindVisible?.(edgeKindEnabled.value)
   applyFilterVisibility()
 }, 200)
@@ -767,7 +839,10 @@ const rebuildGraph = debounce((data: typeof graphData.value) => {
 watch(graphData, (nextGraphData) => {
   // Selection consistency is cheap and must stay synchronous so a stale selected
   // node is cleared immediately even before the debounced rebuild runs.
-  if (selectedNode.value && !nextGraphData.nodes.some((node) => node.id === selectedNode.value?.id)) {
+  if (
+    selectedNode.value &&
+    !nextGraphData.nodes.some((node) => node.id === selectedNode.value?.id)
+  ) {
     clearSelection()
   }
 
@@ -808,12 +883,16 @@ onUnmounted(() => {
     ref="wrapperRef"
     class="graph-canvas-wrapper"
     :class="{
-      'graph-canvas-wrapper--detail-open': graphReady && !loading && !error && (selectedNode || activeFlowDetail),
+      'graph-canvas-wrapper--detail-open':
+        graphReady && !loading && !error && (selectedNode || activeFlowDetail),
       'graph-canvas-wrapper--collapsed': graphReady && !loading && !error && sidebarCollapsed,
       'graph-canvas-wrapper--loading': loading || error || !graphReady || analyzingProjectId,
     }"
   >
-    <aside v-show="graphReady && !loading && !error && !sidebarCollapsed" class="graph-canvas__sidebar">
+    <aside
+      v-show="graphReady && !loading && !error && !sidebarCollapsed"
+      class="graph-canvas__sidebar"
+    >
       <div class="graph-canvas__sidebar-topbar">
         <div class="graph-canvas__sidebar-tabs" role="tablist" aria-label="Sidebar panels">
           <button
@@ -854,7 +933,9 @@ onUnmounted(() => {
           aria-label="Collapse sidebar panel"
           @click="toggleSidebar"
         >
-          <span aria-hidden="true">‹</span>
+          <svg class="graph-canvas__chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m14 6-6 6 6 6" />
+          </svg>
         </button>
       </div>
 
@@ -886,7 +967,11 @@ onUnmounted(() => {
     />
 
     <div class="graph-canvas__stage" :class="{ 'graph-canvas__stage--detail-open': detailOpen }">
-      <div ref="canvasRef" class="graph-canvas" :class="{ 'graph-canvas--hidden': !graphReady || loading || error }" />
+      <div
+        ref="canvasRef"
+        class="graph-canvas"
+        :class="{ 'graph-canvas--hidden': !graphReady || loading || error }"
+      />
 
       <div v-if="graphReady && !loading && !error" class="graph-top-controls">
         <button
@@ -897,7 +982,9 @@ onUnmounted(() => {
           aria-label="Expand sidebar panel"
           @click="toggleSidebar"
         >
-          <span aria-hidden="true">›</span>
+          <svg class="graph-canvas__chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m10 6 6 6-6 6" />
+          </svg>
         </button>
 
         <button
@@ -928,7 +1015,11 @@ onUnmounted(() => {
         />
       </div>
 
-      <div v-if="graphReady && !loading && !error" class="graph-controls-help" aria-label="Graph mouse controls">
+      <div
+        v-if="graphReady && !loading && !error"
+        class="graph-controls-help"
+        aria-label="Graph mouse controls"
+      >
         <div class="graph-controls-help__title">Controls</div>
         <div class="graph-controls-help__row">
           <span class="graph-controls-help__icon graph-controls-help__icon--primary">L</span>
@@ -974,17 +1065,24 @@ onUnmounted(() => {
         <p>{{ loading ? t('graphView.loading') : t('graphView.finalizing') }}</p>
       </div>
 
-      <div v-else-if="error || analysisFailed" class="graph-overlay graph-overlay--error" role="alert">
+      <div
+        v-else-if="error || analysisFailed"
+        class="graph-overlay graph-overlay--error"
+        role="alert"
+      >
         <p class="error-title">{{ t('graphView.failed') }}</p>
-        <p class="error-message">{{
-          analysisFailed && !error ? t('graphView.analyzingFailed') : error
-        }}</p>
+        <p class="error-message">
+          {{ analysisFailed && !error ? t('graphView.analyzingFailed') : error }}
+        </p>
         <button class="retry-button" type="button" @click="load(props.projectId)">
           {{ t('graphView.retry') }}
         </button>
       </div>
 
-      <aside v-if="graphReady && !loading && !error && activeFlowDetail" class="graph-canvas__detail">
+      <aside
+        v-if="graphReady && !loading && !error && activeFlowDetail"
+        class="graph-canvas__detail"
+      >
         <DataFlowDetailPanel
           :item="activeFlowDetail"
           :selected-node-id="activeFlow?.primaryNodeId ?? null"
@@ -993,7 +1091,10 @@ onUnmounted(() => {
         />
       </aside>
 
-      <aside v-else-if="graphReady && !loading && !error && selectedNode" class="graph-canvas__detail">
+      <aside
+        v-else-if="graphReady && !loading && !error && selectedNode"
+        class="graph-canvas__detail"
+      >
         <NodeDetailPanel
           :pinned-edge-id="pinnedRelation?.edgeId ?? null"
           :project-id="props.projectId"
@@ -1090,33 +1191,27 @@ onUnmounted(() => {
 }
 
 .graph-canvas__sidebar-topbar {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.375rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem;
   flex: 0 0 auto;
 }
 
 .graph-canvas__sidebar-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  flex: 1 1 auto;
+  gap: 0.25rem;
   min-width: 0;
-  /* Reserve room for the pinned collapse button so wrapped tabs never slide under it. */
-  padding-right: 2.25rem;
 }
 
 .graph-canvas__sidebar-collapse {
-  position: absolute;
-  top: 0;
-  right: 0;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.92);
@@ -1128,6 +1223,16 @@ onUnmounted(() => {
     background 150ms ease,
     border-color 150ms ease,
     color 150ms ease;
+}
+
+.graph-canvas__chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.25;
 }
 
 .graph-canvas__sidebar-collapse:hover,
@@ -1144,8 +1249,8 @@ onUnmounted(() => {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border: 1px solid rgba(148, 163, 184, 0.32);
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.92);
@@ -1524,7 +1629,7 @@ onUnmounted(() => {
   /* Wrapping is the escape valve: once the reserved detail width leaves too little
      room, the search box drops to its own line instead of being squeezed to nothing. */
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.625rem;
   transition: right 200ms ease;
 }

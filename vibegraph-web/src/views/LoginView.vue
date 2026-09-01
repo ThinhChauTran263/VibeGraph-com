@@ -87,6 +87,8 @@ function preserveOAuthRedirect(): void {
         :show-wordmark="true"
         glyph-to="/"
         :glyph-aria-label="t('auth.homeAria')"
+        wordmark-to="/dashboard"
+        wordmark-aria-label="VibeGraph dashboard"
       />
       <LanguageSelector />
     </header>

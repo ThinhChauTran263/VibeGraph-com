@@ -746,6 +746,7 @@
       "operations": "Operations",
       "nav": {
         "overview": "Overview",
+        "vpsMonitor": "VPS Monitor",
         "users": "Users",
         "feedbackReports": "Feedback / Reports",
         "plansCredits": "Plans & Credits",
@@ -992,6 +993,45 @@
           "newUsersAcross": "{formattedCount} new users across {buckets} · {count}",
           "title": "Total Users"
         }
+      },
+      "infrastructure": {
+        "cpu": "CPU load",
+        "diskOf": "SSD of {total}",
+        "eyebrow": "Production host",
+        "health": {
+          "healthy": "Healthy",
+          "watch": "Watch",
+          "critical": "Critical",
+          "unknown": "Unavailable"
+        },
+        "loading": "Loading live metrics...",
+        "live": "Live",
+        "memoryOf": "RAM of {total}",
+        "offline": "Offline",
+        "openMonitor": "Open VPS Monitor",
+        "details": {
+          "available": "available",
+          "average": "avg",
+          "current": "current",
+          "drops": "drops",
+          "free": "free",
+          "in": "in",
+          "of": "of",
+          "out": "out",
+          "peak": "peak",
+          "used": "used"
+        },
+        "services": "services healthy",
+        "servicesUnavailable": "Docker metrics unavailable",
+        "title": "Infrastructure",
+        "summary": {
+          "healthy": "VPS is healthy",
+          "watch": "VPS needs attention",
+          "critical": "VPS is overloaded",
+          "unknown": "VPS status unavailable"
+        },
+        "unavailable": "Live metrics unavailable",
+        "updated": "Updated {time}"
       },
       "details": {
         "planDistribution": {

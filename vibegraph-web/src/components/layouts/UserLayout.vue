@@ -197,10 +197,13 @@ function signOut(): void {
           <AppIcon name="close" />
         </button>
         <BrandMark
+          v-if="!collapsed"
           :size="30"
-          :show-wordmark="!collapsed"
-          glyph-to="/dashboard"
-          :glyph-aria-label="t('user.layout.overviewLinkLabel')"
+          :show-wordmark="true"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/dashboard"
+          :wordmark-aria-label="t('user.layout.overviewLinkLabel')"
         />
         <button
           class="sidebar__toggle"

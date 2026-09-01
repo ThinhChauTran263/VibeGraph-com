@@ -15,12 +15,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
-import com.vibegraph.auth.domain.AuditRetentionSetting;
+import com.vibegraph.auth.domain.entity.AuditRetentionSetting;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;
 import com.vibegraph.auth.repository.UserRepository;
+import com.vibegraph.abuse.AbuseProperties;
+import com.vibegraph.abuse.ClientAddressResolver;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuditService")
@@ -44,7 +49,14 @@ class AuditServiceTest {
                 auditLogWriter,
                 userRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                currentUser);
+                currentUser,
+                new ClientAddressResolver(new AbuseProperties()));
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        RequestContextHolder.resetRequestAttributes();
     }
 
     @Test
@@ -56,6 +68,31 @@ class AuditServiceTest {
 
         verify(auditLogWriter).write(
                 "FAILED_LOGIN", null, null, "USER", "unknown@test.local", "FAILURE", null, details);
+    }
+
+    @Test
+    @DisplayName("record uses the trusted forwarded client IP behind a proxy")
+    void record_usesForwardedClientIpWhenProxyIsTrusted() {
+        AbuseProperties properties = new AbuseProperties();
+        properties.setTrustProxy(true);
+        properties.setTrustedProxies(java.util.List.of("172.18.0.6"));
+        AuditService proxiedService = new AuditService(
+                auditLogRepository,
+                retentionRepository,
+                auditLogWriter,
+                userRepository,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                currentUser,
+                new ClientAddressResolver(properties));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("172.18.0.6");
+        request.addHeader("X-Forwarded-For", "198.51.100.77, 172.18.0.6");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        proxiedService.record("LOGIN", null, null, "USER", "user", "SUCCESS", Map.of());
+
+        verify(auditLogWriter).write(
+                "LOGIN", null, null, "USER", "user", "SUCCESS", "198.51.100.77", Map.of());
     }
 
     @Test

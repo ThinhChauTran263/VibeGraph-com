@@ -1,0 +1,35 @@
+CREATE TABLE IF NOT EXISTS infrastructure_operation_history (
+    id VARCHAR(64) PRIMARY KEY,
+    trace_id VARCHAR(64) NOT NULL,
+    project_id VARCHAR(160),
+    project_name VARCHAR(160),
+    operation_type VARCHAR(24) NOT NULL,
+    operation VARCHAR(160),
+    status VARCHAR(24) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    duration_ms BIGINT NOT NULL DEFAULT 0,
+    nodes INTEGER NOT NULL DEFAULT 0,
+    edges INTEGER NOT NULL DEFAULT 0,
+    ram_before_bytes BIGINT NOT NULL DEFAULT 0,
+    ram_peak_bytes BIGINT NOT NULL DEFAULT 0,
+    ram_increase_bytes BIGINT NOT NULL DEFAULT 0,
+    ram_after_cooldown_bytes BIGINT NOT NULL DEFAULT 0,
+    cooldown_complete BOOLEAN NOT NULL DEFAULT FALSE,
+    cpu_avg_percent DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cpu_peak_percent DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cpu_core_seconds DOUBLE PRECISION NOT NULL DEFAULT 0,
+    storage_added_bytes BIGINT NOT NULL DEFAULT 0,
+    disk_read_bytes BIGINT NOT NULL DEFAULT 0,
+    disk_write_bytes BIGINT NOT NULL DEFAULT 0,
+    concurrent_heavy_operations INTEGER NOT NULL DEFAULT 0,
+    backend_version VARCHAR(80),
+    measurement_type VARCHAR(32),
+    confidence VARCHAR(16),
+    stop_reason VARCHAR(160),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_infra_operation_history_completed
+    ON infrastructure_operation_history (completed_at DESC, id DESC);

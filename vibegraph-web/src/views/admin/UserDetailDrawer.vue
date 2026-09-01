@@ -183,6 +183,9 @@ const handlePlanUpdate = async () => {
   actionError.value = ''
   try {
     await adminStore.updatePlan(props.user.id, selectedPlan.value)
+    // The plan mutation also changes the current credit-period limit. Refresh the
+    // separate credit overview so every credit card reflects the new plan immediately.
+    await adminStore.fetchCreditOverview(props.user.id)
     emit('updated')
   } catch (e: unknown) {
     actionError.value = e instanceof Error ? e.message : t('admin.userDetail.errors.updatePlan')

@@ -1,5 +1,7 @@
 package com.vibegraph.mcp.orchestration;
 
+import com.vibegraph.mcp.orchestration.entity.AgentTask;
+
 import java.util.UUID;
 import java.util.function.Supplier;
 

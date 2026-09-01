@@ -31,6 +31,11 @@ public class GraphServiceImpl implements GraphService {
     }
 
     @Override
+    public com.vibegraph.graph.repository.ProjectMetadata getProjectMetadata(String projectId) {
+        return graphRepository.findProject(projectId);
+    }
+
+    @Override
     public NodeDetailResponse getNodeDetail(String projectId, String nodeId, int hops) {
         if (!ALLOWED_DETAIL_HOPS.contains(hops)) {
             throw new IllegalArgumentException("hops must be one of 0, 1, 2, 3, 5");

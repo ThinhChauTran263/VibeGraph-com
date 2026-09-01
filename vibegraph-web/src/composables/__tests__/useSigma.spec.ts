@@ -161,6 +161,7 @@ describe('useSigma', () => {
     expect(sigma.settings.hideLabelsOnMove).toBe(false)
     expect(sigma.settings.labelRenderedSizeThreshold).toBe(SIGMA_LABEL_RENDERED_SIZE_THRESHOLD)
     expect(sigma.settings.defaultEdgeColor).toBe('#475569')
+    expect(sigma.settings.maxCameraRatio).toBe(1)
     // d3 engine contract: node sizes are graph-units rendered through Sigma's
     // graph-space reference (update/graph/qwen/02-ARCHITECTURE.md §5).
     expect(sigma.settings.itemSizesReference).toBe('positions')

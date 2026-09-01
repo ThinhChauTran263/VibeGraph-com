@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import com.vibegraph.auth.domain.UserCreditBalance;
+import com.vibegraph.auth.domain.entity.UserCreditBalance;
 
 import jakarta.persistence.LockModeType;
 

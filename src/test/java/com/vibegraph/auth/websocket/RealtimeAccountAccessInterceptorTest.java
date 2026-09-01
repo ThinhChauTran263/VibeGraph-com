@@ -167,7 +167,7 @@ class RealtimeAccountAccessInterceptorTest {
     void preSend_reportOwner_allowsReportTopic() {
         when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
         when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
-                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.entity.FeedbackReport()));
 
         connectAs(Role.USER);
         interceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
@@ -194,7 +194,7 @@ class RealtimeAccountAccessInterceptorTest {
         when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true);
         when(accountAccessGuard.canAccessRealtime(userId)).thenReturn(false);
         when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
-                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.entity.FeedbackReport()));
 
         sessionAwareInterceptor.preSend(connectMessage(), channel);
         sessionAwareInterceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
@@ -255,7 +255,7 @@ class RealtimeAccountAccessInterceptorTest {
     void preSend_deactivatedExistingReportSubscriber_suppressesReportUpdate() {
         when(accountAccessGuard.canAccessSupportRealtime(userId)).thenReturn(true, true, false);
         when(feedbackReportRepository.findByIdAndUserId(REPORT_ID, userId))
-                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.FeedbackReport()));
+                .thenReturn(java.util.Optional.of(new com.vibegraph.auth.domain.entity.FeedbackReport()));
         connectAs(Role.USER);
         interceptor.preSend(subscribeReportMessage(REPORT_ID), channel);
 

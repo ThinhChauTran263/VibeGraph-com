@@ -8,10 +8,10 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.CreditLedger;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
-import com.vibegraph.auth.domain.UserCreditBalance;
+import com.vibegraph.auth.domain.entity.CreditLedger;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.UserCreditBalance;
 import com.vibegraph.auth.repository.CreditLedgerRepository;
 import com.vibegraph.auth.repository.UserCreditBalanceRepository;
 import com.vibegraph.auth.repository.UserRepository;

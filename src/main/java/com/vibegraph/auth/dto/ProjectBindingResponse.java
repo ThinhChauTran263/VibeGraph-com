@@ -1,6 +1,6 @@
 package com.vibegraph.auth.dto;
 
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 
 /** Safe project binding projection for API-key clients. */
 public record ProjectBindingResponse(String id, String name, String sourceType, String status) {

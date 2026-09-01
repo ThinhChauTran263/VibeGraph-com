@@ -1,5 +1,7 @@
 package com.vibegraph.mcp.orchestration;
 
+import com.vibegraph.mcp.orchestration.entity.AgentTask;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
@@ -12,7 +14,7 @@ class AgentTaskTimestampTest {
 
         assertThat(task.getCompletedAt()).isNull();
         task.setStatus(TaskStatus.COMPLETED);
-        task.refreshTimestamps();
+        task.setStatus(task.getStatus());
 
         assertThat(task.getCompletedAt()).isNotNull();
         assertThat(task.getCreatedAt()).isNotNull();

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.never;
@@ -31,6 +33,7 @@ import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
 import com.vibegraph.graph.service.ArchiveImportService;
 import com.vibegraph.graph.service.TarballImportService;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 /**
  * Web-layer tests for ImportController using standalone MockMvc - no Neo4j, no full context.
@@ -43,12 +46,18 @@ class ImportControllerTest {
     private MockMvc mockMvc;
     private ArchiveImportService archiveImportService;
     private TarballImportService tarballImportService;
+    private OperationTelemetryRecorder telemetryRecorder;
+    private OperationTelemetryRecorder.OperationToken telemetryToken;
 
     @BeforeEach
     void setUp() {
         archiveImportService = Mockito.mock(ArchiveImportService.class);
         tarballImportService = Mockito.mock(TarballImportService.class);
+        telemetryRecorder = Mockito.mock(OperationTelemetryRecorder.class);
+        telemetryToken = new OperationTelemetryRecorder.OperationToken("evt-import");
+        when(telemetryRecorder.begin(any(), any(), any(), any())).thenReturn(telemetryToken);
         ImportController controller = new ImportController(tarballImportService, archiveImportService);
+        controller.setTelemetryRecorder(telemetryRecorder);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -79,7 +88,8 @@ class ImportControllerTest {
     void shouldImportArchiveAsync() throws Exception {
         ProjectResponse project = ProjectResponse.builder()
                 .id("p2").name("demo").status("ANALYZING").progress(0).build();
-        when(archiveImportService.importArchiveAsync(eq("demo"), any(MultipartFile.class))).thenReturn(project);
+        when(archiveImportService.importArchiveAsync(eq("demo"), any(MultipartFile.class), eq(telemetryToken)))
+                .thenReturn(project);
         MockMultipartFile file = new MockMultipartFile("file", "project.zip", "application/zip", "data".getBytes());
 
         mockMvc.perform(multipart("/api/projects/import-archive")
@@ -90,8 +100,9 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.status").value("ANALYZING"))
                 .andExpect(jsonPath("$.data.progress").value(0));
 
-        verify(archiveImportService).importArchiveAsync(eq("demo"), any(MultipartFile.class));
+        verify(archiveImportService).importArchiveAsync(eq("demo"), any(MultipartFile.class), eq(telemetryToken));
         verify(archiveImportService, never()).importArchive(any(), any());
+        verify(telemetryRecorder, never()).complete(any(), anyInt(), anyInt(), anyLong());
     }
 
     @Test
@@ -99,7 +110,8 @@ class ImportControllerTest {
     void shouldImportGithubRepository() throws Exception {
         ProjectResponse project = ProjectResponse.builder()
                 .id("p3").name("acme/demo").status("ANALYZING").progress(0).build();
-        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+        when(tarballImportService.importFromGithub(
+                new GithubImportRequest("https://github.com/acme/demo"), telemetryToken))
                 .thenReturn(project);
 
         mockMvc.perform(post("/api/projects/import-github")
@@ -111,7 +123,9 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.name").value("acme/demo"))
                 .andExpect(jsonPath("$.data.status").value("ANALYZING"));
 
-        verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/demo"));
+        verify(tarballImportService).importFromGithub(
+                new GithubImportRequest("https://github.com/acme/demo"), telemetryToken);
+        verify(telemetryRecorder, never()).complete(any(), anyInt(), anyInt(), anyLong());
     }
 
     @Test
@@ -125,12 +139,14 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
 
         verify(tarballImportService, never()).importFromGithub(any());
+        verify(tarballImportService, never()).importFromGithub(any(), any());
     }
 
     @Test
     @DisplayName("GitHub import failures map to 422 with safe error envelope")
     void shouldMapGithubImportExceptionTo422() throws Exception {
-        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/private")))
+        when(tarballImportService.importFromGithub(
+                new GithubImportRequest("https://github.com/acme/private"), telemetryToken))
                 .thenThrow(new GithubImportException("GitHub repository is private or not found"));
 
         mockMvc.perform(post("/api/projects/import-github")
@@ -141,13 +157,15 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.error.code").value("GITHUB_IMPORT_ERROR"))
                 .andExpect(jsonPath("$.error.message").value("GitHub repository is private or not found"));
 
-        verify(tarballImportService).importFromGithub(new GithubImportRequest("https://github.com/acme/private"));
+        verify(tarballImportService).importFromGithub(
+                new GithubImportRequest("https://github.com/acme/private"), telemetryToken);
     }
 
     @Test
     @DisplayName("GitHub re-import of an up-to-date repository maps to 409 REPO_UP_TO_DATE")
     void shouldMapRepositoryUpToDateTo409() throws Exception {
-        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+        when(tarballImportService.importFromGithub(
+                new GithubImportRequest("https://github.com/acme/demo"), telemetryToken))
                 .thenThrow(new RepositoryUpToDateException("acme/demo"));
 
         mockMvc.perform(post("/api/projects/import-github")
@@ -162,7 +180,8 @@ class ImportControllerTest {
     @Test
     @DisplayName("GitHub re-import while still analyzing maps to 409 REFRESH_IN_PROGRESS")
     void shouldMapRefreshInProgressTo409() throws Exception {
-        when(tarballImportService.importFromGithub(new GithubImportRequest("https://github.com/acme/demo")))
+        when(tarballImportService.importFromGithub(
+                new GithubImportRequest("https://github.com/acme/demo"), telemetryToken))
                 .thenThrow(new ProjectRefreshInProgressException("acme/demo"));
 
         mockMvc.perform(post("/api/projects/import-github")

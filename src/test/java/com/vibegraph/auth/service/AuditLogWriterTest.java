@@ -14,7 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.AuditLog;
+import com.vibegraph.auth.domain.entity.AuditLog;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.UserRepository;
 

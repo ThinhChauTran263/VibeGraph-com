@@ -3,7 +3,7 @@ package com.vibegraph.auth.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.domain.entity.SecurityEvent;
 
 public record SecurityEventResponse(
         UUID id,

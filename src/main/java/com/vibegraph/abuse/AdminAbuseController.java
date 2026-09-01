@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.IpBlock;
+
 import java.util.List;
 import java.util.UUID;
 

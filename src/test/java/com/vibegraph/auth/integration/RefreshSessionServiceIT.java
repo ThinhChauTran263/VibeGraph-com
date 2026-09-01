@@ -23,9 +23,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.config.JwtProperties;
-import com.vibegraph.auth.domain.RefreshSession;
+import com.vibegraph.auth.domain.entity.RefreshSession;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.RefreshSessionRepository;
 import com.vibegraph.auth.repository.UserIdentityRepository;
 import com.vibegraph.auth.repository.UserRepository;

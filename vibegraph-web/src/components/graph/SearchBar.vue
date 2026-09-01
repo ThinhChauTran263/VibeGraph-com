@@ -15,6 +15,7 @@ const emit = defineEmits<{
 
 const inputId = useId()
 const resultsId = useId()
+const inputEl = ref<HTMLInputElement | null>(null)
 const query = ref('')
 const isOpen = ref(false)
 
@@ -41,17 +42,42 @@ onBeforeUnmount(() => {
 })
 
 const results = computed(() => {
-  const term = debouncedQuery.value.trim().toLowerCase()
+  const term = normalizeSearchText(debouncedQuery.value)
   if (!term) return []
 
   return props.nodes
-    .filter((node) => {
-      const name = node.name.toLowerCase()
-      const fullName = node.fullName.toLowerCase()
-      return name.includes(term) || fullName.includes(term)
-    })
+    .map((node, index) => ({ node, index, rank: searchRank(node, term) }))
+    .filter((candidate) => candidate.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
     .slice(0, SEARCH_SUGGESTIONS_LIMIT)
+    .map((candidate) => candidate.node)
 })
+
+function normalizeSearchText(value: unknown): string {
+  return typeof value === 'string' ? value.normalize('NFKC').trim().toLocaleLowerCase() : ''
+}
+
+/** Prefer direct name matches before broader full-name/path substring matches. */
+function searchRank(node: GraphNode, term: string): number {
+  const name = normalizeSearchText(node.name)
+  const fullName = normalizeSearchText(node.fullName)
+  const filePath = normalizeSearchText(node.filePath)
+  const fileName = filePath.split(/[\\/]/).pop() ?? ''
+  const terms = term.endsWith('.java') ? [term, term.slice(0, -'.java'.length)] : [term]
+  let bestRank = Number.POSITIVE_INFINITY
+
+  for (const candidate of terms) {
+    if (!candidate) continue
+    if (name === candidate || fileName === candidate) bestRank = Math.min(bestRank, 0)
+    else if (name.startsWith(candidate) || fileName.startsWith(candidate))
+      bestRank = Math.min(bestRank, 1)
+    else if (name.includes(candidate)) bestRank = Math.min(bestRank, 2)
+    else if (fullName.includes(candidate)) bestRank = Math.min(bestRank, 3)
+    else if (filePath.includes(candidate)) bestRank = Math.min(bestRank, 4)
+  }
+
+  return Number.isFinite(bestRank) ? bestRank : -1
+}
 
 const hasQuery = computed(() => query.value.trim().length > 0)
 const hasResults = computed(() => results.value.length > 0)
@@ -59,6 +85,13 @@ const showResults = computed(() => isOpen.value && hasQuery.value)
 
 function onInput(): void {
   isOpen.value = true
+}
+
+function focusInput(event: PointerEvent): void {
+  // Mobile browsers otherwise scroll the graph stage to reveal the focused input
+  // on the first tap, making the search bar appear to jump before typing starts.
+  event.preventDefault()
+  inputEl.value?.focus({ preventScroll: true })
 }
 
 function selectNode(node: GraphNode): void {
@@ -75,11 +108,18 @@ function clearSearch(): void {
 </script>
 
 <template>
-  <div class="search-bar" role="search">
+  <div
+    class="search-bar"
+    role="search"
+    @pointerdown.stop
+    @mousedown.stop
+    @click.stop
+  >
     <label class="search-bar__label" :for="inputId">Search graph nodes</label>
     <div class="search-bar__control">
       <input
         :id="inputId"
+        ref="inputEl"
         v-model="query"
         class="search-bar__input"
         type="search"
@@ -88,6 +128,7 @@ function clearSearch(): void {
         spellcheck="false"
         :aria-controls="resultsId"
         @input="onInput"
+        @pointerdown.stop="focusInput"
         @focus="onInput"
       />
       <button
@@ -123,6 +164,7 @@ function clearSearch(): void {
 .search-bar {
   position: relative;
   z-index: 20;
+  isolation: isolate;
   width: min(36rem, 100%);
   color: #e5e7eb;
 }
@@ -140,6 +182,8 @@ function clearSearch(): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-sizing: border-box;
+  min-height: 3rem;
   padding: 0.5rem;
   border: 1px solid rgba(96, 165, 250, 0.35);
   border-radius: 999px;
@@ -151,11 +195,16 @@ function clearSearch(): void {
 .search-bar__input {
   flex: 1;
   min-width: 0;
+  min-height: 2rem;
   border: 0;
   outline: 0;
+  appearance: none;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  touch-action: manipulation;
 }
 
 .search-bar__input::placeholder {
@@ -178,7 +227,10 @@ function clearSearch(): void {
 }
 
 .search-bar__results {
-  margin-top: 0.5rem;
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  left: 0;
   max-height: 20rem;
   overflow: auto;
   border: 1px solid #1f2937;

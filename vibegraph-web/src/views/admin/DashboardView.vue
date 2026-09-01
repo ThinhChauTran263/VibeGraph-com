@@ -3,7 +3,9 @@ import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref }
 import { useI18n } from 'vue-i18n'
 import { useAdminStore } from '@/stores/admin'
 import { useAdminRealtime } from '@/composables/useAdminRealtime'
+import { useInfrastructureMonitor } from '@/composables/useInfrastructureMonitor'
 import { useSilentRefresh } from '@/composables/useSilentRefresh'
+import type { InfrastructureSample } from '@/composables/useInfrastructureMonitor'
 import { createHorizontalBarOption } from './dashboard-chart-utils'
 import {
   MINUTE_MS,
@@ -31,6 +33,7 @@ import type {
   AdminSeriesPoint,
   AdminStorageSubject,
 } from '@/types/api'
+type InfrastructureHealth = 'HEALTHY' | 'WATCH' | 'CRITICAL' | 'UNKNOWN'
 
 // F-M6 split: echarts (registration + VChart) loads as its own async chunk so the
 // ~500 kB chart bundle stays out of this route chunk until a chart actually renders.
@@ -45,7 +48,6 @@ const chartModes = reactive<Record<ChartId, ChartMode>>({
   totalUsers: 'line',
   onlineUsers: 'line',
   credits: 'bar',
-  storage: 'pie',
 })
 const chartUpdateOptions = {
   notMerge: true,
@@ -57,12 +59,21 @@ const POLL_INTERVAL_MS = 30_000
 const CONNECTED_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const realtime = useAdminRealtime()
+const infrastructureMonitor = useInfrastructureMonitor()
 const realtimeConnected = computed(() => realtime.status.value === 'connected')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let lastOverviewRefreshAt = 0
 let overviewRefreshInFlight = false
 
 const overview = computed(() => adminStore.overview)
+const infrastructure = computed(() =>
+  infrastructureMonitor.hasSnapshot.value ? infrastructureMonitor.snapshot.value : null,
+)
+const infrastructureLoading = computed(() => infrastructureMonitor.loading.value)
+const infrastructureUnavailable = computed(
+  () => Boolean(infrastructureMonitor.error.value) && !infrastructureMonitor.hasSnapshot.value,
+)
+const infrastructureSamples = computed(() => infrastructureMonitor.samples.value)
 const onlineSamples = computed<OnlineSample[]>(() => {
   const samplesByMinute = new Map<number, OnlineSample>()
   for (const point of overview.value?.onlineUserHistory ?? []) {
@@ -81,15 +92,17 @@ const onlineSamples = computed<OnlineSample[]>(() => {
 })
 const userGrowth = computed(() => overview.value?.userGrowth ?? [])
 const creditConsumption = computed(() => overview.value?.creditConsumption ?? [])
-const storage = computed(() => overview.value?.storage ?? null)
 const planDistribution = computed(() => overview.value?.planDistribution ?? [])
 const topStorageUsers = computed(() => overview.value?.topStorageUsers ?? [])
 const topStorageProjects = computed(() => overview.value?.topStorageProjects ?? [])
+const visibleTopStorageProjects = computed(() =>
+  [...topStorageProjects.value].sort((a, b) => b.usedBytes - a.usedBytes).slice(0, 5),
+)
 const securityAlerts = computed(() => overview.value?.securityAlerts ?? [])
 const topStorageProjectChartOption = computed(() => {
   const activeLocale = locale.value
   return createHorizontalBarOption(
-    topStorageProjects.value.map((project) => ({
+    visibleTopStorageProjects.value.map((project) => ({
       label: project.name,
       value: project.usedBytes,
     })),
@@ -101,11 +114,6 @@ const planDistributionChartOption = computed(() => {
   return createHorizontalBarOption(planDistribution.value, (value) =>
     formatNumber(value, activeLocale),
   )
-})
-
-const storagePercent = computed(() => {
-  if (!storage.value?.totalBytes) return 0
-  return Math.min(100, Math.round((storage.value.usedBytes / storage.value.totalBytes) * 100))
 })
 
 const totalUserPoints = computed<AdminDistributionPoint[]>(() => {
@@ -129,16 +137,6 @@ const onlineUserPoints = computed<AdminDistributionPoint[]>(() => {
 
 const creditPoints = computed<AdminDistributionPoint[]>(() => {
   return bucketSeries(creditConsumption.value, period.value)
-})
-
-const storagePoints = computed<AdminDistributionPoint[]>(() => {
-  if (!storage.value) return []
-  const used = storage.value.usedBytes
-  const available = Math.max(storage.value.totalBytes - used, 0)
-  return [
-    { label: t('admin.overview.charts.storage.usedLabel'), value: used },
-    { label: t('admin.overview.charts.storage.availableLabel'), value: available },
-  ]
 })
 
 const dashboardCharts = computed<DashboardChart[]>(() => [
@@ -187,27 +185,6 @@ const dashboardCharts = computed<DashboardChart[]>(() => [
     tone: 'cyan',
     valueKind: 'number',
   },
-  {
-    id: 'storage',
-    title: t('admin.overview.charts.storage.title'),
-    eyebrow:
-      storage.value?.sourceLabel ||
-      storage.value?.mountPath ||
-      t('admin.overview.charts.storage.serverDisk'),
-    value: storage.value
-      ? t('admin.overview.charts.storage.usedPercent', { percent: storagePercent.value })
-      : t('admin.overview.charts.storage.unavailable'),
-    subtitle: storage.value
-      ? t('admin.overview.charts.storage.usedOf', {
-          used: formatBytes(storage.value.usedBytes),
-          total: formatBytes(storage.value.totalBytes),
-        })
-      : t('admin.overview.charts.storage.unavailableEnvironment'),
-    points: storagePoints.value,
-    emptyText: t('admin.overview.charts.storage.unavailableEnvironment'),
-    tone: 'amber',
-    valueKind: 'bytes',
-  },
 ])
 
 onMounted(async () => {
@@ -215,6 +192,7 @@ onMounted(async () => {
   pollTimer = setInterval(pollOverview, POLL_INTERVAL_MS)
   if (document.visibilityState === 'visible') {
     await loadOverview()
+    infrastructureMonitor.start()
     realtime.start()
   } else {
     loading.value = false
@@ -230,14 +208,17 @@ onUnmounted(() => {
     clearInterval(pollTimer)
     pollTimer = null
   }
+  infrastructureMonitor.stop()
 })
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') {
     realtime.stop()
+    infrastructureMonitor.stop()
     return
   }
   realtime.start()
+  infrastructureMonitor.start()
   void loadOverview()
 }
 
@@ -265,6 +246,88 @@ async function loadOverview(): Promise<void> {
     overviewRefreshInFlight = false
     loading.value = false
   }
+}
+
+const infrastructureHealth = computed<InfrastructureHealth>(() => {
+  const status = infrastructure.value?.health ?? infrastructure.value?.status
+  return status === 'HEALTHY' || status === 'WATCH' || status === 'CRITICAL' ? status : 'UNKNOWN'
+})
+
+const infrastructureRingStyle = computed(() => {
+  const ringByHealth: Record<InfrastructureHealth, number> = {
+    HEALTHY: 94,
+    WATCH: 58,
+    CRITICAL: 22,
+    UNKNOWN: 0,
+  }
+  const colorByHealth: Record<InfrastructureHealth, string> = {
+    HEALTHY: 'var(--vg-green-bright)',
+    WATCH: 'var(--vg-amber)',
+    CRITICAL: 'var(--vg-danger)',
+    UNKNOWN: 'var(--vg-border)',
+  }
+  const value = ringByHealth[infrastructureHealth.value]
+  const color = colorByHealth[infrastructureHealth.value]
+  return {
+    background: `conic-gradient(${color} 0 ${value}%, #203331 ${value}% 100%)`,
+  }
+})
+
+function infrastructureSummaryLabel(health: InfrastructureHealth): string {
+  return t(`admin.overview.infrastructure.summary.${health.toLowerCase()}`)
+}
+
+function infrastructureRingLabel(health: InfrastructureHealth): string {
+  return health === 'HEALTHY' ? 'OK' : health === 'CRITICAL' ? 'CRIT' : health === 'UNKNOWN' ? '—' : 'WATCH'
+}
+
+function infrastructureLiveLabel(): string {
+  return infrastructureUnavailable.value
+    ? t('admin.overview.infrastructure.offline')
+    : t('admin.overview.infrastructure.live')
+}
+
+function infrastructureRate(value: number | undefined, status?: string): string {
+  return isInfrastructureMetricAvailable(status) ? `${formatBytes(value)}/s` : '—'
+}
+
+function infrastructureSparklinePoints(
+  metric: keyof Pick<InfrastructureSample, 'cpuPercent' | 'memoryPercent' | 'diskPercent' | 'networkBytesPerSecond'>,
+): string {
+  const values = infrastructureSamples.value
+    .map((sample) => sample[metric])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  if (values.length === 0) return ''
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? 0 : (index / (values.length - 1)) * 100
+      const y = 22 - ((value - min) / range) * 18
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
+    .join(' ')
+}
+
+function isInfrastructureMetricAvailable(status?: string): boolean {
+  const normalized = status?.toUpperCase()
+  return normalized !== undefined && !['UNKNOWN', 'UNAVAILABLE', 'WARMING_UP'].includes(normalized)
+}
+
+function formatPercent(value: number | undefined): string {
+  return `${new Intl.NumberFormat(locale.value, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value ?? 0)}%`
+}
+
+function formatInfrastructurePercent(value: number | undefined, status?: string): string {
+  return isInfrastructureMetricAvailable(status) ? formatPercent(value) : '—'
+}
+
+function formatInfrastructureBytes(value: number | undefined, status?: string): string {
+  return isInfrastructureMetricAvailable(status) ? formatBytes(value) : '—'
 }
 
 function formatNumber(value: number | undefined, activeLocale = locale.value): string {
@@ -884,6 +947,102 @@ function subjectKey(item: AdminStorageSubject): string {
             <p v-else class="empty-state">{{ card.emptyText }}</p>
           </div>
         </article>
+
+        <article class="chart-card infrastructure-card" data-test="infrastructure-card">
+          <div class="chart-card__top">
+            <div>
+              <h4>{{ t('admin.overview.infrastructure.title') }}</h4>
+              <span class="chart-card__eyebrow">{{ t('admin.overview.infrastructure.eyebrow') }}</span>
+            </div>
+            <span
+              class="infrastructure-status"
+              :class="'infrastructure-status--' + infrastructureHealth.toLowerCase()"
+            >
+              <span class="status-dot status-dot--inline"></span>
+              {{ infrastructureLiveLabel() }}
+            </span>
+          </div>
+
+          <template v-if="infrastructure && !infrastructureUnavailable">
+            <div class="infrastructure-summary">
+              <div class="infrastructure-health-summary">
+                <div
+                  class="infrastructure-health-ring"
+                  :class="'infrastructure-health-ring--' + infrastructureHealth.toLowerCase()"
+                  :style="infrastructureRingStyle"
+                >
+                  <b>{{ infrastructureRingLabel(infrastructureHealth) }}</b>
+                </div>
+                <div>
+                  <strong>{{ infrastructureSummaryLabel(infrastructureHealth) }}</strong>
+                  <span>
+                    {{ infrastructure.host.vcpuCount }} vCPU ·
+                    {{ formatInfrastructureBytes(infrastructure.memory.totalBytes, infrastructure.memory.status) }} RAM ·
+                    SSD {{ formatInfrastructureBytes(infrastructure.disk.totalBytes, infrastructure.disk.status) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="infrastructure-mini-grid">
+              <div class="infrastructure-mini infrastructure-mini--cpu">
+                <span>CPU</span>
+                <strong>{{ formatInfrastructurePercent(infrastructure.host.cpuPercent, infrastructure.host.status) }}</strong>
+                <svg class="infrastructure-mini-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline :points="infrastructureSparklinePoints('cpuPercent')" />
+                </svg>
+                <small v-if="isInfrastructureMetricAvailable(infrastructure.host.status)" class="infrastructure-mini-detail">
+                  {{ infrastructure.host.currentGHz === null ? '—' : `${infrastructure.host.currentGHz.toFixed(2)} GHz` }}
+                  {{ t('admin.overview.infrastructure.details.current') }} ·
+                  {{ t('admin.overview.infrastructure.details.average') }} {{ formatPercent(infrastructure.host.avgCpuPercent) }} ·
+                  {{ t('admin.overview.infrastructure.details.peak') }} {{ formatPercent(infrastructure.host.peakCpuPercent) }}
+                </small>
+              </div>
+              <div class="infrastructure-mini infrastructure-mini--ram">
+                <span>RAM</span>
+                <strong>{{ formatInfrastructurePercent(infrastructure.memory.usedPercent, infrastructure.memory.status) }}</strong>
+                <svg class="infrastructure-mini-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline :points="infrastructureSparklinePoints('memoryPercent')" />
+                </svg>
+                <small v-if="isInfrastructureMetricAvailable(infrastructure.memory.status)" class="infrastructure-mini-detail">
+                  {{ formatPercent(infrastructure.memory.usedPercent) }} {{ t('admin.overview.infrastructure.details.used') }} ·
+                  {{ formatBytes(infrastructure.memory.availableBytes) }} {{ t('admin.overview.infrastructure.details.available') }}
+                </small>
+              </div>
+              <div class="infrastructure-mini infrastructure-mini--disk">
+                <span>SSD</span>
+                <strong>{{ formatInfrastructurePercent(infrastructure.disk.usedPercent, infrastructure.disk.status) }}</strong>
+                <div v-if="isInfrastructureMetricAvailable(infrastructure.disk.status)" class="infrastructure-disk-bar" aria-hidden="true">
+                  <i :style="{ width: `${Math.min(100, Math.max(0, infrastructure.disk.usedPercent))}%` }"></i>
+                </div>
+                <small v-if="isInfrastructureMetricAvailable(infrastructure.disk.status)" class="infrastructure-mini-detail">
+                  {{ formatBytes(infrastructure.disk.usedBytes) }} {{ t('admin.overview.infrastructure.details.used') }}
+                  {{ t('admin.overview.infrastructure.details.of') }} {{ formatBytes(infrastructure.disk.totalBytes) }} ·
+                  <b>{{ formatBytes(infrastructure.disk.freeBytes) }} {{ t('admin.overview.infrastructure.details.free') }}</b>
+                </small>
+              </div>
+              <div class="infrastructure-mini infrastructure-mini--net">
+                <span>NET</span>
+                <strong>{{ infrastructureRate(infrastructure.network.outBytesPerSecond, infrastructure.network.status) }}</strong>
+                <svg class="infrastructure-mini-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+                  <polyline :points="infrastructureSparklinePoints('networkBytesPerSecond')" />
+                </svg>
+                <small v-if="isInfrastructureMetricAvailable(infrastructure.network.status)" class="infrastructure-mini-detail">
+                  {{ t('admin.overview.infrastructure.details.in') }} {{ infrastructureRate(infrastructure.network.inBytesPerSecond, infrastructure.network.status) }} ·
+                  {{ t('admin.overview.infrastructure.details.out') }} {{ infrastructureRate(infrastructure.network.outBytesPerSecond, infrastructure.network.status) }} ·
+                  {{ infrastructure.network.droppedPackets }} {{ t('admin.overview.infrastructure.details.drops') }}
+                </small>
+              </div>
+            </div>
+          </template>
+          <p v-else class="infrastructure-unavailable">
+            {{
+              infrastructureLoading
+                ? t('admin.overview.infrastructure.loading')
+                : t('admin.overview.infrastructure.unavailable')
+            }}
+          </p>
+
+        </article>
       </div>
     </section>
 
@@ -892,28 +1051,28 @@ function subjectKey(item: AdminStorageSubject): string {
       class="detail-grid"
       :aria-label="t('admin.overview.accessibility.supportingDetails')"
     >
-      <article class="panel">
+      <article class="panel storage-projects-panel">
         <div class="panel-header">
           <h3>{{ t('admin.overview.details.topStorageProjects.title') }}</h3>
           <span>{{
             t('admin.overview.details.topStorageProjects.count', {
-              count: topStorageProjects.length,
+              count: visibleTopStorageProjects.length,
             })
           }}</span>
         </div>
-        <p v-if="topStorageProjects.length === 0" class="empty-state">
+        <p v-if="visibleTopStorageProjects.length === 0" class="empty-state">
           {{ t('admin.overview.details.topStorageProjects.empty') }}
         </p>
         <VChart
           v-else
-          class="support-chart"
+          class="support-chart storage-project-chart"
           :option="topStorageProjectChartOption"
           :update-options="chartUpdateOptions"
           :autoresize="true"
         />
       </article>
 
-      <article class="panel">
+      <article class="panel storage-users-panel">
         <div class="panel-header">
           <h3>{{ t('admin.overview.details.topStorageUsers.title') }}</h3>
           <span>{{
@@ -925,7 +1084,7 @@ function subjectKey(item: AdminStorageSubject): string {
         <p v-if="topStorageUsers.length === 0" class="empty-state">
           {{ t('admin.overview.details.topStorageUsers.empty') }}
         </p>
-        <div v-else class="compact-list">
+        <div v-else class="compact-list storage-users-list">
           <div v-for="item in topStorageUsers" :key="subjectKey(item)" class="compact-row">
             <span>
               <strong>{{ item.name }}</strong>
@@ -1174,6 +1333,20 @@ function subjectKey(item: AdminStorageSubject): string {
   overflow: hidden;
 }
 
+.chart-card:not(.infrastructure-card) {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card:not(.infrastructure-card) .chart-box {
+  flex: 1;
+}
+
+.chart-card:not(.infrastructure-card) .echart {
+  height: 100%;
+  min-height: 16rem;
+}
+
 .chart-card__top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1256,6 +1429,258 @@ function subjectKey(item: AdminStorageSubject): string {
   --chart-color: #f59e0b;
 }
 
+.infrastructure-card {
+  --chart-color: #22d3ee;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 18px 18px 16px;
+  border-color: #293036;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #121618, #0e1113);
+}
+
+.infrastructure-card::after {
+  content: '';
+  position: absolute;
+  top: -77px;
+  right: -68px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(101, 216, 239, 0.043);
+  pointer-events: none;
+}
+
+.infrastructure-card .chart-card__top,
+.infrastructure-card .infrastructure-summary,
+.infrastructure-card .infrastructure-mini-grid,
+.infrastructure-card .infrastructure-unavailable {
+  position: relative;
+  z-index: 1;
+}
+
+.infrastructure-card .chart-card__top h4 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.infrastructure-card .chart-card__eyebrow {
+  display: block;
+  margin-top: 5px;
+  color: #7d898f;
+  font-family: var(--vg-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.infrastructure-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  color: #a9eac8;
+  font-family: var(--vg-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.infrastructure-status--healthy {
+  color: #a9eac8;
+}
+
+.infrastructure-status--healthy .status-dot {
+  background: var(--vg-green-bright);
+}
+
+.infrastructure-status--watch {
+  color: var(--vg-amber);
+}
+
+.infrastructure-status--watch .status-dot {
+  background: var(--vg-amber);
+}
+
+.infrastructure-status--critical {
+  color: var(--vg-danger);
+}
+
+.infrastructure-status--critical .status-dot {
+  background: var(--vg-danger);
+}
+
+.status-dot--inline {
+  width: 6px;
+  height: 6px;
+  margin-right: 0;
+  box-shadow: 0 0 0 4px rgba(107, 227, 173, 0.11);
+}
+
+.infrastructure-summary {
+  margin-top: 18px;
+}
+
+.infrastructure-health-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.infrastructure-health-ring {
+  position: relative;
+  display: grid;
+  flex: 0 0 54px;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.infrastructure-health-ring::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: inherit;
+  background: #111416;
+}
+
+.infrastructure-health-ring b {
+  position: relative;
+  z-index: 1;
+  color: var(--vg-green-bright);
+  font: 700 12px var(--vg-font-mono);
+}
+
+.infrastructure-health-ring--watch b { color: var(--vg-amber); }
+.infrastructure-health-ring--critical b { color: var(--vg-danger); }
+.infrastructure-health-ring--unknown b { color: var(--vg-text-muted); }
+
+.infrastructure-health-summary > div:last-child {
+  min-width: 0;
+}
+
+.infrastructure-health-summary strong,
+.infrastructure-health-summary span {
+  display: block;
+}
+
+.infrastructure-health-summary strong {
+  color: var(--vg-text);
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+.infrastructure-health-summary span {
+  margin-top: 4px;
+  color: var(--vg-text-muted);
+  font-size: 11px;
+}
+
+.infrastructure-mini-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(118px, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.infrastructure-mini {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 118px;
+  padding: 12px;
+  border: 1px solid #263137;
+  border-radius: 10px;
+  background: #0c1316;
+}
+
+.infrastructure-mini span,
+.infrastructure-mini strong {
+  display: block;
+}
+
+.infrastructure-mini span {
+  color: #7e8d93;
+  font: 600 10px var(--vg-font-mono);
+  letter-spacing: 0.05em;
+}
+
+.infrastructure-mini strong {
+  margin-top: 9px;
+  color: var(--vg-text);
+  font: 600 20px var(--vg-font-mono);
+  letter-spacing: -0.06em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.infrastructure-mini-sparkline {
+  display: block;
+  width: 100%;
+  height: 24px;
+  margin-top: 7px;
+  overflow: visible;
+}
+
+.infrastructure-mini-sparkline polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.infrastructure-disk-bar {
+  height: 8px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #203238;
+}
+
+.infrastructure-disk-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ffb600, #ffd46b);
+}
+
+.infrastructure-mini-detail {
+  display: block;
+  margin-top: auto;
+  padding-top: 7px;
+  color: #7f9dac;
+  font: 500 10px/1.35 var(--vg-font-mono);
+  letter-spacing: 0.01em;
+  white-space: normal;
+}
+
+.infrastructure-mini-detail b {
+  color: var(--vg-green-bright);
+  font-weight: 700;
+}
+
+.infrastructure-mini--cpu strong { color: var(--vg-cyan); }
+.infrastructure-mini--ram strong { color: var(--vg-blue-bright); }
+.infrastructure-mini--disk strong { color: var(--vg-amber); }
+.infrastructure-mini--net strong { color: var(--vg-green-bright); }
+.infrastructure-mini--cpu .infrastructure-mini-sparkline { color: var(--vg-cyan); }
+.infrastructure-mini--ram .infrastructure-mini-sparkline { color: var(--vg-blue-bright); }
+.infrastructure-mini--net .infrastructure-mini-sparkline { color: var(--vg-green-bright); }
+
+.infrastructure-unavailable {
+  flex: 1;
+  margin: var(--vg-space-4) 0;
+}
+
 .mini-bars,
 .alerts,
 .compact-list {
@@ -1324,6 +1749,7 @@ function subjectKey(item: AdminStorageSubject): string {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--vg-space-4);
 }
 
@@ -1338,6 +1764,28 @@ function subjectKey(item: AdminStorageSubject): string {
 
 .panel-header {
   margin-bottom: var(--vg-space-4);
+}
+
+.storage-projects-panel,
+.storage-users-panel {
+  min-height: 0;
+}
+
+.storage-project-chart {
+  height: 15rem;
+}
+
+.storage-users-list {
+  max-height: 15rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.storage-users-list .compact-row {
+  min-height: 4.5rem;
+  box-sizing: border-box;
 }
 
 .empty-state {
@@ -1427,6 +1875,10 @@ function subjectKey(item: AdminStorageSubject): string {
   .chart-card__metric span {
     min-width: 0;
     flex: none;
+  }
+
+  .infrastructure-summary {
+    grid-template-columns: 1fr;
   }
 
   .segmented,

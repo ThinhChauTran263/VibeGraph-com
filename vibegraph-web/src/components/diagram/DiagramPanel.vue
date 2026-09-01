@@ -4,6 +4,7 @@ import { useDiagrams } from '@/composables/useDiagrams'
 import type { UmlUseCaseResponse, UmlUseCaseView } from '@/lib/api'
 import { renderUmlUseCaseSvg, type UmlUseCaseModel } from '@/lib/umlUseCaseSvg'
 import ThemedSelect from '@/components/ui/ThemedSelect.vue'
+import LogoSpinner from '@/components/ui/LogoSpinner.vue'
 
 const props = defineProps<{
   projectId: string
@@ -424,7 +425,7 @@ onActivated(() => {
     </details>
 
     <div v-if="isLoading" class="diagram-panel__loading" role="status">
-      <div class="diagram-panel__spinner" aria-hidden="true"></div>
+      <LogoSpinner :size="96" />
       <p>Loading diagram…</p>
     </div>
 
@@ -688,27 +689,6 @@ onActivated(() => {
 
 .diagram-panel__loading p {
   margin: 0;
-}
-
-.diagram-panel__spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(148, 163, 184, 0.25);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: diagram-spin 0.8s linear infinite;
-}
-
-@keyframes diagram-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .diagram-panel__spinner {
-    animation-duration: 2.4s;
-  }
 }
 
 .diagram-panel__error {

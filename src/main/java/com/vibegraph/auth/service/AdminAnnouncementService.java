@@ -7,7 +7,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.Announcement;
+import com.vibegraph.auth.domain.entity.Announcement;
 import com.vibegraph.auth.dto.AnnouncementRequest;
 import com.vibegraph.auth.dto.AnnouncementResponse;
 import com.vibegraph.auth.CurrentUser;

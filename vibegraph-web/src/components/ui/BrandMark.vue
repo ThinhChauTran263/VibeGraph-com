@@ -15,8 +15,15 @@ withDefaults(
     showWordmark?: boolean
     glyphTo?: RouteLocationRaw
     glyphAriaLabel?: string
+    wordmarkTo?: RouteLocationRaw
+    wordmarkAriaLabel?: string
   }>(),
-  { size: 28, showWordmark: true, glyphAriaLabel: 'VibeGraph home' },
+  {
+    size: 28,
+    showWordmark: true,
+    glyphAriaLabel: 'VibeGraph home',
+    wordmarkAriaLabel: 'VibeGraph dashboard',
+  },
 )
 </script>
 
@@ -41,7 +48,15 @@ withDefaults(
       alt="VibeGraph logo"
       decoding="async"
     />
-    <span v-if="showWordmark" class="brand__word">
+    <RouterLink
+      v-if="showWordmark && wordmarkTo"
+      class="brand__word-link"
+      :to="wordmarkTo"
+      :aria-label="wordmarkAriaLabel"
+    >
+      <span class="brand__word">Vibe<span class="brand__word-accent">Graph</span></span>
+    </RouterLink>
+    <span v-else-if="showWordmark" class="brand__word">
       Vibe<span class="brand__word-accent">Graph</span>
     </span>
   </span>
@@ -73,6 +88,11 @@ withDefaults(
   font-size: calc(var(--glyph) * 0.62);
   letter-spacing: -0.01em;
   color: var(--vg-text);
+}
+
+.brand__word-link {
+  min-width: 0;
+  text-decoration: none;
 }
 
 .brand__word-accent {

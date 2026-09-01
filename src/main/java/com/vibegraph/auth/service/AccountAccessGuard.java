@@ -6,7 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.repository.projection.AuthSnapshot;
 import com.vibegraph.common.exception.AccountBlockedException;

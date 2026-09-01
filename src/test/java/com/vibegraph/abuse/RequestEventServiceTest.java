@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

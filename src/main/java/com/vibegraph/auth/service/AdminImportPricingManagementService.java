@@ -10,7 +10,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.ImportPricingTier;
+import com.vibegraph.auth.domain.entity.ImportPricingTier;
 import com.vibegraph.auth.dto.AdminImportPricingResponse;
 import com.vibegraph.auth.dto.AdminImportPricingUpdateRequest;
 import com.vibegraph.auth.repository.ImportPricingTierRepository;

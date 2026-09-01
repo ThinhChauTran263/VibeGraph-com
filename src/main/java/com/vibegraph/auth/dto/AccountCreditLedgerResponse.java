@@ -3,7 +3,7 @@ package com.vibegraph.auth.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.CreditLedger;
+import com.vibegraph.auth.domain.entity.CreditLedger;
 
 public record AccountCreditLedgerResponse(
         UUID id,

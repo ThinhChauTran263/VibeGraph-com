@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.dto.NotificationResponse;
 import com.vibegraph.auth.repository.NotificationRepository;
 import com.vibegraph.auth.repository.UserRepository;

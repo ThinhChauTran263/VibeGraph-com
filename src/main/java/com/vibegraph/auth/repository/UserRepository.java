@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.projection.AdminSeriesRow;
 import com.vibegraph.auth.repository.projection.AuthSnapshot;
 
@@ -81,6 +81,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             org.springframework.data.domain.Pageable pageable);
 
     long countByDeactivated(boolean deactivated);
+
+    @Query(value = """
+            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS label,
+                   count(*) AS value,
+                   'day' AS period
+            FROM users
+            WHERE created_at IS NOT NULL
+            GROUP BY date_trunc('day', created_at)
+            ORDER BY date_trunc('day', created_at)
+            """, nativeQuery = true)
+    List<AdminSeriesRow> countGrowthByDay();
 
     @Query(value = """
             SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS label,

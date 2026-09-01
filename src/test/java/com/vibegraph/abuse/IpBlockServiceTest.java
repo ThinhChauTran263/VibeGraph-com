@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.IpBlock;
+
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;

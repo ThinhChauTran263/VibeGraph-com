@@ -14,7 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 import com.vibegraph.auth.dto.AdminPricingRuleUpsertRequest;
 import com.vibegraph.auth.repository.CreditPricingRuleRepository;
 

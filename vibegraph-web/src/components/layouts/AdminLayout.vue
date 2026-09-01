@@ -17,6 +17,7 @@ const isMobileOpen = ref(false)
 
 const navItems = computed(() => [
   { label: t('admin.layout.nav.overview'), to: '/admin', icon: 'overview' },
+  { label: t('admin.layout.nav.vpsMonitor'), to: '/admin/vps-monitor', icon: 'usage' },
   { label: t('admin.layout.nav.users'), to: '/admin/users', icon: 'users' },
   {
     label: t('admin.layout.nav.feedbackReports'),
@@ -39,12 +40,21 @@ const navItems = computed(() => [
   { label: t('admin.layout.nav.settings'), to: '/admin/settings', icon: 'settings' },
 ])
 
+const isSidebarCollapsed = computed(() => isCollapsed.value && !isMobileOpen.value)
+
 const sidebarClass = computed(() => ({
-  'is-collapsed': isCollapsed.value,
+  'is-collapsed': isSidebarCollapsed.value,
   'is-mobile-open': isMobileOpen.value,
 }))
 
+const showWordmark = computed(() => !isSidebarCollapsed.value)
+
 function toggleSidebar(): void {
+  if (isMobileOpen.value) {
+    closeMobileNav()
+    return
+  }
+
   isCollapsed.value = !isCollapsed.value
   localStorage.setItem(SIDEBAR_KEY, String(isCollapsed.value))
 }
@@ -60,8 +70,9 @@ function signOut(): void {
 </script>
 
 <template>
-  <div class="admin-layout" :class="{ 'sidebar-collapsed': isCollapsed }">
+  <div class="admin-layout" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
     <button
+      v-if="!isMobileOpen"
       class="mobile-menu"
       type="button"
       :aria-label="t('admin.layout.openNavigation')"
@@ -78,23 +89,29 @@ function signOut(): void {
       <div class="sidebar-brand">
         <BrandMark
           :size="30"
-          :show-wordmark="!isCollapsed"
-          glyph-to="/admin"
-          :glyph-aria-label="t('admin.layout.overviewLinkLabel')"
+          :show-wordmark="showWordmark"
+          glyph-to="/"
+          glyph-aria-label="VibeGraph landing page"
+          wordmark-to="/admin"
+          :wordmark-aria-label="t('admin.layout.overviewLinkLabel')"
         />
         <button
           class="sidebar-toggle"
           type="button"
           :aria-label="
-            isCollapsed ? t('admin.layout.expandSidebar') : t('admin.layout.collapseSidebar')
+            isMobileOpen
+              ? t('admin.layout.closeNavigation')
+              : isCollapsed
+                ? t('admin.layout.expandSidebar')
+                : t('admin.layout.collapseSidebar')
           "
           @click="toggleSidebar"
-          :aria-expanded="!isCollapsed"
+          :aria-expanded="isMobileOpen || !isCollapsed"
         >
           <AppIcon
-            :name="isCollapsed ? 'menu' : 'chevron'"
-            :size="isCollapsed ? 20 : 18"
-            :class="{ 'is-expanded': !isCollapsed }"
+            :name="isSidebarCollapsed ? 'menu' : 'chevron'"
+            :size="isSidebarCollapsed ? 20 : 18"
+            :class="{ 'is-expanded': !isSidebarCollapsed }"
           />
         </button>
       </div>
@@ -105,7 +122,7 @@ function signOut(): void {
           :key="item.to"
           class="nav-link"
           :to="item.to"
-          :title="isCollapsed ? item.label : undefined"
+          :title="isSidebarCollapsed ? item.label : undefined"
           :aria-label="item.label"
           @click="closeMobileNav"
         >
@@ -198,8 +215,9 @@ function signOut(): void {
   align-items: center;
   justify-content: space-between;
   gap: var(--vg-space-2);
+  height: 68px;
   min-height: 68px;
-  padding: var(--vg-space-4);
+  padding: 0 var(--vg-space-4);
   border-bottom: 1px solid var(--vg-border);
   user-select: none;
 }
@@ -211,11 +229,12 @@ function signOut(): void {
   background: var(--vg-surface-2);
   color: var(--vg-text);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .sidebar-toggle {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -296,12 +315,25 @@ function signOut(): void {
 
 .admin-sidebar.is-collapsed .sidebar-brand {
   justify-content: center;
-  min-height: 64px;
-  padding: var(--vg-space-2);
+  height: 68px;
+  min-height: 68px;
+  padding: 0 var(--vg-space-2);
+}
+
+.admin-sidebar.is-collapsed .sidebar-brand .brand {
+  display: none;
 }
 
 .admin-sidebar.is-collapsed .sidebar-toggle {
-  flex: 0 0 40px;
+  flex: 0 0 44px;
+}
+
+.admin-sidebar.is-collapsed .nav-link,
+.admin-sidebar.is-collapsed .sign-out,
+.admin-sidebar.is-collapsed .admin-account {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .sidebar-footer {
@@ -357,6 +389,7 @@ function signOut(): void {
   z-index: 25;
   display: flex;
   align-items: center;
+  height: 68px;
   min-height: 68px;
   background: rgba(15, 23, 42, 0.92);
   backdrop-filter: blur(18px);
@@ -429,8 +462,8 @@ function signOut(): void {
     top: var(--vg-space-3);
     left: var(--vg-space-3);
     z-index: 45;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: var(--vg-radius-sm);
     align-items: center;
     justify-content: center;
@@ -448,6 +481,11 @@ function signOut(): void {
     transition: transform var(--vg-dur-fast) var(--vg-ease-out);
   }
 
+  /* Keep the mobile drawer wide even when desktop collapsed state is persisted. */
+  .admin-sidebar.is-collapsed {
+    width: min(84vw, 300px);
+  }
+
   .admin-sidebar.is-mobile-open {
     transform: translateX(0);
     visibility: visible;
@@ -462,8 +500,9 @@ function signOut(): void {
   .admin-sidebar.is-collapsed .sidebar-brand {
     flex-direction: row;
     justify-content: space-between;
+    height: 68px;
     min-height: 68px;
-    padding: var(--vg-space-4);
+    padding: 0 var(--vg-space-4);
   }
 
   .mobile-scrim {
@@ -476,6 +515,7 @@ function signOut(): void {
   }
 
   .admin-header {
+    height: 64px;
     min-height: 64px;
   }
 

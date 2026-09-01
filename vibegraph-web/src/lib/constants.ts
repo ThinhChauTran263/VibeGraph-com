@@ -103,7 +103,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   Class: '#F59E0B', // amber / gold
   Annotation: '#65A30D', // olive green (far from Class amber & Interface green)
   DBModel: '#CA8A04', // mustard
-  Record: '#7C2D12', // dark brown
+  Record: '#A3E635', // vivid lime
   Interface: '#22C55E', // green
   Route: '#15803D', // dark green
   Package: '#9333EA', // purple
@@ -321,6 +321,23 @@ export function resolveLocalhostAwareUrl(
   return url
 }
 
+/** Convert a WebSocket-style URL to the HTTP(S) URL required by SockJS. */
+export function resolveSockJsUrl(
+  value: string | undefined,
+  fallback: string,
+  browserHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost',
+): string {
+  const url = resolveLocalhostAwareUrl(value, fallback, browserHost)
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'ws:') parsed.protocol = 'http:'
+    if (parsed.protocol === 'wss:') parsed.protocol = 'https:'
+    return parsed.toString().replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}
+
 export const API_BASE_URL = resolveLocalhostAwareUrl(
   import.meta.env.VITE_API_URL,
   'http://localhost:8080',
@@ -328,7 +345,7 @@ export const API_BASE_URL = resolveLocalhostAwareUrl(
 
 // WebSocket URL - SockJS endpoint for STOMP. Must match the backend
 // `/ws/graph-updates` registration. SockJS requires an http(s):// URL (not ws://).
-export const WS_URL = resolveLocalhostAwareUrl(
+export const WS_URL = resolveSockJsUrl(
   import.meta.env.VITE_WS_URL,
   'http://localhost:8080/ws/graph-updates',
 )

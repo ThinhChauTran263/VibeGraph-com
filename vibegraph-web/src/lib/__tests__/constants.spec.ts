@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EDGE_COLORS, resolveLocalhostAwareUrl } from '../constants'
+import { EDGE_COLORS, resolveLocalhostAwareUrl, resolveSockJsUrl } from '../constants'
 
 describe('resolveLocalhostAwareUrl', () => {
   it('keeps localhost on localhost', () => {
@@ -17,6 +17,20 @@ describe('resolveLocalhostAwareUrl', () => {
   it('leaves non-local URLs untouched', () => {
     expect(resolveLocalhostAwareUrl('https://api.example.com/base', 'fallback', '127.0.0.1')).toBe(
       'https://api.example.com/base',
+    )
+  })
+})
+
+describe('resolveSockJsUrl', () => {
+  it('normalizes secure WebSocket URLs for the SockJS transport', () => {
+    expect(resolveSockJsUrl('wss://api.example.com/ws/graph-updates', 'fallback')).toBe(
+      'https://api.example.com/ws/graph-updates',
+    )
+  })
+
+  it('keeps HTTP URLs unchanged', () => {
+    expect(resolveSockJsUrl('https://api.example.com/ws/graph-updates', 'fallback')).toBe(
+      'https://api.example.com/ws/graph-updates',
     )
   })
 })

@@ -8,6 +8,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { getLatestVersion, isNewerVersion, npmSpawnSpec } from "../lib/update-check.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,7 +18,9 @@ function libImport(moduleName) {
   return import(pathToFileURL(modPath).href);
 }
 
-const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR || path.join(homedir(), ".vibegraph");
+const CONFIG_DIR = process.env.VIBEGRAPH_CONFIG_DIR
+  ? path.resolve(process.env.VIBEGRAPH_CONFIG_DIR)
+  : path.join(homedir(), ".vibegraph");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_API_URL = "http://localhost:8080";
 const CLI_VERSION = JSON.parse(readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version;
@@ -39,8 +42,6 @@ const SHELL_COMMANDS = [
   { command: "key list", description: "List API keys available to this CLI" },
   { command: "key change", description: "Choose a different project API key" },
   { command: "key clear", description: "Clear the stored API key" },
-  { command: "auth status", description: "Show masked API-key status" },
-  { command: "auth clear", description: "Clear the stored API key" },
   { command: "me", description: "Show the current authenticated user" },
   { command: "logout", description: "Clear local auth state" },
   { command: "config show", description: "Show API URL and auth state" },
@@ -50,16 +51,16 @@ const SHELL_COMMANDS = [
   { command: "projects list", description: "List your projects" },
   { command: "projects create --path ", description: "Create a project from a backend path" },
   { command: "projects import-local --path ", description: "Import a local Docker-mounted project" },
-  { command: "projects analyze ", description: "Analyze a project graph" },
-  { command: "projects delete ", description: "Delete a project" },
-  { command: "projects push ", description: "Push local file changes" },
+  { command: "projects analyze", description: "Analyze the selected project" },
+  { command: "projects delete", description: "Choose and delete a project" },
   { command: "push", description: "Push the current folder using the selected project key" },
   { command: "push --dry-run", description: "Preview changes for the current folder" },
-  { command: "projects status ", description: "Show project status" },
+  { command: "projects status", description: "Show the selected project status" },
   { command: "watch", description: "Watch the current folder and push changes" },
   { command: "watch --root ", description: "Watch a different local folder" },
   { command: "ignore init", description: "Create a .vibegraphignore file" },
-  { command: "ignore init --root ", description: "Create .vibegraphignore under a path" }
+  { command: "ignore init --root ", description: "Create .vibegraphignore under a path" },
+  { command: "update", description: "Install the latest CLI version" }
 ];
 const ANSI = {
   reset: "\x1b[0m",
@@ -105,6 +106,12 @@ async function main() {
     return;
   }
 
+  const firstArg = args[0]?.toLowerCase();
+  if (![
+    "--version", "-v", "help", "--help", "-h", "update", "mcp-proxy",
+  ].includes(firstArg)) {
+    await checkForCliUpdate();
+  }
   await dispatchCommand(args);
 }
 
@@ -124,11 +131,11 @@ async function dispatchCommand(args) {
     case "-v":
       console.log(CLI_VERSION);
       return;
+    case "update":
+      await updateCli();
+      return;
     case "config":
       await handleConfig(rest);
-      return;
-    case "auth":
-      await handleAuth(rest);
       return;
     case "key":
       await handleAuth(rest);
@@ -206,13 +213,12 @@ function renderHelpBody() {
   vibegraph key clear
   vibegraph config show
   vibegraph config set-url <url>
-  vibegraph auth status
-  vibegraph auth clear
   vibegraph register --email <email> --password <password> --name <displayName>
   vibegraph login --email <email> --password <password>
   vibegraph logout
   vibegraph me
   vibegraph doctor
+  vibegraph update
   vibegraph mcp config [cursor|vscode|generic] [--name <serverName>]
   vibegraph mcp doctor
   vibegraph mcp install <cursor|vscode|generic> [--path <file>]
@@ -223,15 +229,13 @@ Projects:
   vibegraph projects list
   vibegraph projects create --path <backendPath> [--name <name>] [--watch]
   vibegraph projects import-local --path <backendPath> [--name <name>]
-  vibegraph projects analyze <projectId>
-  vibegraph projects delete <projectId>
-  vibegraph projects push <projectId> --root <localPath> [--dry-run]
-  vibegraph projects status <projectId>
+  vibegraph projects analyze [projectId]
+  vibegraph projects delete
+  vibegraph projects status [projectId]
 
 Watch:
   vibegraph push [--dry-run]
   (The current folder is used by default; add --root <localPath> for another folder.)
-  vibegraph watch <projectId> --root <localPath>
   vibegraph watch [--root <localPath>]
 
 Ignore:
@@ -240,6 +244,7 @@ Ignore:
 
 async function startInteractiveShell() {
   const config = await loadConfig();
+  await checkForCliUpdate({ force: true });
   console.log(renderInteractiveHeader(config));
   return runInteractiveLineEditor();
 }
@@ -412,7 +417,7 @@ async function runInteractiveLineEditor() {
     } catch (error) {
       console.error(error instanceof CliError ? error.message : error?.stack || String(error));
     } finally {
-      if (!closed && process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+      if (!closed) enableInteractiveInput(process.stdin);
       if (!closed) process.stdin.on("keypress", onKeypress);
       processing = false;
       render();
@@ -420,7 +425,7 @@ async function runInteractiveLineEditor() {
   };
 
   emitKeypressEvents(process.stdin);
-  if (process.stdin.isTTY && process.stdin.setRawMode) process.stdin.setRawMode(true);
+  enableInteractiveInput(process.stdin);
   process.stdin.on("keypress", onKeypress);
   process.stdin.once("end", finish);
   render();
@@ -524,13 +529,39 @@ function getShellSuggestions(line, limit = 8) {
   }
   const slashPalette = normalized.startsWith("/");
   const query = slashPalette ? normalized.slice(1) : normalized;
-  const candidates = slashPalette
-    ? SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"))
-    : SHELL_COMMANDS;
+  const candidates = SHELL_COMMANDS.filter(({ command }) => !command.startsWith("/"));
   const suggestionLimit = slashPalette && !query ? Number.POSITIVE_INFINITY : limit;
   return candidates
-    .filter(({ command }) => command.toLowerCase().startsWith(query))
+    .filter(({ command }) => matchesSuggestionQuery(command, query))
+    .sort((left, right) => {
+      return compareSuggestionMatch(left.command, right.command, query);
+    })
     .slice(0, suggestionLimit);
+}
+
+// Suggestions stay useful when users type a short hint such as `/st` for `projects status`.
+function matchesSuggestionQuery(command, query) {
+  if (!query) return true;
+  const commandTokens = command.toLowerCase().split(/\s+/);
+  const queryTokens = query.split(/\s+/).filter(Boolean);
+  if (queryTokens.length === 1) {
+    return commandTokens.some((token) => token.startsWith(queryTokens[0]));
+  }
+  return queryTokens.every((queryToken, index) => index === 0
+    ? commandTokens[index]?.includes(queryToken)
+    : commandTokens[index]?.startsWith(queryToken));
+}
+
+function compareSuggestionMatch(leftCommand, rightCommand, query) {
+  const rank = (command) => {
+    const normalized = command.toLowerCase();
+    if (normalized.startsWith(query)) return 0;
+    const tokenStart = normalized.split(/\s+/).some((token) => token.startsWith(query));
+    if (tokenStart) return 1;
+    if (normalized.includes(query)) return 2;
+    return 3;
+  };
+  return rank(leftCommand) - rank(rightCommand);
 }
 
 function getNextSuggestionIndex(currentIndex, direction, suggestionCount) {
@@ -754,6 +785,9 @@ export {
   mergeMcpJson,
   probeMcpProxy,
   handleDoctor,
+  handleProjects,
+  askPassword,
+  selectProjectForDeletion,
   maskApiKey,
   parsePushCommandArgs,
   parseShellArgs,
@@ -763,9 +797,16 @@ export {
 };
 
 function buildMcpServerConfig(serverName = "vibegraph", target = "generic") {
+  const proxyEnv = {
+    // Keep IDE-launched proxy processes on the same credential file as the CLI.
+    VIBEGRAPH_CONFIG_DIR: CONFIG_DIR,
+    // An empty override lets the proxy fall back to the selected key in config.json.
+    VIBEGRAPH_API_KEY: "",
+    VIBEGRAPH_API_URL: "",
+  };
   const server = target === "vscode"
-    ? { type: "stdio", command: process.execPath, args: mcpProxyCommand().slice(1) }
-    : { command: process.execPath, args: mcpProxyCommand().slice(1) };
+    ? { type: "stdio", command: process.execPath, args: mcpProxyCommand().slice(1), env: proxyEnv }
+    : { command: process.execPath, args: mcpProxyCommand().slice(1), env: proxyEnv };
   const section = target === "vscode" ? "servers" : "mcpServers";
   return { [section]: { [serverName]: server } };
 }
@@ -935,13 +976,11 @@ async function handleMcpProxy(args) {
   if (args.length !== 1 || args[0] !== "--stdio") {
     throw new CliError("Usage: vibegraph mcp-proxy --stdio", 2);
   }
-  const config = await loadConfig();
-  const apiKey = configuredApiKey(config);
-  if (!apiKey) {
+  if (!configuredApiKey(await loadConfig())) {
     throw new CliError("MCP authentication required. Run: vibegraph login", 2);
   }
-  const endpoint = `${apiUrl(config)}/mcp`;
   let sessionId = null;
+  let proxyTarget = null;
   const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of input) {
     if (!line.trim()) continue;
@@ -953,6 +992,20 @@ async function handleMcpProxy(args) {
       continue;
     }
     try {
+      // Reload before every request so key change/config updates take effect without
+      // restarting an IDE-managed proxy process.
+      const config = await loadConfig();
+      const apiKey = configuredMcpApiKey(config);
+      if (!apiKey) {
+        writeMcpRequestError(message, -32001, "VibeGraph MCP credential is missing. Run: vibegraph login");
+        continue;
+      }
+      const endpoint = `${mcpApiUrl(config)}/mcp`;
+      const currentTarget = `${endpoint}\0${apiKey}`;
+      if (proxyTarget !== currentTarget) {
+        sessionId = null;
+        proxyTarget = currentTarget;
+      }
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -1297,6 +1350,60 @@ function openBrowser(url) {
   }
 }
 
+async function checkForCliUpdate({ force = false } = {}) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return;
+  const latestVersion = await getLatestVersion({
+    currentVersion: CLI_VERSION,
+    configDir: CONFIG_DIR,
+    force,
+  });
+  if (!latestVersion || !isNewerVersion(CLI_VERSION, latestVersion)) return;
+
+  console.log(`\nNew vibegraph-cli version ${latestVersion} is available (current ${CLI_VERSION}).`);
+  console.log("Press Enter, Y, or y to update now; press N or n to continue.");
+  const answer = await askQuestion("Update now? [Y/n] ");
+  if (["", "y", "yes"].includes(answer.trim().toLowerCase())) {
+    await updateCli(latestVersion);
+  }
+}
+
+async function updateCli(version = "latest", { restart = true } = {}) {
+  console.log(`Updating vibegraph-cli to ${version}...`);
+  const exitCode = await new Promise((resolve, reject) => {
+    const npmArgs = ["install", "-g", `vibegraph-cli@${version}`];
+    const { command, args } = npmSpawnSpec(npmArgs);
+    const child = spawn(command, args, {
+      stdio: "inherit",
+      windowsHide: false,
+    });
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
+  if (exitCode !== 0) {
+    throw new CliError(`Update failed (npm exited with code ${exitCode ?? "unknown"}). Run: npm install -g vibegraph-cli@latest`, 1);
+  }
+  console.log(`VibeGraph CLI ${version} installed.`);
+  if (restart) {
+    await restartCli();
+  }
+}
+
+async function restartCli() {
+  const scriptPath = process.argv[1] || fileURLToPath(import.meta.url);
+  const requestedArgs = process.argv.slice(2);
+  const firstArg = requestedArgs[0]?.replace(/^\//, "").toLowerCase();
+  const args = firstArg === "update" ? [] : requestedArgs;
+  const child = spawn(process.execPath, [scriptPath, ...args], {
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  process.exit(exitCode ?? 0);
+}
+
 async function saveApiKey(config, apiKey) {
   validateApiKey(apiKey);
   await saveConfig({ ...config, apiKey, apiKeyId: undefined, project: undefined, apiKeys: undefined });
@@ -1309,7 +1416,7 @@ async function handleMe() {
   console.log(JSON.stringify(user, null, 2));
 }
 
-async function handleProjects(args) {
+async function handleProjects(args, dependencies = {}) {
   const subcommand = args.shift() || "list";
 
   if (subcommand === "list") {
@@ -1356,55 +1463,83 @@ async function handleProjects(args) {
   }
 
   if (subcommand === "analyze") {
+    if (args.length > 1) throw new CliError("Usage: vibegraph projects analyze [projectId]", 2);
     const projectId = args.shift();
-    if (!projectId) {
-      throw new CliError("Usage: vibegraph projects analyze <projectId>", 2);
+    const result = projectId
+      ? await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/analyze`, {
+        method: "POST",
+        auth: "jwt-only",
+      })
+      : await apiRequest("/api/projects/current/analyze", {
+        method: "POST",
+        auth: "api-key-only",
+      });
+    // Analyze is asynchronous and production commonly returns 202 with an empty body.
+    if (result === null || result === undefined || (typeof result === "string" && !result.trim())) {
+      const config = await loadConfig();
+      const projectName = !projectId ? config.project?.name : null;
+      console.log(projectName ? `Analysis started for ${projectName}.` : "Analysis started.");
+      return;
     }
-    const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/analyze`, {
-      method: "POST",
-      auth: "jwt-only"
-    });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
   if (subcommand === "delete") {
-    const projectId = args.shift();
+    if (args.length > 1) throw new CliError("Usage: vibegraph projects delete [projectId]", 2);
+    const ask = dependencies.askQuestion || askQuestion;
+    const askSecret = dependencies.askSecret || askPassword;
+    await ensureAccountSession(ask, askSecret);
+    let projectId = args.shift();
+    let selectedProject;
     if (!projectId) {
-      throw new CliError("Usage: vibegraph projects delete <projectId>", 2);
+      const projects = await apiRequest("/api/projects", { auth: "jwt-only" });
+      selectedProject = await selectProjectForDeletion(projects, ask);
+      if (!selectedProject) return;
+      projectId = selectedProject.id;
     }
     await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, {
       method: "DELETE",
       auth: "jwt-only",
       unwrap: false
     });
-    console.log(`Deleted project ${projectId}`);
-    return;
-  }
-
-  if (subcommand === "push") {
-    const parsed = parsePushCommandArgs(args);
-    if (!parsed.projectId) {
-      throw new CliError("Usage: vibegraph projects push <projectId> --root <path> [--dry-run]", 2);
+    const config = await loadConfig();
+    const cachedKeys = Array.isArray(config.apiKeys)
+      ? config.apiKeys.filter((key) => key.project?.id !== projectId)
+      : undefined;
+    const deletedSelectedProject = config.project?.id === projectId;
+    if (deletedSelectedProject || cachedKeys?.length !== config.apiKeys?.length) {
+      await saveConfig({
+        ...config,
+        apiKey: deletedSelectedProject ? undefined : config.apiKey,
+        apiKeyId: deletedSelectedProject ? undefined : config.apiKeyId,
+        project: deletedSelectedProject ? undefined : config.project,
+        apiKeys: cachedKeys,
+      });
     }
-    await executePushCommand(parsed);
+    if (deletedSelectedProject) {
+      console.log("The deleted project was selected. Run: vibegraph key change");
+    }
+    console.log(`Deleted project ${selectedProject?.name || projectId}`);
     return;
   }
 
   if (subcommand === "status") {
+    if (args.length > 1) throw new CliError("Usage: vibegraph projects status [projectId]", 2);
     const projectId = args.shift();
-    if (!projectId) {
-      throw new CliError("Usage: vibegraph projects status <projectId>", 2);
-    }
-    const project = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, { auth: "jwt-only" });
+    const project = projectId
+      ? await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, { auth: "jwt-only" })
+      : await apiRequest("/api/projects/current", { auth: "api-key-only" });
     console.log(JSON.stringify({
       id: project.id,
       name: project.name,
       status: project.status,
       rootPath: project.rootPath,
       lastAnalyzedAt: project.lastAnalyzedAt || null,
-      nodeCount: project.nodeCount || null,
-      edgeCount: project.edgeCount || null,
+      // The backend ProjectResponse uses totalNodes/totalEdges; keep old field names in the
+      // CLI output for compatibility while accepting both response shapes during rollout.
+      nodeCount: project.totalNodes ?? project.nodeCount ?? null,
+      edgeCount: project.totalEdges ?? project.edgeCount ?? null,
     }, null, 2));
     return;
   }
@@ -1670,6 +1805,115 @@ function apiUrl(config) {
 function configuredApiKey(config) {
   const value = process.env.VIBEGRAPH_API_KEY || config.apiKey;
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function askQuestion(prompt) {
+  if (!process.stdin.isTTY) {
+    throw new CliError("Interactive project selection requires a terminal. Pass a projectId for compatibility.", 2);
+  }
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await new Promise((resolve) => readline.question(prompt, resolve));
+  } finally {
+    readline.close();
+  }
+}
+
+async function askPassword(prompt, input = process.stdin, output = process.stdout) {
+  if (!input.isTTY || !input.setRawMode) {
+    throw new CliError("Password input requires an interactive terminal. Run: vibegraph login", 2);
+  }
+
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const onKeypress = (str, key = {}) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        reject(new CliError("Login cancelled.", 2));
+        return;
+      }
+      if (key.name === "return" || key.name === "enter") {
+        cleanup();
+        output.write("\n");
+        resolve(value);
+        return;
+      }
+      if (key.name === "backspace") {
+        value = value.slice(0, -1);
+        return;
+      }
+      if (!key.ctrl && !key.meta && str && !/^[\x00-\x1f\x7f]$/.test(str)) {
+        value += str;
+      }
+    };
+    const cleanup = () => {
+      input.off("keypress", onKeypress);
+      input.setRawMode(false);
+    };
+
+    emitKeypressEvents(input);
+    output.write(prompt);
+    enableInteractiveInput(input);
+    input.on("keypress", onKeypress);
+  });
+}
+
+function enableInteractiveInput(input) {
+  // Closing a readline interface pauses stdin; resume it before raw key handling takes over.
+  input.resume();
+  if (input.isTTY && input.setRawMode) input.setRawMode(true);
+}
+
+async function ensureAccountSession(ask = askQuestion, askSecret = askPassword) {
+  const config = await loadConfig();
+  if (config.token) return config;
+
+  console.log("Account login required to delete a project.");
+  const email = (await ask("Email: ")).trim();
+  const password = await askSecret("Password: ");
+  if (!email || !password) {
+    throw new CliError("Email and password are required.", 2);
+  }
+
+  const response = await apiRequest("/api/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+  await persistAuth(response);
+  console.log(`Logged in as ${response.user.email}`);
+  return loadConfig();
+}
+
+async function selectProjectForDeletion(projects, ask = askQuestion) {
+  if (!projects.length) {
+    console.log("No projects.");
+    return null;
+  }
+  console.log("Projects:");
+  projects.forEach((project, index) => {
+    console.log(`${index + 1}. ${project.name || "Unnamed project"} (${project.status || "unknown"})`);
+  });
+  const choice = await ask(`Choose a project to delete [1-${projects.length}]: `);
+  const selectedIndex = Number.parseInt(choice.trim(), 10);
+  if (!Number.isInteger(selectedIndex) || selectedIndex < 1 || selectedIndex > projects.length) {
+    throw new CliError(`Invalid selection. Choose a number from 1 to ${projects.length}.`, 2);
+  }
+  const selectedProject = projects[selectedIndex - 1];
+  const confirmation = await ask(`Delete "${selectedProject.name || selectedProject.id}"? [y/N]: `);
+  if (!["y", "yes"].includes(confirmation.trim().toLowerCase())) {
+    console.log("Deletion cancelled.");
+    return null;
+  }
+  return selectedProject;
+}
+
+function configuredMcpApiKey(config) {
+  const value = config.apiKey || process.env.VIBEGRAPH_API_KEY;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function mcpApiUrl(config) {
+  return trimTrailingSlash(config.apiUrl || process.env.VIBEGRAPH_API_URL || DEFAULT_API_URL);
 }
 
 function validateApiKey(apiKey) {

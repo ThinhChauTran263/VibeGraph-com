@@ -7,9 +7,43 @@ import type { EdgeType, NodeType } from '@/types/graph'
 
 const sortedTypes = (set: ReadonlySet<EdgeType>): EdgeType[] => [...set].sort()
 
-describe('useFilterStore — edge filter state semantics', () => {
+describe('useFilterStore — graph filter state semantics', () => {
   beforeEach(() => {
+    localStorage.clear()
     setActivePinia(createPinia())
+  })
+
+  it('keeps node and edge visibility independent for each project', () => {
+    const store = useFilterStore()
+
+    store.setProject('project-a')
+    store.toggleNodeType('File')
+    store.toggleEdgeType('CALLS')
+
+    store.setProject('project-b')
+    expect(store.hiddenNodeTypes.has('File')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(false)
+
+    store.toggleNodeType('Class')
+    store.setProject('project-a')
+
+    expect(store.hiddenNodeTypes.has('File')).toBe(true)
+    expect(store.hiddenNodeTypes.has('Class')).toBe(false)
+    expect(store.hiddenEdgeTypes.has('CALLS')).toBe(true)
+  })
+
+  it('restores a project visibility state in a new store session', () => {
+    const store = useFilterStore()
+    store.setProject('project-a')
+    store.toggleNodeType('File')
+    store.toggleEdgeType('CALLS')
+
+    setActivePinia(createPinia())
+    const restoredStore = useFilterStore()
+    restoredStore.setProject('project-a')
+
+    expect(restoredStore.hiddenNodeTypes.has('File')).toBe(true)
+    expect(restoredStore.hiddenEdgeTypes.has('CALLS')).toBe(true)
   })
 
   it('initializes with the curated edge types hidden by default', () => {

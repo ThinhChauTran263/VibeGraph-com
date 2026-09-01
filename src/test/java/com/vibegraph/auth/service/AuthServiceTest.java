@@ -15,8 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.AuthProvider;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserIdentity;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserIdentity;
 import com.vibegraph.auth.dto.LoginRequest;
 import com.vibegraph.auth.dto.RegisterRequest;
 import com.vibegraph.auth.oauth.OAuthAccountProfile;
@@ -145,7 +145,7 @@ class AuthServiceTest {
                 .passwordHash("hash")
                 .role(Role.USER)
                 .build();
-        var settings = com.vibegraph.auth.domain.UserAccountSettings.builder()
+        var settings = com.vibegraph.auth.domain.entity.UserAccountSettings.builder()
                 .userId(userId)
                 .blockedAt(java.time.Instant.now())
                 .blockedReason("private fraud note")
@@ -183,7 +183,7 @@ class AuthServiceTest {
         when(userRepository.findByEmailIgnoreCase("deactivated@test.local")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Password123!", "hash")).thenReturn(true);
         when(accountSettingsService.findSettings(userId))
-                .thenReturn(com.vibegraph.auth.domain.UserAccountSettings.builder().userId(userId).build());
+                .thenReturn(com.vibegraph.auth.domain.entity.UserAccountSettings.builder().userId(userId).build());
         stubSessionIssue(user, "restricted-token");
 
         AuthenticationResult response = authService.loginSession(request);

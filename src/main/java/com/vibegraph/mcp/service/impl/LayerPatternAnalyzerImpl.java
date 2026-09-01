@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -16,26 +17,34 @@ import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.repository.ProjectMetadata;
+import com.vibegraph.mcp.config.McpLimitProperties;
 import com.vibegraph.mcp.dto.response.LayerPatternResponse;
 import com.vibegraph.mcp.service.LayerPatternAnalyzer;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
 
     private static final int MAX_PROJECT_ID_LENGTH = 512;
     private static final int MAX_LAYER_LENGTH = 128;
     private static final int MAX_EXAMPLES = 10;
     private static final int MAX_DEPENDENCIES = 10;
-    /** Same bounds as the GraphView-based tools (SourceGraphSupport) for consistent behavior. */
-    private static final int MAX_NODES_TO_PROCESS = com.vibegraph.mcp.source.SourceGraphSupport.MAX_NODES_TO_PROCESS;
-    private static final int MAX_EDGES_TO_PROCESS = com.vibegraph.mcp.source.SourceGraphSupport.MAX_EDGES_TO_PROCESS;
     private static final Set<String> KNOWN_LAYERS = Set.of("CONTROLLER", "SERVICE", "REPOSITORY", "CONFIG", "ROUTE");
     private static final Set<String> DEPENDENCY_EDGE_TYPES = Set.of("CALLS", "IMPORTS", "EXTENDS", "IMPLEMENTS", "INJECTS", "HANDLES_ROUTE");
 
     private final GraphService graphService;
+    private final McpLimitProperties limits;
+
+    /** Compatibility constructor for isolated unit tests and direct callers. */
+    public LayerPatternAnalyzerImpl(GraphService graphService) {
+        this(graphService, new McpLimitProperties());
+    }
+
+    @Autowired
+    public LayerPatternAnalyzerImpl(GraphService graphService, McpLimitProperties limits) {
+        this.graphService = graphService;
+        this.limits = limits;
+    }
 
     @Override
     public LayerPatternResponse analyzeLayer(String projectId, String layer) {
@@ -46,10 +55,16 @@ public class LayerPatternAnalyzerImpl implements LayerPatternAnalyzer {
             return unknownLayerResponse(normalizedProjectId, requestedLayer, normalizedLayer);
         }
         try {
+            ProjectMetadata metadata = graphService.getProjectMetadata(normalizedProjectId);
+            if (metadata != null && (metadata.totalNodes() > limits.getMaxNodes()
+                    || metadata.totalEdges() > limits.getMaxEdges())) {
+                return tooLargeResponse(normalizedProjectId, requestedLayer, normalizedLayer,
+                        metadata.totalNodes(), metadata.totalEdges());
+            }
             GraphDataResponse graph = graphService.getFullGraph(normalizedProjectId);
             List<NodeDto> nodes = safeNodes(graph);
             List<EdgeDto> edges = safeEdges(graph);
-            if (nodes.size() > MAX_NODES_TO_PROCESS || edges.size() > MAX_EDGES_TO_PROCESS) {
+            if (nodes.size() > limits.getMaxNodes() || edges.size() > limits.getMaxEdges()) {
                 return tooLargeResponse(normalizedProjectId, requestedLayer, normalizedLayer, nodes.size(), edges.size());
             }
             return toResponse(normalizedProjectId, requestedLayer, normalizedLayer, nodes, edges);

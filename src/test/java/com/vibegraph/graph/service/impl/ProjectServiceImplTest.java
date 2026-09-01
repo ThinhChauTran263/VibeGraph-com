@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectOwnershipStatus;
 import com.vibegraph.auth.domain.ProjectSourceType;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;

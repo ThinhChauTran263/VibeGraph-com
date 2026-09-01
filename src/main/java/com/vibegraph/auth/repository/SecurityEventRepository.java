@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 
-import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.domain.entity.SecurityEvent;
 import com.vibegraph.auth.repository.projection.AdminSecurityAlertRow;
 
 public interface SecurityEventRepository {

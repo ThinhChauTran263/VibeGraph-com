@@ -17,12 +17,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vibegraph.auth.CurrentUser;
+import com.vibegraph.auth.web.ApiKeyRequestContextAccessor;
 import com.vibegraph.auth.service.AccountSettingsService;
 import com.vibegraph.auth.service.CreditBalanceService;
 import com.vibegraph.auth.service.CreditPricingService;
 import com.vibegraph.auth.service.FeatureGateService;
 import com.vibegraph.auth.service.ProjectUsageService;
 import com.vibegraph.common.dto.response.ApiResponse;
+import com.vibegraph.common.exception.ForbiddenException;
 import com.vibegraph.common.ownership.ProjectDeletionOrchestrator;
 import com.vibegraph.common.ownership.ProjectTrashService;
 import com.vibegraph.common.ownership.ProjectOwnershipGuard;
@@ -60,6 +62,7 @@ public class ProjectController {
     private final CliRepositoryService cliRepositoryService;
     private final CreditPricingService creditPricingService;
     private final CreditBalanceService creditBalanceService;
+    private final ApiKeyRequestContextAccessor apiKeyRequestContextAccessor;
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> create(@Valid @RequestBody CreateProjectRequest request) {
@@ -108,6 +111,12 @@ public class ProjectController {
         return ResponseEntity.ok(ApiResponse.success(projectService.getProject(id)));
     }
 
+    /** Returns the project bound to the caller's project API key. */
+    @GetMapping("/current")
+    public ResponseEntity<ApiResponse<ProjectResponse>> getCurrent() {
+        return ResponseEntity.ok(ApiResponse.success(getOwnedProject(currentApiKeyProjectId())));
+    }
+
     /**
      * Accepts the analysis and runs it in the background (H8): the heavy parse + graph upsert
      * no longer occupies a Tomcat thread (minutes on large repos, reverse-proxy timeouts, no
@@ -115,6 +124,16 @@ public class ProjectController {
      */
     @PostMapping("/{id}/analyze")
     public ResponseEntity<Void> analyze(@PathVariable String id) {
+        return analyzeProject(id, "WEB");
+    }
+
+    /** Queues analysis for the project bound to the caller's project API key. */
+    @PostMapping("/current/analyze")
+    public ResponseEntity<Void> analyzeCurrent() {
+        return analyzeProject(currentApiKeyProjectId(), "CLI");
+    }
+
+    private ResponseEntity<Void> analyzeProject(String id, String source) {
         ownershipGuard.assertOwner(id);
         featureGateService.assertEnabled(FeatureGateService.PROJECT_ANALYZE);
         UUID userId = currentUser.id();
@@ -131,11 +150,23 @@ public class ProjectController {
                 project.getRootPath() != null ? Path.of(project.getRootPath()) : null);
         long requiredCredits = creditPricingService.calculateCredits("PROJECT_ANALYZE", fileCount, 0);
         creditBalanceService.assertCreditsAvailable(userId, requiredCredits);
-        creditBalanceService.deductCredits(userId, requiredCredits, "WEB", "PROJECT_ANALYZE", id);
+        creditBalanceService.deductCredits(userId, requiredCredits, source, "PROJECT_ANALYZE", id);
 
         projectAnalysisScheduler.schedule(id);
 
         return ResponseEntity.accepted().build();
+    }
+
+    private ProjectResponse getOwnedProject(String id) {
+        ownershipGuard.assertOwner(id);
+        return projectService.getProject(id);
+    }
+
+    private String currentApiKeyProjectId() {
+        return apiKeyRequestContextAccessor.current()
+                .map(context -> context.projectId())
+                .filter(id -> id != null && !id.isBlank())
+                .orElseThrow(() -> new ForbiddenException("A project-bound API key is required."));
     }
 
     /**

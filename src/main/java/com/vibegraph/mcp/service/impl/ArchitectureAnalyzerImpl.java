@@ -14,24 +14,44 @@ import org.springframework.stereotype.Service;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.repository.ProjectMetadata;
 import com.vibegraph.mcp.dto.response.ArchitectureContextResponse;
+import com.vibegraph.mcp.config.McpLimitProperties;
 import com.vibegraph.mcp.service.ArchitectureAnalyzer;
 
-import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor
 public class ArchitectureAnalyzerImpl implements ArchitectureAnalyzer {
 
     private static final int MAX_PROJECT_ID_LENGTH = 512;
     private static final List<String> CANONICAL_LAYERS = List.of("CONTROLLER", "SERVICE", "REPOSITORY");
 
     private final GraphService graphService;
+    private final McpLimitProperties limits;
+
+    public ArchitectureAnalyzerImpl(GraphService graphService) {
+        this(graphService, new McpLimitProperties());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ArchitectureAnalyzerImpl(GraphService graphService, McpLimitProperties limits) {
+        this.graphService = graphService;
+        this.limits = limits;
+    }
 
     @Override
     public ArchitectureContextResponse analyzeProject(String projectId) {
         validateProjectId(projectId);
+        ProjectMetadata metadata = graphService.getProjectMetadata(projectId);
+        if (metadata != null && (metadata.totalNodes() > limits.getMaxNodes()
+                || metadata.totalEdges() > limits.getMaxEdges())) {
+            throw new IllegalArgumentException("Project graph exceeds the configured MCP safety limit");
+        }
         GraphDataResponse graph = graphService.getFullGraph(projectId);
+        if (graph != null && ((graph.getNodes() != null && graph.getNodes().size() > limits.getMaxNodes())
+                || (graph.getEdges() != null && graph.getEdges().size() > limits.getMaxEdges()))) {
+            throw new IllegalArgumentException("Project graph exceeds the configured MCP safety limit");
+        }
         List<NodeDto> nodes = safeNodes(graph);
 
         Map<String, Integer> summaryCounts = countByType(nodes);

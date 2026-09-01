@@ -1,9 +1,11 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import java.time.Instant;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 
 public record RequestEventResponse(
         UUID id,

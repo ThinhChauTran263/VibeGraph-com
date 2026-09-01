@@ -2,6 +2,7 @@ package com.vibegraph.graph.service;
 
 import com.vibegraph.graph.dto.request.GithubImportRequest;
 import com.vibegraph.graph.dto.response.ProjectResponse;
+import com.vibegraph.infrastructure.service.OperationTelemetryRecorder;
 
 /**
  * Streams a GitHub tarball directly to the parser without persisting files to disk.
@@ -25,4 +26,13 @@ public interface TarballImportService {
      * @return ProjectResponse with status=ANALYZING (parsing runs async)
      */
     ProjectResponse importFromGithub(GithubImportRequest request);
+
+    /**
+     * GitHub import variant that completes the supplied telemetry token when background analysis
+     * reaches a terminal state.
+     */
+    default ProjectResponse importFromGithub(GithubImportRequest request,
+            OperationTelemetryRecorder.OperationToken telemetryToken) {
+        return importFromGithub(request);
+    }
 }

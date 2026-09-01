@@ -2,7 +2,7 @@ package com.vibegraph.auth.dto;
 
 import java.math.BigDecimal;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 
 public record AdminPricingRuleResponse(
         String operationCode,

@@ -47,6 +47,43 @@ async function listen(server) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+test("MCP proxy reloads a rotated key without restarting the IDE process", async () => {
+  const configDir = await mkdtemp(path.join(tmpdir(), "vg-mcp-rotate-"));
+  const configPath = path.join(configDir, "config.json");
+  const oldKey = "vbg_oldmcpproxy12345678";
+  const newKey = "vbg_newmcpproxy12345678";
+  await writeFile(configPath, `${JSON.stringify({ apiUrl: "http://127.0.0.1", apiKey: oldKey })}\n`, "utf8");
+  const headers = [];
+  const server = createServer((request, response) => {
+    headers.push(request.headers["x-api-key"]);
+    response.setHeader("content-type", "application/json");
+    if (headers.length === 1) {
+      void writeFile(
+        configPath,
+        `${JSON.stringify({ apiUrl: `http://127.0.0.1:${server.address().port}`, apiKey: newKey })}\n`,
+        "utf8",
+      ).then(() => response.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { ok: true } })));
+      return;
+    }
+    response.end(JSON.stringify({ jsonrpc: "2.0", id: 2, result: { ok: true } }));
+  });
+  const apiUrl = await listen(server);
+  await writeFile(configPath, `${JSON.stringify({ apiUrl, apiKey: oldKey })}\n`, "utf8");
+  try {
+    const result = await runProxy(configDir, [
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+      "",
+    ].join("\n"));
+
+    assert.equal(result.code, 0);
+    assert.deepEqual(headers, [oldKey, newKey]);
+  } finally {
+    server.close();
+    await rm(configDir, { recursive: true, force: true });
+  }
+});
+
 test("MCP proxy returns an auth error and continues with the next request", async () => {
   let requestCount = 0;
   const server = createServer((request, response) => {

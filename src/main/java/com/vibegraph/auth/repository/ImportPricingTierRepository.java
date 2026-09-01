@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.vibegraph.auth.domain.ImportPricingTier;
+import com.vibegraph.auth.domain.entity.ImportPricingTier;
 
 public interface ImportPricingTierRepository extends JpaRepository<ImportPricingTier, UUID> {
 

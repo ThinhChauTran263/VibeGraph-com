@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.AuditLog;
+import com.vibegraph.auth.domain.entity.AuditLog;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.UserRepository;

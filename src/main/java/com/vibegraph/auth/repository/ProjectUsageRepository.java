@@ -11,7 +11,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.vibegraph.auth.domain.ProjectUsage;
+import com.vibegraph.auth.domain.entity.ProjectUsage;
 import com.vibegraph.auth.repository.projection.AdminStorageSubjectRow;
 import com.vibegraph.auth.repository.projection.StorageSum;
 

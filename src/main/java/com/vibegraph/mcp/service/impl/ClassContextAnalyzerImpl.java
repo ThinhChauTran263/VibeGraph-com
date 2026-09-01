@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.vibegraph.common.exception.ProjectNotFoundException;
@@ -13,15 +14,14 @@ import com.vibegraph.graph.dto.response.EdgeDto;
 import com.vibegraph.graph.dto.response.GraphDataResponse;
 import com.vibegraph.graph.dto.response.NodeDto;
 import com.vibegraph.graph.service.GraphService;
+import com.vibegraph.graph.repository.ProjectMetadata;
+import com.vibegraph.mcp.config.McpLimitProperties;
 import com.vibegraph.mcp.dto.response.ClassContextResponse;
 import com.vibegraph.mcp.service.ClassContextAnalyzer;
 import com.vibegraph.mcp.source.GraphView;
 import com.vibegraph.mcp.source.SourceGraphSupport;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
 
     private static final int MAX_PROJECT_ID_LENGTH = 512;
@@ -35,11 +35,29 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
     private static final Set<String> FIELD_EDGE_TYPES = Set.of("HAS_FIELD", "HAS_FIELD_DECLARATION");
 
     private final GraphService graphService;
+    private final McpLimitProperties limits;
+
+    /** Compatibility constructor for isolated unit tests and direct callers. */
+    public ClassContextAnalyzerImpl(GraphService graphService) {
+        this(graphService, new McpLimitProperties());
+    }
+
+    @Autowired
+    public ClassContextAnalyzerImpl(GraphService graphService, McpLimitProperties limits) {
+        this.graphService = graphService;
+        this.limits = limits;
+    }
 
     @Override
     public ClassContextResponse analyzeClass(String projectId, String classQuery) {
         String normalizedProjectId = validate(projectId, "projectId", MAX_PROJECT_ID_LENGTH);
         String normalizedQuery = validate(classQuery, "classQuery", MAX_QUERY_LENGTH);
+        ProjectMetadata metadata = graphService.getProjectMetadata(normalizedProjectId);
+        if (metadata != null && (metadata.totalNodes() > limits.getMaxNodes()
+                || metadata.totalEdges() > limits.getMaxEdges())) {
+            return tooLargeResponse(normalizedProjectId, normalizedQuery,
+                    metadata.totalNodes(), metadata.totalEdges());
+        }
         GraphDataResponse graphData;
         try {
             graphData = graphService.getFullGraph(normalizedProjectId);
@@ -50,9 +68,8 @@ public class ClassContextAnalyzerImpl implements ClassContextAnalyzer {
         }
         int nodeCount = graphData == null || graphData.getNodes() == null ? 0 : graphData.getNodes().size();
         int edgeCount = graphData == null || graphData.getEdges() == null ? 0 : graphData.getEdges().size();
-        // Same bounds as every other GraphView-based tool (SourceGraphSupport) so
-        // get_class_context does not refuse graphs its sibling tools accept.
-        if (nodeCount > SourceGraphSupport.MAX_NODES_TO_PROCESS || edgeCount > SourceGraphSupport.MAX_EDGES_TO_PROCESS) {
+        // Use the shared MCP bounds so sibling graph-reading tools accept the same graph sizes.
+        if (nodeCount > limits.getMaxNodes() || edgeCount > limits.getMaxEdges()) {
             return tooLargeResponse(normalizedProjectId, normalizedQuery, nodeCount, edgeCount);
         }
         GraphView graph = new GraphView(

@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.vibegraph.auth.domain.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
 import com.vibegraph.auth.repository.projection.AdminDistributionRow;
 
 import jakarta.persistence.LockModeType;

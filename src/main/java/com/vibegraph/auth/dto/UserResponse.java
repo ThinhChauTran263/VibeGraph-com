@@ -1,6 +1,6 @@
 package com.vibegraph.auth.dto;
 
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 
 /**
  * Non-sensitive user projection returned to clients. Deliberately excludes
@@ -26,7 +26,7 @@ public record UserResponse(
     private static final String DEFAULT_DEACTIVATED_REASON = "Account closed by administrator";
 
     /** Map an entity and account settings to a safe projection. */
-    public static UserResponse from(User user, com.vibegraph.auth.domain.UserAccountSettings settings) {
+    public static UserResponse from(User user, com.vibegraph.auth.domain.entity.UserAccountSettings settings) {
         boolean isBlocked = settings != null && settings.isBlocked();
         String accountStatus = isBlocked ? "BLOCKED" : user.isDeactivated() ? "DEACTIVATED" : "ACTIVE";
         String safeReason = isBlocked

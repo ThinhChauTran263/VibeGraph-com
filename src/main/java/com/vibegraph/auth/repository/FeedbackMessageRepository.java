@@ -3,7 +3,7 @@ package com.vibegraph.auth.repository;
 import java.util.List;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.FeedbackMessage;
+import com.vibegraph.auth.domain.entity.FeedbackMessage;
 
 public interface FeedbackMessageRepository {
 

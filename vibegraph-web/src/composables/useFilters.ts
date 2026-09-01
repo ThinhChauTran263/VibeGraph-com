@@ -25,6 +25,7 @@ export function useFilters() {
     toggleIsolatedNodes: store.toggleIsolatedNodes,
     showAllNodeTypes: store.showAllNodeTypes,
     showAllEdgeTypes: store.showAllEdgeTypes,
+    setProject: store.setProject,
     reset: store.reset,
     applyFilters,
   }

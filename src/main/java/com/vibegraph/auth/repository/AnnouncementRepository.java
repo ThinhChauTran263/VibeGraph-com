@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.Announcement;
+import com.vibegraph.auth.domain.entity.Announcement;
 
 public interface AnnouncementRepository {
 

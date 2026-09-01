@@ -14,7 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.ImportPricingTier;
+import com.vibegraph.auth.domain.entity.ImportPricingTier;
 import com.vibegraph.auth.dto.AdminImportPricingResponse;
 import com.vibegraph.auth.dto.AdminImportPricingUpdateRequest;
 import com.vibegraph.auth.repository.ImportPricingTierRepository;

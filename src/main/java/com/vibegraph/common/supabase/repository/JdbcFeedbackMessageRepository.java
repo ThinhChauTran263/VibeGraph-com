@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import com.vibegraph.auth.domain.FeedbackMessage;
+import com.vibegraph.auth.domain.entity.FeedbackMessage;
 import com.vibegraph.auth.domain.FeedbackSenderRole;
 import com.vibegraph.auth.repository.FeedbackMessageRepository;
 

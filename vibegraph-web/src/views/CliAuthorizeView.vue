@@ -204,7 +204,14 @@ function apiMessage(cause: unknown): string {
 <template>
   <main class="cli-auth">
     <section class="cli-auth__card" aria-labelledby="cli-auth-title">
-      <BrandMark :size="38" :show-wordmark="true" glyph-to="/" glyph-aria-label="VibeGraph home" />
+      <BrandMark
+        :size="38"
+        :show-wordmark="true"
+        glyph-to="/"
+        glyph-aria-label="VibeGraph landing page"
+        wordmark-to="/dashboard"
+        wordmark-aria-label="VibeGraph dashboard"
+      />
       <div class="cli-auth__eyebrow">Secure device authorization</div>
       <h1 id="cli-auth-title">
         {{

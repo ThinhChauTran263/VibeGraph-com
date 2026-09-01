@@ -6,9 +6,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import com.vibegraph.abuse.RequestEvent;
+import com.vibegraph.abuse.entity.RequestEvent;
 import com.vibegraph.abuse.RequestEventResponse;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;

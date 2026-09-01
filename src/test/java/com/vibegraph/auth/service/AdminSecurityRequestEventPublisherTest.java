@@ -7,9 +7,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import com.vibegraph.abuse.RequestEvent;
+import com.vibegraph.abuse.entity.RequestEvent;
 import com.vibegraph.abuse.RequestEventResponse;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;

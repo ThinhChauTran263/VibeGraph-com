@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectSourceType;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.common.exception.ProjectNotFoundException;

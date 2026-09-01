@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VibeGraph CLI & MCP — AI Installation Guide</title>
+  <style>
+    :root { color-scheme: dark; --bg:#060910; --panel:#0c111c; --line:#253047; --text:#edf2f7; --muted:#a5adbd; --green:#4ade80; --amber:#fbbf24; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:radial-gradient(circle at 15% 0%,#10223b 0,transparent 34rem),var(--bg); color:var(--text); font:16px/1.7 ui-sans-serif,system-ui,sans-serif; }
+    main { width:min(900px,calc(100% - 32px)); margin:auto; padding:56px 0 100px; }
+    h1 { font-size:clamp(2.4rem,7vw,5rem); line-height:.95; letter-spacing:-.06em; }
+    h2 { margin-top:3rem; border-top:1px solid var(--line); padding-top:2rem; }
+    h3 { margin-top:1.8rem; }
+    p,li { color:var(--muted); }
+    code,pre { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+    pre { overflow:auto; padding:1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--green); }
+    .notice { padding:1rem 1.2rem; border:1px solid #755a00; border-radius:12px; background:#1b1504; }
+    .notice strong { color:var(--amber); }
+    a { color:var(--green); }
+  </style>
+</head>
+<body>
+<main>
+  <p>VIBEGRAPH.TECH / DOWNLOADABLE GUIDE</p>
+  <h1>VibeGraph CLI & MCP</h1>
+  <div class="notice"><strong>Dành cho người dùng và AI assistant.</strong> Không gửi API key hoặc password vào cuộc trò chuyện. AI không được bịa endpoint, project ID, credit hay kết quả phân tích.</div>
+
+  <h2>1. Cài CLI</h2>
+  <h3>Người dùng mới</h3>
+  <pre>npm install -g vibegraph-cli
+vibegraph --version
+vibegraph config set-url https://api.vibegraph.tech
+vibegraph login
+vibegraph key status</pre>
+  <p><code>vibegraph login</code> mở trình duyệt để đăng nhập và chọn project key thuộc tài khoản.</p>
+  <p>Khi có bản mới, CLI interactive sẽ báo <code>New vibegraph-cli version ... is available</code>. Nhấn Enter để cập nhật tự động, hoặc chạy <code>vibegraph update</code>.</p>
+  <h3>Cập nhật bản cũ</h3>
+  <pre>npm uninstall -g vibegraph-cli
+npm install -g vibegraph-cli@latest
+vibegraph --version</pre>
+
+  <h2>2. Chọn project và kiểm tra</h2>
+  <pre>vibegraph key list
+vibegraph key change
+vibegraph key status
+vibegraph key clear
+vibegraph doctor</pre>
+  <p>Key xác định project đang dùng. Các lệnh project-scoped bình thường tự nhận project được bind với key.</p>
+
+  <h2>3. CLI Push</h2>
+  <pre>cd &lt;LOCAL_PROJECT_FOLDER&gt;
+vibegraph push --dry-run
+vibegraph push
+vibegraph watch</pre>
+  <pre>vibegraph projects analyze
+vibegraph projects status</pre>
+  <p>Trong interactive shell <code>vibegraph&gt;</code>, chỉ nhập <code>push</code>, <code>doctor</code> hoặc <code>key status</code>.</p>
+
+  <h2>4. Các cách import</h2>
+  <ul>
+    <li>Dashboard archive: <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code>, <code>.tgz</code>.</li>
+    <li>Dashboard GitHub: repository public qua URL HTTPS, branch là tùy chọn.</li>
+  </ul>
+
+  <h2>5. Cài MCP tự động</h2>
+  <pre>vibegraph mcp install cursor
+vibegraph mcp install vscode
+vibegraph mcp install generic --path ./mcp.json
+vibegraph mcp doctor</pre>
+  <p>Restart hoặc reload MCP server trong IDE sau khi cài.</p>
+
+  <h2>6. Cài MCP thủ công</h2>
+  <h3>Để CLI sinh JSON stdio</h3>
+  <pre>vibegraph mcp config cursor
+vibegraph mcp config vscode
+vibegraph mcp config generic</pre>
+  <p>Copy toàn bộ object được sinh ra. Không copy đường dẫn Windows của máy người khác.</p>
+  <h3>Streamable HTTP</h3>
+  <pre>{
+  "mcpServers": {
+    "vibegraph": {
+      "url": "https://api.vibegraph.tech/mcp",
+      "transport": "streamable-http",
+      "headers": { "X-API-Key": "&lt;PROJECT_API_KEY&gt;" }
+    }
+  }
+}</pre>
+  <p>Thay key bằng project API key active, không commit key và không lồng thêm object <code>mcpServers</code>.</p>
+
+  <h2>7. Chẩn đoán MCP</h2>
+  <pre>vibegraph mcp doctor</pre>
+  <ol>
+    <li>Doctor kiểm tra initialize và <code>tools/list</code>.</li>
+    <li>Reload MCP server trong IDE.</li>
+    <li>Kiểm tra tool xuất hiện và gọi <code>list_projects</code>.</li>
+  </ol>
+
+  <h2>8. Lỗi thường gặp</h2>
+  <h3>MCP key không hợp lệ</h3>
+  <pre>vibegraph key change
+vibegraph mcp doctor</pre>
+  <h3><code>projects list</code> trả HTTP 401</h3>
+  <pre>vibegraph login --email &lt;email&gt; --password &lt;password&gt;
+vibegraph projects list</pre>
+  <p>Người dùng tự nhập password trong terminal; không gửi password cho AI.</p>
+
+  <h2>9. Checklist dành cho AI</h2>
+  <ol>
+    <li>Hỏi OS và IDE/MCP client.</li>
+    <li>Hỏi người dùng muốn CLI Push, MCP hay cả hai.</li>
+    <li>Yêu cầu output đã che secret của <code>vibegraph doctor</code> và <code>vibegraph mcp doctor</code>.</li>
+    <li>Hướng dẫn từng lệnh và chờ kết quả, không giả định thành công.</li>
+  </ol>
+  <p>Production: <a href="https://vibegraph.tech">vibegraph.tech</a> · API: <code>https://api.vibegraph.tech</code> · MCP: <code>https://api.vibegraph.tech/mcp</code></p>
+</main>
+</body>
+</html>

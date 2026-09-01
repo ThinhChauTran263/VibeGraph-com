@@ -136,6 +136,11 @@ const router = createRouter({
           component: () => import('../views/admin/DashboardView.vue'),
         },
         {
+          path: 'vps-monitor',
+          name: 'admin-vps-monitor',
+          component: () => import('../views/admin/VpsMonitorView.vue'),
+        },
+        {
           path: 'users',
           name: 'admin-users',
           component: () => import('../views/admin/UsersTableView.vue'),

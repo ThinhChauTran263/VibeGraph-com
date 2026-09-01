@@ -746,6 +746,7 @@
       "operations": "Vận hành",
       "nav": {
         "overview": "Tổng quan",
+        "vpsMonitor": "Giám sát VPS",
         "users": "Người dùng",
         "feedbackReports": "Phản hồi / Báo cáo",
         "plansCredits": "Gói dịch vụ & credit",
@@ -992,6 +993,45 @@
           "newUsersAcross": "{formattedCount} người dùng mới trong {buckets} · {count}",
           "title": "Tổng số người dùng"
         }
+      },
+      "infrastructure": {
+        "cpu": "Tải CPU",
+        "diskOf": "SSD / {total}",
+        "eyebrow": "Máy chủ production",
+        "health": {
+          "healthy": "Ổn định",
+          "watch": "Theo dõi",
+          "critical": "Nguy hiểm",
+          "unknown": "Không khả dụng"
+        },
+        "loading": "Đang tải số liệu realtime...",
+        "live": "Realtime",
+        "memoryOf": "RAM / {total}",
+        "offline": "Mất kết nối",
+        "openMonitor": "Mở VPS Monitor",
+        "details": {
+          "available": "khả dụng",
+          "average": "TB",
+          "current": "hiện tại",
+          "drops": "gói rớt",
+          "free": "còn trống",
+          "in": "vào",
+          "of": "trên",
+          "out": "ra",
+          "peak": "đỉnh",
+          "used": "đã dùng"
+        },
+        "services": "service khỏe",
+        "servicesUnavailable": "Chưa có dữ liệu Docker",
+        "title": "Hạ tầng",
+        "summary": {
+          "healthy": "VPS đang ổn định",
+          "watch": "VPS cần theo dõi",
+          "critical": "VPS đang quá tải",
+          "unknown": "Chưa xác định trạng thái VPS"
+        },
+        "unavailable": "Chưa có số liệu realtime",
+        "updated": "Cập nhật {time}"
       },
       "details": {
         "planDistribution": {

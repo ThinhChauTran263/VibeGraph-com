@@ -15,7 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.vibegraph.auth.domain.ApiKey;
+import com.vibegraph.auth.domain.entity.ApiKey;
 import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.UserRepository;
@@ -132,6 +132,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private boolean supportsApiKeyAuthentication(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.startsWith("/mcp")
+                || (request.getMethod().equals("GET") && path.equals("/api/projects/current"))
+                || (request.getMethod().equals("POST") && path.equals("/api/projects/current/analyze"))
                 || path.matches("/api/projects/[^/]+/patch")
                 || path.equals("/api/projects/current/patch");
     }

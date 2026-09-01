@@ -25,6 +25,7 @@ import {
   drawEdgeTypeLabel,
   setLabelZoom,
   resetEdgeLabelBudget,
+  setShowEdgeType,
   setShowEdgeKind,
 } from '@/lib/sigmaRenderers'
 import { attachGhostLayer, type GhostLayerHandle } from '@/lib/ghostLayer'
@@ -137,9 +138,9 @@ export function useSigma(options: UseSigmaOptions) {
       // graph-space reference, exactly like grapuco.
       itemSizesReference: 'positions',
       zoomToSizeRatioFunction: zoomToSizeRatio,
-      // Bound zoom-out so the graph cannot shrink into a useless dot, and cap
-      // deep zoom so node growth remains predictable at the configured power.
-      maxCameraRatio: 4,
+      // The fit view already contains the entire graph. Do not let zoom-out shrink
+      // it into an unreadable subpixel cluster; zoom-in remains available normally.
+      maxCameraRatio: 1,
       minCameraRatio: 0.01,
       defaultEdgeColor: '#475569',
       labelColor: { color: DEFAULT_LABEL_COLOR },
@@ -157,8 +158,8 @@ export function useSigma(options: UseSigmaOptions) {
       // lib/sigmaRenderers.ts.
       defaultDrawNodeLabel: drawDefaultNodeLabel,
       defaultDrawNodeHover: drawHighlightNodeHover,
-      // Edge labels: hide entirely when the full text doesn't fit the edge
-      // (no "DEFI…" truncation). See lib/sigmaRenderers.ts.
+      // Edge labels shrink to fit short edges and keep their zoom-driven size on
+      // longer edges. See lib/sigmaRenderers.ts.
       defaultDrawEdgeLabel: drawEdgeTypeLabel,
     })
 
@@ -471,7 +472,7 @@ export function useSigma(options: UseSigmaOptions) {
             x: p.x,
             y: p.y,
             layoutVal: val,
- size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN) * 1.3,
+            size: Math.max(LAYOUT_DRAW_SCALE * val, LAYOUT_DRAW_MIN) * 1.3,
           })
         })
         cacheLayoutPositions(graph)
@@ -564,6 +565,12 @@ export function useSigma(options: UseSigmaOptions) {
     sigmaInstance.value?.refresh({ skipIndexation: true })
   }
 
+  /** Toggle edge type text while preserving the shared Sigma label pass. */
+  function setEdgeTypeVisible(visible: boolean): void {
+    setShowEdgeType(visible)
+    sigmaInstance.value?.refresh({ skipIndexation: true })
+  }
+
   /**
    * Zoom to fit the entire graph in view.
    */
@@ -597,7 +604,14 @@ export function useSigma(options: UseSigmaOptions) {
       const y = Number(display.y)
       // Normalized positions sit in [0,1]; allow a small margin. Raw coords are
       // orders of magnitude outside this window and must never reach the camera.
-      if (!Number.isFinite(x) || !Number.isFinite(y) || x < -0.5 || x > 1.5 || y < -0.5 || y > 1.5) {
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        x < -0.5 ||
+        x > 1.5 ||
+        y < -0.5 ||
+        y > 1.5
+      ) {
         if (attemptsLeft > 0) focusNode(nodeId, attemptsLeft - 1)
         return
       }
@@ -641,6 +655,7 @@ export function useSigma(options: UseSigmaOptions) {
     },
     stopLayout,
     setReducers,
+    setEdgeTypeVisible,
     setEdgeKindVisible,
     setGhostPartition,
   }

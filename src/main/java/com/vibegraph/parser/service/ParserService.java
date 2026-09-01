@@ -37,4 +37,13 @@ public interface ParserService {
      * @return aggregated list of ParseResult (one per file)
      */
     List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener);
+
+    /**
+     * Parses a project with hard aggregate graph limits. Implementations may stop outstanding
+     * parser work as soon as either limit is exceeded so the guard protects heap usage.
+     */
+    default List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener,
+            int maxNodes, int maxEdges) {
+        return parseProject(projectRoot, progressListener);
+    }
 }

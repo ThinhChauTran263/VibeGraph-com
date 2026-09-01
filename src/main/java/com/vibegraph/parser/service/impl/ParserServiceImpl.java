@@ -12,7 +12,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -414,6 +416,12 @@ public class ParserServiceImpl implements ParserService {
 
     @Override
     public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener) {
+        return parseProject(projectRoot, progressListener, Integer.MAX_VALUE, Integer.MAX_VALUE);
+    }
+
+    @Override
+    public List<ParseResult> parseProject(Path projectRoot, ParseProgressListener progressListener,
+            int maxNodes, int maxEdges) {
         List<ParseResult> results = new ArrayList<>();
         ParseProgressListener listener = progressListener != null ? progressListener : ParseProgressListener.NOOP;
 
@@ -430,7 +438,8 @@ public class ParserServiceImpl implements ParserService {
             java.util.Set<Path> sourceRoots = detectSourceRoots(projectRoot, javaFiles);
             log.info("Type solver indexed {} source root(s)", sourceRoots.size());
 
-            results.addAll(parseFilesParallel(javaFiles, sourceRoots, projectSymbols, listener));
+            results.addAll(parseFilesParallel(javaFiles, sourceRoots, projectSymbols, listener,
+                    positiveLimit(maxNodes), positiveLimit(maxEdges)));
         } catch (IOException e) {
             log.error("Failed to scan project directory: {}", projectRoot, e);
         }
@@ -449,10 +458,14 @@ public class ParserServiceImpl implements ParserService {
      * callbacks (they broadcast over WebSocket downstream).
      */
     private List<ParseResult> parseFilesParallel(List<Path> javaFiles, java.util.Set<Path> sourceRoots,
-            ProjectSymbolRegistry projectSymbols, ParseProgressListener listener) {
+            ProjectSymbolRegistry projectSymbols, ParseProgressListener listener,
+            int maxNodes, int maxEdges) {
         int totalFiles = javaFiles.size();
         ParseResult[] ordered = new ParseResult[totalFiles];
         AtomicInteger parsed = new AtomicInteger();
+        AtomicLong parsedNodes = new AtomicLong();
+        AtomicLong parsedEdges = new AtomicLong();
+        AtomicBoolean limitExceeded = new AtomicBoolean();
         int parallelism = Math.max(1, Math.min(totalFiles, Runtime.getRuntime().availableProcessors()));
         ExecutorService executor = Executors.newFixedThreadPool(parallelism, r -> {
             Thread t = new Thread(r, "vg-parser-worker");
@@ -469,7 +482,12 @@ public class ParserServiceImpl implements ParserService {
                 final Path javaFile = javaFiles.get(i);
                 tasks.add(executor.submit(() -> {
                     try {
-                        ordered[index] = parseFileInternal(javaFile, threadParser.get(), projectSymbols);
+                        if (limitExceeded.get()) return;
+                        ParseResult result = parseFileInternal(javaFile, threadParser.get(), projectSymbols);
+                        long nodes = parsedNodes.addAndGet(size(result.getNodes()));
+                        long edges = parsedEdges.addAndGet(size(result.getEdges()));
+                        ordered[index] = result;
+                        if (nodes > maxNodes || edges > maxEdges) limitExceeded.set(true);
                     } catch (Exception e) {
                         log.warn("Failed to parse file: {}", javaFile, e);
                         ordered[index] = ParseResult.builder()
@@ -484,7 +502,7 @@ public class ParserServiceImpl implements ParserService {
 
             // Single-threaded progress reporter: poll the shared counter until every task
             // reports done, then drain the futures.
-            while (parsed.get() < totalFiles) {
+            while (parsed.get() < totalFiles && !limitExceeded.get()) {
                 listener.onFileParsed(parsed.get(), totalFiles);
                 try {
                     Thread.sleep(100);
@@ -492,6 +510,10 @@ public class ParserServiceImpl implements ParserService {
                     Thread.currentThread().interrupt();
                     break;
                 }
+            }
+            if (limitExceeded.get()) {
+                tasks.forEach(task -> task.cancel(true));
+                throw graphLimitExceeded(parsedNodes.get(), parsedEdges.get(), maxNodes, maxEdges);
             }
             listener.onFileParsed(totalFiles, totalFiles);
 
@@ -515,6 +537,21 @@ public class ParserServiceImpl implements ParserService {
         }
 
         return List.of(ordered);
+    }
+
+    private int positiveLimit(int value) {
+        return value < 1 ? Integer.MAX_VALUE : value;
+    }
+
+    private int size(List<?> values) {
+        return values == null ? 0 : values.size();
+    }
+
+    private IllegalStateException graphLimitExceeded(long nodes, long edges, int maxNodes, int maxEdges) {
+        return new IllegalStateException(String.format(
+                "Project is too large to analyze: at least %d nodes / %d edges exceeds the limit of %d / %d. "
+                        + "Increase VIBEGRAPH_ANALYZE_MAX_NODES / VIBEGRAPH_ANALYZE_MAX_EDGES only if the host has the heap.",
+                nodes, edges, maxNodes, maxEdges));
     }
 
     /**

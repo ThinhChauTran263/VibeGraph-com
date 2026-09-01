@@ -54,19 +54,20 @@ vibegraph help
 
 ```bash
 vibegraph config set-url http://localhost:8080
-vibegraph auth set-key vbg_...
+vibegraph login
+vibegraph key status
 ```
 
-Create the key in the VibeGraph web app:
+The browser flow verifies your account and lets you choose an active project key:
 
 1. Open the repository/project in your user console.
-2. Create an API key for that repository.
-3. Copy the key once and store it with `vibegraph auth set-key`.
+2. Sign in when the browser opens.
+3. Select the project key to use for this local folder.
 
 Verify the local configuration without revealing the full key:
 
 ```bash
-vibegraph auth status
+vibegraph key status
 vibegraph config show
 vibegraph doctor
 ```
@@ -265,8 +266,8 @@ vibegraph config set-url <url>
 vibegraph login
 vibegraph key list
 vibegraph key change
-vibegraph auth status
-vibegraph auth clear
+vibegraph key status
+vibegraph key clear
 vibegraph register --email <e> --password <p> --name <n>
 vibegraph login --email <e> --password <p>
 vibegraph logout

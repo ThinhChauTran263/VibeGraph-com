@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.domain.entity.SecurityEvent;
 import com.vibegraph.common.supabase.SupabaseProperties;
 
 import io.micrometer.core.instrument.Counter;

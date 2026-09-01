@@ -109,6 +109,29 @@ server:
 
 # VibeGraph custom properties
 vibegraph:
+  # Admin VPS Monitor sampling and safety policy. Live samples stay in a bounded ring buffer;
+  # operation summaries/incidents are capped so monitoring cannot grow memory without bound.
+  infrastructure:
+    monitor:
+      enabled: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_ENABLED:true}
+      sample-interval-ms: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_SAMPLE_INTERVAL_MS:1000}
+      live-sample-capacity: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_LIVE_SAMPLE_CAPACITY:60}
+      operation-history-capacity: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_OPERATION_HISTORY_CAPACITY:500}
+      operation-history-in-snapshot: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_OPERATION_HISTORY_IN_SNAPSHOT:20}
+      operation-cooldown-ms: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_OPERATION_COOLDOWN_MS:5000}
+      cadvisor-enabled: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CADVISOR_ENABLED:true}
+      cadvisor-url: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CADVISOR_URL:http://cadvisor:8080}
+      cadvisor-connect-timeout-ms: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CADVISOR_CONNECT_TIMEOUT_MS:500}
+      cadvisor-max-response-bytes: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CADVISOR_MAX_RESPONSE_BYTES:8000000}
+      sse-timeout-ms: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_SSE_TIMEOUT_MS:1800000}
+      warning-cpu-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_WARNING_CPU_PERCENT:75}
+      critical-cpu-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CRITICAL_CPU_PERCENT:90}
+      warning-memory-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_WARNING_MEMORY_PERCENT:75}
+      critical-memory-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CRITICAL_MEMORY_PERCENT:90}
+      warning-disk-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_WARNING_DISK_PERCENT:75}
+      critical-disk-percent: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_CRITICAL_DISK_PERCENT:90}
+      max-incidents: ${VIBEGRAPH_INFRASTRUCTURE_MONITOR_MAX_INCIDENTS:100}
+
   # Realtime/high-volume PostgreSQL storage. Disabled keeps the existing local
   # control-plane tables active and leaves them untouched for a controlled cutover.
   supabase:
@@ -199,6 +222,11 @@ vibegraph:
       cleanup-cron: "${VIBEGRAPH_CLI_DEVICE_CLEANUP_CRON:0 20 3 * * ?}"
 
   mcp:
+    # Full-graph safety ceiling used by source-reading MCP tools. Keep this below the
+    # Analyze ceiling so MCP reads cannot request more graph data than the in-memory
+    # analysis pipeline is configured to produce.
+    max-nodes: ${VIBEGRAPH_MCP_MAX_NODES:100000}
+    max-edges: ${VIBEGRAPH_MCP_MAX_EDGES:200000}
     orchestration:
       retention:
         enabled: ${VIBEGRAPH_MCP_TASK_RETENTION_ENABLED:true}
@@ -303,8 +331,8 @@ vibegraph:
   # nodeLimit=0/edgeLimit=0 requests fall back to these defaults. Set 0 only to disable
   # the server-side cap deliberately; values are clamped to the max-*-limit rails below.
   graph:
-    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:5000}
-    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:15000}
+    node-limit: ${VIBEGRAPH_GRAPH_NODE_LIMIT:10000}
+    edge-limit: ${VIBEGRAPH_GRAPH_EDGE_LIMIT:30000}
     max-node-limit: ${VIBEGRAPH_GRAPH_MAX_NODE_LIMIT:10000}
     max-edge-limit: ${VIBEGRAPH_GRAPH_MAX_EDGE_LIMIT:30000}
 

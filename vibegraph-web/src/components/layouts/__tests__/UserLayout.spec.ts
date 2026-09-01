@@ -116,10 +116,12 @@ describe('UserLayout', () => {
     const { wrapper } = await mountLayout()
 
     const glyphLink = wrapper.get('header a.brand__glyph-link')
-    expect(glyphLink.attributes('href')).toBe('/dashboard')
+    expect(glyphLink.attributes('href')).toBe('/')
     expect(glyphLink.find('img[alt="VibeGraph logo"]').exists()).toBe(true)
     expect(glyphLink.find('.brand__word').exists()).toBe(false)
-    expect(wrapper.get('header .brand__word').text()).toBe('VibeGraph')
+    const wordmarkLink = wrapper.get('header a.brand__word-link')
+    expect(wordmarkLink.attributes('href')).toBe('/dashboard')
+    expect(wordmarkLink.get('.brand__word').text()).toBe('VibeGraph')
   })
 
   it('collapses to accessible icon-only navigation and expands with the hamburger', async () => {
@@ -130,6 +132,7 @@ describe('UserLayout', () => {
     await collapseButton.trigger('click')
 
     expect(wrapper.classes()).toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(false)
     const repositoriesLink = wrapper.get('a[aria-label="Repositories"]')
     expect(repositoriesLink.attributes('title')).toBe('Repositories')
     const expandButton = wrapper.get('button[aria-label="Expand sidebar"]')
@@ -138,6 +141,7 @@ describe('UserLayout', () => {
 
     await expandButton.trigger('click')
     expect(wrapper.classes()).not.toContain('collapsed')
+    expect(wrapper.find('header .brand').exists()).toBe(true)
   })
 
   it('shows the drawer close button only while the mobile drawer is open', async () => {
