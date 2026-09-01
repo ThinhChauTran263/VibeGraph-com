@@ -18,7 +18,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectOwnershipStatus;
 import com.vibegraph.auth.domain.ProjectSourceType;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;

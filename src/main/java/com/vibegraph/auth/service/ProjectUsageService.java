@@ -5,8 +5,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.ProjectUsage;
-import com.vibegraph.auth.domain.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.ProjectUsage;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.auth.repository.ProjectUsageRepository;
 import com.vibegraph.auth.repository.UserAccountSettingsRepository;

@@ -1,6 +1,6 @@
 package com.vibegraph.auth.dto;
 
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.Plan;
 import com.vibegraph.auth.service.StorageUnitConverter;
 
 public record AdminPlanResponse(

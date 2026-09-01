@@ -18,9 +18,9 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.AuditRetentionSetting;
-import com.vibegraph.auth.domain.AuditLog;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.AuditRetentionSetting;
+import com.vibegraph.auth.domain.entity.AuditLog;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.dto.AuditLogResponse;
 import com.vibegraph.auth.dto.AuditRetentionResponse;
 import com.vibegraph.auth.repository.AuditLogSpecifications;

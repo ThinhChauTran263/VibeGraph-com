@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 import com.vibegraph.auth.dto.AdminPricingRuleResponse;
 import com.vibegraph.auth.dto.AdminPricingRuleUpsertRequest;
 import com.vibegraph.auth.repository.CreditPricingRuleRepository;

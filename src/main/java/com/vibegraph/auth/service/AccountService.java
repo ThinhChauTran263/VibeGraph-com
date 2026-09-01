@@ -11,8 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserCreditBalance;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserCreditBalance;
 import com.vibegraph.auth.dto.AccountCreditLedgerResponse;
 import com.vibegraph.auth.dto.AccountProfileUpdateRequest;
 import com.vibegraph.auth.dto.AccountPasswordChangeRequest;

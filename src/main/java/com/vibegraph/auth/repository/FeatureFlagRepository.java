@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.vibegraph.auth.domain.FeatureFlag;
+import com.vibegraph.auth.domain.entity.FeatureFlag;
 
 public interface FeatureFlagRepository extends JpaRepository<FeatureFlag, UUID> {
 

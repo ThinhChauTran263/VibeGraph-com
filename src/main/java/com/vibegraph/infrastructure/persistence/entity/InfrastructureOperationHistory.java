@@ -1,4 +1,6 @@
-package com.vibegraph.infrastructure.persistence;
+package com.vibegraph.infrastructure.persistence.entity;
+
+import com.vibegraph.infrastructure.persistence.OperationTelemetrySanitizer;
 
 import java.time.Instant;
 

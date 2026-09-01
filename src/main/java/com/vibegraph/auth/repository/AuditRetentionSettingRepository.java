@@ -2,7 +2,7 @@ package com.vibegraph.auth.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.vibegraph.auth.domain.AuditRetentionSetting;
+import com.vibegraph.auth.domain.entity.AuditRetentionSetting;
 
 public interface AuditRetentionSettingRepository extends JpaRepository<AuditRetentionSetting, Short> {
 }

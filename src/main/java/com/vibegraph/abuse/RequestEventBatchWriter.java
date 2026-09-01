@@ -1,12 +1,14 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import java.util.List;
 import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.domain.entity.SecurityEvent;
 import com.vibegraph.auth.repository.SecurityEventRepository;
 import com.vibegraph.auth.service.AdminSecurityRequestEventPublisher;
 

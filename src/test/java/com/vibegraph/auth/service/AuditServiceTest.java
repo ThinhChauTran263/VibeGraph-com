@@ -19,7 +19,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import com.vibegraph.auth.domain.AuditRetentionSetting;
+import com.vibegraph.auth.domain.entity.AuditRetentionSetting;
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.repository.AuditLogRepository;
 import com.vibegraph.auth.repository.AuditRetentionSettingRepository;

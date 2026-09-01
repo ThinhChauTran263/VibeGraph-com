@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.vibegraph.auth.domain.ApiKey;
+import com.vibegraph.auth.domain.entity.ApiKey;
 
 public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
 

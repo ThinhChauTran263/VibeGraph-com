@@ -1,7 +1,6 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -16,14 +15,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/** Server-side refresh-session record; only a SHA-256 token hash is persisted. */
 @Entity
-@Table(name = "user_credit_balances")
+@Table(name = "refresh_sessions")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserCreditBalance {
+public class RefreshSession {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -33,26 +33,27 @@ public class UserCreditBalance {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "period_start", nullable = false)
-    private LocalDate periodStart;
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
 
-    @Column(name = "period_end", nullable = false)
-    private LocalDate periodEnd;
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
-    @Column(name = "credits_limit_snapshot", nullable = false)
-    private int creditsLimitSnapshot;
-
-    @Builder.Default
-    @Column(name = "credits_used", nullable = false)
-    private int creditsUsed = 0;
-
-    @Builder.Default
-    @Column(name = "credits_adjustment", nullable = false)
-    private int creditsAdjustment = 0;
+    @Column(name = "expires_at", nullable = false)
+    private Instant expiresAt;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
-    private Instant updatedAt;
+    @Column(name = "last_used_at")
+    private Instant lastUsedAt;
+
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Column(name = "revoke_reason", length = 40)
+    private String revokeReason;
+
+    @Column(name = "replaced_by_id")
+    private UUID replacedById;
 }

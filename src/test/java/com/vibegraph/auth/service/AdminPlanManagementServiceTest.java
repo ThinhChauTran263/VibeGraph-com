@@ -8,7 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.Plan;
 import com.vibegraph.auth.dto.AdminPlanResponse;
 import com.vibegraph.auth.dto.AdminPlanUpsertRequest;
 import com.vibegraph.auth.repository.PlanRepository;

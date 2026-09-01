@@ -279,7 +279,7 @@ class TelemetryPipelineBenchmark {
         }
 
         @Override
-        public void publishAfterCommit(com.vibegraph.abuse.RequestEvent event) {
+        public void publishAfterCommit(com.vibegraph.abuse.entity.RequestEvent event) {
             // The SSE stream is out of scope for pipeline capacity.
         }
     }

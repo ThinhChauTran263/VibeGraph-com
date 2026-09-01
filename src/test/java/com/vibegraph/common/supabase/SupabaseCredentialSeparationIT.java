@@ -28,7 +28,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import com.vibegraph.abuse.RequestEvent;
+import com.vibegraph.abuse.entity.RequestEvent;
 import com.vibegraph.abuse.RequestEventRepository;
 import com.vibegraph.common.supabase.repository.JdbcRequestEventRepository;
 

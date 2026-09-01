@@ -29,7 +29,7 @@ import org.springframework.data.domain.PageRequest;
 import com.vibegraph.infrastructure.config.InfrastructureMonitorProperties;
 import com.vibegraph.infrastructure.dto.InfrastructureSnapshot;
 import com.vibegraph.infrastructure.dto.InfrastructureSnapshot.OperationEvidence;
-import com.vibegraph.infrastructure.persistence.InfrastructureOperationHistory;
+import com.vibegraph.infrastructure.persistence.entity.InfrastructureOperationHistory;
 import com.vibegraph.infrastructure.persistence.InfrastructureOperationHistoryRepository;
 import com.vibegraph.infrastructure.persistence.OperationTelemetrySanitizer;
 

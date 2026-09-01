@@ -5,7 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.FeatureFlag;
+import com.vibegraph.auth.domain.entity.FeatureFlag;
 import com.vibegraph.auth.dto.FeatureFlagRequest;
 import com.vibegraph.auth.dto.FeatureFlagResponse;
 import com.vibegraph.auth.repository.FeatureFlagRepository;

@@ -3,8 +3,8 @@ package com.vibegraph.auth.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.vibegraph.auth.domain.ApiKey;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ApiKey;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 
 public record ApiKeyResponse(
         UUID id,

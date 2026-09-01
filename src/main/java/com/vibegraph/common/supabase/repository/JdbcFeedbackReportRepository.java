@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.vibegraph.auth.domain.FeedbackCategory;
-import com.vibegraph.auth.domain.FeedbackReport;
+import com.vibegraph.auth.domain.entity.FeedbackReport;
 import com.vibegraph.auth.domain.FeedbackReportStatus;
 import com.vibegraph.auth.repository.FeedbackReportRepository;
 

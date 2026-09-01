@@ -1,4 +1,5 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
+import com.vibegraph.auth.domain.ApiKeyDisabledBy;
 
 import java.time.Instant;
 import java.util.UUID;

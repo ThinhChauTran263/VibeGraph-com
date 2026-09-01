@@ -1,5 +1,7 @@
 package com.vibegraph.abuse;
 
+import com.vibegraph.abuse.entity.RequestEvent;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
@@ -22,7 +24,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import com.vibegraph.auth.domain.SecurityEvent;
+import com.vibegraph.auth.domain.entity.SecurityEvent;
 import com.vibegraph.auth.repository.SecurityEventRepository;
 import com.vibegraph.common.supabase.SupabaseDatabaseConfig;
 import com.vibegraph.common.supabase.repository.JdbcProjectRuntimeStatusRepository;

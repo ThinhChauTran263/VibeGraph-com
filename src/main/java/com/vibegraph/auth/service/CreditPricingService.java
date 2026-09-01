@@ -6,7 +6,7 @@ import java.math.RoundingMode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 import com.vibegraph.auth.repository.CreditPricingRuleRepository;
 
 import lombok.RequiredArgsConstructor;

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.ProjectOwnershipRepository;
 import com.vibegraph.common.exception.ApiKeyAdminLockedException;

@@ -16,7 +16,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.ImportPricingTier;
+import com.vibegraph.auth.domain.entity.ImportPricingTier;
 import com.vibegraph.auth.repository.ImportPricingTierRepository;
 
 @ExtendWith(MockitoExtension.class)

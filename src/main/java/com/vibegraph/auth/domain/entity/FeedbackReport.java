@@ -1,4 +1,6 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
+import com.vibegraph.auth.domain.FeedbackCategory;
+import com.vibegraph.auth.domain.FeedbackReportStatus;
 
 import java.time.Instant;
 import java.util.UUID;

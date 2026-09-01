@@ -7,7 +7,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.domain.Specification;
 
-import com.vibegraph.auth.domain.AuditLog;
+import com.vibegraph.auth.domain.entity.AuditLog;
 
 import jakarta.persistence.criteria.Predicate;
 

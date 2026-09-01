@@ -2,7 +2,7 @@ package com.vibegraph.auth.dto;
 
 import java.time.Instant;
 
-import com.vibegraph.auth.domain.FeatureFlag;
+import com.vibegraph.auth.domain.entity.FeatureFlag;
 
 public record FeatureFlagResponse(
         String key,

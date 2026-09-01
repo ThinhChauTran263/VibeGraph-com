@@ -1,5 +1,7 @@
 package com.vibegraph.mcp.orchestration;
 
+import com.vibegraph.mcp.orchestration.entity.AgentTask;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

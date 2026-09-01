@@ -1,5 +1,7 @@
 package com.vibegraph.mcp.orchestration;
 
+import com.vibegraph.mcp.orchestration.entity.AgentTask;
+
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.Set;

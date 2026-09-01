@@ -1,4 +1,4 @@
-package com.vibegraph.abuse;
+package com.vibegraph.abuse.entity;
 
 import java.time.Instant;
 import java.util.UUID;

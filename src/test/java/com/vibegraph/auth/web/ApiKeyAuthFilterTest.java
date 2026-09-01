@@ -19,10 +19,10 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.vibegraph.auth.domain.ApiKey;
+import com.vibegraph.auth.domain.entity.ApiKey;
 import com.vibegraph.auth.domain.ApiKeyDisabledBy;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.ApiKeyRepository;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AccountSettingsService;

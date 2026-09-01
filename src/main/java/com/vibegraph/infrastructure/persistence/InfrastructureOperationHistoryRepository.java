@@ -1,5 +1,7 @@
 package com.vibegraph.infrastructure.persistence;
 
+import com.vibegraph.infrastructure.persistence.entity.InfrastructureOperationHistory;
+
 import java.util.List;
 import java.util.Collection;
 

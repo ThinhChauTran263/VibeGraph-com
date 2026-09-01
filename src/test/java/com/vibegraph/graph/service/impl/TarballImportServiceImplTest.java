@@ -290,9 +290,9 @@ class TarballImportServiceImplTest {
         assertThat(backgroundTasks).isEmpty();
     }
 
-    private com.vibegraph.auth.domain.ProjectOwnership activeGithubRow(String sourceRef,
+    private com.vibegraph.auth.domain.entity.ProjectOwnership activeGithubRow(String sourceRef,
             com.vibegraph.auth.domain.ProjectOwnershipStatus status) {
-        return com.vibegraph.auth.domain.ProjectOwnership.builder()
+        return com.vibegraph.auth.domain.entity.ProjectOwnership.builder()
                 .projectId("p1").ownerId(userId).name("acme/demo")
                 .sourceType(com.vibegraph.auth.domain.ProjectSourceType.GITHUB)
                 .sourceRef(sourceRef).status(status)

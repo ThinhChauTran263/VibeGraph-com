@@ -1,4 +1,4 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -15,42 +15,48 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/**
- * One size tier of the tiered import pricing model. An operation (e.g.
- * {@code IMPORT_ARCHIVE}) owns an ordered set of tiers; billing picks the
- * first tier whose {@code maxFiles} covers the imported {@code .java} file
- * count. A {@code null} {@code maxFiles} marks the unlimited top tier.
- */
 @Entity
-@Table(name = "import_pricing_tiers")
+@Table(name = "plans")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ImportPricingTier {
+public class Plan {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "operation_code", nullable = false)
-    private String operationCode;
+    @Column(name = "code", nullable = false, unique = true, length = 32)
+    private String code;
 
-    @Column(name = "tier_code", nullable = false)
-    private String tierCode;
+    @Column(name = "name", nullable = false, length = 120)
+    private String name;
 
-    /** Inclusive upper file bound; null means unlimited (top tier). */
-    @Column(name = "max_files")
-    private Integer maxFiles;
+    @Column(name = "storage_limit_bytes", nullable = false)
+    private long storageLimitBytes;
 
-    @Column(name = "credits", nullable = false)
-    private int credits;
+    @Column(name = "api_key_limit", nullable = false)
+    private int apiKeyLimit;
+
+    @Builder.Default
+    @Column(name = "monthly_credit_limit", nullable = false)
+    private int monthlyCreditLimit = 0;
+
+    @Builder.Default
+    @Column(name = "contact_sales_required", nullable = false)
+    private boolean contactSalesRequired = false;
+
+    @Builder.Default
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
 
     @Builder.Default
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
+
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

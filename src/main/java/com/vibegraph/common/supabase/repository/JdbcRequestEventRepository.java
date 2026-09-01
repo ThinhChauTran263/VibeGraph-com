@@ -17,7 +17,7 @@ import org.springframework.stereotype.Repository;
 import com.vibegraph.abuse.NetworkAggregateProjection;
 import com.vibegraph.abuse.NetworkBreakdownProjection;
 import com.vibegraph.abuse.RequestAggregateProjection;
-import com.vibegraph.abuse.RequestEvent;
+import com.vibegraph.abuse.entity.RequestEvent;
 import com.vibegraph.abuse.RequestEventRepository;
 
 @Repository

@@ -37,7 +37,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.vibegraph.auth.CurrentUser;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
+import com.vibegraph.auth.domain.entity.User;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.auth.service.AdminSecurityMonitorService;
 import com.vibegraph.auth.service.AuthenticatedUser;
@@ -79,7 +79,7 @@ class SupabaseDisabledModeIT {
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfiguration",
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jRepositoriesAutoConfiguration"
     })
-    @EntityScan("com.vibegraph.auth.domain")
+    @EntityScan("com.vibegraph.auth.domain.entity")
     @EnableJpaRepositories("com.vibegraph.auth.repository")
     @Import({
         SupabaseDatabaseConfig.class,

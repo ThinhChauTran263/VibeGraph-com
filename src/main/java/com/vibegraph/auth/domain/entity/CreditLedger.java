@@ -1,4 +1,4 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,43 +16,41 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "audit_logs")
+@Table(name = "credit_ledger")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AuditLog {
+public class CreditLedger {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @Column(name = "action", nullable = false, length = 80)
-    private String action;
+    @Column(name = "user_id", nullable = false)
+    private UUID userId;
 
-    @Column(name = "actor_user_id")
-    private UUID actorUserId;
+    @Column(name = "project_id")
+    private String projectId;
 
-    @Column(name = "target_user_id")
-    private UUID targetUserId;
+    @Column(name = "balance_id")
+    private UUID balanceId;
 
-    @Column(name = "target_type", length = 80)
-    private String targetType;
+    @Column(name = "source", nullable = false)
+    private String source; // 'MCP','CLI','WEB','ADMIN','SYSTEM'
 
-    @Column(name = "target_id", length = 160)
-    private String targetId;
+    @Column(name = "operation_code", nullable = false)
+    private String operationCode;
 
-    @Column(name = "outcome", nullable = false, length = 20)
-    private String outcome;
-
-    @Column(name = "ip_address", length = 64)
-    private String ipAddress;
+    @Column(name = "credits_delta", nullable = false)
+    private int creditsDelta;
 
     @Builder.Default
-    @Column(name = "details", nullable = false, length = 4000)
-    private String details = "{}";
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    private String metadata = "{}";
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

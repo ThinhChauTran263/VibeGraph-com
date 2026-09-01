@@ -1,4 +1,4 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
 
 import java.time.Instant;
 import java.util.UUID;

@@ -15,14 +15,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.vibegraph.auth.CurrentUser;
-import com.vibegraph.auth.domain.CreditLedger;
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.CreditLedger;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 import com.vibegraph.auth.domain.ProjectOwnershipStatus;
 import com.vibegraph.auth.domain.ProjectSourceType;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
-import com.vibegraph.auth.domain.UserCreditBalance;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.UserCreditBalance;
 import com.vibegraph.auth.dto.AccountCreditLedgerResponse;
 import com.vibegraph.auth.dto.AccountProfileUpdateRequest;
 import com.vibegraph.auth.dto.AccountPasswordChangeRequest;
@@ -102,7 +102,7 @@ class AccountServiceTest {
         when(currentUser.id()).thenReturn(userId);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(accountSettingsService.findSettings(userId))
-                .thenReturn(com.vibegraph.auth.domain.UserAccountSettings.builder().userId(userId).build());
+                .thenReturn(com.vibegraph.auth.domain.entity.UserAccountSettings.builder().userId(userId).build());
 
         UserResponse profile = accountService.profile();
 
@@ -252,7 +252,7 @@ class AccountServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(user)).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountSettingsService.findSettings(userId))
-                .thenReturn(com.vibegraph.auth.domain.UserAccountSettings.builder().userId(userId).build());
+                .thenReturn(com.vibegraph.auth.domain.entity.UserAccountSettings.builder().userId(userId).build());
 
         UserResponse profile = accountService.updateProfile(new AccountProfileUpdateRequest("  New Name  "));
 

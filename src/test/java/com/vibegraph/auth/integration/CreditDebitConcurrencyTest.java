@@ -70,7 +70,7 @@ class CreditDebitConcurrencyTest {
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfiguration",
         "org.springframework.boot.autoconfigure.data.neo4j.Neo4jRepositoriesAutoConfiguration"
     })
-    @EntityScan("com.vibegraph.auth.domain")
+    @EntityScan("com.vibegraph.auth.domain.entity")
     @EnableJpaRepositories("com.vibegraph.auth.repository")
     static class TestConfig {
 

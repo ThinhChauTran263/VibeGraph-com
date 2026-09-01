@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.vibegraph.auth.domain.RefreshSession;
+import com.vibegraph.auth.domain.entity.RefreshSession;
 
 import jakarta.persistence.LockModeType;
 

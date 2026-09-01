@@ -2,7 +2,7 @@ package com.vibegraph.auth.dto;
 
 import java.time.Instant;
 
-import com.vibegraph.auth.domain.ProjectOwnership;
+import com.vibegraph.auth.domain.entity.ProjectOwnership;
 
 public record AccountProjectResponse(
         String id,

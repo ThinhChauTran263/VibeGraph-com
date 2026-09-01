@@ -6,7 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.Announcement;
+import com.vibegraph.auth.domain.entity.Announcement;
 import com.vibegraph.auth.dto.AnnouncementRequest;
 import com.vibegraph.auth.repository.AnnouncementRepository;
 import com.vibegraph.auth.repository.UserRepository;
@@ -60,7 +60,7 @@ class AdminAnnouncementServiceTest {
             return announcement;
         });
         when(userRepository.findById(creatorId)).thenReturn(java.util.Optional.of(
-                com.vibegraph.auth.domain.User.builder()
+                com.vibegraph.auth.domain.entity.User.builder()
                         .id(creatorId).displayName("Ops Admin").email("ops@test.local").build()));
         AdminAnnouncementService service = new AdminAnnouncementService(
                 announcementRepository, userRepository, currentUser, auditService);

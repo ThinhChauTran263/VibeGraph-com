@@ -1,4 +1,4 @@
-package com.vibegraph.auth.domain;
+package com.vibegraph.auth.domain.entity;
 
 import java.math.BigDecimal;
 import java.time.Instant;

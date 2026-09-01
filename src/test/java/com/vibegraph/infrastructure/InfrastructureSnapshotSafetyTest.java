@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import com.vibegraph.infrastructure.dto.InfrastructureSnapshot.OperationEvidence;
-import com.vibegraph.infrastructure.persistence.InfrastructureOperationHistory;
+import com.vibegraph.infrastructure.persistence.entity.InfrastructureOperationHistory;
 
 class InfrastructureSnapshotSafetyTest {
 

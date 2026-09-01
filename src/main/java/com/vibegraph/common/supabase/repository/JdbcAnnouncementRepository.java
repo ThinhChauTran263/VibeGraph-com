@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import com.vibegraph.auth.domain.Announcement;
+import com.vibegraph.auth.domain.entity.Announcement;
 import com.vibegraph.auth.repository.AnnouncementRepository;
 
 @Repository

@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.Plan;
 
 public interface PlanRepository extends JpaRepository<Plan, UUID> {
 

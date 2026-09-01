@@ -14,7 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.vibegraph.auth.domain.FeatureFlag;
+import com.vibegraph.auth.domain.entity.FeatureFlag;
 import com.vibegraph.auth.dto.FeatureFlagRequest;
 import com.vibegraph.auth.repository.FeatureFlagRepository;
 

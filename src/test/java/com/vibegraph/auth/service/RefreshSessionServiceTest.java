@@ -15,9 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.vibegraph.auth.config.JwtProperties;
 import com.vibegraph.auth.domain.Role;
-import com.vibegraph.auth.domain.User;
-import com.vibegraph.auth.domain.UserAccountSettings;
-import com.vibegraph.auth.domain.RefreshSession;
+import com.vibegraph.auth.domain.entity.User;
+import com.vibegraph.auth.domain.entity.UserAccountSettings;
+import com.vibegraph.auth.domain.entity.RefreshSession;
 import com.vibegraph.auth.repository.RefreshSessionRepository;
 import com.vibegraph.auth.repository.UserRepository;
 import com.vibegraph.common.exception.UnauthorizedException;

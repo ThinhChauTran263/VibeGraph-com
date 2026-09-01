@@ -6,7 +6,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.vibegraph.auth.domain.CreditPricingRule;
+import com.vibegraph.auth.domain.entity.CreditPricingRule;
 
 @Repository
 public interface CreditPricingRuleRepository extends JpaRepository<CreditPricingRule, UUID> {

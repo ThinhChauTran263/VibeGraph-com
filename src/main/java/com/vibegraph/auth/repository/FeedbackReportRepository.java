@@ -8,7 +8,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import com.vibegraph.auth.domain.FeedbackReport;
+import com.vibegraph.auth.domain.entity.FeedbackReport;
 import com.vibegraph.auth.domain.FeedbackReportStatus;
 
 public interface FeedbackReportRepository {

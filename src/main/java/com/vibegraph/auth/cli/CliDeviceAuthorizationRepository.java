@@ -1,5 +1,7 @@
 package com.vibegraph.auth.cli;
 
+import com.vibegraph.auth.cli.entity.CliDeviceAuthorization;
+
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;

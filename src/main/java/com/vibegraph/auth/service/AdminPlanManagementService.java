@@ -5,7 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vibegraph.auth.domain.Plan;
+import com.vibegraph.auth.domain.entity.Plan;
 import com.vibegraph.auth.dto.AdminPlanResponse;
 import com.vibegraph.auth.dto.AdminPlanUpsertRequest;
 import com.vibegraph.auth.repository.PlanRepository;

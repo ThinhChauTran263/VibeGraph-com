@@ -83,7 +83,7 @@ class FeatureGateServiceTest {
     @DisplayName("capabilities expose canonical global and persisted MCP child flags")
     void capabilities_returnsSafeEffectiveMap() {
         FeatureGateService service = new FeatureGateService(featureFlagRepository);
-        var child = com.vibegraph.auth.domain.FeatureFlag.builder()
+        var child = com.vibegraph.auth.domain.entity.FeatureFlag.builder()
                 .key("mcp.tool.source_file")
                 .scope("MCP_TOOL")
                 .displayName("Source file")
@@ -105,13 +105,13 @@ class FeatureGateServiceTest {
     @DisplayName("disabled MCP global flag makes child capabilities fail closed")
     void capabilities_globalMcpDisabled_disablesChildren() {
         FeatureGateService service = new FeatureGateService(featureFlagRepository);
-        var child = com.vibegraph.auth.domain.FeatureFlag.builder()
+        var child = com.vibegraph.auth.domain.entity.FeatureFlag.builder()
                 .key("mcp.tool.source_file")
                 .scope("MCP_TOOL")
                 .displayName("Source file")
                 .enabled(true)
                 .build();
-        var global = com.vibegraph.auth.domain.FeatureFlag.builder()
+        var global = com.vibegraph.auth.domain.entity.FeatureFlag.builder()
                 .key(FeatureGateService.MCP_ENABLED)
                 .scope("GLOBAL")
                 .displayName("MCP")

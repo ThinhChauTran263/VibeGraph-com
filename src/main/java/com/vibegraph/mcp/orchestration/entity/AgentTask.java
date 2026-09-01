@@ -1,4 +1,6 @@
-package com.vibegraph.mcp.orchestration;
+package com.vibegraph.mcp.orchestration.entity;
+
+import com.vibegraph.mcp.orchestration.TaskStatus;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -200,11 +202,11 @@ public class AgentTask {
         }
     }
 
-    void setReplacementTaskId(String replacementTaskId) {
+    public void setReplacementTaskId(String replacementTaskId) {
         this.replacementTaskId = replacementTaskId;
     }
 
-    static AgentTask retryOf(AgentTask source, String replacementId) {
+    public static AgentTask retryOf(AgentTask source, String replacementId) {
         AgentTask replacement = new AgentTask(replacementId, source.description, source.maxRetries);
         replacement.setRetryCount(source.retryCount + 1);
         replacement.dependsOn.addAll(source.dependsOn);

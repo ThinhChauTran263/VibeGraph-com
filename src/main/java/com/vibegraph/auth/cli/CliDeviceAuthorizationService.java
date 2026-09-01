@@ -1,5 +1,7 @@
 package com.vibegraph.auth.cli;
 
+import com.vibegraph.auth.cli.entity.CliDeviceAuthorization;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
